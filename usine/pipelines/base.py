@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import re
 import secrets
 import time
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from ..core import apprentissage, config, store
+from ..core import apprentissage, config, empreinte, store
 
 TONS = {
     "expert": "expert, precis, appuye sur des faits et des chiffres",
@@ -133,21 +134,106 @@ def preparer(ctx: Contexte, type_produit: str, titre: str) -> Path:
     return dossier
 
 
+_ENTETE = re.compile(r"^#{1,3}\s+(.+?)\s*$", re.MULTILINE)
+
+
+def _matiere(fichiers: List[Path]) -> Tuple[str, List[str]]:
+    """Le texte redige du produit et la liste de ses sections.
+
+    On relit ce qui a ete ECRIT plutot que de se faire passer le plan : c'est
+    le fichier livre qui compte, et toutes les chaines n'ont pas la meme
+    structure interne. Le markdown quand il existe, le JSON de travail sinon.
+    """
+    for extension in (".md", ".txt"):
+        for chemin in fichiers:
+            if chemin.suffix == extension and chemin.exists():
+                texte = chemin.read_text(encoding="utf-8", errors="replace")
+                return texte, _ENTETE.findall(texte)
+    for chemin in fichiers:
+        if chemin.suffix == ".json" and chemin.exists():
+            try:
+                charge = json.loads(chemin.read_text(encoding="utf-8"))
+            except (ValueError, OSError):
+                continue
+            morceaux, titres = [], []
+            _aplatir(charge, morceaux, titres)
+            return "\n".join(morceaux), titres
+    return "", []
+
+
+def _aplatir(noeud: Any, morceaux: List[str], titres: List[str]) -> None:
+    """Descend dans un JSON en retenant le texte et ce qui fait office de titre."""
+    if isinstance(noeud, dict):
+        for cle, valeur in noeud.items():
+            if isinstance(valeur, str) and cle in ("titre", "nom", "intitule"):
+                titres.append(valeur)
+            _aplatir(valeur, morceaux, titres)
+    elif isinstance(noeud, list):
+        for element in noeud:
+            _aplatir(element, morceaux, titres)
+    elif isinstance(noeud, str) and len(noeud) > 12:
+        morceaux.append(noeud)
+
+
+def _verifier_doublon(ctx: Contexte, type_produit: str, fichiers: List[Path],
+                      titre: str) -> Optional[Dict[str, Any]]:
+    """Compare le produit fini a ceux deja fabriques, puis l'enregistre.
+
+    La verification a lieu APRES fabrication, et c'est un compromis assume :
+    comparer avant supposerait de deviner ce que le modele va ecrire. Le
+    produit n'est donc pas bloque — il est signale, et la trace reste dans
+    « usine doublons ». Le quota est depense ; ce qu'on evite, c'est la mise
+    en vente.
+    """
+    texte, titres = _matiere(fichiers)
+    if not texte:
+        return None
+    connus = []
+    for ligne in store.lister_empreintes(type_produit, sauf=ctx.produit_id):
+        connus.append({
+            "produit_id": ligne["produit_id"], "titre": ligne["titre"],
+            "sujet": ligne["sujet"],
+            "signature": empreinte.decoder(ligne["signature"]),
+            "plan": empreinte.decoder(ligne["plan"]),
+        })
+    voisins = empreinte.comparer(texte, titres, connus)
+    store.enregistrer_empreinte(
+        ctx.produit_id, type_produit, titre, ctx.sujet,
+        empreinte.encoder(empreinte.signature(texte)),
+        empreinte.encoder(empreinte.plan(titres)),
+        len(empreinte.mots_normalises(texte)))
+    proches = [v for v in voisins if v.doublon]
+    if not proches:
+        return None
+    ctx.journal("  [!] Deja fabrique de tres proche :")
+    for voisin in proches[:3]:
+        ctx.journal("      " + voisin.resume())
+    return {"produits": [v.produit_id for v in proches[:5]],
+            "motif": proches[0].motif,
+            "texte": round(proches[0].texte, 3),
+            "plan": round(proches[0].plan, 3)}
+
+
 def terminer(ctx: Contexte, fichiers: List[Path], meta: Optional[Dict[str, Any]] = None,
              type_produit: str = "") -> None:
     infos = dict(meta or {})
+    produit_avant = store.lire_produit(ctx.produit_id) or {}
+    genre = type_produit or produit_avant.get("type", "inconnu")
+    doublon = _verifier_doublon(ctx, genre, fichiers,
+                                produit_avant.get("titre", "") or ctx.sujet)
+    if doublon:
+        infos["doublon"] = doublon
     store.maj_produit(
         ctx.produit_id,
         statut="pret",
         meta=dict(infos, fichiers=[f.name for f in fichiers]),
     )
     # Trace mesuree : c'est elle qui alimente « usine bilan » et « usine conseils ».
-    produit = store.lire_produit(ctx.produit_id) or {}
     appels = store.compteur_intervalle(ctx.demarre_le)
     fournisseurs = store.fournisseurs_intervalle(ctx.demarre_le)
     apprentissage.enregistrer(
         produit_id=ctx.produit_id,
-        type_produit=type_produit or produit.get("type", "inconnu"),
+        type_produit=genre,
         sujet=ctx.sujet,
         audience=ctx.audience,
         ton=ctx.ton,

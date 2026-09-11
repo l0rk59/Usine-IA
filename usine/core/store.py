@@ -72,7 +72,56 @@ CREATE TABLE IF NOT EXISTS etapes (
     ts REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_etapes_produit ON etapes(produit_id);
+
+CREATE TABLE IF NOT EXISTS empreintes (
+    produit_id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    titre TEXT,
+    sujet TEXT,
+    signature TEXT,
+    plan TEXT,
+    mots INTEGER,
+    cree_le REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_empreintes_type ON empreintes(type);
 """
+
+# Version du schema. « CREATE TABLE IF NOT EXISTS » suffit a creer une base
+# neuve, mais reste sans effet sur une base existante : une colonne ajoutee
+# plus tard ne serait jamais creee chez qui a deja produit, et l'erreur SQL
+# tomberait des semaines apres, sur un telephone, avec tout l'historique
+# dedans. Chaque evolution s'inscrit donc ici.
+VERSION_SCHEMA = 2
+
+MIGRATIONS = {
+    # v1 -> v2 : empreintes des produits, pour detecter les doublons.
+    2: ["""CREATE TABLE IF NOT EXISTS empreintes (
+             produit_id TEXT PRIMARY KEY, type TEXT NOT NULL, titre TEXT,
+             sujet TEXT, signature TEXT, plan TEXT, mots INTEGER,
+             cree_le REAL NOT NULL)""",
+        "CREATE INDEX IF NOT EXISTS idx_empreintes_type ON empreintes(type)"],
+}
+
+
+def _migrer(conn: sqlite3.Connection, base_neuve: bool) -> None:
+    """Amene la base a VERSION_SCHEMA en repassant par les paliers manquants.
+
+    `base_neuve` doit etre mesure AVANT l'execution de SCHEMA : apres, toutes
+    les tables existent et une base d'hier ressemble a une base de ce matin.
+    Une base neuve saute les paliers — SCHEMA vient de tout creer — la ou une
+    base existante sans numero de version est traitee comme une v1, celle
+    d'avant l'introduction du versionnage.
+    """
+    actuelle = conn.execute("PRAGMA user_version").fetchone()[0]
+    if actuelle >= VERSION_SCHEMA:
+        return
+    if base_neuve:
+        conn.execute("PRAGMA user_version = {}".format(VERSION_SCHEMA))
+        return
+    for palier in range(max(actuelle, 1) + 1, VERSION_SCHEMA + 1):
+        for ordre in MIGRATIONS.get(palier, []):
+            conn.execute(ordre)
+    conn.execute("PRAGMA user_version = {}".format(VERSION_SCHEMA))
 
 # Une connexion SQLite appartient au thread qui l'a creee. Le tableau de bord
 # sert chaque requete dans son propre thread : on garde donc une connexion par
@@ -97,7 +146,11 @@ def connect() -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous=NORMAL")
     with _verrou_schema:
         if not _schema_pret:
+            neuve = conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table'"
+                " AND name='produits'").fetchone()[0] == 0
             conn.executescript(SCHEMA)
+            _migrer(conn, neuve)
             _schema_pret = True
     _local.conn = conn
     return conn
@@ -119,6 +172,47 @@ def close() -> None:
     if conn is not None:
         conn.close()
         _local.conn = None
+
+
+# --------------------------------------------------------------------------
+# Empreintes : ce que l'usine a deja ecrit
+# --------------------------------------------------------------------------
+
+
+def enregistrer_empreinte(produit_id: str, type_produit: str, titre: str,
+                          sujet: str, signature: str, plan: str,
+                          mots: int) -> None:
+    with cursor() as cur:
+        cur.execute(
+            "INSERT OR REPLACE INTO empreintes"
+            " (produit_id, type, titre, sujet, signature, plan, mots, cree_le)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (produit_id, type_produit, titre, sujet, signature, plan,
+             int(mots or 0), time.time()),
+        )
+
+
+def lister_empreintes(type_produit: str = "", sauf: str = "",
+                      limite: int = 400) -> List[Dict[str, Any]]:
+    """Les empreintes connues, la plus recente d'abord.
+
+    Le filtre par type est volontaire : un ebook et un cahier imprimable sur
+    le meme sujet ne sont pas des doublons, ils sont complementaires.
+    """
+    requete = "SELECT * FROM empreintes"
+    conditions, parametres = [], []
+    if type_produit:
+        conditions.append("type = ?")
+        parametres.append(type_produit)
+    if sauf:
+        conditions.append("produit_id != ?")
+        parametres.append(sauf)
+    if conditions:
+        requete += " WHERE " + " AND ".join(conditions)
+    requete += " ORDER BY cree_le DESC LIMIT ?"
+    parametres.append(int(limite))
+    with cursor() as cur:
+        return [dict(ligne) for ligne in cur.execute(requete, parametres)]
 
 
 # --------------------------------------------------------------------------

@@ -129,6 +129,7 @@ indisponibles. Pour l'utiliser en priorité : `USINE_LOCAL_FIRST=1` dans le `.en
 | `usine idees` | Étude de niche | 12 idées appuyées sur des **mesures de marché réelles** |
 | `usine marche` | Signaux de marché | demande, concurrence, tendance — 4 sources sans clé |
 | `usine bilan` | Mémoire de l'usine | ce que vos productions révèlent sur vos réglages |
+| `usine doublons` | **Anti-répétition** | les produits qui se recouvrent, avant qu'un acheteur ne le voie |
 | `usine complet` | **Offre complète** | Ebook + 2 bonus + kit de vente + archive ZIP |
 | `usine file` | File de production | les niches en attente de fabrication |
 | `usine usine` | **Usine continue** | produit en boucle, sous budget, jusqu'à l'arrêt |
@@ -294,6 +295,34 @@ et sans son texte, et exige 4,5:1 (WCAG AA) sur les 40 combinaisons.
 
 > Pourquoi une fonte dessinée plutôt qu'embarquée, pourquoi pas de JPEG, et ce
 > que les tests ont trouvé : [docs/COUVERTURE.md](docs/COUVERTURE.md).
+
+### L'usine se souvient de ce qu'elle a écrit
+
+Le défaut n'apparaît qu'au volume : quatre produits par jour sur des niches
+voisines, c'est **trois fois le même livre avec des mots différents**. Ni le
+modèle ni le contrôle qualité ne peuvent le voir — chacun ne regarde qu'un
+produit à la fois, et chacun le trouve bon.
+
+La seule protection était une comparaison de chaînes : la file refusait le
+couple (sujet, type) déjà en attente. « La prospection pour freelances » et
+« Prospection freelance » y passaient sans encombre.
+
+Deux mesures, parce que deux choses différentes se répètent :
+
+- **le texte** — signature MinHash sur des groupes de 5 mots : taille fixe,
+  insensible à la longueur, robuste au remaniement ;
+- **le plan** — la charpente réduite à ses mots porteurs. C'est le cas
+  fréquent : deux livres sans une phrase en commun peuvent être le même livre.
+  `Chapitre 2 — Trouver vos premiers prospects` et `Étape 2 : trouver ses
+  premiers prospects` donnent la même entrée.
+
+```bash
+usine doublons          # sort en code 1 s'il trouve : bon pour une tâche planifiée
+```
+
+Le produit n'est pas bloqué — comparer avant supposerait de deviner ce que le
+modèle va écrire. Le quota est dépensé ; ce qu'on évite, c'est la mise en
+vente. Détails : [docs/DOUBLONS.md](docs/DOUBLONS.md).
 
 ### Les signaux de marché — sources réelles
 
@@ -513,7 +542,8 @@ Trois mécanismes rendent la production fiable sur un forfait mobile :
 usine/
   core/        fournisseurs, routeur IA, pool de clés, contrôle qualité
                déterministe, vérification du code généré (AST + bac à sable),
-               signaux de marché, mémoire de production,
+               empreintes anti-doublon (MinHash), signaux de marché,
+               mémoire de production,
                file de production, budget, A/B testing (beta-binomial),
                diagnostic de titre, prompts, réglages, sécurité,
                bus d'événements, HTTP, SQLite
@@ -529,7 +559,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         231 tests + test de fumée, aucun appel réseau
+tests/         248 tests + test de fumée, aucun appel réseau
 install.sh     installation Termux
 ```
 
@@ -541,7 +571,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 231 tests
+python3 -m unittest discover -s tests -t .   # 248 tests
 python3 tests/fumee.py                       # les 9 chaînes via la vraie CLI
 ```
 

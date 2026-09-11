@@ -18,7 +18,7 @@ from .core import apprentissage, budget, config, experience, images
 from .core import file as file_prod
 from .core import llm, marche
 from .core import prompts as registre_prompts
-from .core import reglages, securite, store, verification
+from .core import empreinte, reglages, securite, store, verification
 from .core.http import en_ligne
 from .marketing import vente
 from .packaging import livraison
@@ -269,6 +269,55 @@ def cmd_logiciel(args: argparse.Namespace) -> int:
     return 0 if resume["code_valide"] else 1
 
 
+def cmd_doublons(args: argparse.Namespace) -> int:
+    """Les produits qui se recouvrent, tous types confondus."""
+    titre_console("Ce que l'usine a ecrit deux fois")
+    empreintes = store.lister_empreintes(args.type or "")
+    if len(empreintes) < 2:
+        print("  Moins de deux produits enregistres : rien a comparer.")
+        print("  Les empreintes sont posees a la fabrication ; les produits")
+        print("  fabriques avant cette version n'en ont pas.")
+        return 0
+
+    charges = [{
+        "produit_id": e["produit_id"], "titre": e["titre"], "sujet": e["sujet"],
+        "type": e["type"], "signature": empreinte.decoder(e["signature"]),
+        "plan": empreinte.decoder(e["plan"]),
+    } for e in empreintes]
+
+    paires = []
+    for index, courant in enumerate(charges):
+        for autre in charges[index + 1:]:
+            if courant["type"] != autre["type"]:
+                continue
+            voisin = empreinte.Voisin(
+                produit_id=autre["produit_id"], titre=autre["titre"],
+                sujet=autre["sujet"],
+                texte=empreinte.ressemblance(courant["signature"],
+                                             autre["signature"]),
+                plan=empreinte.ressemblance_plan(courant["plan"], autre["plan"]),
+            )
+            if voisin.doublon:
+                paires.append((courant, voisin))
+    paires.sort(key=lambda p: p[1].texte + p[1].plan, reverse=True)
+
+    if not paires:
+        ok("{} produits compares, aucun recouvrement notable.".format(len(charges)))
+        return 0
+
+    alerte("{} paire(s) de produits se recouvrent :".format(len(paires)))
+    for courant, voisin in paires[:args.nombre]:
+        print("\n  {}".format(_c(courant["titre"][:58], "1")))
+        print("    et {}".format(voisin.titre[:58]))
+        print("    {} commun — {:.0f} % de texte, {:.0f} % de plan".format(
+            voisin.motif, voisin.texte * 100, voisin.plan * 100))
+        print("    {}  |  {}".format(courant["produit_id"][:34],
+                                     voisin.produit_id[:34]))
+    print("\n  Une place de marche retire les doublons, et un acheteur qui")
+    print("  prend deux fois le meme livre demande deux remboursements.")
+    return 1
+
+
 def cmd_reglages(args: argparse.Namespace) -> int:
     if args.definir:
         modifications = {}
@@ -330,6 +379,12 @@ def cmd_file(args: argparse.Namespace) -> int:
             ok("ajoute : {} ({})".format(sujet, args.type))
         for sujet in doublons:
             alerte("deja en file : {}".format(sujet))
+        for sujet in ajoutees:
+            for proche in empreinte.sujets_proches(sujet, args.type)[:2]:
+                alerte("« {} » recouvre une niche deja produite : « {} »".format(
+                    sujet, proche["sujet"]))
+                print("      Produit : {} — verifiez avant de vendre les deux."
+                      .format(proche["titre"][:52]))
         print("\n  File : " + _resume_file())
         return 0
 
@@ -1339,6 +1394,14 @@ def construire_parseur() -> argparse.ArgumentParser:
 
     p = sous_parseurs.add_parser("menu", help="menu interactif (recommande sur mobile)")
     p.set_defaults(fonction=cmd_menu)
+
+    p = sous_parseurs.add_parser(
+        "doublons", help="reperer les produits qui se recouvrent")
+    p.add_argument("-t", "--type", default="", choices=[""] + catalogue.cles(),
+                   help="ne comparer qu'un type de produit")
+    p.add_argument("-n", "--nombre", type=int, default=12,
+                   help="nombre de paires affichees")
+    p.set_defaults(fonction=cmd_doublons)
 
     p = sous_parseurs.add_parser("reglages", help="consulter ou modifier vos reglages")
     p.add_argument("--definir", nargs="+", metavar="NOM=VALEUR",

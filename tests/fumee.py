@@ -63,6 +63,10 @@ SCENARIOS = [
     ("ab-observer", ["ab", "observer", "1", "--vues", "200", "--actions", "9"]),
     ("ab-verdict", ["ab", "verdict", "1"]),
     ("ab-liste", ["ab", "liste"]),
+    # Tous les produits du test viennent du meme simulateur : ils SONT des
+    # doublons. La commande sort en 1 quand elle en trouve — c'est ce qui
+    # permet de la mettre dans une tache planifiee.
+    ("doublons", ["doublons"], 1),
     ("bilan", ["bilan"]),
     ("reglages", ["reglages"]),
     ("prompts-systeme", ["prompts-systeme"]),
@@ -120,7 +124,9 @@ def verifier_sorties(nom: str) -> str:
 
 def principal() -> int:
     echecs = []
-    for nom, arguments in SCENARIOS:
+    for scenario in SCENARIOS:
+        nom, arguments = scenario[0], scenario[1]
+        attendu = scenario[2] if len(scenario) > 2 else 0
         print("\n" + "=" * 66)
         print(">>> usine " + " ".join(arguments))
         print("=" * 66)
@@ -130,8 +136,9 @@ def principal() -> int:
             traceback.print_exc()
             echecs.append((nom, "exception"))
             continue
-        if code != 0:
-            echecs.append((nom, "code de sortie {}".format(code)))
+        if code != attendu:
+            echecs.append((nom, "code de sortie {} (attendu {})".format(
+                code, attendu)))
             continue
         probleme = verifier_sorties(nom)
         if probleme:
