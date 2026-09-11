@@ -99,6 +99,21 @@ def choisir(titre: str, options: List[Tuple[str, str]],
 # Catalogue des produits fabricables
 # --------------------------------------------------------------------------
 
+def rang(connus: List[str], valeur: Any, hors_liste: int) -> int:
+    """Numero a proposer par defaut, meme pour un reglage sur mesure.
+
+    Le ton et le volume ne sont plus des listes fermees : « comme un vieux
+    menuisier a son apprenti » est un ton valide, et « 15 » un volume. Le
+    menu, lui, calculait son defaut par « connus.index(valeur) », qui leve
+    ValueError des que la valeur enregistree sort de la liste. Un ton sur
+    mesure — saisissable depuis ce meme menu — rendait donc « Fabriquer un
+    produit » inaccessible, avec une trace Python en plein ecran de
+    telephone, et sans rien indiquer de la cause.
+    """
+    texte = str(valeur or "")
+    return connus.index(texte) + 1 if texte in connus else hors_liste
+
+
 def produits_offerts(en_file: bool = False) -> List[Dict[str, Any]]:
     """Types proposes par le menu, lus du catalogue.
 
@@ -166,12 +181,16 @@ def menu_fabriquer(executer: Callable[[List[str]], int]) -> None:
         index = choisir("Ton de redaction",
                         [(t, TONS[t]) for t in tons]
                         + [("autre...", "decrivez la voix que vous voulez")],
-                        defaut=tons.index(valeurs["ton"]) + 1)
+                        defaut=rang(tons, valeurs["ton"], len(tons) + 1))
         if index and index <= len(tons):
             arguments += ["-t", tons[index - 1]]
         elif index:
+            # Un ton sur mesure deja enregistre est repropose tel quel :
+            # le retaper a chaque produit etait le plus sur moyen de ne
+            # jamais s'en servir.
             libre = demander("Decrivez le ton",
-                             "comme un artisan qui explique a son apprenti")
+                             valeurs["ton"] if valeurs["ton"] not in TONS
+                             else "comme un artisan qui explique a son apprenti")
             if libre:
                 arguments += ["-t", libre]
 
@@ -180,12 +199,15 @@ def menu_fabriquer(executer: Callable[[List[str]], int]) -> None:
                         [(t, "{} sections d'environ {} mots".format(*TAILLES[t]))
                          for t in tailles]
                         + [("sur mesure...", "choisir le nombre de sections")],
-                        defaut=tailles.index(valeurs["taille"]) + 1)
+                        defaut=rang(tailles, valeurs["taille"],
+                                    len(tailles) + 1))
         if index and index <= len(tailles):
             arguments += ["-T", tailles[index - 1]]
         elif index:
             sections = demander("Combien de sections ({} a {})".format(
-                CHAPITRES_MIN, CHAPITRES_MAX), "12")
+                CHAPITRES_MIN, CHAPITRES_MAX),
+                str(valeurs["taille"]) if str(valeurs["taille"]).isdigit()
+                else "12")
             if sections.isdigit():
                 arguments += ["--chapitres", sections]
             mots = demander("Mots par section ({} a {}, Entree pour auto)".format(
@@ -198,7 +220,8 @@ def menu_fabriquer(executer: Callable[[List[str]], int]) -> None:
             ("rapide", "aucune relecture — le plus rapide et le plus econome"),
             ("standard", "1 relecture editoriale par section"),
             ("exigeant", "2 relectures — le meilleur resultat, 2 a 3 fois plus long"),
-        ], defaut=qualites.index(valeurs["qualite"]) + 1)
+        ], defaut=rang(qualites, valeurs["qualite"],
+                       qualites.index("standard") + 1))
         if index:
             arguments += ["--qualite", qualites[index - 1]]
     else:
@@ -613,6 +636,58 @@ def menu_produits(executer: Callable[[List[str]], int]) -> None:
         demander("\n  Appuyez sur Entree")
 
 
+def _choisir_ton(actuelle: str) -> Optional[str]:
+    """Les cinq raccourcis, plus la saisie libre."""
+    tons = sorted(TONS)
+    index = choisir("Ton de redaction",
+                    [(t, TONS[t]) for t in tons]
+                    + [("autre...", "decrivez la voix que vous voulez")],
+                    defaut=rang(tons, actuelle, len(tons) + 1))
+    if index == 0:
+        return None
+    if index <= len(tons):
+        return tons[index - 1]
+    libre = demander("Decrivez le ton",
+                     actuelle if actuelle not in TONS else "")
+    return libre or None
+
+
+def _choisir_taille(actuelle: str) -> Optional[str]:
+    """Les paliers, ou un nombre de sections."""
+    tailles = sorted(TAILLES, key=lambda t: TAILLES[t][0])
+    index = choisir("Volume par defaut",
+                    [(t, "{} sections d'environ {} mots".format(*TAILLES[t]))
+                     for t in tailles]
+                    + [("sur mesure...", "un nombre de sections")],
+                    defaut=rang(tailles, actuelle, len(tailles) + 1))
+    if index == 0:
+        return None
+    if index <= len(tailles):
+        return tailles[index - 1]
+    sections = demander("Combien de sections ({} a {})".format(
+        CHAPITRES_MIN, CHAPITRES_MAX),
+        str(actuelle) if str(actuelle).isdigit() else "")
+    return sections if sections.isdigit() else None
+
+
+def _choisir_qualite(actuelle: str) -> Optional[str]:
+    """Liste fermee : une qualite inventee ne veut rien dire nulle part."""
+    qualites = ["rapide", "standard", "exigeant"]
+    index = choisir("Niveau de qualite", [
+        ("rapide", "aucune relecture — le plus rapide et le plus econome"),
+        ("standard", "1 relecture editoriale par section"),
+        ("exigeant", "2 relectures — le meilleur resultat, 2 a 3 fois plus long"),
+    ], defaut=rang(qualites, actuelle, qualites.index("standard") + 1))
+    return qualites[index - 1] if index else None
+
+
+# Ces trois reglages ont des valeurs qui veulent dire quelque chose ailleurs
+# dans l'usine. Les faire taper au clavier laissait enregistrer « rapidos »,
+# qui vaut « standard » partout sans que rien ne le dise.
+_A_CHOISIR = {"ton": _choisir_ton, "taille": _choisir_taille,
+              "qualite": _choisir_qualite}
+
+
 def menu_reglages() -> None:
     while True:
         entete("Reglages")
@@ -641,6 +716,10 @@ def menu_reglages() -> None:
         if isinstance(reglages.DEFAUTS[ligne["nom"]], bool):
             nouvelle = demander_oui("Activer « {} »".format(ligne["nom"]),
                                     bool(actuelle))
+        elif ligne["nom"] in _A_CHOISIR:
+            nouvelle = _A_CHOISIR[ligne["nom"]](str(actuelle))
+            if nouvelle is None:
+                continue
         else:
             nouvelle = demander("Nouvelle valeur", str(actuelle))
         reglages.ecrire({ligne["nom"]: nouvelle})

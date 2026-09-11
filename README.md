@@ -394,6 +394,27 @@ Le sur-mesure est accessible depuis les **trois** interfaces : la ligne de
 commande, le menu Termux (`autre...` / `sur mesure...`) et le tableau de bord.
 Sur un téléphone, une option absente du menu n'existe pas.
 
+#### Un réglage sur mesure doit aussi survivre au retour
+
+Enregistrer un ton sur mesure **par défaut** cassait les deux interfaces
+graphiques, chacune à sa manière — parce que l'une et l'autre cherchaient la
+valeur enregistrée dans une liste de raccourcis qui, par construction, ne la
+contient pas.
+
+| | Symptôme | Cause |
+|---|---|---|
+| Menu Termux | `ValueError` en ouvrant « Fabriquer un produit » | `tons.index(valeur)` |
+| Tableau de bord | le ton devenait `amical`, le volume `mini` | aucune `<option>` ne correspond : le navigateur retombe sur la première |
+
+Le second est le plus grave : **rien ne s'affiche**. Le produit part avec une
+voix et une longueur que personne n'a choisies.
+
+Les deux interfaces reproposent maintenant la valeur enregistrée dans le champ
+libre, pré-remplie. Le menu des réglages, lui, présente les raccourcis sous
+forme de liste au lieu d'un champ de saisie : `qualite` est une liste fermée —
+`rapidos` valait silencieusement `standard` partout — tandis que `ton` et
+`taille` gardent leur entrée libre.
+
 ### L'usine choisit ses niches
 
 ```bash
@@ -687,7 +708,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         401 tests + test de fumée, aucun appel réseau
+tests/         411 tests + test de fumée, aucun appel réseau
                un atelier temporaire par module (tests/atelier.py)
 install.sh     installation Termux
 ```
@@ -700,7 +721,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 401 tests
+python3 -m unittest discover -s tests -t .   # 411 tests
 python3 tests/fumee.py                       # les 9 chaînes via la vraie CLI
 ```
 
@@ -752,7 +773,9 @@ Le **menu est piloté par son entrée standard**, comme un doigt sur un écran d
 téléphone, et l'on regarde quelle commande il lance vraiment. Un sous-menu est
 une table entre un numéro tapé et une branche de code, que rien ne vérifie à
 l'exécution : insérer une entrée décale toutes les suivantes, et le menu lance
-tranquillement la mauvaise commande.
+tranquillement la mauvaise commande. Chaque sous-menu est en outre promené sur
+**toutes ses entrées avec des saisies absurdes**, atelier rempli : aucune ne
+doit lever, et aucune ne doit refuser de rendre la main.
 
 Chaque module de test travaille dans **son propre atelier**. Ce n'était pas le
 cas : chacun posait bien son `USINE_HOME`, mais `config` résout ses chemins une

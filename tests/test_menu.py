@@ -14,6 +14,7 @@ un ecran de telephone, et regardent ce qui en sort.
 from __future__ import annotations
 
 import io
+import itertools
 import sys
 import unittest
 from contextlib import redirect_stdout
@@ -26,12 +27,21 @@ sys.path.insert(0, str(RACINE))
 
 from tests import atelier  # noqa: E402
 from usine import menu  # noqa: E402
-from usine.core import experience  # noqa: E402
+from usine.core import experience, reglages, store, ventes  # noqa: E402
+from usine.core import file as file_prod  # noqa: E402
 
 
 def setUpModule():
-    """Cette suite travaille dans son propre atelier."""
+    """Un atelier a nous, rempli une fois pour toutes.
+
+    Les sous-menus changent de branche selon ce que l'atelier contient :
+    « Partir d'un produit existant ? » n'est posee que s'il y a des
+    produits. Remplir depuis un test et pas depuis un autre ferait
+    dependre chaque suite de l'ordre d'execution — ce qu'on vient
+    justement de supprimer entre les modules.
+    """
     atelier.isoler("menu")
+    _atelier_rempli()
 
 
 def _un_test(titre: str, contenus: List[str]) -> int:
@@ -40,6 +50,37 @@ def _un_test(titre: str, contenus: List[str]) -> int:
     for contenu in contenus:
         experience.ajouter_variante(identifiant, contenu)
     return identifiant
+
+
+def deroule(fonction, frappes: List[str], ensuite: str = "0",
+            limite: int = 80):
+    """Comme `piloter`, mais tolerant : les frappes epuisees, on repond
+    toujours la meme chose.
+
+    « 0 » ressort de n'importe quel sous-menu en boucle. Pour un ecran qui
+    se deroule une fois — « Fabriquer un produit » — c'est la chaine vide
+    qu'il faut : elle accepte chaque valeur par defaut jusqu'au bout.
+
+    Sert a promener le menu partout sans avoir a compter chaque question.
+    Le garde-fou est la limite : un menu qui ne rend pas la main est un
+    menu qui bloque un telephone.
+    """
+    lancees: List[List[str]] = []
+    restantes = list(frappes)
+    posees = itertools.count(1)
+
+    def faux_input(invite=""):
+        if next(posees) > limite:
+            raise AssertionError("le menu ne rend pas la main")
+        return restantes.pop(0) if restantes else ensuite
+
+    with redirect_stdout(io.StringIO()):
+        with mock.patch("builtins.input", faux_input):
+            if fonction in _SANS_EXECUTER:
+                fonction()
+            else:
+                fonction(lambda args: lancees.append(list(args)) or 0)
+    return lancees
 
 
 def piloter(fonction, frappes: List[str]):
@@ -108,8 +149,9 @@ class TestSousMenuAB(unittest.TestCase):
             with self.subTest(entree=numero):
                 # Les deux premieres passent par « ab creer ». Refuser de
                 # partir d'un produit, puis donner un titre et un nombre.
-                lancees = piloter(menu.menu_ab,
-                                  [str(numero), "Un titre", "3", "", "0"])
+                lancees = piloter(
+                    menu.menu_ab,
+                    [str(numero), "n", "Un titre", "3", "", "0"])
                 self.assertEqual(len(lancees), 1)
                 self.assertEqual(lancees[0][:2], ["ab", "creer"])
                 attendu = "titre" if numero == 1 else "couverture"
@@ -176,6 +218,134 @@ class TestDatationDesVariantes(unittest.TestCase):
         apres = experience.variantes(self.test_id)
         self.assertEqual(apres[0]["debut"], "2026-01-10")
         self.assertEqual(apres[0]["fin"], "2026-01-20")
+
+
+
+
+_SANS_EXECUTER = (menu.menu_reglages, menu.menu_cles)
+
+_SOUS_MENUS = (
+    ("menu_fabriquer", menu.menu_fabriquer),
+    ("menu_usine", menu.menu_usine),
+    ("menu_ab", menu.menu_ab),
+    ("menu_produits", menu.menu_produits),
+    ("menu_ventes", menu.menu_ventes),
+    ("menu_reglages", menu.menu_reglages),
+    ("menu_cles", menu.menu_cles),
+)
+
+
+def _atelier_rempli():
+    """De quoi faire changer les branches qui dependent des donnees."""
+    store.creer_produit("menu-p1", "ebook", "Le systeme du freelance",
+                        sujet="freelance", dossier="/tmp/menu-p1")
+    store.creer_produit("menu-p2", "prompts", "80 prompts pour freelances",
+                        sujet="prompts", dossier="/tmp/menu-p2")
+    file_prod.ajouter("une niche en attente", "ebook")
+    ventes.enregistrer({"date": "2026-08-01",
+                        "reference": "Le systeme du freelance",
+                        "unites": 2, "brut": 58.0, "net": 50.0,
+                        "devise": "EUR", "remboursement": 0,
+                        "plateforme": "gumroad", "empreinte": "menu-v1"},
+                       produit_id="menu-p1")
+
+
+class TestAucunSousMenuNeLeve(unittest.TestCase):
+    """Une trace Python en plein ecran de telephone n'est pas une reponse.
+
+    Le menu n'avait aucun test : c'est du code de presentation, celui qu'on
+    juge trop simple pour se tromper. Il l'etait assez pour rendre
+    « Fabriquer un produit » inaccessible des qu'un ton sur mesure etait
+    enregistre.
+    """
+
+    def _suites(self):
+        yield []
+        yield ["zzz"]
+        yield ["99"]
+        yield ["-1"]
+        for numero in range(1, 13):
+            yield [str(numero)]
+            yield [str(numero), "zzz", "zzz"]
+            yield [str(numero), "1", "1", "1"]
+
+    def test_atelier_rempli(self):
+        for nom, fonction in _SOUS_MENUS:
+            for frappes in self._suites():
+                with self.subTest(sous_menu=nom, frappes=frappes):
+                    deroule(fonction, frappes)
+
+
+class TestReglagesSurMesure(unittest.TestCase):
+    """Un reglage hors liste ne doit rien casser, et ne pas etre perdu."""
+
+    def tearDown(self):
+        reglages.reinitialiser()
+
+    def _fabriquer(self):
+        lancees = deroule(menu.menu_fabriquer,
+                          ["1", "un sujet", "des freelances", "o"],
+                          ensuite="")
+        self.assertTrue(lancees, "aucune commande lancee")
+        return lancees[0]
+
+    def test_un_ton_sur_mesure_n_empeche_pas_de_fabriquer(self):
+        """Le defaut : « tons.index(valeurs["ton"]) » levait ValueError.
+
+        Le menu propose la saisie libre du ton — et refusait ensuite de
+        s'ouvrir tant que ce ton etait enregistre comme defaut.
+        """
+        libre = "comme un vieux menuisier a son apprenti"
+        reglages.ecrire({"ton": libre})
+        commande = self._fabriquer()
+        self.assertIn("-t", commande)
+        self.assertEqual(commande[commande.index("-t") + 1], libre)
+
+    def test_un_volume_sur_mesure_devient_un_nombre_de_sections(self):
+        reglages.ecrire({"taille": "15"})
+        commande = self._fabriquer()
+        self.assertIn("--chapitres", commande)
+        self.assertEqual(commande[commande.index("--chapitres") + 1], "15")
+        self.assertNotIn("-T", commande)
+
+    def test_une_qualite_inventee_n_est_pas_enregistree(self):
+        """« rapidos » vaut « standard » partout : autant le dire tout de suite."""
+        reglages.ecrire({"qualite": "rapidos"})
+        self.assertEqual(reglages.lire("qualite"), "standard")
+        commande = self._fabriquer()
+        self.assertEqual(commande[commande.index("--qualite") + 1], "standard")
+
+    def test_les_trois_qualites_connues_restent_acceptees(self):
+        for qualite in ("rapide", "standard", "exigeant"):
+            with self.subTest(qualite=qualite):
+                reglages.ecrire({"qualite": qualite})
+                self.assertEqual(reglages.lire("qualite"), qualite)
+
+
+class TestReglageParListe(unittest.TestCase):
+    """Le menu des reglages propose les raccourcis au lieu du clavier."""
+
+    def tearDown(self):
+        reglages.reinitialiser()
+
+    def _rang_de(self, nom):
+        return [l["nom"] for l in reglages.lignes_affichables()].index(nom) + 1
+
+    def test_choisir_un_ton_dans_la_liste(self):
+        deroule(menu.menu_reglages, [str(self._rang_de("ton")), "1"])
+        self.assertEqual(reglages.lire("ton"), sorted(menu.TONS)[0])
+
+    def test_saisir_un_ton_libre(self):
+        libre = "comme un guide de haute montagne"
+        entree_libre = str(len(menu.TONS) + 1)
+        deroule(menu.menu_reglages,
+                [str(self._rang_de("ton")), entree_libre, libre])
+        self.assertEqual(reglages.lire("ton"), libre)
+
+    def test_une_qualite_ne_peut_plus_etre_tapee(self):
+        """La liste fermee ne laisse aucun moyen d'ecrire n'importe quoi."""
+        deroule(menu.menu_reglages, [str(self._rang_de("qualite")), "1"])
+        self.assertEqual(reglages.lire("qualite"), "rapide")
 
 
 if __name__ == "__main__":

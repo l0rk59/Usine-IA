@@ -96,8 +96,11 @@ async function chargerEtat() {
     // ouvre la saisie libre.
     ajouterSurMesure($('ton'), 'autre...');
     ajouterSurMesure($('taille'), 'sur mesure...');
+    preselectionner($('ton'), $('ton-libre'), donnees.reglages.ton);
+    preselectionner($('taille'), $('chapitres'), donnees.reglages.taille);
     $('ton').addEventListener('change', basculerSurMesure);
     $('taille').addEventListener('change', basculerSurMesure);
+    basculerSurMesure();
     remplirListe($('qualite'), donnees.qualites, donnees.reglages.qualite);
     remplirListe($('reseau'), donnees.reseaux, 'linkedin');
     $('auteur').value = donnees.reglages.auteur || '';
@@ -106,6 +109,17 @@ async function chargerEtat() {
       `<span class="agent" data-agent="${a.nom}">
          <span class="pastille"></span>${echapper(a.nom)}</span>`).join('');
   }
+}
+
+function preselectionner(liste, champLibre, valeur) {
+  // Un reglage sur mesure — un ton ecrit a la main, un nombre de sections —
+  // n'est dans aucune liste. Sans ce rattrapage, le navigateur retombe sur
+  // la premiere option et la valeur enregistree disparait sans un mot.
+  if (!valeur) return;
+  const connu = Array.from(liste.options).some((o) => o.value === String(valeur));
+  if (connu) return;
+  liste.value = '__libre__';
+  if (champLibre) champLibre.value = valeur;
 }
 
 function ajouterSurMesure(liste, libelle) {

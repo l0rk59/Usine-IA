@@ -422,6 +422,44 @@ class TestTableauDeBord(unittest.TestCase):
         self.assertIn("impression", [t["cle"] for t in donnees["types"]])
         self.assertIn("exigeant", donnees["qualites"])
 
+    def test_un_reglage_sur_mesure_arrive_entier_au_tableau_de_bord(self):
+        """Le formulaire ne peut pas retrouver ce que l'etat n'envoie pas.
+
+        Les listes « tons » et « tailles » ne sont que des raccourcis. Un ton
+        ecrit a la main ou un nombre de sections n'y figure pas : c'est
+        « reglages » qui doit le porter tel quel, pour que la page le
+        represente au lieu de retomber sur la premiere option.
+        """
+        from usine.core import reglages
+
+        libre = "comme un vieux menuisier a son apprenti"
+        avant = {nom: reglages.lire(nom) for nom in ("ton", "taille")}
+        reglages.ecrire({"ton": libre, "taille": "15"})
+        self.addCleanup(reglages.ecrire, avant)
+
+        _, corps = self._appeler("/api/etat")
+        donnees = json.loads(corps)
+        self.assertEqual(donnees["reglages"]["ton"], libre)
+        self.assertEqual(donnees["reglages"]["taille"], "15")
+        self.assertNotIn(libre, donnees["tons"])
+        self.assertNotIn("15", donnees["tailles"])
+
+    def test_le_tableau_de_bord_rattrape_un_reglage_hors_liste(self):
+        """Garde-fou sur le script servi : la page doit tenter ce rattrapage.
+
+        Le rendu lui-meme est verifie dans un vrai navigateur, ce que la
+        suite ne peut pas faire — Termux n'a pas de Chromium et l'usine
+        n'installe aucune dependance. Ce test ne controle donc que la
+        presence de l'appel, pas son effet : sans lui, un ton sur mesure
+        devenait silencieusement « amical » et un volume de 15 sections
+        devenait « mini ».
+        """
+        _, corps = self._appeler("/statique/app.js")
+        script = corps.decode("utf-8")
+        self.assertIn("function preselectionner", script)
+        for liste in ("$('ton')", "$('taille')"):
+            self.assertIn("preselectionner({}".format(liste), script)
+
     def test_le_commerce_est_servi_meme_sans_vente(self):
         """C'est l'etat que voit un nouvel utilisateur : il doit tenir."""
         statut, corps = self._appeler("/api/commerce")
@@ -444,9 +482,9 @@ class TestTableauDeBord(unittest.TestCase):
                            produit_id="web-p1")
         _, corps = self._appeler("/api/commerce")
         donnees = json.loads(corps)
-        # Porte sur CE produit, pas sur le total : tous les modules de test
-        # partagent le meme atelier, donc la somme globale depend de l'ordre
-        # d'execution et ne prouverait rien.
+        # Porte sur CE produit, pas sur le total : les autres tests de ce
+        # module ecrivent dans la meme base, donc la somme globale depend de
+        # l'ordre d'execution et ne prouverait rien.
         ligne = [p for p in donnees["produits"] if p["produit_id"] == "web-p1"]
         self.assertTrue(ligne, "la vente doit apparaitre")
         self.assertAlmostEqual(ligne[0]["brut"], 58.0)

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from . import config
 
@@ -112,8 +112,20 @@ def ecrire(modifications: Dict[str, Any]) -> Dict[str, Any]:
     return valeurs
 
 
+# Le ton et le volume acceptent du sur-mesure : « comme un vieux menuisier a
+# son apprenti » et « 15 » sont des valeurs valides, que les chaines savent
+# lire. La qualite, elle, est une liste fermee — « rapidos » ne veut rien dire
+# pour personne et vaut silencieusement « standard » partout.
+FERMES: Dict[str, Tuple[str, ...]] = {
+    "qualite": tuple(QUALITES),
+}
+
+
 def _convertir(nom: str, valeur: Any) -> Any:
     modele = DEFAUTS[nom]
+    if nom in FERMES:
+        propre = str(valeur).strip().lower()
+        return propre if propre in FERMES[nom] else modele
     if isinstance(modele, bool):
         if isinstance(valeur, bool):
             return valeur
