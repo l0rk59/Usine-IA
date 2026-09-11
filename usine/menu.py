@@ -15,7 +15,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from . import __version__
 from .core import cles as pool_cles
-from .core import config, llm, reglages, securite, store
+from .core import config, file as file_prod, llm, reglages, securite, store
 from .pipelines.base import TAILLES, TONS
 
 _COULEUR = sys.stdout.isatty()
@@ -219,6 +219,157 @@ def menu_fabriquer(executer: Callable[[List[str]], int]) -> None:
     demander("Appuyez sur Entree pour revenir au menu")
 
 
+def menu_usine(executer: Callable[[List[str]], int]) -> None:
+    """Usine continue : file de niches, budget, marche/arret."""
+    from .production import statut, verrou_actif
+
+    while True:
+        etat = statut()
+        entete("Usine continue")
+        if etat["en_marche"]:
+            session = etat["session"]
+            print("  " + c("EN MARCHE", "1;32")
+                  + "  (pid {}, {} produit(s))".format(
+                      etat["pid"], session.get("nombre_faits", 0)))
+            courant = session.get("courant")
+            if courant:
+                print("  en cours : {} — {}".format(
+                    courant["type"], courant["sujet"][:34]))
+        else:
+            print("  " + c("A L'ARRET", "90"))
+        compte = etat["file"]
+        print("  file : {} en attente, {} livre(s), {} echec(s)".format(
+            compte["en_attente"], compte["fait"], compte["echec"]))
+        b = etat["budget"]
+        if b["actif"] and b["appels_jour_max"]:
+            print("  budget : {} / {} appels aujourd'hui".format(
+                b["appels_jour"], b["appels_jour_max"]))
+
+        choix = choisir("Que faire ?", [
+            ("Ajouter une niche a la file", "elle sera fabriquee a son tour"),
+            ("Voir la file", "consulter, retirer, relancer un echec"),
+            ("Demarrer l'usine", "produit en boucle jusqu'au budget ou a la fin"),
+            ("Arreter l'usine", "termine le produit en cours puis s'arrete"),
+            ("Regler le budget", "plafonds d'appels et de produits"),
+        ], defaut=1)
+
+        if choix == 0:
+            return
+        if choix == 1:
+            _ajouter_a_la_file()
+        elif choix == 2:
+            _voir_la_file()
+        elif choix == 3:
+            if verrou_actif() is not None:
+                print(c("\n  Une usine tourne deja.", "33"))
+                demander("  Appuyez sur Entree")
+                continue
+            if not etat["file"]["en_attente"]:
+                print(c("\n  La file est vide : ajoutez au moins une niche.", "33"))
+                demander("  Appuyez sur Entree")
+                continue
+            arguments = ["usine", "demarrer"]
+            maximum = demander("Arreter apres combien de produits ? (vide = tous)")
+            if maximum.isdigit():
+                arguments += ["--max", maximum]
+            if demander_oui("Remplir la file automatiquement quand elle se vide ?",
+                            False):
+                arguments.append("--auto")
+            print(c("\n  Ctrl+C arrete proprement apres le produit en cours.\n", "2"))
+            executer(arguments)
+            demander("\n  Appuyez sur Entree")
+        elif choix == 4:
+            executer(["usine", "arreter"])
+            demander("\n  Appuyez sur Entree")
+        elif choix == 5:
+            _regler_budget()
+
+
+def _ajouter_a_la_file() -> None:
+    index = choisir("Type de produit",
+                    [(p["nom"], p["detail"]) for p in PRODUITS
+                     if p["cle"] not in ("idees", "complet")],
+                    defaut=1)
+    if index == 0:
+        return
+    produit = [p for p in PRODUITS if p["cle"] not in ("idees", "complet")][index - 1]
+    entete("Ajouter a la file")
+    sujet = demander("Sujet", obligatoire=True)
+    if not sujet:
+        return
+    for domaine, avertissement in securite.analyser_sujet(sujet):
+        print("\n  " + c("[!] {} : {}".format(domaine, avertissement[:60]), "33"))
+
+    options = {}
+    if produit["quantite"]:
+        question, defaut = produit["quantite"]
+        quantite = demander(question, defaut)
+        if quantite.isdigit():
+            options["nombre"] = int(quantite)
+    priorite = demander("Priorite (1 = en premier, 9 = en dernier)", "5")
+    identifiant = file_prod.ajouter(
+        sujet, produit["cle"], options=options,
+        priorite=int(priorite) if priorite.isdigit() else 5)
+    if identifiant:
+        print(c("\n  Ajoute a la file (numero {}).".format(identifiant), "32"))
+    else:
+        print(c("\n  Deja en file.", "33"))
+    demander("  Appuyez sur Entree")
+
+
+def _voir_la_file() -> None:
+    entrees = file_prod.lister(limite=30)
+    entete("File de production")
+    if not entrees:
+        print("  File vide.")
+        demander("\n  Appuyez sur Entree")
+        return
+    couleurs = {"en_attente": "36", "en_cours": "1;33", "fait": "32",
+                "echec": "31", "annule": "90"}
+    for entree in entrees:
+        print("  {:>4}  {:<11} {:<11} {}".format(
+            entree["id"], c(entree["statut"], couleurs.get(entree["statut"], "0")),
+            entree["type"], entree["sujet"][:32]))
+    print()
+    action = choisir("Action", [
+        ("Retirer une entree", "elle ne sera pas fabriquee"),
+        ("Relancer les echecs", "les remet en file"),
+        ("Nettoyer", "supprime les entrees livrees et annulees"),
+    ], defaut=0)
+    if action == 1:
+        numero = demander("Numero a retirer")
+        if numero.isdigit() and file_prod.retirer(int(numero)):
+            print(c("  Retiree.", "32"))
+        else:
+            print(c("  Introuvable ou deja terminee.", "33"))
+        demander("  Appuyez sur Entree")
+    elif action == 2:
+        print(c("  {} entree(s) remise(s) en file.".format(file_prod.rejouer()), "32"))
+        demander("  Appuyez sur Entree")
+    elif action == 3:
+        print(c("  {} entree(s) supprimee(s).".format(file_prod.vider()), "32"))
+        demander("  Appuyez sur Entree")
+
+
+def _regler_budget() -> None:
+    champs = [
+        ("budget_appels_jour", "Appels IA maximum par jour"),
+        ("budget_appels_produit", "Appels IA maximum par produit"),
+        ("budget_produits_jour", "Produits maximum par jour"),
+        ("budget_minutes_produit", "Duree maximum d'un produit, en minutes"),
+        ("pause_entre_produits", "Pause entre deux produits, en secondes"),
+    ]
+    entete("Budget de production")
+    print("  " + c("0 signifie « pas de limite ».", "2"))
+    print()
+    for nom, description in champs:
+        valeur = demander("{} [{}]".format(description, reglages.lire(nom)),
+                          str(reglages.lire(nom)))
+        reglages.ecrire({nom: valeur})
+    print(c("\n  Budget enregistre.", "32"))
+    demander("  Appuyez sur Entree")
+
+
 def menu_produits(executer: Callable[[List[str]], int]) -> None:
     produits = [p for p in store.lister_produits(20)
                 if p["statut"] != "bonus_integre"]
@@ -356,8 +507,14 @@ def menu_principal(executer: Callable[[List[str]], int]) -> int:
                     if p["statut"] != "bonus_integre"]
         print("  " + c("*", "36") + " {} produit(s) fabrique(s)".format(len(produits)))
 
+        compte = file_prod.compter()
+        if compte["en_attente"] or compte["en_cours"]:
+            print("  " + c("~", "33") + " {} niche(s) en file".format(
+                compte["en_attente"] + compte["en_cours"]))
+
         choix = choisir("Menu principal", [
             ("Fabriquer un produit", "ebook, prompts, formation, imprimables..."),
+            ("Usine continue", "file de niches, budget, production en boucle"),
             ("Mes produits", "consulter, vendre, empaqueter"),
             ("Cles et quotas", "etat des fournisseurs et du pool de cles"),
             ("Reglages", "auteur, marque, ton et qualite par defaut"),
@@ -371,13 +528,15 @@ def menu_principal(executer: Callable[[List[str]], int]) -> int:
         if choix == 1:
             menu_fabriquer(executer)
         elif choix == 2:
-            menu_produits(executer)
+            menu_usine(executer)
         elif choix == 3:
-            menu_cles()
+            menu_produits(executer)
         elif choix == 4:
-            menu_reglages()
+            menu_cles()
         elif choix == 5:
-            executer(["web"])
+            menu_reglages()
         elif choix == 6:
+            executer(["web"])
+        elif choix == 7:
             executer(["docteur"])
             demander("\n  Appuyez sur Entree")

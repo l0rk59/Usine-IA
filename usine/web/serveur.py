@@ -24,7 +24,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from .. import __version__
 from ..agents import equipe
 from ..core import cles as pool_cles
-from ..core import config, evenements, llm, reglages, securite, store
+from ..core import config, evenements, file as file_prod, llm, reglages, securite, store
 from ..pipelines import (boite_outils, ebook, formation, idees, impression,
                          modeles, pack_prompts, social)
 from ..pipelines.base import TAILLES, TONS, Contexte
@@ -160,6 +160,10 @@ class Gestionnaire(BaseHTTPRequestHandler):
             self._json(_etat())
         elif chemin == "/api/produits":
             self._json({"produits": _produits()})
+        elif chemin == "/api/usine":
+            from ..production import statut
+
+            self._json(statut())
         elif chemin == "/api/flux":
             self._flux()
         elif chemin == "/api/evenements":
@@ -183,6 +187,16 @@ class Gestionnaire(BaseHTTPRequestHandler):
             return
         if chemin == "/api/fabriquer":
             self._fabriquer()
+        elif chemin == "/api/file":
+            options = self._corps_json()
+            if options is None:
+                return
+            self._json(self._gerer_file(options))
+        elif chemin == "/api/usine":
+            options = self._corps_json()
+            if options is None:
+                return
+            self._json(self._gerer_usine(options))
         elif chemin == "/api/verifier-sujet":
             options = self._corps_json()
             if options is None:
@@ -233,6 +247,71 @@ class Gestionnaire(BaseHTTPRequestHandler):
         threading.Thread(target=_lancer, args=(travail_id, type_produit, options),
                          daemon=True).start()
         self._json({"travail": travail_id})
+
+    def _gerer_file(self, options: Dict[str, Any]) -> Dict[str, Any]:
+        action = str(options.get("action") or "ajouter")
+        if action == "ajouter":
+            sujet = str(options.get("sujet") or "").strip()
+            type_produit = str(options.get("type") or "ebook")
+            if not sujet:
+                return {"erreur": "sujet manquant"}
+            if type_produit not in FABRIQUES:
+                return {"erreur": "type inconnu"}
+            try:
+                nombre = int(options.get("nombre") or 0)
+            except (TypeError, ValueError):
+                nombre = 0
+            identifiant = file_prod.ajouter(
+                sujet, type_produit,
+                options={k: v for k, v in (("nombre", nombre),
+                                           ("audience", options.get("audience")),
+                                           ("ton", options.get("ton")),
+                                           ("qualite", options.get("qualite")))
+                         if v},
+                priorite=5, source="web")
+            return {"ajoute": identifiant, "doublon": identifiant is None,
+                    "file": file_prod.compter()}
+        if action == "retirer":
+            try:
+                identifiant = int(options.get("id") or 0)
+            except (TypeError, ValueError):
+                return {"erreur": "identifiant invalide"}
+            return {"retire": file_prod.retirer(identifiant),
+                    "file": file_prod.compter()}
+        if action == "rejouer":
+            return {"remis": file_prod.rejouer(), "file": file_prod.compter()}
+        if action == "vider":
+            return {"supprimes": file_prod.vider(), "file": file_prod.compter()}
+        return {"erreur": "action inconnue"}
+
+    def _gerer_usine(self, options: Dict[str, Any]) -> Dict[str, Any]:
+        from ..production import UsineContinue, demander_arret, verrou_actif
+
+        action = str(options.get("action") or "")
+        if action == "arreter":
+            return {"arret_demande": demander_arret()}
+        if action != "demarrer":
+            return {"erreur": "action inconnue"}
+        if verrou_actif() is not None:
+            return {"erreur": "une usine tourne deja (pid {})".format(verrou_actif())}
+        if not file_prod.compter()["en_attente"] and not options.get("auto"):
+            return {"erreur": "la file est vide"}
+
+        try:
+            maximum = int(options.get("max") or 0)
+        except (TypeError, ValueError):
+            maximum = 0
+
+        def tourner() -> None:
+            moteur = UsineContinue(
+                auto=bool(options.get("auto")), maximum=maximum,
+                journal=lambda message: evenements.publier(
+                    "journal", message=message),
+            )
+            moteur.tourner()
+
+        threading.Thread(target=tourner, daemon=True).start()
+        return {"demarre": True}
 
     def _flux(self) -> None:
         """Server-Sent Events : le direct sans sondage ni bibliotheque."""
@@ -344,6 +423,7 @@ def _etat() -> Dict[str, Any]:
         "reseaux": sorted(social.RESEAUX),
         "reglages": {k: profil[k] for k in
                      ("auteur", "audience", "ton", "taille", "qualite", "images")},
+        "file": file_prod.compter(),
     }
 
 

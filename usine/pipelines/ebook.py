@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Tuple
 
 from ..agents import equipe
 from ..agents.base import Critique
+from ..core import budget
 from ..core import controle as ctrl
 from ..core import evenements, images, llm, securite
 from ..render import document as D
@@ -171,10 +172,17 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
         ctx.journal("  [!] domaine sensible « {} » : {}".format(domaine, avertissement))
         evenements.publier("alerte", domaine=domaine, detail=avertissement)
 
+    budget_epuise = False
+
     ctx.journal("Etape 2/5 — avant-propos...")
-    titre_intro, corps_intro = rediger_annexe(ctx, plan, "introduction")
-    sections.append((titre_intro, corps_intro))
-    ctx.etape("introduction")
+    try:
+        titre_intro, corps_intro = rediger_annexe(ctx, plan, "introduction")
+        sections.append((titre_intro, corps_intro))
+        ctx.etape("introduction")
+    except budget.BudgetEpuise as exc:
+        budget_epuise = True
+        ctx.journal("  {} — avant-propos ignore".format(exc))
+        ctx.etape("introduction", "echec", str(exc))
 
     ctx.journal("Etape 3/5 — redaction des {} chapitres...".format(total))
     passes = ctx.nb_passes
@@ -185,44 +193,69 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
         ctx.journal("  [{}/{}] {}".format(index + 1, total, chapitre["titre"]))
         evenements.publier("section", etape="redaction", index=index + 1,
                            total=total, titre=chapitre["titre"])
+        if budget_epuise:
+            # Inutile de tenter les chapitres suivants : chaque appel serait
+            # refuse. On les remplace par leur plan et on va a l'export.
+            sections.append((chapitre["titre"], _repli(chapitre)))
+            ctx.etape("chapitre-{}".format(index + 1), "echec", "budget epuise")
+            continue
         try:
             corps, auteur = rediger_chapitre(ctx, plan, index, chapitre)
+        except budget.BudgetEpuise as exc:
+            budget_epuise = True
+            ctx.journal("     {} — chapitres restants reduits a leur plan".format(exc))
+            ctx.etape("chapitre-{}".format(index + 1), "echec", str(exc))
+            sections.append((chapitre["titre"], _repli(chapitre)))
+            continue
         except Exception as exc:
             ctx.journal("     echec : {} — chapitre conserve en resume".format(exc))
             ctx.etape("chapitre-{}".format(index + 1), "echec", str(exc))
-            corps, auteur = "## {}\n\n{}\n\n{}".format(
-                chapitre.get("objectif") or "Points cles",
-                chapitre.get("objectif", ""),
-                "\n".join("- " + p for p in chapitre.get("points", [])),
-            ), ""
+            corps, auteur = _repli(chapitre), ""
         else:
             # 1. Controle local : gratuit, instantane, reproductible. Les defauts
             #    mesurables sont corriges ici, sans consulter de relecteur IA.
-            corps, controles = equipe.controler_et_corriger(
-                ctx, corps, chapitre["titre"], ctx.mots_par_chapitre,
-                precedents=[c for _, c in sections],
-                tentatives=2 if passes else 1,
-            )
-            local[chapitre["titre"]] = controles
-            ctx.journal("     controle : " + controles[-1].resume())
+            try:
+                corps, controles = equipe.controler_et_corriger(
+                    ctx, corps, chapitre["titre"], ctx.mots_par_chapitre,
+                    precedents=[c for _, c in sections],
+                    tentatives=2 if passes else 1,
+                )
+                local[chapitre["titre"]] = controles
+                ctx.journal("     controle : " + controles[-1].resume())
+            except budget.BudgetEpuise as exc:
+                budget_epuise = True
+                ctx.journal("     {} — corrections interrompues".format(exc))
 
             # 2. Relecture IA : uniquement ce qui demande un jugement — la
             #    pertinence, la progression, la tenue de la promesse.
-            if passes:
-                corps, critiques = equipe.affiner(
-                    ctx, corps, chapitre["titre"], plan.get("promesse", ""),
-                    auteur, passes=passes,
-                )
-                qualite[chapitre["titre"]] = critiques
-                if critiques:
-                    ctx.journal("     relecture : " + critiques[-1].resume())
+            if passes and not budget_epuise:
+                try:
+                    corps, critiques = equipe.affiner(
+                        ctx, corps, chapitre["titre"], plan.get("promesse", ""),
+                        auteur, passes=passes,
+                    )
+                    qualite[chapitre["titre"]] = critiques
+                    if critiques:
+                        ctx.journal("     relecture : " + critiques[-1].resume())
+                except budget.BudgetEpuise as exc:
+                    budget_epuise = True
+                    ctx.journal("     {} — relecture interrompue".format(exc))
         sections.append((chapitre["titre"], corps))
         ctx.etape("chapitre-{}".format(index + 1), "ok", chapitre["titre"])
 
     ctx.journal("Etape 4/5 — conclusion...")
-    titre_fin, corps_fin = rediger_annexe(ctx, plan, "conclusion")
-    sections.append((titre_fin, corps_fin))
-    ctx.etape("conclusion")
+    if budget_epuise:
+        ctx.journal("  ignoree : budget epuise")
+        ctx.etape("conclusion", "echec", "budget epuise")
+    else:
+        try:
+            titre_fin, corps_fin = rediger_annexe(ctx, plan, "conclusion")
+            sections.append((titre_fin, corps_fin))
+            ctx.etape("conclusion")
+        except budget.BudgetEpuise as exc:
+            budget_epuise = True
+            ctx.journal("  {} — conclusion ignoree".format(exc))
+            ctx.etape("conclusion", "echec", str(exc))
 
     ctx.journal("Etape 5/5 — mise en forme et export...")
     fichiers = exporter(ctx, plan, sections)
@@ -272,6 +305,7 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
         "mots": mots,
         "fichiers": [f.name for f in fichiers],
         "qualite": rapport or None,
+        "budget_epuise": budget_epuise,
         "note": (rapport.get("mesure_finale") or {}).get("note_moyenne"),
         "alertes": [d for d, _ in alertes],
     }
@@ -292,6 +326,19 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
         json.dumps(resume, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     return resume
+
+
+def _repli(chapitre: Dict[str, Any]) -> str:
+    """Contenu de secours d'un chapitre non redige : son plan detaille.
+
+    Livrer un chapitre reduit a son plan vaut mieux que perdre tout le livre
+    parce qu'un plafond est tombe au dixieme chapitre.
+    """
+    return "## {}\n\n{}\n\n{}".format(
+        chapitre.get("objectif") or "Points cles",
+        chapitre.get("objectif", ""),
+        "\n".join("- " + p for p in chapitre.get("points", [])),
+    )
 
 
 def exporter(

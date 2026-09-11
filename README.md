@@ -10,6 +10,7 @@ une archive prête à mettre en ligne.
 ```bash
 usine                 # menu interactif — l'entrée recommandée sur mobile
 usine ebook "la prospection pour freelances débutants" --marketing --zip
+usine usine demarrer  # production en boucle, sous budget
 usine web             # tableau de bord 3D en temps réel
 ```
 
@@ -128,6 +129,8 @@ indisponibles. Pour l'utiliser en priorité : `USINE_LOCAL_FIRST=1` dans le `.en
 | `usine marche` | Signaux de marché | demande, concurrence, tendance — 4 sources sans clé |
 | `usine bilan` | Mémoire de l'usine | ce que vos productions révèlent sur vos réglages |
 | `usine complet` | **Offre complète** | Ebook + 2 bonus + kit de vente + archive ZIP |
+| `usine file` | File de production | les niches en attente de fabrication |
+| `usine usine` | **Usine continue** | produit en boucle, sous budget, jusqu'à l'arrêt |
 
 Les deux types marqués en gras sont, d'après les classements 2026 des places de
 marché, les produits digitaux les plus vendus après l'ebook.
@@ -234,6 +237,40 @@ répond à des questions qu'aucun modèle ne peut trancher — quel ton donne vo
 meilleures notes, si la relecture vaut son coût chez vous, quel défaut revient
 assez souvent pour mériter une règle. Chaque conseil cite le nombre de
 productions sur lequel il s'appuie.
+
+## L'usine continue
+
+```bash
+usine file --ajouter "la prospection" "la gestion du temps"
+usine file --ajouter "50 prompts pour community managers" --type prompts --priorite 1
+usine usine demarrer --budget appels_jour=250 produits_jour=3
+usine usine statut          # depuis un autre terminal
+usine usine arreter
+```
+
+**La file vit en base, pas en mémoire.** C'est la décision qui compte sur
+Android : le système tue les processus en arrière-plan sans préavis. Relancer
+reprend exactement où l'usine s'était arrêtée, et une niche laissée « en
+cours » par une coupure revient en attente au démarrage suivant.
+
+**Le budget s'applique à trois niveaux.** Avant chaque produit — l'usine
+refuse d'en démarrer un qu'elle ne pourra pas finir. Avant chaque appel — une
+réponse servie par le cache n'est jamais refusée, elle ne coûte rien. Et
+pendant un produit : si un plafond tombe au dixième chapitre, **le livre sort
+quand même**, chapitres rédigés conservés, suivants réduits à leur plan, PDF et
+EPUB générés. Perdre neuf chapitres parce que le dixième a dépassé n'aurait
+aucun sens.
+
+`Ctrl+C` termine le produit en cours puis s'arrête ; un second coupe net. Un
+verrou PID empêche deux usines simultanées, et un verrou laissé par un
+processus tué est détecté comme orphelin puis nettoyé.
+
+En `--auto`, quand la file se vide, l'usine explore de nouvelles niches à
+partir des sujets qui ont donné vos meilleures notes. Sans historique, elle le
+dit et s'arrête plutôt que d'inventer.
+
+Détails et recette Termux (`termux-wake-lock`, `nohup`) :
+[docs/USINE-CONTINUE.md](docs/USINE-CONTINUE.md).
 
 ## L'équipe d'agents
 
@@ -342,7 +379,8 @@ Trois mécanismes rendent la production fiable sur un forfait mobile :
 usine/
   core/        fournisseurs, routeur IA, pool de clés, contrôle qualité
                déterministe, signaux de marché, mémoire de production,
-               prompts, réglages, sécurité, bus d'événements, HTTP, SQLite
+               file de production, budget, prompts, réglages, sécurité,
+               bus d'événements, HTTP, SQLite
   agents/      les sept rôles et la boucle critique → révision
   render/      moteur PDF, EPUB, HTML, modèle de document, métriques polices
   pipelines/   ebook, prompts, formation, outils, modèles, imprimables,
@@ -350,9 +388,10 @@ usine/
   marketing/   fiche produit, page de vente, séquence de lancement
   packaging/   notice, licence, archive ZIP
   web/         serveur SSE + tableau de bord 3D (statique/scene.js, app.js)
+  production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         103 tests + test de fumée, aucun appel réseau
+tests/         127 tests + test de fumée, aucun appel réseau
 install.sh     installation Termux
 ```
 
@@ -364,7 +403,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 103 tests
+python3 -m unittest discover -s tests -t .   # 127 tests
 python3 tests/fumee.py                       # les 8 chaînes via la vraie CLI
 ```
 
@@ -374,6 +413,11 @@ serveur, **rotation effective des clés sur un 429**, non-fuite des secrets dans
 les erreurs et les événements, authentification du tableau de bord, diffusion
 temps réel par SSE, évitement du fournisseur pour la relecture, refus d'une
 révision tronquée, et le fait que le kit de vente ne parte pas chez l'acheteur.
+
+L'usine continue est testée sur ce qui peut réellement mal tourner : reprise
+après un arrêt brutal, verrou orphelin d'un processus tué, refus de démarrer un
+produit infinissable, et surtout **le produit exporté malgré un budget épuisé
+en cours de route** — la promesse qui compte.
 
 Le contrôle qualité est testé sur sa **reproductibilité** (deux exécutions
 donnent la même note), sa calibration (bon texte 10/10, texte générique 2/10)

@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from . import __version__
 from .core import cles as pool_cles
-from .core import apprentissage, config, llm, marche
+from .core import apprentissage, budget, config, file as file_prod, llm, marche
 from .core import prompts as registre_prompts
 from .core import reglages, securite, store
 from .core.http import en_ligne
@@ -274,6 +274,166 @@ def cmd_reglages(args: argparse.Namespace) -> int:
     print("\n  Modifier : " + _c('usine reglages --definir auteur="Votre Nom"', "1"))
     print("  Fichier  : " + str(reglages.chemin()))
     return 0
+
+
+# --------------------------------------------------------------------------
+# File de production et usine continue
+# --------------------------------------------------------------------------
+
+_ETIQUETTES = {
+    "en_attente": ("en attente", "36"),
+    "en_cours": ("en cours", "1;33"),
+    "fait": ("livre", "32"),
+    "echec": ("echec", "31"),
+    "annule": ("annule", "90"),
+}
+
+
+def cmd_file(args: argparse.Namespace) -> int:
+    """Gerer la file des niches a fabriquer."""
+    if args.ajouter:
+        ajoutees, doublons = [], []
+        for sujet in args.ajouter:
+            identifiant = file_prod.ajouter(
+                sujet, args.type,
+                options={k: v for k, v in (("nombre", args.nombre),
+                                           ("audience", args.audience),
+                                           ("ton", args.ton),
+                                           ("qualite", args.qualite)) if v},
+                priorite=args.priorite)
+            (ajoutees if identifiant else doublons).append(sujet)
+        for sujet in ajoutees:
+            ok("ajoute : {} ({})".format(sujet, args.type))
+        for sujet in doublons:
+            alerte("deja en file : {}".format(sujet))
+        print("\n  File : " + _resume_file())
+        return 0
+
+    if args.retirer:
+        for identifiant in args.retirer:
+            if file_prod.retirer(identifiant):
+                ok("entree {} retiree".format(identifiant))
+            else:
+                alerte("entree {} introuvable ou deja terminee".format(identifiant))
+        print("\n  File : " + _resume_file())
+        return 0
+
+    if args.rejouer is not None:
+        nombre = file_prod.rejouer(args.rejouer or 0)
+        ok("{} entree(s) remise(s) en file".format(nombre))
+        return 0
+
+    if args.vider or args.tout_vider:
+        nombre = file_prod.vider(tout=args.tout_vider)
+        ok("{} entree(s) supprimee(s)".format(nombre))
+        return 0
+
+    entrees = file_prod.lister(args.statut, 60)
+    titre_console("File de production")
+    if not entrees:
+        print("  File vide.")
+        print("\n  Ajouter : " + _c('usine file --ajouter "votre niche"', "1"))
+        return 0
+    for entree in entrees:
+        libelle, couleur = _ETIQUETTES.get(entree["statut"], (entree["statut"], "0"))
+        print("  {:>4}  {:<11} {:<12} {}".format(
+            entree["id"], _c(libelle, couleur), entree["type"],
+            entree["sujet"][:44]))
+        if entree["erreur"]:
+            print("        " + _c(entree["erreur"][:66], "31"))
+    print("\n  " + _resume_file())
+    return 0
+
+
+def _resume_file() -> str:
+    compte = file_prod.compter()
+    return "{} en attente, {} en cours, {} livre(s), {} echec(s)".format(
+        compte["en_attente"], compte["en_cours"], compte["fait"], compte["echec"])
+
+
+def cmd_usine(args: argparse.Namespace) -> int:
+    """Demarrer, suivre ou arreter l'usine continue."""
+    from .production import UsineContinue, demander_arret, statut, verrou_actif
+
+    if args.action == "arreter":
+        if demander_arret():
+            ok("Arret demande. L'usine termine le produit en cours puis s'arrete.")
+            return 0
+        alerte("Aucune usine en marche.")
+        return 1
+
+    if args.action == "statut":
+        etat = statut()
+        titre_console("Usine continue")
+        if etat["en_marche"]:
+            session = etat["session"]
+            ok("en marche (pid {}) depuis {:.0f} min".format(
+                etat["pid"], (session.get("duree") or 0) / 60))
+            courant = session.get("courant")
+            if courant:
+                print("  En cours : {} — « {} »".format(
+                    courant["type"], courant["sujet"]))
+            print("  Produits livres cette session : {}".format(
+                session.get("nombre_faits", 0)))
+        else:
+            print("  " + _c("a l'arret", "90"))
+            if etat["session"].get("motif_fin"):
+                print("  Derniere session : " + etat["session"]["motif_fin"])
+
+        compte = etat["file"]
+        print("\n  " + _c("File", "1") + "   : " + _resume_file())
+        for entree in etat["prochaines"]:
+            print("    {:>4}  {:<12} {}".format(
+                entree["id"], entree["type"], entree["sujet"][:44]))
+
+        b = etat["budget"]
+        if b["actif"]:
+            print("\n  " + _c("Budget du jour", "1"))
+            if b["appels_jour_max"]:
+                print("    appels   : {} / {}   (reste {})".format(
+                    b["appels_jour"], b["appels_jour_max"], b["reste_aujourdhui"]))
+            if b["produits_jour_max"]:
+                print("    produits : {} / {}".format(
+                    b["produits_faits"], b["produits_jour_max"]))
+        else:
+            alerte("Aucun budget defini : "
+                   + _c("usine reglages --definir budget_appels_jour=250", "1"))
+        return 0
+
+    # action « demarrer »
+    if not _verifier_fournisseurs():
+        return 2
+    if verrou_actif() is not None:
+        erreur("Une usine tourne deja (pid {}).".format(verrou_actif()))
+        print("  Suivre : " + _c("usine usine statut", "1"))
+        print("  Arreter : " + _c("usine usine arreter", "1"))
+        return 1
+
+    for paire in args.budget or []:
+        if "=" not in paire:
+            erreur("Format attendu : appels_jour=300")
+            return 1
+        nom, valeur = paire.split("=", 1)
+        cle = "budget_" + nom.strip() if not nom.startswith("budget_") else nom.strip()
+        if cle not in reglages.DEFAUTS:
+            erreur("Budget inconnu : {}".format(nom))
+            print("  Disponibles : appels_jour, appels_produit, produits_jour, "
+                  "minutes_produit")
+            return 1
+        reglages.ecrire({cle: valeur})
+
+    compte = file_prod.compter()
+    if not compte["en_attente"] and not args.auto:
+        alerte("La file est vide.")
+        print("  Ajouter : " + _c('usine file --ajouter "votre niche"', "1"))
+        print("  Ou remplir automatiquement : " + _c("usine usine demarrer --auto", "1"))
+        return 1
+
+    titre_console("Usine continue")
+    moteur = UsineContinue(auto=args.auto, maximum=args.max,
+                           journal=lambda message: print("  " + message),
+                           pause=args.pause)
+    return moteur.tourner()
 
 
 def cmd_marche(args: argparse.Namespace) -> int:
@@ -850,6 +1010,44 @@ def construire_parseur() -> argparse.ArgumentParser:
     p = sous_parseurs.add_parser("liste", help="lister les produits fabriques")
     p.add_argument("-n", "--nombre", type=int, default=25)
     p.set_defaults(fonction=cmd_liste)
+
+    p = sous_parseurs.add_parser("file", help="gerer la file des niches a produire")
+    p.add_argument("--ajouter", nargs="+", metavar="NICHE",
+                   help="ajouter une ou plusieurs niches")
+    p.add_argument("--type", default="ebook",
+                   choices=["ebook", "prompts", "formation", "outils", "modeles",
+                            "impression", "social"],
+                   help="type de produit a fabriquer")
+    p.add_argument("-n", "--nombre", type=int, default=0,
+                   help="quantite (prompts, fiches, modules...)")
+    p.add_argument("-a", "--audience", default="")
+    p.add_argument("-t", "--ton", default="")
+    p.add_argument("-q", "--qualite", default="")
+    p.add_argument("--priorite", type=int, default=5,
+                   help="1 = prioritaire, 9 = en dernier")
+    p.add_argument("--statut", default="",
+                   choices=["", "en_attente", "en_cours", "fait", "echec", "annule"])
+    p.add_argument("--retirer", nargs="+", type=int, metavar="ID")
+    p.add_argument("--rejouer", nargs="?", type=int, const=0, metavar="ID",
+                   help="remettre en file les echecs (tous si aucun ID)")
+    p.add_argument("--vider", action="store_true",
+                   help="supprimer les entrees livrees et annulees")
+    p.add_argument("--tout-vider", dest="tout_vider", action="store_true")
+    p.set_defaults(fonction=cmd_file)
+
+    p = sous_parseurs.add_parser(
+        "usine", help="usine continue : produire en boucle sous budget")
+    p.add_argument("action", nargs="?", default="statut",
+                   choices=["demarrer", "statut", "arreter"])
+    p.add_argument("--auto", action="store_true",
+                   help="remplir la file automatiquement quand elle se vide")
+    p.add_argument("--max", type=int, default=0,
+                   help="s'arreter apres N produits")
+    p.add_argument("--pause", type=int, default=None,
+                   help="secondes entre deux produits")
+    p.add_argument("--budget", nargs="+", metavar="NOM=VALEUR",
+                   help="ex : --budget appels_jour=300 produits_jour=3")
+    p.set_defaults(fonction=cmd_usine)
 
     p = sous_parseurs.add_parser(
         "marche", help="mesurer un marche depuis des sources publiques")

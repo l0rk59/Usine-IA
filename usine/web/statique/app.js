@@ -125,6 +125,108 @@ async function chargerProduits() {
   }).join('');
 }
 
+/* ---------------------------------------------------------- usine continue */
+const ETIQUETTES = {
+  en_attente: 'en file', en_cours: 'en cours', fait: 'livre',
+  echec: 'echec', annule: 'annule',
+};
+
+async function chargerUsine() {
+  const reponse = await fetch('/api/usine');
+  if (!reponse.ok) return;
+  const etat = await reponse.json();
+  const zone = $('usine-etat');
+
+  if (etat.en_marche) {
+    const courant = etat.session?.courant;
+    zone.className = 'etat marche';
+    zone.textContent = courant
+      ? `En marche — ${courant.type} : « ${courant.sujet} » (${etat.session.nombre_faits || 0} livre(s))`
+      : `En marche — ${etat.session?.nombre_faits || 0} produit(s) livre(s)`;
+  } else {
+    zone.className = 'etat';
+    const compte = etat.file;
+    zone.textContent = compte.en_attente
+      ? `A l'arret — ${compte.en_attente} niche(s) en attente`
+      : "A l'arret — file vide";
+  }
+  $('usine-demarrer').disabled = etat.en_marche;
+  $('usine-arreter').disabled = !etat.en_marche;
+
+  const b = etat.budget;
+  $('usine-budget').textContent = b.actif && b.appels_jour_max
+    ? `Budget : ${b.appels_jour} / ${b.appels_jour_max} appels aujourd'hui`
+      + (b.produits_jour_max ? ` · ${b.produits_faits} / ${b.produits_jour_max} produits` : '')
+    : "Aucun budget defini — reglez-le avec « usine reglages ».";
+
+  const entrees = etat.prochaines || [];
+  $('file-liste').innerHTML = entrees.length
+    ? entrees.map((e) => `<div class="entree en_attente">
+        <span class="etiquette">${ETIQUETTES.en_attente}</span>
+        <span class="sujet">${echapper(e.sujet)}</span>
+        <button data-retirer="${e.id}" title="Retirer">&times;</button>
+      </div>`).join('')
+    : '<span class="vide">Aucune niche en attente.</span>';
+}
+
+$('file-liste').addEventListener('click', async (evenement) => {
+  const identifiant = evenement.target.dataset?.retirer;
+  if (!identifiant) return;
+  await envoyerFile({ action: 'retirer', id: Number(identifiant) });
+});
+
+async function envoyerFile(charge) {
+  const reponse = await fetch('/api/file', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(charge),
+  });
+  const donnees = await reponse.json();
+  if (donnees.erreur) ajouterLigne('file : ' + echapper(donnees.erreur), 'souci');
+  chargerUsine();
+  return donnees;
+}
+
+$('file-ajouter').addEventListener('click', async () => {
+  const sujet = $('sujet').value.trim();
+  if (!sujet) { $('sujet').focus(); return; }
+  const donnees = await envoyerFile({
+    action: 'ajouter', sujet, type: $('type').value,
+    nombre: $('nombre').value, audience: $('audience').value.trim(),
+    ton: $('ton').value, qualite: $('qualite').value,
+  });
+  if (donnees.doublon) ajouterLigne('deja en file : ' + echapper(sujet), 'souci');
+  else if (donnees.ajoute) {
+    ajouterLigne('ajoute a la file : ' + echapper(sujet), 'succes');
+    $('sujet').value = '';
+  }
+});
+
+$('file-rejouer').addEventListener('click', () => envoyerFile({ action: 'rejouer' }));
+
+$('usine-demarrer').addEventListener('click', async () => {
+  $('usine-demarrer').disabled = true;
+  const reponse = await fetch('/api/usine', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'demarrer', auto: $('usine-auto').checked }),
+  });
+  const donnees = await reponse.json();
+  if (donnees.erreur) ajouterLigne('usine : ' + echapper(donnees.erreur), 'souci');
+  else ajouterLigne('usine continue demarree', 'succes');
+  chargerUsine();
+});
+
+$('usine-arreter').addEventListener('click', async () => {
+  const reponse = await fetch('/api/usine', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'arreter' }),
+  });
+  const donnees = await reponse.json();
+  ajouterLigne(donnees.arret_demande
+    ? "arret demande — le produit en cours se termine"
+    : "aucune usine en marche", donnees.arret_demande ? 'succes' : 'souci');
+  chargerUsine();
+});
+
 /* ------------------------------------------------------- flux temps reel */
 function traiter(evenement) {
   etat.dernierEvenement = Math.max(etat.dernierEvenement, evenement.id || 0);
@@ -167,6 +269,11 @@ function traiter(evenement) {
   } else if (evenement.type === 'journal') {
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
       echapper(evenement.message));
+  } else if (evenement.type === 'usine') {
+    chargerUsine();
+    if (evenement.motif_fin) {
+      ajouterLigne('usine arretee : ' + echapper(evenement.motif_fin), 'souci');
+    }
   } else if (evenement.type === 'produit') {
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
       `produit termine : ${echapper(evenement.titre)}`, 'succes');
@@ -287,5 +394,7 @@ if (scene.actif) requestAnimationFrame(boucle);
 
 chargerEtat();
 chargerProduits();
+chargerUsine();
 brancherFlux();
 setInterval(chargerEtat, 15000);
+setInterval(chargerUsine, 6000);

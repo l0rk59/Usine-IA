@@ -188,3 +188,27 @@ pre.journal .ligne { display: block; animation: apparait 0.3s ease both; }
 .aide { color: var(--doux); font-size: 0.73rem; margin: 0.5rem 0 0; }
 .alerte { border-left: 3px solid var(--ambre); padding-left: 0.7rem;
   color: var(--ambre); font-size: 0.78rem; margin-top: 0.6rem; }
+
+/* ------------------------------------------------------- usine continue */
+.rangee { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center;
+  margin: 0.6rem 0; }
+.case { display: inline-flex; align-items: center; gap: 0.35rem;
+  font-size: 0.76rem; color: var(--doux); }
+.case input { width: auto; }
+.file { display: grid; gap: 0.3rem; margin-top: 0.4rem; }
+.file .entree { display: grid; grid-template-columns: auto 1fr auto;
+  gap: 0.5rem; align-items: center; font-size: 0.78rem;
+  padding: 0.35rem 0.5rem; border: 1px solid var(--bord); border-radius: 9px; }
+.file .etiquette { font-size: 0.66rem; text-transform: uppercase;
+  letter-spacing: 0.06em; padding: 0.1rem 0.4rem; border-radius: 999px;
+  border: 1px solid var(--bord); color: var(--doux); }
+.file .entree.en_cours { border-color: var(--ambre); }
+.file .entree.en_cours .etiquette { color: var(--ambre); border-color: var(--ambre); }
+.file .entree.fait .etiquette { color: var(--vert); border-color: var(--vert); }
+.file .entree.echec .etiquette { color: var(--rouge); border-color: var(--rouge); }
+.file .sujet { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file button { width: auto; padding: 0.1rem 0.4rem; font-size: 0.72rem;
+  background: transparent; border-color: transparent; color: var(--doux);
+  cursor: pointer; }
+.file button:hover { color: var(--rouge); }
+.etat.marche { color: var(--vert); }

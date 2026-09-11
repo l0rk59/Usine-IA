@@ -18,6 +18,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 
+from . import budget as budget_module
 from . import cles as pool_cles
 from . import config, store
 from .http import HttpErreur, post_json
@@ -149,8 +150,13 @@ def generer(
         if garde is not None:
             return Reponse(garde, "cache", role, depuis_cache=True)
 
+    budget_module.verifier()
+
     if _SIMULATEUR is not None:
         texte = _SIMULATEUR(messages, role)
+        # Un appel simule reste un appel : le journaliser rend le budget et les
+        # statistiques verifiables sans toucher au reseau.
+        store.enregistrer_appel("simulateur", role, True)
         if cache:
             store.cache_set(cle_cache, texte, "simulateur", role)
         return Reponse(texte, "simulateur", role)
