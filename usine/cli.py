@@ -778,8 +778,18 @@ def _barre(bas: float, haut: float, maximum: float, largeur: int = 22) -> str:
 
 
 def _actions_reelles(variante_id: int) -> Optional[int]:
-    """Ventes encaissees pendant la periode de cette variante, si elle est
-    renseignee et si l'experience porte sur un produit connu."""
+    """Ventes a AJOUTER au journal pour cette variante.
+
+    « observer » tient un journal additif : les chiffres s'ajoutent aux
+    releves precedents. Les ventes, elles, sont un cumul depuis le debut de
+    la periode. Reporter le cumul deux fois comptait donc chaque vente
+    deux fois — et pouvait faire depasser le nombre de vues, ce qui fait
+    lever une erreur de saisie sur une saisie pourtant correcte.
+
+    On retranche ce qui est deja au journal, et on ne redescend jamais en
+    dessous de zero : un remboursement enregistre apres coup reduit le
+    cumul, mais un journal additif ne sait pas defaire.
+    """
     with store.cursor() as cur:
         ligne = cur.execute(
             "SELECT experience_id FROM variantes WHERE id=?",
@@ -791,7 +801,8 @@ def _actions_reelles(variante_id: int) -> Optional[int]:
         return None
     for mesure in mesures["variantes"]:
         if mesure["variante"]["id"] == variante_id and mesure["periode"]:
-            return mesure["ventes"]
+            deja = int(mesure["variante"].get("total_actions") or 0)
+            return max(0, mesure["ventes"] - deja)
     return None
 
 
@@ -831,10 +842,11 @@ def _rythme_ab(args: argparse.Namespace) -> int:
         return 1
 
     comparaison = experience.comparer_rythmes(
-        [(m["ventes"], m["jours"]) for m in utiles])
+        [(m["ventes"], m["jours"]) for m in utiles],
+        etiquettes=[m["variante"]["etiquette"] for m in utiles])
     titre_console("Comparaison")
     for resultat in comparaison["variantes"]:
-        variante = utiles[resultat["index"]]["variante"]
+        variante = {"etiquette": resultat["etiquette"]}
         print("  {}  P(meilleure) {:>5.0f} %   rythme median {:.2f}/jour"
               "   (90 % entre {:.2f} et {:.2f})".format(
                   _c("[" + variante["etiquette"] + "]", "1;36"),

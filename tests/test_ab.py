@@ -260,6 +260,34 @@ class TestRythmeDeVente(unittest.TestCase):
         self.assertGreater(comparaison["variantes"][1]["probabilite_meilleure"],
                            comparaison["variantes"][0]["probabilite_meilleure"])
 
+    def test_le_verdict_nomme_la_variante_du_tableau(self):
+        """Une variante ecartee decalait toutes les lettres suivantes.
+
+        Avec A sans periode, B faible et C forte, le verdict annoncait
+        « variante B gagnante » pour ce que le tableau juste au-dessus
+        appelait C : la position dans la liste filtree n'est pas la lettre.
+        """
+        comparaison = ex.comparer_rythmes(
+            [(0, 0.0), (5, 30.0), (60, 30.0)], etiquettes=["A", "B", "C"])
+        self.assertEqual([r["etiquette"] for r in comparaison["variantes"]],
+                         ["B", "C"])
+        self.assertIn("Variante C", ex.verdict_rythme(comparaison)["message"])
+
+    def test_une_variante_sans_duree_ne_gagne_pas(self):
+        """Une duree nulle est une absence de mesure, pas une petite duree.
+
+        Ramenee a 1e-6, elle donnait un rythme immense et la victoire quasi
+        certaine a la variante qui n'avait rien mesure.
+        """
+        comparaison = ex.comparer_rythmes([(0, 0.0), (5, 30.0)])
+        self.assertEqual(len(comparaison["variantes"]), 1)
+        self.assertEqual(comparaison["variantes"][0]["ventes"], 5)
+
+    def test_sans_aucune_duree_il_n_y_a_pas_de_comparaison(self):
+        comparaison = ex.comparer_rythmes([(3, 0.0), (5, 0.0)])
+        self.assertEqual(comparaison["variantes"], [])
+        self.assertEqual(ex.verdict_rythme(comparaison)["etat"], "vide")
+
     def test_le_resultat_ne_change_pas_d_un_appel_a_l_autre(self):
         premier = ex.comparer_rythmes([(7, 14), (4, 12)])
         second = ex.comparer_rythmes([(7, 14), (4, 12)])
@@ -334,6 +362,33 @@ class TestVentesReelles(unittest.TestCase):
         self._vendre("2026-07-01", 2)
         mesure = ex.mesures_reelles(self.experience_id)["variantes"][0]
         self.assertEqual((mesure["ventes"], mesure["jours"]), (2, 1.0))
+
+    def test_une_periode_sans_date_de_debut_est_refusee(self):
+        """« usine ab periode 7 » sans --du effacait la periode existante
+        et annoncait une reussite."""
+        ex.fixer_periode(self.a, "2026-07-01", "2026-07-14")
+        with self.assertRaises(ValueError):
+            ex.fixer_periode(self.a, "")
+        mesure = ex.mesures_reelles(self.experience_id)["variantes"][0]
+        self.assertTrue(mesure["periode"], "la periode ne doit pas etre effacee")
+
+    def test_reporter_deux_fois_ne_compte_pas_les_ventes_deux_fois(self):
+        """« observer » tient un journal ADDITIF ; les ventes sont un CUMUL.
+
+        Reporter le cumul a chaque releve comptait chaque vente autant de
+        fois qu'on relevait les vues — et pouvait faire depasser le nombre
+        de vues, donc lever une erreur de saisie sur une saisie correcte.
+        """
+        from usine import cli
+
+        ex.fixer_periode(self.a, "2026-07-01", "2026-07-14")
+        self._vendre("2026-07-05", 7)
+        for _ in range(3):
+            ajout = cli._actions_reelles(self.a)
+            ex.observer(self.a, vues=300, actions=ajout or 0)
+        variante = ex.variantes(self.experience_id)[0]
+        self.assertEqual(variante["total_actions"], 7)
+        self.assertEqual(variante["total_vues"], 900)
 
     def test_une_date_malformee_est_refusee(self):
         with self.assertRaises(ValueError):

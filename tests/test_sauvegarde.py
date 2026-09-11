@@ -173,5 +173,42 @@ class TestRestauration(unittest.TestCase):
                          "contenu original")
 
 
+class TestArchiveHostile(unittest.TestCase):
+    """Une archive passe par un ordinateur ou un nuage. Elle peut revenir
+    modifiee."""
+
+    def _piegee(self, entrees):
+        archive = sauvegarde.creer()
+        piege = Path(tempfile.mkdtemp()) / "piege.zip"
+        with zipfile.ZipFile(archive) as source:
+            contenu = {n: source.read(n) for n in source.namelist()}
+        with zipfile.ZipFile(piege, "w") as cible:
+            for nom, octets in contenu.items():
+                cible.writestr(nom, octets)
+            for nom, octets in entrees:
+                cible.writestr(nom, octets)
+        return piege
+
+    def test_une_entree_qui_remonte_les_dossiers_est_refusee(self):
+        temoin = config.PRODUITS_DIR.parent.parent / "evade.txt"
+        temoin.unlink(missing_ok=True)
+        piege = self._piegee([
+            ("produits/../../evade.txt", b"sorti"),
+            ("produits/legitime/ok.md", b"normal"),
+        ])
+        resultat = sauvegarde.restaurer(piege)
+        self.assertTrue(resultat["valide"])
+        self.assertFalse(temoin.exists(), "rien ne doit sortir de l'atelier")
+        self.assertIn("produits/../../evade.txt", resultat["refuses"])
+        self.assertTrue((config.PRODUITS_DIR / "legitime" / "ok.md").exists(),
+                        "une entree normale doit passer")
+
+    def test_un_chemin_absolu_est_refuse(self):
+        piege = self._piegee([("produits//tmp/absolu.txt", b"x")])
+        resultat = sauvegarde.restaurer(piege)
+        self.assertTrue(resultat["refuses"])
+        self.assertFalse(Path("/tmp/absolu.txt").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

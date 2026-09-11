@@ -63,9 +63,8 @@ ALIAS: Dict[str, Tuple[str, ...]] = {
                     "receipt id", "id", "reference", "numero de commande"),
 }
 
-_MOIS_ISO = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
-_MOIS_FR = re.compile(r"(\d{1,2})[/.](\d{1,2})[/.](\d{4})")
-_MOIS_US = re.compile(r"(\d{1,2})/(\d{1,2})/(\d{4})")
+_DATE_ISO = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
+_DATE_COURTE = re.compile(r"(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})")
 
 
 def _plat(texte: str) -> str:
@@ -98,20 +97,51 @@ def _nombre(brut: str) -> Optional[float]:
         return None
 
 
-def _date(brut: str) -> str:
+def convention_dates(valeurs: Sequence[str]) -> str:
+    """Decide si un fichier ecrit ses dates en jour/mois ou en mois/jour.
+
+    La decision se prend sur le FICHIER, pas sur la ligne. « 03/08/2026 »
+    est indecidable seul ; « 31/12/2024 » ailleurs dans le meme export
+    tranche pour tout le monde, puisqu'une place de marche n'alterne pas
+    les conventions au sein d'un export.
+
+    Sans indice, on retient jour/mois : l'usine est ecrite en francais, et
+    se tromper dans ce sens donne une date decalee, la ou l'ancienne
+    version fabriquait des mois numero 31 — donc des dates qu'aucune
+    comparaison ne retrouvait jamais.
+    """
+    for valeur in valeurs:
+        trouve = _DATE_COURTE.search((valeur or "").strip())
+        if not trouve:
+            continue
+        premier, second = int(trouve.group(1)), int(trouve.group(2))
+        if premier > 12 and second <= 12:
+            return "jma"
+        if second > 12 and premier <= 12:
+            return "mja"
+    return "jma"
+
+
+def _date(brut: str, convention: str = "jma") -> str:
     """Ramene une date a la forme AAAA-MM-JJ. Renvoie '' si illisible."""
     texte = (brut or "").strip()
-    trouve = _MOIS_ISO.search(texte)
+    trouve = _DATE_ISO.search(texte)
     if trouve:
         return "{}-{}-{}".format(*trouve.groups())
-    trouve = _MOIS_FR.search(texte)
-    if trouve:
-        jour, mois, annee = trouve.groups()
-        # Une valeur > 12 en premiere position tranche : c'est le jour.
-        if int(jour) > 12:
-            return "{}-{:02d}-{:02d}".format(annee, int(mois), int(jour))
-        return "{}-{:02d}-{:02d}".format(annee, int(mois), int(jour))
-    return ""
+    trouve = _DATE_COURTE.search(texte)
+    if not trouve:
+        return ""
+    premier, second, annee = (int(trouve.group(1)), int(trouve.group(2)),
+                              trouve.group(3))
+    if convention == "mja":
+        mois, jour = premier, second
+    else:
+        jour, mois = premier, second
+    # Une date impossible vaut mieux refusee que rangee : « 2024-31-12 » se
+    # compare comme une chaine et ne ressort d'aucune requete.
+    if not (1 <= mois <= 12 and 1 <= jour <= 31):
+        return ""
+    return "{}-{:02d}-{:02d}".format(annee, mois, jour)
 
 
 def _dialecte(entete: str) -> str:
@@ -120,21 +150,50 @@ def _dialecte(entete: str) -> str:
 
 
 def reconnaitre(colonnes: Sequence[str]) -> Dict[str, str]:
-    """Associe chaque champ attendu a une colonne du fichier, ou a rien."""
+    """Associe chaque champ attendu a une colonne du fichier, ou a rien.
+
+    Deux regles, apprises d'un export ou la colonne « Paid » etait prise
+    pour l'identifiant de commande — l'alias « id » s'y trouvait en tant que
+    SOUS-CHAINE. Toutes les ventes recevaient alors la meme empreinte, et
+    l'index unique les jetait toutes sauf une, en annoncant « deja
+    connue(s) ».
+
+      1. la correspondance approchee se fait sur des MOTS entiers, pas sur
+         des sous-chaines ;
+      2. une colonne deja retenue pour un champ n'est plus candidate pour
+         un autre.
+    """
     plates = {_plat(c): c for c in colonnes}
     correspondance: Dict[str, str] = {}
+    prises = set()
+
+    def retenir(champ: str, colonne: str) -> None:
+        correspondance[champ] = colonne
+        prises.add(colonne)
+
+    # Premier tour : les noms exacts, qui ne se disputent rien.
     for champ, noms in ALIAS.items():
         for nom in noms:
-            if nom in plates:
-                correspondance[champ] = plates[nom]
+            colonne = plates.get(nom)
+            if colonne and colonne not in prises:
+                retenir(champ, colonne)
                 break
-        else:
-            for nom in noms:
-                trouve = next((brut for plat, brut in plates.items()
-                               if nom in plat), None)
-                if trouve:
-                    correspondance[champ] = trouve
+
+    # Second tour : un alias doit apparaitre comme mot entier dans le nom.
+    for champ, noms in ALIAS.items():
+        if champ in correspondance:
+            continue
+        for nom in noms:
+            mots_alias = nom.split()
+            for plat, brut in plates.items():
+                if brut in prises:
+                    continue
+                mots = plat.split()
+                if all(m in mots for m in mots_alias):
+                    retenir(champ, brut)
                     break
+            if champ in correspondance:
+                break
     return correspondance
 
 
@@ -147,6 +206,7 @@ class Lecture:
     colonnes: List[str] = field(default_factory=list)
     ignorees: int = 0
     manquants: List[str] = field(default_factory=list)
+    convention: str = "jma"      # ordre jour/mois retenu pour ce fichier
 
     @property
     def exploitable(self) -> bool:
@@ -156,8 +216,11 @@ class Lecture:
 def lire_export(texte: str, plateforme: str = "") -> Lecture:
     """Lit un export CSV sans rien supposer de son format exact."""
     premiere = texte.splitlines()[0] if texte.strip() else ""
-    lecteur = csv.DictReader(io.StringIO(texte), delimiter=_dialecte(premiere))
-    colonnes = [c for c in (lecteur.fieldnames or []) if c]
+    rangs = list(csv.DictReader(io.StringIO(texte),
+                                delimiter=_dialecte(premiere)))
+    colonnes = [c for c in (csv.DictReader(io.StringIO(texte),
+                                           delimiter=_dialecte(premiere))
+                            .fieldnames or []) if c]
     correspondance = reconnaitre(colonnes)
     lecture = Lecture(correspondance=correspondance, colonnes=colonnes)
     for champ in ("date", "brut"):
@@ -166,8 +229,13 @@ def lire_export(texte: str, plateforme: str = "") -> Lecture:
     if lecture.manquants:
         return lecture
 
-    for rang in lecteur:
-        date = _date(rang.get(correspondance["date"], ""))
+    # La convention de date se decide sur l'ensemble du fichier avant de lire
+    # la premiere ligne : une seule date sans ambiguite tranche pour toutes.
+    lecture.convention = convention_dates(
+        [r.get(correspondance["date"], "") for r in rangs])
+
+    for rang in rangs:
+        date = _date(rang.get(correspondance["date"], ""), lecture.convention)
         brut = _nombre(rang.get(correspondance["brut"], ""))
         if not date or brut is None:
             lecture.ignorees += 1

@@ -162,6 +162,7 @@ def restaurer(archive: Path, avec_produits: bool = True) -> Dict[str, Any]:
             compagnon.unlink(missing_ok=True)
 
     restaures = 0
+    refuses: List[str] = []
     with zipfile.ZipFile(archive) as zip_:
         config.DB_PATH.write_bytes(zip_.read(NOM_BASE))
         if NOM_REGLAGES in zip_.namelist():
@@ -171,7 +172,10 @@ def restaurer(archive: Path, avec_produits: bool = True) -> Dict[str, Any]:
             for nom in zip_.namelist():
                 if not nom.startswith("produits/") or nom.endswith("/"):
                     continue
-                cible = config.PRODUITS_DIR / nom[len("produits/"):]
+                cible = _cible_sure(nom[len("produits/"):])
+                if cible is None:
+                    refuses.append(nom)
+                    continue
                 cible.parent.mkdir(parents=True, exist_ok=True)
                 cible.write_bytes(zip_.read(nom))
                 restaures += 1
@@ -186,4 +190,25 @@ def restaurer(archive: Path, avec_produits: bool = True) -> Dict[str, Any]:
     module_reglages.charger(force=True)
     store.connect()
     return {"valide": True, "probleme": "", "fichiers_produits": restaures,
+            "refuses": refuses,
             "ancienne_base": str(ecarte) if ecarte else ""}
+
+
+def _cible_sure(relatif: str) -> Optional[Path]:
+    """Chemin de destination, ou None si l'entree tente de sortir du dossier.
+
+    Une archive de sauvegarde passe par un ordinateur ou un nuage — la
+    docstring du module le recommande. Elle revient donc potentiellement
+    modifiee. Une entree nommee « ../../.bashrc » ou « /etc/passwd »
+    ecrirait alors hors de l'atelier : c'est la traversee de chemin par
+    archive, et elle se corrige en comparant le chemin resolu a sa racine.
+    """
+    if not relatif or relatif.startswith("/") or ".." in relatif.split("/"):
+        return None
+    racine = config.PRODUITS_DIR.resolve()
+    cible = (racine / relatif).resolve()
+    try:
+        cible.relative_to(racine)
+    except ValueError:
+        return None
+    return cible

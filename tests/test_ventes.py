@@ -89,6 +89,69 @@ class TestLectureDesExports(unittest.TestCase):
         texte = ("Date,Montant,Refunded\n2026-08-03,10,1\n")
         self.assertEqual(ventes.lire_export(texte, "x").lignes[0]["remboursement"], 1)
 
+    def test_une_date_americaine_donne_une_vraie_date(self):
+        """« 12/31/2024 » devenait « 2024-31-12 » : un mois numero 31.
+
+        Tout le filtrage par date compare des chaines : une date impossible
+        ne ressortait d'aucune requete, donc la vente disparaissait sans
+        qu'aucun message ne le dise.
+        """
+        from usine.core.ventes import _date
+
+        self.assertEqual(_date("12/31/2024", "mja"), "2024-12-31")
+        self.assertEqual(_date("31/12/2024", "jma"), "2024-12-31")
+        self.assertEqual(_date("2024-12-31"), "2024-12-31")
+
+    def test_une_date_impossible_est_refusee_pas_rangee(self):
+        from usine.core.ventes import _date
+
+        self.assertEqual(_date("13/13/2024", "jma"), "")
+        self.assertEqual(_date("00/05/2024", "jma"), "")
+
+    def test_la_convention_se_decide_sur_tout_le_fichier(self):
+        """« 03/08 » est indecidable seul ; « 31/12 » ailleurs tranche."""
+        from usine.core.ventes import convention_dates
+
+        self.assertEqual(convention_dates(["03/08/2026", "31/12/2024"]), "jma")
+        self.assertEqual(convention_dates(["03/08/2026", "12/31/2024"]), "mja")
+        self.assertEqual(convention_dates(["03/08/2026"]), "jma")
+
+    def test_un_export_americain_est_lu_entierement(self):
+        texte = ("Date,Product,Price\n"
+                 "12/31/2024,Un livre,29\n"
+                 "01/15/2025,Un livre,29\n")
+        lecture = ventes.lire_export(texte, "gumroad")
+        self.assertEqual(lecture.convention, "mja")
+        self.assertEqual([l["date"] for l in lecture.lignes],
+                         ["2024-12-31", "2025-01-15"])
+        self.assertEqual(lecture.ignorees, 0)
+
+    def test_une_colonne_paid_n_est_pas_un_identifiant_de_commande(self):
+        """L'alias « id » se trouvait comme SOUS-CHAINE dans « Paid ».
+
+        Toutes les ventes recevaient alors la meme empreinte, et l'index
+        unique les jetait toutes sauf une, en annoncant « deja connue(s) ».
+        """
+        correspondance = ventes.reconnaitre(
+            ["Date", "Product", "Price", "Paid", "Country"])
+        self.assertNotIn("identifiant", correspondance)
+        self.assertEqual(correspondance["date"], "Date")
+
+    def test_toutes_les_lignes_d_un_export_sans_identifiant_sont_gardees(self):
+        _vider()
+        texte = ("Date,Product,Price,Paid\n"
+                 "2026-08-01,Un livre,29,yes\n"
+                 "2026-08-02,Un livre,19,yes\n"
+                 "2026-08-03,Un livre,39,yes\n")
+        lecture = ventes.lire_export(texte, "gumroad")
+        ajoutees = sum(1 for ligne in lecture.lignes if ventes.enregistrer(ligne))
+        self.assertEqual(ajoutees, 3, "aucune vente ne doit etre confondue")
+
+    def test_une_colonne_n_est_retenue_que_pour_un_champ(self):
+        correspondance = ventes.reconnaitre(["Date", "Total", "Order ID"])
+        retenues = list(correspondance.values())
+        self.assertEqual(len(retenues), len(set(retenues)))
+
     def test_les_montants_s_ecrivent_de_plusieurs_facons(self):
         from usine.core.ventes import _nombre
 

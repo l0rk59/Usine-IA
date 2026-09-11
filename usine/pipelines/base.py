@@ -252,11 +252,13 @@ def _verifier_doublon(ctx: Contexte, type_produit: str, fichiers: List[Path],
             "signature": empreinte.decoder(ligne["signature"]),
             "plan": empreinte.decoder(ligne["plan"]),
         })
-    voisins = empreinte.comparer(texte, titres, connus)
+    ma_signature = empreinte.signature(texte)
+    mon_plan = empreinte.plan(titres)
+    voisins = empreinte.comparer(texte, titres, connus,
+                                 mienne=ma_signature, mon_plan=mon_plan)
     store.enregistrer_empreinte(
         ctx.produit_id, type_produit, titre, ctx.sujet,
-        empreinte.encoder(empreinte.signature(texte)),
-        empreinte.encoder(empreinte.plan(titres)),
+        empreinte.encoder(ma_signature), empreinte.encoder(mon_plan),
         len(empreinte.mots_normalises(texte)))
     proches = [v for v in voisins if v.doublon]
     if not proches:

@@ -210,14 +210,19 @@ class Voisin:
 
 
 def comparer(texte: str, titres: Sequence[str],
-             connus: Sequence[Dict[str, object]]) -> List[Voisin]:
+             connus: Sequence[Dict[str, object]],
+             mienne: Optional[Sequence[int]] = None,
+             mon_plan: Optional[Sequence[str]] = None) -> List[Voisin]:
     """Classe les produits deja faits par ressemblance decroissante.
 
     `connus` : des enregistrements portant produit_id, titre, sujet,
     signature (liste d'entiers) et plan (liste de chaines).
     """
-    mienne = signature(texte)
-    mon_plan = plan(titres)
+    # La signature d'un ebook de quarante mille mots coute pres de deux
+    # secondes : l'appelant qui l'a deja calculee la passe plutot que de la
+    # faire refaire.
+    mienne = list(mienne) if mienne is not None else signature(texte)
+    mon_plan = list(mon_plan) if mon_plan is not None else plan(titres)
     voisins = []
     for connu in connus:
         voisin = Voisin(

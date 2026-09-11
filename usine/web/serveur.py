@@ -458,7 +458,11 @@ def _etat() -> Dict[str, Any]:
         "reglages": {k: profil[k] for k in
                      ("auteur", "audience", "ton", "taille", "qualite", "images")},
         "file": file_prod.compter(),
-        "commerce": _commerce(),
+        # Volontairement absent : _commerce() compare toutes les paires de
+        # produits, ce qui coute pres d'une seconde a quatre cents produits.
+        # Le tableau de bord interroge /api/commerce de son cote, toutes les
+        # trente secondes ; l'embarquer ici le faisait recalculer toutes les
+        # quinze, pour un resultat que personne ne lisait.
     }
 
 

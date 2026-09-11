@@ -274,5 +274,18 @@ class TestReparation(unittest.TestCase):
         self.assertFalse(synthese["tout_valide"])
 
 
+
+class TestManifesteHostile(unittest.TestCase):
+    """Un JSON valide n'est pas forcement un objet."""
+
+    def test_un_manifeste_qui_n_est_pas_un_objet_est_refuse(self):
+        from usine.core import verification
+
+        for texte in ("[1, 2, 3]", '"une chaine"', "42", "null"):
+            rapport = verification.analyser_manifeste(texte)
+            self.assertFalse(rapport.valide, texte)
+            self.assertFalse(rapport.executable, texte)
+            self.assertTrue(rapport.soucis, texte)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

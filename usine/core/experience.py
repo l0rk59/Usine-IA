@@ -230,6 +230,7 @@ def comparer_rythmes(
     mesures: Sequence[Tuple[int, float]],
     tirages: int = 40000,
     graine: int = 20260911,
+    etiquettes: Optional[Sequence[str]] = None,
 ) -> Dict[str, Any]:
     """Compare N variantes sur leur rythme. `mesures` = [(ventes, jours), ...].
 
@@ -239,8 +240,23 @@ def comparer_rythmes(
     """
     if not mesures:
         return {"variantes": [], "meilleure": None}
+    # Une duree nulle n'est pas une petite duree : c'est une absence de
+    # mesure. La ramener a 1e-6 donnait a une variante sans donnees un
+    # rythme immense, donc la victoire quasi certaine. Elle est ecartee.
+    # Les etiquettes suivent le filtrage. Sans elles, l'appelant qui ecarte
+    # une variante sans periode voyait le verdict annoncer « variante B »
+    # pour ce que le tableau juste au-dessus appelait C : la position dans
+    # la liste filtree n'est pas la lettre de la variante.
+    paires = [(v, j, (etiquettes[i] if etiquettes and i < len(etiquettes)
+                      else _etiquette(i)))
+              for i, (v, j) in enumerate(mesures)]
+    paires = [t for t in paires if float(t[1]) > 0]
+    mesures = [(v, j) for v, j, _ in paires]
+    noms = [nom for _, _, nom in paires]
+    if not mesures:
+        return {"variantes": [], "meilleure": None, "modele": "gamma-poisson"}
     alea = random.Random(graine)
-    posterieures = [(1 + max(0, int(ventes)), max(1e-6, float(jours)))
+    posterieures = [(1 + max(0, int(ventes)), float(jours))
                     for ventes, jours in mesures]
     nombre = len(posterieures)
     victoires = [0] * nombre
@@ -261,7 +277,8 @@ def comparer_rythmes(
     for index, (ventes, jours) in enumerate(mesures):
         serie = sorted(echantillons[index])
         resultats.append({
-            "index": index, "ventes": int(ventes), "jours": round(jours, 1),
+            "index": index, "etiquette": noms[index],
+            "ventes": int(ventes), "jours": round(jours, 1),
             "rythme": (ventes / jours) if jours else 0.0,
             "rythme_median": serie[len(serie) // 2],
             "bas": serie[int(len(serie) * 0.05)],
@@ -324,7 +341,8 @@ def verdict_rythme(comparaison: Dict[str, Any],
             "certitude": meilleure["probabilite_meilleure"],
             "message": "Variante {} gagnante : {:.0f} % de chances d'avoir le "
                        "meilleur rythme ({:.2f} vente/jour contre {:.2f}).".format(
-                           _etiquette(meilleure["index"]),
+                           meilleure.get("etiquette")
+                           or _etiquette(meilleure["index"]),
                            meilleure["probabilite_meilleure"] * 100,
                            meilleure["rythme"],
                            max((v["rythme"] for v in variantes
@@ -336,7 +354,8 @@ def verdict_rythme(comparaison: Dict[str, Any],
             "certitude": meilleure["probabilite_meilleure"],
             "message": "Variante {} en tete ({:.0f} %), sans certitude. "
                        "Laissez tourner.".format(
-                           _etiquette(meilleure["index"]),
+                           meilleure.get("etiquette")
+                           or _etiquette(meilleure["index"]),
                            meilleure["probabilite_meilleure"] * 100),
         }
     return {
@@ -483,6 +502,8 @@ def fixer_periode(variante_id: int, debut: str, fin: str = "") -> bool:
     """Note quand une variante etait en ligne. Sans cela, aucune vente ne
     peut lui etre attribuee."""
     _assurer()
+    if not debut:
+        raise ValueError("une periode a besoin d'une date de debut (--du)")
     for valeur in (debut, fin):
         if valeur and not re.match(r"^\d{4}-\d{2}-\d{2}$", valeur):
             raise ValueError("date attendue au format AAAA-MM-JJ : " + valeur)

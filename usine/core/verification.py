@@ -326,6 +326,17 @@ def analyser_manifeste(texte: str, nom: str = "manifest.json") -> Rapport:
         return rapport
     donnees = json.loads(texte)
     rapport.verifie_par = "json.loads + schema Chrome MV3"
+    # analyser_json valide la syntaxe ; « [1, 2, 3] » est du JSON correct.
+    # Un manifeste qui n'est pas un objet faisait tomber toute la chaine sur
+    # un AttributeError, la ou c'est justement le genre de sortie qu'un
+    # modele produit de temps en temps.
+    if not isinstance(donnees, dict):
+        rapport.soucis.append(Souci(
+            "casse", "le manifeste doit etre un objet JSON, pas un {}".format(
+                type(donnees).__name__)))
+        rapport.valide = False
+        rapport.executable = False
+        return rapport
 
     if donnees.get("manifest_version") != 3:
         rapport.soucis.append(Souci(
