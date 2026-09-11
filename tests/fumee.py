@@ -67,6 +67,11 @@ SCENARIOS = [
     # doublons. La commande sort en 1 quand elle en trouve — c'est ce qui
     # permet de la mettre dans une tache planifiee.
     ("doublons", ["doublons"], 1),
+    ("ventes-vide", ["ventes"]),
+    ("ventes-import", ["ventes", "--importer", str(RACINE / "tests" / "ventes.csv"),
+                       "--sur", "gumroad"]),
+    ("ventes-rattacher", ["ventes", "--rattacher"]),
+    ("ventes-resume", ["ventes"]),
     ("bilan", ["bilan"]),
     ("reglages", ["reglages"]),
     ("prompts-systeme", ["prompts-systeme"]),

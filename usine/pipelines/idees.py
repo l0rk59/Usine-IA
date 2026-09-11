@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from ..core import config, llm, marche
+from ..core import config, llm, marche, ventes
 from . import catalogue
 from ..render import document as D
 from ..render.page import ecrire_page
@@ -25,8 +25,14 @@ def explorer(ctx: Contexte, nombre: int = 12,
         "\n\n{}\n\nAppuie-toi sur ces mesures reelles plutot que sur des "
         "impressions : cite-les quand elles soutiennent ou contredisent une "
         "idee.\n".format(donnees_marche) if donnees_marche else "")
+    # Ce que ce vendeur a REELLEMENT vendu pese plus qu'un avis general sur
+    # le marche : c'est la seule mesure qui porte sur son audience a lui.
+    constate = ventes.resume_pour_ia()
+    historique = ("\n\n{}\n\nTiens-en compte : ce qui s'est deja vendu chez "
+                  "ce vendeur vaut mieux qu'une intuition de marche.\n"
+                  .format(constate) if constate else "")
     invite = (
-        "NICHE : {niche}\nAUDIENCE VISEE : {audience}\n{marche}\n"
+        "NICHE : {niche}\nAUDIENCE VISEE : {audience}\n{marche}{constate}\n"
         "Propose {n} idees de produits digitaux realisables par une seule personne, "
         "sans stock ni equipe. Le type doit etre l'un de ceux que l'usine sait "
         "reellement fabriquer :\n{catalogue}\n\n"
@@ -41,7 +47,7 @@ def explorer(ctx: Contexte, nombre: int = 12,
         '"angle_differenciant": "...", "premier_canal": "ou trouver les 10 premiers '
         'acheteurs"}}]}}'
     ).format(niche=ctx.sujet, audience=ctx.audience, n=nombre,
-             marche=contexte_marche,
+             marche=contexte_marche, constate=historique,
              catalogue=catalogue.resume_pour_ia(),
              types="|".join(catalogue.cles(vendables=True)))
     donnees = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="costaud",
@@ -63,15 +69,44 @@ def explorer(ctx: Contexte, nombre: int = 12,
                 "acheteur": str(idee.get("acheteur") or "").strip(),
                 "promesse": str(idee.get("promesse") or "").strip(),
                 "prix_eur": idee.get("prix_eur") or 19,
+                # Ces deux cles existent pour TOUTES les idees, meme quand
+                # aucune vente ne vient les remplir : le CSV est ecrit avec
+                # les cles de la premiere idee, et une cle qui n'apparait que
+                # sur la troisieme ferait echouer l'export.
+                "prix_source": "modele",
+                "prix_fourchette": "",
                 "difficulte": str(idee.get("difficulte") or "moyenne").strip(),
                 "concurrence": str(idee.get("concurrence") or "moyenne").strip(),
                 "angle_differenciant": str(idee.get("angle_differenciant") or "").strip(),
                 "premier_canal": str(idee.get("premier_canal") or "").strip(),
             }
         )
+    _ancrer_les_prix(propres)
     if not propres:
         raise ValueError("Aucune idee exploitable")
     return propres
+
+
+def _ancrer_les_prix(idees: List[Dict[str, Any]]) -> None:
+    """Remplace le prix devine par le prix reellement encaisse, quand il existe.
+
+    Le « prix_eur » que renvoie le modele ne s'appuie sur rien : les quatre
+    sources de marche mesurent la demande et la concurrence, aucune ne mesure
+    un prix. Le seul nombre qui determine le revenu etait donc le moins fonde
+    de tout le systeme.
+
+    Trois ventes suffisent a preferer la mesure a l'intuition — c'est peu,
+    mais trois observations valent mieux qu'aucune, et la provenance est
+    inscrite dans « prix_source » pour que la difference reste visible.
+    """
+    for idee in idees:
+        observes = ventes.prix_observes(idee["type"])
+        retenu = next((o for o in observes if o["ventes"] >= 3), None)
+        if retenu and retenu["devise"] == "EUR":
+            idee["prix_eur"] = round(retenu["median"])
+            idee["prix_source"] = "{} ventes constatees".format(retenu["ventes"])
+            idee["prix_fourchette"] = "{:.0f} a {:.0f}".format(
+                retenu["bas"], retenu["haut"])
 
 
 def produire(ctx: Contexte, nombre: int = 12,
@@ -120,9 +155,19 @@ def produire(ctx: Contexte, nombre: int = 12,
         lignes.append("\n> {}\n".format(lecture["verdict"]))
     for index, idee in enumerate(idees, 1):
         lignes.append("\n## {}. {}\n".format(index, idee["titre"]))
-        lignes.append("- **Type :** {} | **Prix cible :** {} EUR | "
+        # La provenance du prix est affichee : « 19 EUR » sorti d'un modele
+        # et « 19 EUR » constate sur douze ventes ne meritent pas la meme
+        # confiance, et rien ne les distinguait.
+        source = idee.get("prix_source", "modele")
+        prix = "{} EUR".format(idee["prix_eur"])
+        if source == "modele":
+            prix += " *(estime, aucune vente pour l'etayer)*"
+        else:
+            prix += " *({}, fourchette {})*".format(
+                source, idee.get("prix_fourchette", "-"))
+        lignes.append("- **Type :** {} | **Prix cible :** {} | "
                       "**Difficulte :** {} | **Concurrence :** {}".format(
-                          idee["type"], idee["prix_eur"],
+                          idee["type"], prix,
                           idee["difficulte"], idee["concurrence"]))
         lignes.append("- **Probleme :** {}".format(idee["probleme"]))
         lignes.append("- **Acheteur :** {}".format(idee["acheteur"]))

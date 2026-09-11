@@ -246,6 +246,54 @@ _VIDES_SUJET = _VIDES | {
 SEUIL_SUJET = 0.75
 
 
+# Ce qu'une place de marche colle au nom d'un produit et qui ne dit rien de
+# son sujet : le format, le mode de livraison, l'emballage.
+_FORMATS = {
+    "pdf", "epub", "mobi", "azw", "docx", "doc", "xlsx", "csv", "zip", "png",
+    "jpg", "svg", "notion", "canva", "telechargement", "download", "instant",
+    "digital", "numerique", "imprimable", "printable", "editable", "bundle",
+    "lot", "version", "fichier", "fichiers", "file", "files", "page", "pages",
+}
+
+_PARENTHESES = re.compile(r"[\(\[\{][^\)\]\}]*[\)\]\}]")
+
+
+def nettoyer_reference(texte: str) -> str:
+    """Retire d'un nom de place de marche ce qui n'est pas son sujet.
+
+    « Le systeme du freelance (PDF + EPUB) » et « Le systeme du freelance
+    rentable » ne partageaient qu'un mot porteur sur deux, parce que « pdf »
+    et « epub » comptaient comme du sujet. Le produit ne se rattachait donc
+    pas a sa propre vente.
+
+    Les segments entre parentheses partent en entier : une place de marche y
+    met le format, la mention « instant download », le nombre de pages —
+    jamais le sujet.
+    """
+    sans = _PARENTHESES.sub(" ", texte or "")
+    mots = [m for m in mots_normalises(sans) if _racine(m) not in _FORMATS]
+    return " ".join(mots)
+
+
+def ressemblance_reference(reference: str, titre: str) -> float:
+    """Proximite d'un nom de vente et d'un titre de produit.
+
+    La liste de mots ecartes n'est PAS celle des niches. Comparer deux
+    niches demande d'ignorer le vocabulaire d'emballage — « guide »,
+    « cahier », « methode » — parce qu'il ne dit rien du sujet. Comparer
+    deux noms de produits demande l'inverse : entre « Cahier du freelance »
+    et « Le systeme du freelance rentable », c'est precisement « cahier »
+    et « systeme » qui font la difference. Les ecarter rattachait la vente
+    d'un cahier a l'ebook voisin.
+    """
+    vides = _VIDES | _FORMATS
+    gauche = _porteurs(nettoyer_reference(reference), vides)
+    droite = _porteurs(titre, vides)
+    if not gauche or not droite:
+        return 0.0
+    return len(gauche & droite) / min(len(gauche), len(droite))
+
+
 def ressemblance_sujet(un: str, autre: str) -> float:
     """Proximite de deux intitules de niche, avant toute fabrication.
 

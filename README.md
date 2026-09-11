@@ -130,6 +130,7 @@ indisponibles. Pour l'utiliser en priorité : `USINE_LOCAL_FIRST=1` dans le `.en
 | `usine marche` | Signaux de marché | demande, concurrence, tendance — 4 sources sans clé |
 | `usine bilan` | Mémoire de l'usine | ce que vos productions révèlent sur vos réglages |
 | `usine doublons` | **Anti-répétition** | les produits qui se recouvrent, avant qu'un acheteur ne le voie |
+| `usine ventes` | **Ce qui rapporte** | import Gumroad/Etsy, chiffre d'affaires par niche, prix réels |
 | `usine complet` | **Offre complète** | Ebook + 2 bonus + kit de vente + archive ZIP |
 | `usine file` | File de production | les niches en attente de fabrication |
 | `usine usine` | **Usine continue** | produit en boucle, sous budget, jusqu'à l'arrêt |
@@ -295,6 +296,33 @@ et sans son texte, et exige 4,5:1 (WCAG AA) sur les 40 combinaisons.
 
 > Pourquoi une fonte dessinée plutôt qu'embarquée, pourquoi pas de JPEG, et ce
 > que les tests ont trouvé : [docs/COUVERTURE.md](docs/COUVERTURE.md).
+
+### Ce qui rapporte, et non plus seulement ce qui note bien
+
+L'usine mesurait la qualité, la durée, les appels consommés. Elle ne savait
+**rien de ce qui rapporte** : `usine bilan` pouvait répondre « quel ton donne
+vos meilleures notes » et jamais « quelle niche a payé ».
+
+```bash
+usine ventes --importer export.csv --sur gumroad   # colonnes reconnues, puis affichées
+usine ventes --rattacher                           # le nom en boutique → votre produit
+```
+
+L'importeur ne suppose aucun format : il cherche chaque champ par ses noms
+possibles et **montre ce qu'il a reconnu** — une correspondance devinée qu'on
+n'affiche pas est une erreur qu'on ne verra jamais. Point-virgule, virgule
+décimale, dates `jj/mm/aaaa` et statuts en français compris.
+
+Trois règles de prudence, parce qu'un chiffre d'affaires inventé est pire
+qu'un chiffre d'affaires absent : **pas de conversion** entre devises, **pas
+d'estimation** du net quand l'export ne le donne pas, **pas de doublon** si
+vous réimportez le même fichier.
+
+**Le prix cesse d'être inventé.** Le `prix_eur` d'une idée sortait du modèle :
+les quatre sources de marché mesurent la demande et la concurrence, aucune ne
+mesure un prix. Dès qu'un type compte trois ventes, l'étude de niche retient le
+médian réellement encaissé — et écrit d'où il vient.
+Détails : [docs/VENTES.md](docs/VENTES.md).
 
 ### L'usine se souvient de ce qu'elle a écrit
 
@@ -542,8 +570,8 @@ Trois mécanismes rendent la production fiable sur un forfait mobile :
 usine/
   core/        fournisseurs, routeur IA, pool de clés, contrôle qualité
                déterministe, vérification du code généré (AST + bac à sable),
-               empreintes anti-doublon (MinHash), signaux de marché,
-               mémoire de production,
+               empreintes anti-doublon (MinHash), ventes réelles,
+               signaux de marché, mémoire de production,
                file de production, budget, A/B testing (beta-binomial),
                diagnostic de titre, prompts, réglages, sécurité,
                bus d'événements, HTTP, SQLite
@@ -559,7 +587,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         248 tests + test de fumée, aucun appel réseau
+tests/         290 tests + test de fumée, aucun appel réseau
 install.sh     installation Termux
 ```
 
@@ -571,7 +599,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 248 tests
+python3 -m unittest discover -s tests -t .   # 290 tests
 python3 tests/fumee.py                       # les 9 chaînes via la vraie CLI
 ```
 

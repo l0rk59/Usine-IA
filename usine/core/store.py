@@ -84,6 +84,24 @@ CREATE TABLE IF NOT EXISTS empreintes (
     cree_le REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_empreintes_type ON empreintes(type);
+
+CREATE TABLE IF NOT EXISTS ventes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    produit_id TEXT,
+    reference TEXT,
+    plateforme TEXT NOT NULL,
+    date TEXT NOT NULL,
+    unites INTEGER NOT NULL DEFAULT 1,
+    brut REAL NOT NULL DEFAULT 0,
+    net REAL,
+    devise TEXT NOT NULL DEFAULT 'EUR',
+    remboursement INTEGER NOT NULL DEFAULT 0,
+    source TEXT NOT NULL DEFAULT 'manuel',
+    empreinte TEXT UNIQUE,
+    cree_le REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ventes_produit ON ventes(produit_id);
+CREATE INDEX IF NOT EXISTS idx_ventes_date ON ventes(date);
 """
 
 # Version du schema. « CREATE TABLE IF NOT EXISTS » suffit a creer une base
@@ -91,7 +109,7 @@ CREATE INDEX IF NOT EXISTS idx_empreintes_type ON empreintes(type);
 # plus tard ne serait jamais creee chez qui a deja produit, et l'erreur SQL
 # tomberait des semaines apres, sur un telephone, avec tout l'historique
 # dedans. Chaque evolution s'inscrit donc ici.
-VERSION_SCHEMA = 2
+VERSION_SCHEMA = 3
 
 MIGRATIONS = {
     # v1 -> v2 : empreintes des produits, pour detecter les doublons.
@@ -100,6 +118,17 @@ MIGRATIONS = {
              sujet TEXT, signature TEXT, plan TEXT, mots INTEGER,
              cree_le REAL NOT NULL)""",
         "CREATE INDEX IF NOT EXISTS idx_empreintes_type ON empreintes(type)"],
+    # v2 -> v3 : les ventes reelles, pour que l'usine sache ce qui rapporte.
+    3: ["""CREATE TABLE IF NOT EXISTS ventes (
+             id INTEGER PRIMARY KEY AUTOINCREMENT, produit_id TEXT,
+             reference TEXT, plateforme TEXT NOT NULL, date TEXT NOT NULL,
+             unites INTEGER NOT NULL DEFAULT 1, brut REAL NOT NULL DEFAULT 0,
+             net REAL, devise TEXT NOT NULL DEFAULT 'EUR',
+             remboursement INTEGER NOT NULL DEFAULT 0,
+             source TEXT NOT NULL DEFAULT 'manuel', empreinte TEXT UNIQUE,
+             cree_le REAL NOT NULL)""",
+        "CREATE INDEX IF NOT EXISTS idx_ventes_produit ON ventes(produit_id)",
+        "CREATE INDEX IF NOT EXISTS idx_ventes_date ON ventes(date)"],
 }
 
 

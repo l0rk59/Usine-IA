@@ -18,7 +18,7 @@ from .core import apprentissage, budget, config, experience, images
 from .core import file as file_prod
 from .core import llm, marche
 from .core import prompts as registre_prompts
-from .core import empreinte, reglages, securite, store, verification
+from .core import empreinte, reglages, securite, store, ventes, verification
 from .core.http import en_ligne
 from .marketing import vente
 from .packaging import livraison
@@ -267,6 +267,148 @@ def cmd_logiciel(args: argparse.Namespace) -> int:
             logiciel.CIBLES[resume["cible"]]["nom"].capitalize(),
             resume["fichiers_code"], etat)))
     return 0 if resume["code_valide"] else 1
+
+
+def cmd_ventes(args: argparse.Namespace) -> int:
+    """Enregistrer, importer et lire les ventes reelles."""
+    if args.importer:
+        return _importer_ventes(args)
+    if args.ajouter:
+        return _ajouter_vente(args)
+    if args.lier:
+        reference, produit_id = args.lier
+        nombre = ventes.lier(reference, produit_id)
+        (ok if nombre else alerte)(
+            "{} vente(s) rattachee(s) a {}".format(nombre, produit_id))
+        return 0 if nombre else 1
+    if args.rattacher:
+        propositions = ventes.rattacher_automatiquement()
+        if not propositions:
+            print("  Rien a rattacher : toutes les ventes ont deja leur produit,")
+            print("  ou aucun titre connu ne ressemble aux references importees.")
+            return 0
+        for reference, produit_id, score in propositions:
+            ventes.lier(reference, produit_id)
+            ok("« {} » -> {} (proximite {:.0%})".format(
+                reference[:44], produit_id[:38], score))
+        return 0
+    return _resume_ventes(args)
+
+
+def _ajouter_vente(args: argparse.Namespace) -> int:
+    if args.brut is None:
+        erreur("Precisez le montant encaisse : --brut 29")
+        return 1
+    ligne = {
+        "date": args.date or time.strftime("%Y-%m-%d"),
+        "reference": args.reference or args.ajouter,
+        "unites": max(1, args.unites), "brut": args.brut, "net": args.net,
+        "devise": (args.devise or "EUR").upper(),
+        "remboursement": 1 if args.remboursement else 0,
+        "plateforme": args.plateforme_vente, "source": "manuel",
+    }
+    ligne["empreinte"] = None       # saisie manuelle : pas de dedoublonnage
+    if ventes.enregistrer(ligne, produit_id=args.ajouter):
+        ok("{} x {:.2f} {} enregistre pour {}".format(
+            ligne["unites"], ligne["brut"], ligne["devise"], args.ajouter))
+    return 0
+
+
+def _importer_ventes(args: argparse.Namespace) -> int:
+    chemin = Path(args.importer)
+    if not chemin.exists():
+        erreur("Fichier introuvable : {}".format(chemin))
+        return 1
+    lecture = ventes.lire_export(
+        chemin.read_text(encoding="utf-8-sig", errors="replace"),
+        args.plateforme_vente)
+
+    titre_console("Import — {}".format(chemin.name))
+    if lecture.manquants:
+        erreur("Colonnes introuvables : {}".format(", ".join(lecture.manquants)))
+        print("  Colonnes du fichier : " + ", ".join(lecture.colonnes[:14]))
+        print("  Il faut au minimum une date et un montant.")
+        return 1
+
+    # La correspondance est AFFICHEE : une association devinee qu'on ne
+    # montre pas est une erreur qu'on ne verra jamais.
+    print("  Colonnes reconnues :")
+    for champ in ("date", "reference", "unites", "brut", "net", "devise",
+                  "remboursement", "identifiant"):
+        colonne = lecture.correspondance.get(champ)
+        print("    {:<14} {}".format(
+            champ, colonne if colonne else _c("— absente", "90")))
+
+    ajoutes = sum(1 for ligne in lecture.lignes if ventes.enregistrer(ligne))
+    deja = len(lecture.lignes) - ajoutes
+    print()
+    ok("{} vente(s) ajoutee(s)".format(ajoutes))
+    if deja:
+        print("  {} deja connue(s) — reimporter le meme export n'ajoute rien."
+              .format(deja))
+    if lecture.ignorees:
+        alerte("{} ligne(s) sans date ou sans montant lisible, ignorees."
+               .format(lecture.ignorees))
+    if "net" not in lecture.correspondance:
+        alerte("Aucune colonne de revenu net : seul le brut sera connu.")
+        print("      Le net n'est pas estime — une commission supposee")
+        print("      donnerait un revenu qui n'existe pas.")
+    propositions = ventes.rattacher_automatiquement()
+    if propositions:
+        print("\n  Rattachements possibles (usine ventes --rattacher) :")
+        for reference, produit_id, score in propositions[:6]:
+            print("    « {} » -> {} ({:.0%})".format(
+                reference[:40], produit_id[:36], score))
+    return 0
+
+
+def _resume_ventes(args: argparse.Namespace) -> int:
+    titre_console("Ventes")
+    totaux = ventes.total_par_devise(args.depuis)
+    if not totaux:
+        print("  Aucune vente enregistree.")
+        print("\n  " + _c("usine ventes --importer export.csv --sur gumroad", "1"))
+        print("  " + _c("usine ventes --ajouter <produit_id> --brut 29", "1"))
+        print("\n  Sans cette donnee, « usine bilan » sait quel ton donne vos")
+        print("  meilleures notes, jamais quelle niche a paye.")
+        return 0
+
+    for total in totaux:
+        net = ("{:.2f}".format(total["net"]) if not total["net_inconnu"]
+               else _c("inconnu", "90"))
+        print("  {}  {:>4} unites   brut {:>10.2f}   net {}".format(
+            _c(total["devise"], "1"), total["unites"] or 0,
+            total["brut"] or 0, net))
+        if total["net_inconnu"]:
+            print("      {} ligne(s) sans revenu net dans l'export.".format(
+                total["net_inconnu"]))
+        if total["rembourses"]:
+            print("      {} remboursement(s), deja deduit(s).".format(
+                total["rembourses"]))
+
+    produits = ventes.par_produit(args.nombre)
+    if produits:
+        titre_console("Par produit")
+        for produit in produits:
+            print("  {:>8.2f} {}  {:>3} u.  {}".format(
+                produit["brut"] or 0, produit["devise"], produit["unites"] or 0,
+                (produit["titre"] or produit["produit_id"])[:44]))
+    types = ventes.par_champ("type")
+    if types:
+        titre_console("Par type de produit")
+        for ligne in types:
+            print("  {:<12} {:>8.2f} {}  sur {} produit(s)".format(
+                ligne["valeur"] or "?", ligne["brut"] or 0, ligne["devise"],
+                ligne["produits"]))
+    prix = ventes.prix_observes()
+    if prix:
+        titre_console("Prix reellement encaisses")
+        for ligne in prix:
+            print("  {} : median {:.2f}, moitie centrale {:.2f} a {:.2f}"
+                  " ({} ventes)".format(ligne["devise"], ligne["median"],
+                                        ligne["bas"], ligne["haut"],
+                                        ligne["ventes"]))
+    return 0
 
 
 def cmd_doublons(args: argparse.Namespace) -> int:
@@ -806,6 +948,8 @@ def cmd_bilan(args: argparse.Namespace) -> int:
         for defaut in donnees["defauts_frequents"][:5]:
             print("    {:>3}x  {}".format(defaut["occurrences"], defaut["defaut"]))
 
+    _bilan_des_ventes()
+
     titre_console("Conseils tires de vos donnees")
     for conseil in apprentissage.conseils():
         print("  " + _c("[{}]".format(conseil["sujet"]), "36"))
@@ -813,6 +957,39 @@ def cmd_bilan(args: argparse.Namespace) -> int:
             print("    " + ligne)
         print("    " + _c("appui : " + conseil["appui"], "2"))
     return 0
+
+
+def _bilan_des_ventes() -> None:
+    """Ce que les notes ne disent pas.
+
+    Une bonne note et un produit qui se vend sont deux choses differentes, et
+    rien ne garantit qu'elles se rencontrent. Tant que les ventes ne sont pas
+    saisies, l'usine ne peut conseiller que sur la premiere — et le dit.
+    """
+    totaux = ventes.total_par_devise()
+    if not totaux:
+        print("\n  " + _c("Aucune vente enregistree", "33"))
+        print("    Les conseils ci-dessous portent sur la QUALITE mesuree,")
+        print("    pas sur ce qui se vend — l'usine n'en sait rien.")
+        print("    " + _c("usine ventes --importer export.csv", "1"))
+        return
+    titre_console("Ce que les ventes disent")
+    for total in totaux:
+        print("  {}  {} unites, {:.2f} encaisses".format(
+            _c(total["devise"], "1"), total["unites"] or 0, total["brut"] or 0))
+    types = ventes.par_champ("type")
+    if types:
+        print("\n  " + _c("Chiffre d'affaires par type", "1"))
+        for ligne in types[:6]:
+            print("    {:<14} {:>8.2f} {}  sur {} produit(s)".format(
+                (ligne["valeur"] or "?")[:14], ligne["brut"] or 0,
+                ligne["devise"], ligne["produits"]))
+    prix = ventes.prix_observes()
+    for ligne in prix:
+        if ligne["ventes"] >= 3:
+            print("\n  Prix median reellement encaisse : {:.2f} {}"
+                  " ({} ventes)".format(ligne["median"], ligne["devise"],
+                                        ligne["ventes"]))
 
 
 def cmd_prompts_systeme(args: argparse.Namespace) -> int:
@@ -1394,6 +1571,31 @@ def construire_parseur() -> argparse.ArgumentParser:
 
     p = sous_parseurs.add_parser("menu", help="menu interactif (recommande sur mobile)")
     p.set_defaults(fonction=cmd_menu)
+
+    p = sous_parseurs.add_parser(
+        "ventes", help="enregistrer et lire les ventes reelles")
+    p.add_argument("--importer", default="", metavar="FICHIER.csv",
+                   help="importer un export de place de marche")
+    p.add_argument("--sur", dest="plateforme_vente", default="gumroad",
+                   help="plateforme d'origine (gumroad, etsy, payhip, site...)")
+    p.add_argument("--ajouter", default="", metavar="PRODUIT_ID",
+                   help="saisir une vente a la main")
+    p.add_argument("--brut", type=float, default=None, help="montant encaisse")
+    p.add_argument("--net", type=float, default=None,
+                   help="ce qui reste apres commission, si vous le connaissez")
+    p.add_argument("--unites", type=int, default=1)
+    p.add_argument("--devise", default="EUR")
+    p.add_argument("--date", default="", help="AAAA-MM-JJ (defaut : aujourd'hui)")
+    p.add_argument("--reference", default="",
+                   help="nom du produit tel qu'il apparait sur la plateforme")
+    p.add_argument("--remboursement", action="store_true")
+    p.add_argument("--lier", nargs=2, metavar=("REFERENCE", "PRODUIT_ID"),
+                   help="rattacher une reference a un produit")
+    p.add_argument("--rattacher", action="store_true",
+                   help="rattacher automatiquement ce qui peut l'etre")
+    p.add_argument("--depuis", default="", help="ne compter qu'a partir de AAAA-MM-JJ")
+    p.add_argument("-n", "--nombre", type=int, default=15)
+    p.set_defaults(fonction=cmd_ventes)
 
     p = sous_parseurs.add_parser(
         "doublons", help="reperer les produits qui se recouvrent")

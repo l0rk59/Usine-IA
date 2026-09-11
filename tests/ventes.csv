@@ -1,0 +1,5 @@
+Sale ID,Purchase Date,Product Name,Quantity,Price,Net Amount,Currency,Refunded
+S1,2026-08-03,Le systeme du freelance rentable (PDF + EPUB),1,"29.00","25.13",EUR,false
+S2,2026-08-05,Le systeme du freelance rentable (PDF + EPUB),2,"58.00","50.26",EUR,false
+S3,2026-08-11,Le cahier du freelance organise,1,"14.00","12.13",EUR,false
+S4,2026-08-19,Le cahier du freelance organise,1,"14.00","12.13",EUR,true
