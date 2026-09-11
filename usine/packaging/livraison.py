@@ -55,6 +55,17 @@ Merci pour votre achat.
 4. Les fichiers `.md`, `.csv` et `.json` sont la pour que vous puissiez
    reutiliser le contenu dans vos propres outils.
 
+## Accessibilite
+
+Le fichier EPUB est structure pour la lecture assistee : ordre de lecture
+logique, titres hierarchises, table des matieres navigable, texte
+redimensionnable sans perte d'information, contraste verifie a 4,5:1 au
+minimum. Aucun contenu clignotant ni sonore. Les metadonnees d'accessibilite
+sont incluses dans le fichier.
+
+Si un format vous convient mal, ecrivez a {contact} : une version adaptee
+vous sera envoyee.
+
 ## Une question ?
 
 Ecrivez a {contact}.

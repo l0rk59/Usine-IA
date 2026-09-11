@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import html
 import uuid
+import time
 import zipfile
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
@@ -63,6 +64,56 @@ def _xml(texte: str) -> str:
     return html.escape(texte, quote=True)
 
 
+# --------------------------------------------------------------------------
+# Accessibilite
+# --------------------------------------------------------------------------
+
+RESUME_ACCESSIBILITE = (
+    "Publication textuelle. Ordre de lecture logique, titres hierarchises, "
+    "table des matieres navigable, texte redimensionnable sans perte "
+    "d'information. Contraste verifie a 4,5:1 au minimum sur l'ensemble de la "
+    "feuille de style. Aucun contenu clignotant ni sonore. La couverture porte "
+    "un texte de remplacement ; elle est decorative et ne porte aucune "
+    "information absente du texte."
+)
+
+
+def metadonnees_accessibilite(avec_image: bool) -> str:
+    """Metadonnees EPUB Accessibility 1.1, exigees pour vendre dans l'Union.
+
+    Elles ne sont pas decoratives : depuis le 28 juin 2025, l'European
+    Accessibility Act s'applique aux livres numeriques, et un distributeur
+    europeen refuse desormais un fichier qui n'en porte aucune.
+
+    Ce qui est declare ici doit etre VRAI. Chaque affirmation correspond a
+    une propriete du document reellement produit : l'ordre de lecture vient
+    du fichier de navigation, la hierarchie des titres du modele de document,
+    le contraste est verifie par un test sur la feuille de style livree.
+    """
+    modes = ["textual"]
+    traits = ["tableOfContents", "structuralNavigation", "readingOrder",
+              "displayTransformability", "unlocked"]
+    if avec_image:
+        modes.append("visual")
+        traits.append("alternativeText")
+    morceaux = ['<meta property="schema:accessMode">{}</meta>'.format(m)
+                for m in modes]
+    # Le texte seul suffit : rien d'essentiel n'est porte par l'image.
+    morceaux.append(
+        '<meta property="schema:accessModeSufficient">textual</meta>')
+    morceaux += ['<meta property="schema:accessibilityFeature">{}</meta>'.format(t)
+                 for t in traits]
+    morceaux.append('<meta property="schema:accessibilityHazard">none</meta>')
+    morceaux.append(
+        '<meta property="schema:accessibilitySummary">{}</meta>'.format(
+            _xml(RESUME_ACCESSIBILITE)))
+    morceaux.append(
+        '<meta property="dcterms:conformsTo">'
+        "EPUB Accessibility 1.1 - WCAG 2.1 Level AA</meta>")
+    morceaux.append('<meta property="a11y:certifiedBy">Usine-IA</meta>')
+    return "".join(morceaux)
+
+
 def construire_epub(
     chemin: Path,
     titre: str,
@@ -72,6 +123,7 @@ def construire_epub(
     sous_titre: str = "",
     description: str = "",
     couverture: Optional[Tuple[str, bytes]] = None,
+    editeur: str = "",
 ) -> Path:
     """Assemble un EPUB.
 
@@ -79,6 +131,11 @@ def construire_epub(
     couverture : (nom de fichier, octets) — JPEG ou PNG.
     """
     identifiant = "urn:uuid:{}".format(uuid.uuid4())
+    # Horodatage reel. Il etait fige a « 2026-01-01T00:00:00Z » pour tous les
+    # livres : deux ouvrages differents portaient la meme date de derniere
+    # modification, ce qu'une chaine de distribution utilise pour decider
+    # quelle version remplacer.
+    horodatage = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     chemin.parent.mkdir(parents=True, exist_ok=True)
 
     fichiers: List[Tuple[str, str, str]] = []  # (id, nom, type mime)
@@ -202,15 +259,19 @@ def construire_epub(
             "OEBPS/content.opf",
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" '
-            'unique-identifier="pub-id">'
+            'unique-identifier="pub-id" xml:lang="{langue}" '
+            'prefix="a11y: http://www.idpf.org/epub/vocab/package/a11y/#">'
             '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
             '<dc:identifier id="pub-id">{id}</dc:identifier>'
             "<dc:title>{titre}</dc:title>"
             "<dc:creator>{auteur}</dc:creator>"
             "<dc:language>{langue}</dc:language>"
             "<dc:description>{desc}</dc:description>"
-            '<meta property="dcterms:modified">2026-01-01T00:00:00Z</meta>'
-            "{metacouv}</metadata>"
+            "<dc:publisher>{editeur}</dc:publisher>"
+            "<dc:date>{horodatage}</dc:date>"
+            "<dc:rights>(c) {annee} {auteur}</dc:rights>"
+            '<meta property="dcterms:modified">{horodatage}</meta>'
+            "{acces}{metacouv}</metadata>"
             "<manifest>{manifeste}</manifest>"
             '<spine toc="ncx">{colonne}</spine></package>'.format(
                 id=identifiant,
@@ -218,6 +279,10 @@ def construire_epub(
                 auteur=_xml(auteur or "Usine-IA"),
                 langue=langue,
                 desc=_xml(description[:600]),
+                editeur=_xml(editeur or auteur or "Usine-IA"),
+                horodatage=horodatage,
+                annee=horodatage[:4],
+                acces=metadonnees_accessibilite(bool(couverture)),
                 metacouv=meta_couverture,
                 manifeste="".join(manifeste),
                 colonne="".join(colonne),

@@ -65,6 +65,35 @@ formats livrés (PDF, EPUB, HTML), et indiquez le nombre de pages.
   case à cocher.
 - **Mentionnez l'usage de l'IA** si votre plateforme l'exige (Amazon KDP
   l'impose). La licence livrée avec chaque produit contient déjà cette mention.
+- **Accessibilité — obligatoire depuis le 28 juin 2025.** L'European
+  Accessibility Act s'applique aux livres numériques vendus dans l'Union.
+  Les EPUB produits portent leurs métadonnées d'accessibilité et la notice
+  livrée contient une déclaration. **Il vous reste deux choses à faire** :
+  publier la déclaration d'accessibilité sur votre fiche produit (reprenez le
+  texte de la section « Accessibilité » du `LISEZ-MOI.md`), et répondre aux
+  demandes de format adapté. Les micro-entreprises de moins de 10 personnes
+  et 2 M€ de chiffre d'affaires bénéficient d'une exemption partielle —
+  vérifiez votre situation, la charge de la preuve vous incombe.
+
+### La cadence de publication n'est pas la cadence de production
+
+C'est le piège le plus coûteux, et il ne vient pas du logiciel.
+
+`usine usine` sait fabriquer plusieurs produits par jour. **Les publier au
+même rythme est le profil exact d'un compte qui se fait fermer.** Amazon KDP
+plafonne à trois titres par jour et ferme les comptes de contenu IA déposé en
+volume ; Etsy et Gumroad suspendent sur signalement de contenu dupliqué.
+
+Produisez en lot, publiez lentement :
+
+| | |
+|---|---|
+| Production | autant que votre budget d'appels le permet |
+| Publication | **un à deux produits par semaine et par plateforme**, au début |
+| Avant chaque dépôt | `usine doublons`, et une relecture humaine réelle |
+
+Un compte fermé emporte tout l'historique de ventes et les avis accumulés.
+Reconstituer cela prend des mois ; ralentir les dépôts ne coûte rien.
 
 ## 5. Trouver les dix premiers acheteurs
 

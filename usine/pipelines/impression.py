@@ -151,7 +151,8 @@ def produire(ctx: Contexte, pages: int = 12) -> Dict[str, Any]:
         f["titre"], f["consigne"], f["disposition"]) for f in cahier["fiches"]]
     chemin_html = dossier / "lire.html"
     ecrire_page(chemin_html, titre, "\n".join(corps), cahier.get("sous_titre", ""),
-                ctx.auteur, couverture=couverture.name if couverture else None)
+                ctx.auteur, langue=ctx.langue_iso,
+                couverture=couverture.name if couverture else None)
     fichiers.append(chemin_html)
 
     resume = {

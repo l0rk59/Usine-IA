@@ -49,6 +49,34 @@ def identifiant(type_produit: str, titre: str) -> str:
         secrets.token_hex(2))
 
 
+# Le reglage « langue » est saisi en clair — « francais », « anglais » — mais
+# un EPUB, un PDF et un lecteur d'ecran attendent un code BCP 47. La chaine
+# ebook faisait la conversion pour elle seule, sur deux langues ; les huit
+# autres types livraient « fr » quoi qu'on demande. Un lecteur d'ecran
+# prononcait donc un texte anglais avec la phonetique francaise.
+CODES_LANGUE = {
+    "francais": "fr", "french": "fr", "fr": "fr",
+    "anglais": "en", "english": "en", "en": "en",
+    "espagnol": "es", "spanish": "es", "es": "es",
+    "allemand": "de", "german": "de", "de": "de",
+    "italien": "it", "italian": "it", "it": "it",
+    "portugais": "pt", "portuguese": "pt", "pt": "pt",
+    "neerlandais": "nl", "dutch": "nl", "nl": "nl",
+}
+
+
+def code_langue(nom: str, defaut: str = "fr") -> str:
+    """Code BCP 47 a partir d'un nom de langue ecrit en clair."""
+    propre = unicodedata.normalize("NFKD", (nom or "").strip().lower())
+    propre = propre.encode("ascii", "ignore").decode("ascii")
+    if propre in CODES_LANGUE:
+        return CODES_LANGUE[propre]
+    for cle, code in CODES_LANGUE.items():
+        if propre.startswith(cle[:4]) and len(cle) > 3:
+            return code
+    return defaut
+
+
 @dataclass
 class Contexte:
     """Tout ce dont une chaine de production a besoin."""
@@ -68,6 +96,11 @@ class Contexte:
     produit_id: str = ""
     demarre_le: float = field(default_factory=time.time)
     dossier: Path = field(default_factory=Path)
+
+    @property
+    def langue_iso(self) -> str:
+        """Code BCP 47 de la langue de redaction, pour les metadonnees."""
+        return code_langue(self.langue)
     journal: Callable[[str], None] = print
     meta: Dict[str, Any] = field(default_factory=dict)
 

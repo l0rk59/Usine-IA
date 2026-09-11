@@ -227,6 +227,7 @@ def _exporter(ctx: Contexte, titre: str, reseau: str, calendrier: List[Dict[str,
         if post["hashtags"]:
             corps.append("<p><code>{}</code></p>".format(post["hashtags"]))
     chemin_html = dossier / "lire.html"
-    ecrire_page(chemin_html, titre, "\n".join(corps), "Pack de contenu " + reseau, ctx.auteur)
+    ecrire_page(chemin_html, titre, "\n".join(corps), "Pack de contenu " + reseau,
+                ctx.auteur, langue=ctx.langue_iso)
     fichiers.append(chemin_html)
     return fichiers

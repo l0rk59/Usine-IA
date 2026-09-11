@@ -237,6 +237,7 @@ def _exporter(ctx: Contexte, boite: Dict[str, Any]) -> List[Path]:
         corps.append(D.vers_html(D.analyser(_markdown_outil(outil)), niveau_depart=3))
     chemin_html = dossier / "lire.html"
     ecrire_page(chemin_html, titre, "\n".join(corps), boite.get("promesse", ""), ctx.auteur,
+                langue=ctx.langue_iso,
                 couverture=couverture.name if couverture else None)
     fichiers.append(chemin_html)
     return fichiers

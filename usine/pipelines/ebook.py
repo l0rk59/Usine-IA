@@ -358,7 +358,7 @@ def exporter(
         formats=("md", "pdf", "epub", "html", "txt"),
         police_corps="Times-Roman",
         style_couverture="modern editorial book cover, {}".format(ctx.sujet),
-        langue="fr" if ctx.langue.lower().startswith("fran") else "en",
+        langue=ctx.langue_iso,
         libelle_sections="chapitres",
     )
     return livraison.livrer(ctx, produit)

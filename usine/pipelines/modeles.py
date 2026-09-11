@@ -200,6 +200,7 @@ def _exporter(ctx: Contexte, systeme: Dict[str, Any], guide: str) -> List[Path]:
                          for c in base["colonnes"]) + "</table>")
     chemin_html = dossier / "lire.html"
     ecrire_page(chemin_html, titre, "\n".join(corps), systeme.get("promesse", ""),
-                ctx.auteur, couverture=couverture.name if couverture else None)
+                ctx.auteur, langue=ctx.langue_iso,
+                couverture=couverture.name if couverture else None)
     fichiers.append(chemin_html)
     return fichiers

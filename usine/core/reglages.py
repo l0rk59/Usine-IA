@@ -34,7 +34,7 @@ DEFAUTS: Dict[str, Any] = {
     # --- budget de production continue (0 = pas de limite) ---
     "budget_appels_jour": 250,
     "budget_appels_produit": 80,
-    "budget_produits_jour": 4,
+    "budget_produits_jour": 3,
     "budget_minutes_produit": 45,
     "pause_entre_produits": 60,   # secondes, laisse les quotas par minute respirer
 }
@@ -59,7 +59,8 @@ DESCRIPTIONS: Dict[str, str] = {
     "signature_ia": "Mentionner l'assistance IA dans la licence livree",
     "budget_appels_jour": "Appels IA maximum par jour en mode usine (0 = illimite)",
     "budget_appels_produit": "Appels IA maximum pour un seul produit",
-    "budget_produits_jour": "Produits maximum fabriques par jour",
+    "budget_produits_jour": "Produits maximum fabriques par jour "
+                            "(produire n'est pas publier : voir docs/VENDRE.md)",
     "budget_minutes_produit": "Duree maximum d'un produit, en minutes",
     "pause_entre_produits": "Pause entre deux produits, en secondes",
 }

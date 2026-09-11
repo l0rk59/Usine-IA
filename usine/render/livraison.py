@@ -72,7 +72,10 @@ class Produit:
     # manuel d'une formation s'appelle « ...-manuel », mais son cahier
     # d'exercices part du meme nom de base, pas du nom du manuel.
     suffixe_pdf: str = ""
-    langue: str = "fr"
+    # Vide par defaut : la langue vient du contexte de production. Une valeur
+    # en dur ici annoncait « fr » dans les metadonnees de TOUS les produits,
+    # y compris ceux rediges dans une autre langue.
+    langue: str = ""
     # « 8 chapitres » est plus juste que « 8 sections » pour un ebook : chaque
     # type garde son vocabulaire plutot que d'heriter d'un terme generique.
     libelle_sections: str = "section(s)"
@@ -94,6 +97,7 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
     fichiers: List[Path] = []
     formats = set(produit.formats)
     base = produit.base()
+    langue = produit.langue or getattr(ctx, "langue_iso", "fr")
 
     # --- couverture (avant le PDF, qui peut l'incorporer) -----------------
     couverture = None
@@ -169,8 +173,9 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
             chemin, produit.titre, ctx.auteur,
             [(bloc.titre, bloc.rendu_html or D.vers_html(blocs_md, niveau_depart=2))
              for bloc, blocs_md in blocs_texte],
-            langue=produit.langue, sous_titre=produit.sous_titre,
-            description=produit.promesse, couverture=image)
+            langue=langue, sous_titre=produit.sous_titre,
+            description=produit.promesse, couverture=image,
+            editeur=getattr(ctx, "marque", "") or "")
         fichiers.append(chemin)
 
     # --- HTML ---------------------------------------------------------------
@@ -181,7 +186,7 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
             corps.append(bloc.rendu_html or D.vers_html(blocs_md, niveau_depart=3))
         chemin = dossier / "lire.html"
         ecrire_page(chemin, produit.titre, "\n".join(corps),
-                    sous_titre=produit.sous_titre,
+                    sous_titre=produit.sous_titre, langue=langue,
                     meta="{} — {} {}".format(ctx.auteur, len(blocs_texte),
                                              produit.libelle_sections),
                     couverture=couverture.name if couverture else None)
@@ -224,7 +229,10 @@ def _document(produit: Produit, ctx: Any,
               couverture: Optional[Tuple[str, Any]]) -> DocumentPDF:
     doc = DocumentPDF(format_page=produit.format_page, marge=produit.marge,
                       titre_courant=produit.titre,
-                      police_corps=produit.police_corps)
+                      police_corps=produit.police_corps,
+                      titre_document=produit.titre, auteur=ctx.auteur,
+                      sujet=produit.sous_titre or produit.promesse,
+                      langue=produit.langue or getattr(ctx, "langue_iso", "fr"))
     poser_couverture(doc, produit.titre, produit.sous_titre, ctx.auteur,
                      couverture)
     return doc
@@ -255,7 +263,9 @@ def document(ctx: Any, titre: str, sous_titre: str,
     """
     doc = DocumentPDF(format_page=format_page, marge=marge,
                       police_corps=police_corps,
-                      titre_courant=titre_courant or titre)
+                      titre_courant=titre_courant or titre,
+                      titre_document=titre, auteur=ctx.auteur,
+                      sujet=sous_titre, langue=getattr(ctx, "langue_iso", "fr"))
     if couverture is None:
         poser_couverture(doc, titre, sous_titre, ctx.auteur, None)
     elif couverture.suffix.lower() in (".jpg", ".jpeg"):

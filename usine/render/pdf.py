@@ -7,6 +7,7 @@ Aucune compilation requise : installable sur Termux en une seconde.
 
 from __future__ import annotations
 
+import time
 import zlib
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -24,6 +25,33 @@ POLICES_PDF = {
     "Times-Bold": "F5",
     "Times-Italic": "F6",
 }
+
+
+def _chaine_pdf(texte: str) -> str:
+    """Chaine litterale PDF : parentheses et antislashs echappes.
+
+    Encodee en PDFDocEncoding via latin-1, qui couvre les accents francais.
+    Un titre non echappe contenant une parenthese cassait la structure du
+    fichier sans qu'aucun lecteur ne dise pourquoi.
+    """
+    propre = (texte or "").replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)")
+    return "({})".format(propre.encode("latin-1", "replace").decode("latin-1"))
+
+
+def _dictionnaire_info(titre: str, auteur: str, sujet: str) -> bytes:
+    horodatage = time.strftime("D:%Y%m%d%H%M%S+00'00'", time.gmtime())
+    champs = [
+        ("/Title", _chaine_pdf(titre)),
+        ("/Author", _chaine_pdf(auteur)),
+        ("/Subject", _chaine_pdf(sujet)),
+        ("/Creator", _chaine_pdf("Usine-IA")),
+        ("/Producer", _chaine_pdf("Usine-IA - moteur PDF ecrit a la main")),
+        ("/CreationDate", "({})".format(horodatage)),
+        ("/ModDate", "({})".format(horodatage)),
+    ]
+    corps = " ".join("{} {}".format(nom, valeur) for nom, valeur in champs
+                     if valeur not in ("()", ""))
+    return ("<< {} >>".format(corps)).encode("latin-1", "replace")
 
 
 def _echapper(texte: str) -> bytes:
@@ -74,12 +102,20 @@ class DocumentPDF:
         police_corps: str = "Times-Roman",
         police_titre: str = "Helvetica-Bold",
         titre_courant: str = "",
+        titre_document: str = "",
+        auteur: str = "",
+        sujet: str = "",
+        langue: str = "fr",
     ):
         self.largeur, self.hauteur = format_page
         self.marge = marge
         self.police_corps = police_corps
         self.police_titre = police_titre
         self.titre_courant = titre_courant
+        self.titre_document = titre_document or titre_courant
+        self.auteur = auteur
+        self.sujet = sujet
+        self.langue = langue
 
         self._pages: List[Tuple[List[str], bool]] = []
         self._flux: List[str] = []
@@ -673,8 +709,15 @@ class DocumentPDF:
                 nb_pages, " ".join("{} 0 R".format(n) for n in refs_pages)
             ).encode("latin-1")
         )
+        # Sans dictionnaire /Info, le fichier s'affiche « Untitled » dans les
+        # lecteurs et arrive sans auteur chez les distributeurs. Sans /Lang,
+        # un lecteur d'ecran doit deviner la langue — il devine l'anglais.
+        num_info = ajouter(_dictionnaire_info(
+            self.titre_document, self.auteur, self.sujet))
         objets[num_catalogue - 1] = (
-            "<< /Type /Catalog /Pages {} 0 R >>".format(num_pages).encode("latin-1")
+            "<< /Type /Catalog /Pages {} 0 R /Lang {} "
+            "/ViewerPreferences << /DisplayDocTitle true >> >>".format(
+                num_pages, _chaine_pdf(self.langue)).encode("latin-1")
         )
 
         sortie = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
@@ -691,8 +734,9 @@ class DocumentPDF:
         for decalage in decalages:
             sortie += "{:010d} 00000 n \n".format(decalage).encode("latin-1")
         sortie += (
-            "trailer\n<< /Size {} /Root {} 0 R >>\nstartxref\n{}\n%%EOF\n".format(
-                len(objets) + 1, num_catalogue, debut_xref
+            "trailer\n<< /Size {} /Root {} 0 R /Info {} 0 R >>\n"
+            "startxref\n{}\n%%EOF\n".format(
+                len(objets) + 1, num_catalogue, num_info, debut_xref
             ).encode("latin-1")
         )
 
