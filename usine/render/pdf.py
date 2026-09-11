@@ -378,6 +378,110 @@ class DocumentPDF:
             self._y -= 4
         self._y -= 8
 
+    def tableau(
+        self,
+        entetes: List[str],
+        lignes: List[List[str]],
+        taille: float = 9.5,
+        lignes_vides: int = 0,
+    ) -> None:
+        """Tableau a colonnes egales, avec en-tete colore et lignes a remplir."""
+        colonnes = max(len(entetes), 1)
+        largeur_col = self.largeur_utile / colonnes
+        hauteur_ligne = taille * 2.1
+
+        def dessiner_entete() -> None:
+            self._place(hauteur_ligne * 2)
+            self.rectangle(self.marge, self._y - hauteur_ligne + taille,
+                           self.largeur_utile, hauteur_ligne, (0.09, 0.36, 0.72))
+            for index, entete in enumerate(entetes):
+                libelle = self._tronquer(str(entete), self.police_titre, taille,
+                                         largeur_col - 10)
+                self._texte(libelle, self.marge + index * largeur_col + 5, self._y,
+                            self.police_titre, taille, (1, 1, 1))
+            self._y -= hauteur_ligne
+
+        dessiner_entete()
+        toutes = [[str(c) for c in ligne] for ligne in lignes]
+        toutes += [[""] * colonnes for _ in range(max(0, lignes_vides))]
+        for numero, ligne in enumerate(toutes):
+            if self._y - hauteur_ligne < self.marge + 26:
+                self.nouvelle_page()
+                dessiner_entete()
+            if numero % 2 == 1:
+                self.rectangle(self.marge, self._y - hauteur_ligne + taille,
+                               self.largeur_utile, hauteur_ligne, (0.96, 0.97, 0.99))
+            for index in range(colonnes):
+                cellule = ligne[index] if index < len(ligne) else ""
+                if cellule:
+                    self._texte(
+                        self._tronquer(cellule, self.police_corps, taille,
+                                       largeur_col - 10),
+                        self.marge + index * largeur_col + 5, self._y,
+                        self.police_corps, taille, (0.12, 0.12, 0.14),
+                    )
+                self.rectangle(self.marge + index * largeur_col,
+                               self._y - hauteur_ligne + taille, 0.5, hauteur_ligne,
+                               (0.85, 0.88, 0.92))
+            self.rectangle(self.marge, self._y - hauteur_ligne + taille,
+                           self.largeur_utile, 0.5, (0.85, 0.88, 0.92))
+            self._y -= hauteur_ligne
+        self.rectangle(self.marge + self.largeur_utile - 0.5,
+                       self._y + taille, 0.5, 0, (0.85, 0.88, 0.92))
+        self._y -= 14
+
+    def _tronquer(self, texte: str, police: str, taille: float,
+                  largeur: float) -> str:
+        if largeur_texte(texte, police, taille) <= largeur:
+            return texte
+        coupe = len(texte)
+        while coupe > 1 and largeur_texte(texte[:coupe] + "...", police,
+                                          taille) > largeur:
+            coupe -= 1
+        return texte[:coupe] + "..."
+
+    def grille(self, colonnes: int = 7, rangees: int = 5, hauteur: float = 0,
+               titres: Optional[List[str]] = None) -> None:
+        """Grille vierge : planning hebdomadaire, calendrier, tableau de suivi."""
+        hauteur = hauteur or min(72.0, (self._y - self.marge - 40) / max(rangees, 1))
+        largeur_col = self.largeur_utile / max(colonnes, 1)
+        total = hauteur * rangees + (18 if titres else 0)
+        self._place(total + 12)
+        if titres:
+            for index in range(colonnes):
+                libelle = titres[index] if index < len(titres) else ""
+                if libelle:
+                    largeur = largeur_texte(libelle, self.police_titre, 9)
+                    self._texte(libelle,
+                                self.marge + index * largeur_col
+                                + (largeur_col - largeur) / 2,
+                                self._y, self.police_titre, 9, (0.25, 0.3, 0.4))
+            self._y -= 16
+        haut = self._y + 8
+        bas = haut - hauteur * rangees
+        for index in range(colonnes + 1):
+            self.rectangle(self.marge + index * largeur_col, bas, 0.6,
+                           hauteur * rangees, (0.8, 0.84, 0.9))
+        for rangee in range(rangees + 1):
+            self.rectangle(self.marge, bas + rangee * hauteur, self.largeur_utile,
+                           0.6, (0.8, 0.84, 0.9))
+        self._y = bas - 16
+
+    def points(self, espacement: float = 16.0, hauteur: float = 0) -> None:
+        """Fond pointille : pages de notes libres, bullet journal."""
+        hauteur = hauteur or (self._y - self.marge - 20)
+        if hauteur < espacement:
+            return
+        haut = self._y
+        y = haut
+        while y > haut - hauteur:
+            x = self.marge
+            while x < self.marge + self.largeur_utile:
+                self.rectangle(x, y, 1.1, 1.1, (0.74, 0.78, 0.84))
+                x += espacement
+            y -= espacement
+        self._y = haut - hauteur - 10
+
     # -- pages speciales -------------------------------------------------
     def page_couverture(
         self,

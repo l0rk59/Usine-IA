@@ -24,10 +24,22 @@ CREATE TABLE IF NOT EXISTS appels (
     ok INTEGER NOT NULL DEFAULT 1,
     tokens INTEGER DEFAULT 0,
     latence REAL DEFAULT 0,
-    erreur TEXT
+    erreur TEXT,
+    cle_id TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_appels_f_ts ON appels(fournisseur, ts);
 CREATE INDEX IF NOT EXISTS idx_appels_f_jour ON appels(fournisseur, jour);
+CREATE INDEX IF NOT EXISTS idx_appels_cle ON appels(fournisseur, cle_id, jour);
+
+CREATE TABLE IF NOT EXISTS cles_journal (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fournisseur TEXT NOT NULL,
+    cle_id TEXT NOT NULL,
+    raison TEXT,
+    repos REAL,
+    ts REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cles_journal ON cles_journal(fournisseur, cle_id);
 
 CREATE TABLE IF NOT EXISTS cache (
     cle TEXT PRIMARY KEY,
@@ -125,13 +137,44 @@ def enregistrer_appel(
     tokens: int = 0,
     latence: float = 0.0,
     erreur: str = "",
+    cle_id: str = "",
 ) -> None:
     now = time.time()
     with cursor() as cur:
         cur.execute(
-            "INSERT INTO appels(fournisseur, modele, ts, jour, ok, tokens, latence, erreur)"
-            " VALUES (?,?,?,?,?,?,?,?)",
-            (fournisseur, modele, now, _jour(now), 1 if ok else 0, tokens, latence, erreur[:400]),
+            "INSERT INTO appels"
+            "(fournisseur, modele, ts, jour, ok, tokens, latence, erreur, cle_id)"
+            " VALUES (?,?,?,?,?,?,?,?,?)",
+            (fournisseur, modele, now, _jour(now), 1 if ok else 0, tokens, latence,
+             erreur[:400], cle_id),
+        )
+
+
+def compteur_jour_cle(fournisseur: str, cle_id: str) -> int:
+    """Appels du jour imputes a une cle precise du pool."""
+    with cursor() as cur:
+        cur.execute(
+            "SELECT COUNT(*) FROM appels WHERE fournisseur=? AND cle_id=? AND jour=?",
+            (fournisseur, cle_id, _jour()),
+        )
+        return int(cur.fetchone()[0])
+
+
+def compteur_minute_cle(fournisseur: str, cle_id: str) -> int:
+    with cursor() as cur:
+        cur.execute(
+            "SELECT COUNT(*) FROM appels WHERE fournisseur=? AND cle_id=? AND ts > ?",
+            (fournisseur, cle_id, time.time() - 60),
+        )
+        return int(cur.fetchone()[0])
+
+
+def journal_cle(fournisseur: str, cle_id: str, raison: str, repos: float) -> None:
+    with cursor() as cur:
+        cur.execute(
+            "INSERT INTO cles_journal(fournisseur, cle_id, raison, repos, ts)"
+            " VALUES (?,?,?,?,?)",
+            (fournisseur, cle_id, raison[:200], repos, time.time()),
         )
 
 

@@ -18,6 +18,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 
+from . import cles as pool_cles
 from . import config, store
 from .http import HttpErreur, post_json
 
@@ -38,6 +39,7 @@ class Reponse:
     modele: str
     tokens: int = 0
     depuis_cache: bool = False
+    cle: str = ""          # empreinte masquee de la cle utilisee
 
 
 def definir_simulateur(fonction) -> None:
@@ -83,6 +85,7 @@ def _appel(
     max_tokens: int,
     json_mode: bool,
     timeout: int,
+    cle: Optional[pool_cles.Cle] = None,
 ) -> Reponse:
     modele = p.model_for(role)
     charge: Dict[str, Any] = {
@@ -97,9 +100,8 @@ def _appel(
 
     entetes = {"Content-Type": "application/json"}
     entetes.update(p.extra_headers)
-    cle = p.api_key
-    if cle:
-        entetes["Authorization"] = "Bearer {}".format(cle)
+    if cle is not None and cle.valeur:
+        entetes["Authorization"] = "Bearer {}".format(cle.valeur)
 
     url = p.base_url.rstrip("/") + "/chat/completions"
     debut = time.time()
@@ -112,8 +114,10 @@ def _appel(
     if not texte:
         raise HttpErreur(502, "reponse vide de {}".format(p.name))
     tokens = int((data.get("usage") or {}).get("total_tokens") or 0)
-    store.enregistrer_appel(p.name, modele, True, tokens, latence)
-    return Reponse(texte=texte, fournisseur=p.name, modele=modele, tokens=tokens)
+    identifiant = cle.id if cle else ""
+    store.enregistrer_appel(p.name, modele, True, tokens, latence, cle_id=identifiant)
+    return Reponse(texte=texte, fournisseur=p.name, modele=modele, tokens=tokens,
+                   cle=cle.affichage if cle else "")
 
 
 def generer(
@@ -126,26 +130,39 @@ def generer(
     cache: bool = True,
     timeout: int = 150,
     tentatives_par_fournisseur: int = 2,
+    eviter: Optional[Sequence[str]] = None,
 ) -> Reponse:
-    """Genere du texte en basculant de fournisseur en fournisseur si besoin."""
+    """Genere du texte en basculant de fournisseur en fournisseur si besoin.
+
+    `eviter` ecarte des fournisseurs nommes. C'est ce qui permet de faire
+    relire un texte par un modele different de celui qui l'a ecrit : un modele
+    qui se relit lui-meme confirme ses propres erreurs au lieu de les voir.
+    """
     messages: List[Dict[str, str]] = []
     if systeme:
         messages.append({"role": "system", "content": systeme})
     messages.append({"role": "user", "content": invite})
 
-    cle = _cle_cache(messages, role, temperature)
+    cle_cache = _cle_cache(messages, role, temperature)
     if cache:
-        garde = store.cache_get(cle)
+        garde = store.cache_get(cle_cache)
         if garde is not None:
             return Reponse(garde, "cache", role, depuis_cache=True)
 
     if _SIMULATEUR is not None:
         texte = _SIMULATEUR(messages, role)
         if cache:
-            store.cache_set(cle, texte, "simulateur", role)
+            store.cache_set(cle_cache, texte, "simulateur", role)
         return Reponse(texte, "simulateur", role)
 
     fournisseurs = config.active_providers()
+    if eviter:
+        exclus = {n.lower() for n in eviter}
+        restants = [f for f in fournisseurs if f.name not in exclus]
+        # On n'ecarte un fournisseur que s'il en reste un autre : mieux vaut une
+        # relecture par le meme modele que pas de relecture du tout.
+        if restants:
+            fournisseurs = restants
     if not fournisseurs:
         raise PlusDeFournisseur(
             "Aucun fournisseur configure. Lancez 'usine cles' pour la marche a suivre."
@@ -156,39 +173,73 @@ def generer(
         if not _quota_ok(p):
             erreurs.append("{} : quota journalier atteint ou en repos".format(p.name))
             continue
-        pause = _attente_rpm(p)
-        if pause:
-            time.sleep(pause)
 
-        for essai in range(tentatives_par_fournisseur):
-            try:
-                rep = _appel(p, messages, role, temperature, max_tokens, json_mode, timeout)
-                if cache:
-                    store.cache_set(cle, rep.texte, rep.fournisseur, rep.modele)
-                return rep
-            except HttpErreur as exc:
-                store.enregistrer_appel(p.name, p.model_for(role), False, 0, 0, str(exc))
-                erreurs.append("{} : {}".format(p.name, exc))
-                if exc.statut in (401, 403):
-                    _REPOS[p.name] = time.time() + 3600  # cle invalide : on l'ecarte
-                    break
-                if exc.statut == 404:
-                    _REPOS[p.name] = time.time() + 1800  # modele inconnu chez ce fournisseur
-                    break
-                if exc.statut == 429:
-                    _REPOS[p.name] = time.time() + 90
-                    break
-                if exc.statut == 402:
-                    # Credit ou quota anonyme epuise : inutile d'insister.
-                    _REPOS[p.name] = time.time() + 1800
-                    break
-                if not exc.temporaire:
-                    break
-                time.sleep(min(8.0, 1.5 * (essai + 1)) + random.random())
-            except Exception as exc:  # reponse illisible, JSON casse...
-                store.enregistrer_appel(p.name, p.model_for(role), False, 0, 0, repr(exc))
-                erreurs.append("{} : {}".format(p.name, exc))
+        # Un fournisseur peut detenir plusieurs cles : on les essaie toutes avant
+        # de le declarer indisponible. C'est la rotation de cles.
+        lot = pool_cles.pool(p.name, p.api_key_env)
+        candidates: List[Optional[pool_cles.Cle]] = []
+        if p.api_key_env and len(lot):
+            candidates = list(lot.ordonnees(p.rpd))
+            if not candidates:
+                erreurs.append("{} : toutes les cles sont saturees".format(p.name))
+                continue
+        else:
+            candidates.append(None)  # fournisseur local ou sans cle
+
+        fournisseur_hors_jeu = False
+        for cle in candidates:
+            if fournisseur_hors_jeu:
                 break
+            pause = _attente_rpm(p)
+            if pause:
+                time.sleep(pause)
+
+            for essai in range(tentatives_par_fournisseur):
+                try:
+                    rep = _appel(p, messages, role, temperature, max_tokens,
+                                 json_mode, timeout, cle)
+                    if cache:
+                        store.cache_set(cle_cache, rep.texte, rep.fournisseur,
+                                        rep.modele)
+                    return rep
+                except HttpErreur as exc:
+                    store.enregistrer_appel(p.name, p.model_for(role), False, 0, 0,
+                                            str(exc), cle_id=cle.id if cle else "")
+                    erreurs.append("{}{} : {}".format(
+                        p.name, "/" + cle.affichage if cle else "", exc))
+
+                    if exc.statut in (401, 403):
+                        # Cle refusee : on ecarte la cle, pas le fournisseur.
+                        if cle:
+                            lot.mettre_au_repos(cle, 3600, "cle refusee")
+                        else:
+                            _REPOS[p.name] = time.time() + 3600
+                        break
+                    if exc.statut == 429:
+                        if cle:
+                            lot.mettre_au_repos(cle, 120, "limite de debit")
+                        else:
+                            _REPOS[p.name] = time.time() + 90
+                        break
+                    if exc.statut == 402:
+                        if cle:
+                            lot.mettre_au_repos(cle, 3600, "credit epuise")
+                        else:
+                            _REPOS[p.name] = time.time() + 1800
+                        break
+                    if exc.statut == 404:
+                        # Modele inconnu : changer de cle n'y changerait rien.
+                        _REPOS[p.name] = time.time() + 1800
+                        fournisseur_hors_jeu = True
+                        break
+                    if not exc.temporaire:
+                        break
+                    time.sleep(min(8.0, 1.5 * (essai + 1)) + random.random())
+                except Exception as exc:
+                    store.enregistrer_appel(p.name, p.model_for(role), False, 0, 0,
+                                            repr(exc), cle_id=cle.id if cle else "")
+                    erreurs.append("{} : {}".format(p.name, exc))
+                    break
 
     raise PlusDeFournisseur(
         "Tous les fournisseurs ont echoue :\n  - " + "\n  - ".join(erreurs[-10:])
@@ -234,6 +285,7 @@ def generer_json(
     temperature: float = 0.4,
     max_tokens: int = 4000,
     essais: int = 3,
+    eviter: Optional[Sequence[str]] = None,
 ) -> Any:
     """Comme generer(), mais garantit un objet Python decode depuis du JSON."""
     consigne = (
@@ -250,6 +302,7 @@ def generer_json(
             max_tokens=max_tokens,
             json_mode=True,
             cache=(tentative == 0),
+            eviter=eviter,
         )
         try:
             return extraire_json(rep.texte)
@@ -269,6 +322,7 @@ def diagnostic() -> List[Dict[str, Any]]:
                 "local": p.local,
                 "sans_cle": p.keyless,
                 "cle_env": p.api_key_env,
+                "nb_cles": len(pool_cles.pool(p.name, p.api_key_env)),
                 "modele": p.model_for("standard"),
                 "aujourdhui": store.compteur_jour(p.name),
                 "rpd": p.rpd,

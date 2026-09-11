@@ -10,7 +10,9 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-from ..core import images, llm
+from ..agents import equipe
+from ..agents.base import Critique
+from ..core import evenements, images, llm, securite
 from ..render import document as D
 from ..render.epub import construire_epub
 from ..render.page import ecrire_page
@@ -39,7 +41,7 @@ def construire_plan(ctx: Contexte) -> Dict[str, Any]:
         '"points": ["...", "..."]}}]}}'
     ).format(sujet=ctx.sujet, audience=ctx.audience, n=ctx.nb_chapitres)
 
-    plan = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="costaud", temperature=0.65)
+    plan = equipe.ARCHITECTE.travailler_json(ctx, invite, max_tokens=3000)
 
     if not isinstance(plan, dict) or not plan.get("chapitres"):
         raise ValueError("Plan invalide renvoye par le modele")
@@ -66,8 +68,8 @@ def construire_plan(ctx: Contexte) -> Dict[str, Any]:
 
 def rediger_chapitre(
     ctx: Contexte, plan: Dict[str, Any], index: int, chapitre: Dict[str, Any]
-) -> str:
-    """Redige un chapitre en markdown, sans repeter le titre de niveau 1."""
+) -> Tuple[str, str]:
+    """Redige un chapitre. Renvoie (markdown, fournisseur utilise)."""
     autres = " | ".join(
         c["titre"] for j, c in enumerate(plan["chapitres"]) if j != index
     )
@@ -101,19 +103,15 @@ def rediger_chapitre(
         autres=autres or "aucun",
         mots=ctx.mots_par_chapitre,
     )
-    reponse = llm.generer(
-        invite,
-        systeme=ctx.systeme(ROLE),
-        role="standard",
-        temperature=0.78,
-        max_tokens=min(4096, int(ctx.mots_par_chapitre * 2.6)),
+    reponse = equipe.REDACTEUR.travailler(
+        ctx, invite, max_tokens=min(4096, int(ctx.mots_par_chapitre * 2.6))
     )
     texte = elaguer_markdown(reponse.texte)
     # Le modele reintroduit parfois un titre h1 : on le retire pour eviter le doublon.
     lignes = texte.split("\n")
     if lignes and lignes[0].startswith("# "):
         lignes.pop(0)
-    return "\n".join(lignes).strip()
+    return "\n".join(lignes).strip(), reponse.fournisseur
 
 
 def rediger_annexe(ctx: Contexte, plan: Dict[str, Any], genre: str) -> Tuple[str, str]:
@@ -145,8 +143,7 @@ def rediger_annexe(ctx: Contexte, plan: Dict[str, Any], genre: str) -> Tuple[str
         sommaire=sommaire,
         consigne=consigne,
     )
-    reponse = llm.generer(invite, systeme=ctx.systeme(ROLE), role="standard",
-                          temperature=0.7, max_tokens=1800)
+    reponse = equipe.REDACTEUR.travailler(ctx, invite, max_tokens=1800)
     return titre, elaguer_markdown(reponse.texte)
 
 
@@ -165,6 +162,12 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
 
     total = len(plan["chapitres"])
     sections: List[Tuple[str, str]] = []
+    qualite: Dict[str, List[Critique]] = {}
+
+    alertes = securite.analyser_sujet(ctx.sujet)
+    for domaine, avertissement in alertes:
+        ctx.journal("  [!] domaine sensible « {} » : {}".format(domaine, avertissement))
+        evenements.publier("alerte", domaine=domaine, detail=avertissement)
 
     ctx.journal("Etape 2/5 — avant-propos...")
     titre_intro, corps_intro = rediger_annexe(ctx, plan, "introduction")
@@ -172,18 +175,33 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
     ctx.etape("introduction")
 
     ctx.journal("Etape 3/5 — redaction des {} chapitres...".format(total))
+    passes = ctx.nb_passes
+    if passes:
+        ctx.journal("  qualite « {} » : {} relecture(s) editoriale(s) par chapitre"
+                    .format(ctx.qualite, passes))
     for index, chapitre in enumerate(plan["chapitres"]):
         ctx.journal("  [{}/{}] {}".format(index + 1, total, chapitre["titre"]))
+        evenements.publier("section", etape="redaction", index=index + 1,
+                           total=total, titre=chapitre["titre"])
         try:
-            corps = rediger_chapitre(ctx, plan, index, chapitre)
+            corps, auteur = rediger_chapitre(ctx, plan, index, chapitre)
         except Exception as exc:
             ctx.journal("     echec : {} — chapitre conserve en resume".format(exc))
             ctx.etape("chapitre-{}".format(index + 1), "echec", str(exc))
-            corps = "## {}\n\n{}\n\n{}".format(
+            corps, auteur = "## {}\n\n{}\n\n{}".format(
                 chapitre.get("objectif") or "Points cles",
                 chapitre.get("objectif", ""),
                 "\n".join("- " + p for p in chapitre.get("points", [])),
-            )
+            ), ""
+        else:
+            if passes:
+                corps, critiques = equipe.affiner(
+                    ctx, corps, chapitre["titre"], plan.get("promesse", ""),
+                    auteur, passes=passes,
+                )
+                qualite[chapitre["titre"]] = critiques
+                if critiques:
+                    ctx.journal("     relecture : " + critiques[-1].resume())
         sections.append((chapitre["titre"], corps))
         ctx.etape("chapitre-{}".format(index + 1), "ok", chapitre["titre"])
 
@@ -195,6 +213,22 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
     ctx.journal("Etape 5/5 — mise en forme et export...")
     fichiers = exporter(ctx, plan, sections)
 
+    if qualite:
+        rapport = equipe.rapport_qualite(qualite)
+        chemin_rapport = dossier / "rapport-qualite.json"
+        chemin_rapport.write_text(
+            json.dumps(rapport, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        if rapport["note_moyenne_finale"] is not None:
+            ctx.journal("  qualite : {} -> {} / 10".format(
+                rapport["note_moyenne_initiale"], rapport["note_moyenne_finale"]))
+    if alertes:
+        (dossier / "AVERTISSEMENT.txt").write_text(
+            securite.CLAUSE_RENFORCEE + "\n\nDomaines detectes : "
+            + ", ".join(d for d, _ in alertes) + "\n",
+            encoding="utf-8",
+        )
+
     mots = sum(D.compter_mots(corps) for _, corps in sections)
     resume = {
         "produit_id": ctx.produit_id,
@@ -204,7 +238,11 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
         "chapitres": total,
         "mots": mots,
         "fichiers": [f.name for f in fichiers],
+        "qualite": equipe.rapport_qualite(qualite) if qualite else None,
+        "alertes": [d for d, _ in alertes],
     }
+    evenements.publier("produit", etat="termine", titre=titre, mots=mots,
+                       dossier=str(dossier))
     terminer(ctx, fichiers, {"mots": mots, "chapitres": total, "promesse": plan.get("promesse")})
     (dossier / "produit.json").write_text(
         json.dumps(resume, ensure_ascii=False, indent=2), encoding="utf-8"

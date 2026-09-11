@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="fr" data-theme="nuit">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Usine-IA — tableau de bord</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%234f9cf9'/%3E%3Cpath d='M8 22V10h3v9h5v-9h3v12z' fill='white'/%3E%3C/svg%3E"/>
+<link rel="stylesheet" href="/statique/tableau.css"/>
+</head>
+<body>
+<div class="enveloppe">
+
+<header class="barre">
+  <div class="logo"></div>
+  <div>
+    <h1>Usine-IA</h1>
+    <span class="version" id="version">chargement...</span>
+  </div>
+  <div class="droite">
+    <button class="discret" id="theme" title="Changer de theme">Jour</button>
+  </div>
+</header>
+
+<div class="scene" id="scene">
+  <canvas id="toile"></canvas>
+  <div class="repli">
+    <div>
+      <strong>Vue 3D indisponible</strong><br/>
+      Le navigateur de cet appareil ne fournit pas WebGL.<br/>
+      Tout le reste du tableau de bord fonctionne normalement.
+    </div>
+  </div>
+  <div class="surcouche">
+    <div>
+      <div class="titre-scene" id="etat-scene">Atelier au repos</div>
+    </div>
+    <div>
+      <div class="compteur"><span id="avancement">0</span><small id="objectif"></small></div>
+      <div class="indice">glissez pour tourner &middot; pincez pour zoomer</div>
+    </div>
+  </div>
+</div>
+
+<div class="carte">
+  <h2>Equipe d'agents</h2>
+  <div class="agents" id="agents"></div>
+  <p class="aide" id="qualite-resume"></p>
+</div>
+
+<div class="carte">
+  <h2>Fabriquer</h2>
+  <label for="type">Type de produit</label>
+  <select id="type"></select>
+
+  <label for="sujet">Sujet</label>
+  <textarea id="sujet" placeholder="ex : la prospection pour freelances debutants"></textarea>
+  <div class="alerte" id="alerte-sujet" hidden></div>
+
+  <label for="audience">Audience</label>
+  <input id="audience" placeholder="ex : freelances qui demarrent"/>
+
+  <div class="duo">
+    <div><label for="ton">Ton</label><select id="ton"></select></div>
+    <div><label for="taille">Volume</label><select id="taille"></select></div>
+  </div>
+  <div class="duo">
+    <div><label for="qualite">Qualite</label><select id="qualite"></select></div>
+    <div><label for="nombre">Quantite</label>
+      <input id="nombre" type="number" min="0" placeholder="auto"/></div>
+  </div>
+  <div class="duo">
+    <div><label for="auteur">Auteur</label><input id="auteur"/></div>
+    <div id="bloc-reseau" hidden><label for="reseau">Reseau</label>
+      <select id="reseau"></select></div>
+  </div>
+
+  <button class="principal" id="lancer">Lancer la fabrication</button>
+  <p class="aide">La fabrication continue meme si vous fermez cette page.</p>
+</div>
+
+<div class="carte">
+  <h2>Journal en direct</h2>
+  <pre class="journal" id="journal"><span class="ligne vide">En attente d'activite...</span></pre>
+</div>
+
+<div class="carte">
+  <h2>Fournisseurs et quotas</h2>
+  <div class="jauges" id="jauges"></div>
+  <p class="aide" id="conseil"></p>
+</div>
+
+<div class="carte">
+  <h2>Produits</h2>
+  <div id="produits"><span class="vide">chargement...</span></div>
+</div>
+
+</div>
+<script src="/statique/scene.js"></script>
+<script src="/statique/app.js"></script>
+</body>
+</html>

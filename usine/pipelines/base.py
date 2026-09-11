@@ -53,6 +53,8 @@ class Contexte:
     marque: str = ""
     hors_ligne: bool = False
     sans_image: bool = False
+    qualite: str = "standard"
+    relectures: int = -1          # -1 : deduit du niveau de qualite
     produit_id: str = ""
     dossier: Path = field(default_factory=Path)
     journal: Callable[[str], None] = print
@@ -61,6 +63,15 @@ class Contexte:
     @property
     def description_ton(self) -> str:
         return TONS.get(self.ton, TONS["pro"])
+
+    @property
+    def nb_passes(self) -> int:
+        """Nombre de relectures editoriales appliquees a chaque section."""
+        if self.relectures >= 0:
+            return self.relectures
+        from ..core import reglages
+
+        return reglages.relectures_pour(self.qualite)
 
     @property
     def nb_chapitres(self) -> int:

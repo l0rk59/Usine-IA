@@ -35,7 +35,14 @@ SCENARIOS = [
     ("outils", ["outils", "la facturation", "-n", "5", "--sans-image"]),
     ("social", ["social", "le freelancing", "-n", "6", "-r", "linkedin",
                 "--sans-image"]),
+    ("modeles", ["modeles", "le suivi client", "-n", "3", "--sans-image"]),
+    ("impression", ["impression", "la planification hebdomadaire", "-n", "6",
+                    "--sans-image"]),
     ("complet", ["complet", "la meditation au bureau", "-T", "mini", "--sans-image"]),
+    ("qualite", ["ebook", "la negociation", "-T", "mini", "--sans-image",
+                 "--qualite", "exigeant"]),
+    ("reglages", ["reglages"]),
+    ("prompts-systeme", ["prompts-systeme"]),
     ("liste", ["liste"]),
     ("cache", ["cache"]),
     ("docteur", ["docteur"]),
@@ -49,6 +56,9 @@ ATTENDUS = {
     "social": [".pdf", "calendrier.csv", "posts.md"],
     "complet": [".pdf", ".epub", "marketing", "bonus-boite-outils",
                 "bonus-publications"],
+    "modeles": [".pdf", "a-importer", "modeles.md", "systeme.json"],
+    "impression": ["-A4.pdf", "-Lettre-US.pdf", "cahier.json"],
+    "qualite": ["rapport-qualite.json", ".pdf", ".epub"],
 }
 
 

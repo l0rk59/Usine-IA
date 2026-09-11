@@ -108,12 +108,20 @@ class Provider:
 
     @property
     def api_key(self) -> str:
+        """Premiere cle declaree. Le routeur utilise le pool, pas cette propriete."""
         return env(self.api_key_env) if self.api_key_env else ""
+
+    def nb_cles(self) -> int:
+        if not self.api_key_env:
+            return 0
+        from . import cles as pool_cles
+
+        return len(pool_cles.pool(self.name, self.api_key_env))
 
     def available(self) -> bool:
         if self.local or self.keyless:
             return True
-        return bool(self.api_key)
+        return self.nb_cles() > 0
 
     def model_for(self, role: str) -> str:
         return self.models.get(role) or self.models.get("standard") or ""

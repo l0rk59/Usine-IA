@@ -17,8 +17,10 @@ CORPS = (
 
 
 def _combien(invite: str, defaut: int) -> int:
-    for motif in (r"LONGUEUR\s*:\s*(\d+)", r"de\s+(\d+)\s+(?:prompts|publications|outils|idees)",
-                  r"en\s+(\d+)\s+modules", r"calendrier editorial de (\d+)"):
+    for motif in (r"LONGUEUR\s*:\s*(\d+)",
+                  r"de\s+(\d+)\s+(?:prompts|publications|outils|idees|fiches|bases)",
+                  r"en\s+(\d+)\s+modules", r"calendrier editorial de (\d+)",
+                  r"systeme de (\d+) bases"):
         trouve = re.search(motif, invite, re.IGNORECASE)
         if trouve:
             return int(trouve.group(1))
@@ -57,6 +59,49 @@ def simulateur(messages, role):
                 {"titre": "Chapitre modele {}".format(i + 1),
                  "objectif": "Objectif {}".format(i + 1),
                  "points": ["Point A", "Point B", "Point C"]}
+                for i in range(n)
+            ],
+        }, ensure_ascii=False)
+
+    # --- systeme de modeles (Notion / tableur) ------------------------------
+    if '"bases"' in invite:
+        n = _combien(invite, 4)
+        return json.dumps({
+            "titre": "Le systeme de pilotage du freelance",
+            "promesse": "Quatre bases liees pour piloter son activite.",
+            "bases": [
+                {"nom": "Base modele {}".format(i + 1),
+                 "role": "Suivre les elements {}".format(i + 1),
+                 "colonnes": [
+                     {"nom": "Nom", "type": "texte", "description": "Intitule"},
+                     {"nom": "Statut", "type": "selection",
+                      "options": ["A faire", "En cours", "Fait"],
+                      "description": "Avancement"},
+                     {"nom": "Echeance", "type": "date", "description": "Date limite"},
+                 ],
+                 "vues": [{"nom": "Cette semaine", "filtre": "Echeance < 7j",
+                           "tri": "Echeance"}],
+                 "exemples": [["Exemple A", "En cours", "2026-04-01"]]}
+                for i in range(n)
+            ],
+            "mise_en_route": ["Importer les CSV", "Creer les relations"],
+        }, ensure_ascii=False)
+
+    # --- cahier imprimable --------------------------------------------------
+    if '"fiches"' in invite:
+        n = _combien(invite, 12)
+        dispos = ["checklist", "planning", "suivi", "questions", "matrice", "notes"]
+        return json.dumps({
+            "titre": "Le cahier du freelance organise",
+            "sous_titre": "12 fiches a imprimer",
+            "promesse": "Une fiche par decision.",
+            "fiches": [
+                {"titre": "Fiche modele {}".format(i + 1),
+                 "disposition": dispos[i % 6],
+                 "consigne": "Remplissez cette fiche en debut de semaine.",
+                 "elements": ["Point A", "Point B", "Point C", "Point D"],
+                 "colonnes": ["Date", "Action", "Resultat"],
+                 "quadrants": ["Urgent", "Important", "Delegable", "A supprimer"]}
                 for i in range(n)
             ],
         }, ensure_ascii=False)
@@ -195,6 +240,47 @@ def simulateur(messages, role):
                  "premier_canal": "Un groupe de discussion specialise."}
                 for i in range(n)
             ]
+        }, ensure_ascii=False)
+
+    # --- critique editoriale ------------------------------------------------
+    if '"points_forts"' in invite:
+        # Premiere passe severe, passes suivantes clementes : la boucle doit
+        # pouvoir converger et s'arreter d'elle-meme.
+        severe = "deja corrige" not in invite
+        if severe:
+            return json.dumps({
+                "note": 6.0,
+                "points_forts": ["Structure claire"],
+                "problemes": [
+                    {"passage": "Prenons un cas concret.",
+                     "probleme": "Ouverture trop generique.",
+                     "gravite": "majeur",
+                     "correction": "Remplacer par une situation datee et chiffree."},
+                    {"passage": "5 400 euros",
+                     "probleme": "Chiffre presente sans contexte.",
+                     "gravite": "mineur",
+                     "correction": "Preciser qu'il s'agit d'un exemple."},
+                ],
+                "verdict": "A retravailler.",
+            }, ensure_ascii=False)
+        return json.dumps({
+            "note": 8.5, "points_forts": ["Exemples concrets"],
+            "problemes": [], "verdict": "Publiable.",
+        }, ensure_ascii=False)
+
+    # --- revision : le texte corrige ----------------------------------------
+    if "CORRECTIONS A APPLIQUER" in invite:
+        origine = invite.split("--- TEXTE ACTUEL ---")[1].split("--- FIN ---")[0]
+        return "deja corrige\n" + origine.strip()
+
+    # --- controle avant mise en vente ---------------------------------------
+    if '"a_corriger_avant_vente"' in invite:
+        return json.dumps({
+            "pret": True, "note_globale": 8.2,
+            "coherence_promesse": "La promesse est tenue.",
+            "risques": [], "prix_juste": "correct",
+            "a_corriger_avant_vente": ["Relire les chiffres."],
+            "verdict": "Pret pour la mise en vente.",
         }, ensure_ascii=False)
 
     # --- fiche de vente ----------------------------------------------------

@@ -13,11 +13,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from . import __version__
-from .core import config, llm, store
+from .core import cles as pool_cles
+from .core import config, llm, prompts as registre_prompts, reglages, securite, store
 from .core.http import en_ligne
 from .marketing import vente
 from .packaging import livraison
-from .pipelines import boite_outils, ebook, formation, idees, pack_prompts, social
+from .pipelines import (boite_outils, ebook, formation, idees, impression,
+                        modeles, pack_prompts, social)
 from .pipelines.base import Contexte, TAILLES, TONS
 
 # Couleurs ANSI : Termux les gere, mais on s'abstient si la sortie est redirigee.
@@ -54,19 +56,34 @@ BANNIERE = r"""
 
 
 def contexte_depuis(args: argparse.Namespace) -> Contexte:
+    """Construit le contexte : options de la commande, puis reglages, puis defauts."""
+    profil = reglages.charger()
+
+    def choisir(nom: str, defaut_profil: str) -> str:
+        valeur = getattr(args, nom, None)
+        return valeur if valeur else profil.get(defaut_profil, "")
+
     return Contexte(
         sujet=args.sujet,
-        audience=args.audience,
-        langue=args.langue,
-        ton=args.ton,
-        taille=args.taille,
-        auteur=args.auteur,
+        audience=choisir("audience", "audience"),
+        langue=choisir("langue", "langue"),
+        ton=choisir("ton", "ton"),
+        taille=choisir("taille", "taille"),
+        auteur=choisir("auteur", "auteur"),
+        qualite=choisir("qualite", "qualite"),
         prix=getattr(args, "prix", "") or "",
-        marque=getattr(args, "marque", "") or "",
+        marque=getattr(args, "marque", "") or profil.get("marque", ""),
         hors_ligne=args.hors_ligne,
-        sans_image=args.sans_image or args.hors_ligne,
+        sans_image=args.sans_image or args.hors_ligne or not profil.get("images", True),
         journal=lambda message: print("  " + message),
     )
+
+
+def _avertir_sujet(sujet: str) -> None:
+    """Signale les domaines ou un produit genere expose son vendeur."""
+    for domaine, avertissement in securite.analyser_sujet(sujet):
+        alerte("Domaine sensible detecte : {}".format(domaine))
+        print("      " + avertissement)
 
 
 def _verifier_fournisseurs() -> bool:
@@ -153,6 +170,7 @@ def _resume_console(resume: Dict[str, Any]) -> None:
 def cmd_ebook(args: argparse.Namespace) -> int:
     if not _verifier_fournisseurs():
         return 2
+    _avertir_sujet(args.sujet)
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un ebook")
     resume = ebook.produire(ctx)
@@ -198,6 +216,105 @@ def cmd_outils(args: argparse.Namespace) -> int:
         args, ctx, resume, "Boite de {} outils pratiques.".format(resume["outils"])
     ))
     return 0
+
+
+def cmd_modeles(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication de modeles Notion / tableur")
+    resume = modeles.produire(ctx, nombre=args.nombre)
+    _resume_console(_apres_production(
+        args, ctx, resume,
+        "Systeme de {} bases liees, CSV prets a importer.".format(resume["bases"])))
+    return 0
+
+
+def cmd_impression(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication d'un cahier imprimable")
+    resume = impression.produire(ctx, pages=args.nombre)
+    _resume_console(_apres_production(
+        args, ctx, resume,
+        "Cahier de {} fiches a imprimer, formats A4 et Lettre US.".format(
+            resume["fiches"])))
+    return 0
+
+
+def cmd_reglages(args: argparse.Namespace) -> int:
+    if args.definir:
+        modifications = {}
+        for paire in args.definir:
+            if "=" not in paire:
+                erreur("Format attendu : nom=valeur (recu : {})".format(paire))
+                return 1
+            nom, valeur = paire.split("=", 1)
+            nom = nom.strip()
+            if nom not in reglages.DEFAUTS:
+                erreur("Reglage inconnu : {}".format(nom))
+                print("  Reglages valides : " + ", ".join(reglages.DEFAUTS))
+                return 1
+            modifications[nom] = valeur
+        reglages.ecrire(modifications)
+        for nom in modifications:
+            ok("{} = {}".format(nom, reglages.lire(nom)))
+        return 0
+    if args.reinitialiser:
+        reglages.reinitialiser()
+        ok("Reglages remis a zero.")
+        return 0
+    titre_console("Reglages")
+    for ligne in reglages.lignes_affichables():
+        print("  {:<14} {}".format(ligne["nom"], _c(ligne["valeur"], "1")))
+        print("  {:<14} {}".format("", _c(ligne["description"], "2")))
+    print("\n  Modifier : " + _c('usine reglages --definir auteur="Votre Nom"', "1"))
+    print("  Fichier  : " + str(reglages.chemin()))
+    return 0
+
+
+def cmd_prompts_systeme(args: argparse.Namespace) -> int:
+    """Exporter, inspecter ou reinitialiser les prompts de l'usine."""
+    if args.exporter:
+        fichiers = registre_prompts.exporter()
+        titre_console("Prompts exportes")
+        for fichier in fichiers:
+            ok(str(fichier))
+        print("\n  Editez ces fichiers, puis relancez une fabrication :")
+        print("  les modifications sont prises en compte au demarrage suivant.")
+        print("  Revenir aux valeurs d'origine : supprimez le fichier.")
+        return 0
+    if args.reinitialiser:
+        repertoire = registre_prompts.dossier()
+        if repertoire.exists():
+            import shutil
+
+            shutil.rmtree(repertoire)
+        registre_prompts.oublier()
+        ok("Prompts remis aux valeurs d'origine.")
+        return 0
+
+    titre_console("Prompts de l'usine")
+    modifies = registre_prompts.personnalises()
+    for nom, fiche in registre_prompts.agents().items():
+        marque = _c(" (personnalise)", "33") if "agent : " + nom in modifies else ""
+        print("  {} {}{}".format(_c(fiche.get("emoji", "*"), "36"),
+                                 _c(nom, "1"), marque))
+        print("      {}".format(_c(str(fiche.get("mission", ""))[:66], "2")))
+    print()
+    print("  Dossier : " + str(registre_prompts.dossier()))
+    if modifies:
+        alerte("{} element(s) personnalise(s)".format(len(modifies)))
+    else:
+        print("  Aucune personnalisation : " + _c("usine prompts-systeme --exporter", "1"))
+    return 0
+
+
+def cmd_menu(args: argparse.Namespace) -> int:
+    from .menu import menu_principal
+
+    return menu_principal(lambda arguments: principal(arguments))
 
 
 def cmd_social(args: argparse.Namespace) -> int:
@@ -391,9 +508,11 @@ def cmd_docteur(args: argparse.Namespace) -> int:
     for ligne in lignes:
         genre = "local" if ligne["local"] else ("sans cle" if ligne["sans_cle"] else "cle API")
         if ligne["disponible"]:
-            print("  {} {:<13} {:<9} {:<28} {}/{} aujourd'hui".format(
+            nb = ligne.get("nb_cles", 0)
+            suffixe = " [{} cles]".format(nb) if nb > 1 else ""
+            print("  {} {:<13} {:<9} {:<28} {}/{} aujourd'hui{}".format(
                 _c("v", "32"), ligne["nom"], genre, ligne["modele"],
-                ligne["aujourdhui"], ligne["rpd"]))
+                ligne["aujourdhui"], ligne["rpd"], _c(suffixe, "36")))
         else:
             print("  {} {:<13} {:<9} definir {} — {}".format(
                 _c("-", "90"), ligne["nom"], genre, ligne["cle_env"], ligne["inscription"]))
@@ -409,6 +528,15 @@ def cmd_docteur(args: argparse.Namespace) -> int:
             ", ".join(locaux_actifs)))
     else:
         alerte("Aucun fournisseur pret. Lancez : " + _c("usine cles", "1"))
+
+    details = pool_cles.resume()
+    if details:
+        titre_console("Pool de cles — rotation automatique")
+        for detail in details:
+            etat = (_c("disponible", "32") if detail["disponible"]
+                    else _c("repos {}s".format(detail["repos_restant"]), "33"))
+            print("  {:<13} {:<14} {:>4} appels aujourd'hui   {}".format(
+                detail["fournisseur"], detail["cle"], detail["appels_jour"], etat))
 
     stats = store.stats_fournisseurs()
     if stats:
@@ -518,17 +646,22 @@ def cmd_web(args: argparse.Namespace) -> int:
 def _options_communes(sous: argparse.ArgumentParser, avec_sujet: bool = True) -> None:
     if avec_sujet:
         sous.add_argument("sujet", help="le sujet du produit, entre guillemets")
-    sous.add_argument("-a", "--audience", default="un public francophone motive",
+    # Les valeurs par defaut sont vides : elles sont reprises des reglages
+    # (usine reglages), ce qui evite de retaper --auteur a chaque commande.
+    sous.add_argument("-a", "--audience", default="",
                       help="a qui s'adresse le produit")
-    sous.add_argument("-t", "--ton", default="pro", choices=sorted(TONS),
-                      help="ton de redaction (defaut : pro)")
-    sous.add_argument("-T", "--taille", default="standard", choices=sorted(TAILLES),
-                      help="volume du produit (defaut : standard)")
-    sous.add_argument("--auteur", default="Usine-IA", help="nom affiche comme auteur")
-    sous.add_argument("--langue", default="francais", help="langue de redaction")
+    sous.add_argument("-t", "--ton", default="", choices=[""] + sorted(TONS),
+                      help="ton de redaction")
+    sous.add_argument("-T", "--taille", default="", choices=[""] + sorted(TAILLES),
+                      help="volume du produit")
+    sous.add_argument("--auteur", default="", help="nom affiche comme auteur")
+    sous.add_argument("--langue", default="", help="langue de redaction")
     sous.add_argument("--marque", default="", help="nom de votre marque")
     sous.add_argument("--prix", default="", help="prix affiche, ex: 29 EUR")
     sous.add_argument("--contact", default="", help="e-mail de support dans la notice")
+    sous.add_argument("-q", "--qualite", default="",
+                      choices=["", "rapide", "standard", "exigeant"],
+                      help="rapide (sans relecture) | standard (1) | exigeant (2)")
     sous.add_argument("--marketing", action="store_true",
                       help="generer aussi le kit de vente")
     sous.add_argument("--plateforme", default="gumroad",
@@ -569,6 +702,18 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.add_argument("-n", "--nombre", type=int, default=10, help="nombre d'outils")
     p.set_defaults(fonction=cmd_outils)
 
+    p = sous_parseurs.add_parser("modeles",
+                                 help="fabriquer des modeles Notion / tableur")
+    _options_communes(p)
+    p.add_argument("-n", "--nombre", type=int, default=4, help="nombre de bases")
+    p.set_defaults(fonction=cmd_modeles)
+
+    p = sous_parseurs.add_parser("impression",
+                                 help="fabriquer un cahier imprimable")
+    _options_communes(p)
+    p.add_argument("-n", "--nombre", type=int, default=12, help="nombre de fiches")
+    p.set_defaults(fonction=cmd_impression)
+
     p = sous_parseurs.add_parser("social", help="fabriquer un pack de publications")
     _options_communes(p)
     p.add_argument("-n", "--nombre", type=int, default=30, help="nombre de publications")
@@ -604,6 +749,24 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.add_argument("-n", "--nombre", type=int, default=25)
     p.set_defaults(fonction=cmd_liste)
 
+    p = sous_parseurs.add_parser("menu", help="menu interactif (recommande sur mobile)")
+    p.set_defaults(fonction=cmd_menu)
+
+    p = sous_parseurs.add_parser("reglages", help="consulter ou modifier vos reglages")
+    p.add_argument("--definir", nargs="+", metavar="NOM=VALEUR",
+                   help='ex : --definir auteur="Votre Nom" qualite=exigeant')
+    p.add_argument("--reinitialiser", action="store_true")
+    p.set_defaults(fonction=cmd_reglages)
+
+    p = sous_parseurs.add_parser(
+        "prompts-systeme",
+        help="consulter ou personnaliser les prompts et les agents")
+    p.add_argument("--exporter", action="store_true",
+                   help="ecrire les prompts par defaut dans atelier/prompts/")
+    p.add_argument("--reinitialiser", action="store_true",
+                   help="supprimer toutes les personnalisations")
+    p.set_defaults(fonction=cmd_prompts_systeme)
+
     p = sous_parseurs.add_parser("docteur", help="diagnostiquer l'installation")
     p.set_defaults(fonction=cmd_docteur)
 
@@ -628,6 +791,12 @@ def principal(argv: Optional[List[str]] = None) -> int:
     parseur = construire_parseur()
     args = parseur.parse_args(argv)
     if not getattr(args, "commande", None):
+        # Sur un terminal, le menu est plus praticable qu'une page d'aide ;
+        # dans un script ou un tube, on garde l'aide.
+        if sys.stdin.isatty() and sys.stdout.isatty():
+            from .menu import menu_principal
+
+            return menu_principal(lambda arguments: principal(arguments))
         print(BANNIERE.format(version=__version__))
         parseur.print_help()
         return 0
