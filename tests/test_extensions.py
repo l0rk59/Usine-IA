@@ -8,22 +8,24 @@ from __future__ import annotations
 import json
 import os
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 
-_TEMPORAIRE = tempfile.mkdtemp(prefix="usine-ext-")
-os.environ["USINE_HOME"] = _TEMPORAIRE
-
+from tests import atelier  # noqa: E402
 from usine.agents import equipe  # noqa: E402
 from usine.agents.base import Critique  # noqa: E402
 from usine.core import cles as pool_cles  # noqa: E402
 from usine.core import (config, evenements, llm, prompts, reglages,  # noqa: E402
                         securite, store)
 from usine.core.http import HttpErreur  # noqa: E402
+
+
+def setUpModule():
+    """Cette suite travaille dans son propre atelier."""
+    atelier.isoler("extensions")
 
 
 class TestPoolDeCles(unittest.TestCase):

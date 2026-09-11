@@ -8,12 +8,14 @@ n'ont aucune raison d'avoir la meme reponse.
 
 from __future__ import annotations
 
-import os
-import tempfile
+import sys
 import unittest
+from pathlib import Path
 
-os.environ.setdefault("USINE_HOME", tempfile.mkdtemp(prefix="usine-ventes-"))
+RACINE = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RACINE))
 
+from tests import atelier  # noqa: E402
 from usine.core import store, ventes  # noqa: E402
 
 GUMROAD = """Sale ID,Purchase Date,Product Name,Quantity,Price,Net Amount,Currency,Refunded
@@ -29,6 +31,11 @@ FRANCAIS = """Numero de commande;Date de vente;Article;Quantite;Montant;Devise;S
 1002;14/08/2026;Cahier du freelance;2;25,00 €;EUR;Rembourse
 1003;19/08/2026;Cahier du freelance;1;12,50 €;EUR;Termine
 """
+
+
+def setUpModule():
+    """Cette suite travaille dans son propre atelier."""
+    atelier.isoler("ventes")
 
 
 def _vider():

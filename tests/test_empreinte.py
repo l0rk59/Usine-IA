@@ -8,13 +8,15 @@ chacun le trouve bon.
 
 from __future__ import annotations
 
-import os
 import tempfile
+import sys
 import unittest
 from pathlib import Path
 
-os.environ.setdefault("USINE_HOME", tempfile.mkdtemp(prefix="usine-empreinte-"))
+RACINE = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RACINE))
 
+from tests import atelier  # noqa: E402
 from usine.core import empreinte  # noqa: E402
 
 TEXTE = (
@@ -35,6 +37,11 @@ ETRANGER = (
     "Le dioxyde de carbone entre par les stomates de la face inferieure. "
     "L'oxygene produit repart dans l'atmosphere par le meme chemin."
 )
+
+
+def setUpModule():
+    """Cette suite travaille dans son propre atelier."""
+    atelier.isoler("empreinte")
 
 
 class TestSignature(unittest.TestCase):

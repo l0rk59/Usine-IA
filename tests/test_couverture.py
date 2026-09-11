@@ -10,15 +10,25 @@ Ceux-ci la rendent, puis en lisent les pixels.
 from __future__ import annotations
 
 import struct
+import sys
 import unittest
 import zlib
 from pathlib import Path
 
+RACINE = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RACINE))
+
+from tests import atelier  # noqa: E402
 from usine.render import couverture, raster, typo
 
 TITRE = "La prospection pour freelances"
 SOUS_TITRE = "Trouver des clients sans se vendre"
 AUTEUR = "Marie Dupont"
+
+
+def setUpModule():
+    """Cette suite travaille dans son propre atelier."""
+    atelier.isoler("couverture")
 
 
 class TestFonte(unittest.TestCase):

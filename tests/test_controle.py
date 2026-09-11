@@ -8,17 +8,14 @@ figees, pour que la suite reste utilisable hors ligne et reproductible.
 from __future__ import annotations
 
 import json
-import os
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 
-os.environ["USINE_HOME"] = tempfile.mkdtemp(prefix="usine-ctrl-")
-
+from tests import atelier  # noqa: E402
 from usine.core import apprentissage, marche  # noqa: E402
 from usine.core import controle as ctrl  # noqa: E402
 from usine.core.http import HttpErreur  # noqa: E402
@@ -46,6 +43,11 @@ mensuel atteindrait 5 400 euros.
 
 Cela prend une heure.
 """
+
+
+def setUpModule():
+    """Cette suite travaille dans son propre atelier."""
+    atelier.isoler("controle")
 
 
 class TestMesures(unittest.TestCase):

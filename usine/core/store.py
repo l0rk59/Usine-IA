@@ -10,7 +10,8 @@ import sqlite3
 import threading
 import time
 from contextlib import contextmanager
-from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
+from typing import (Any, Callable, Dict, Iterator, List, Optional, Sequence,
+                    Tuple)
 
 from . import config
 
@@ -190,6 +191,19 @@ _local = threading.local()
 _verrou_schema = threading.Lock()
 _schema_pret = False
 
+# « _schema_pret » n'est pas le seul drapeau de ce genre. La file, les
+# experiences et l'apprentissage creent leurs tables a la demande et
+# retiennent « c'est fait » dans un drapeau de module. Ce drapeau ne vaut
+# que pour la base ouverte a ce moment-la : quand le fichier change sous
+# nos pieds — restauration d'archive, atelier de test — il ment. Chacun
+# s'inscrit ici, et close() les fait tomber ensemble.
+_oublis: List[Callable[[], None]] = []
+
+
+def oublier_avec_la_base(rappel: Callable[[], None]) -> None:
+    """Enregistre un drapeau a remettre a zero quand la base change."""
+    _oublis.append(rappel)
+
 
 def connect() -> sqlite3.Connection:
     global _schema_pret
@@ -234,6 +248,9 @@ def close() -> None:
     fichier de base a change sous nos pieds — sans cet oubli, la reconnexion
     sautait la creation des tables ET l'echelle de migrations, et une
     archive plus ancienne revenait avec son schema d'origine.
+
+    Les modules qui se sont inscrits par « oublier_avec_la_base » sont
+    remis a zero de la meme facon, et pour la meme raison.
     """
     global _schema_pret
     conn = getattr(_local, "conn", None)
@@ -241,6 +258,8 @@ def close() -> None:
         conn.close()
         _local.conn = None
     _schema_pret = False
+    for rappel in _oublis:
+        rappel()
 
 
 # --------------------------------------------------------------------------

@@ -420,8 +420,54 @@ def _regler_budget() -> None:
     demander("  Appuyez sur Entree")
 
 
+def _dater_les_variantes() -> None:
+    """Dit quelle variante etait en ligne a quelles dates.
+
+    C'est la piece qui manque entre les ventes importees et le verdict :
+    sans periode, une variante ne peut recevoir aucune vente, et « Rythme
+    de vente reel » n'a que des lignes vides a montrer. La commande
+    existait — « usine ab periode » — mais seulement au clavier.
+    """
+    numero = demander("Numero du test")
+    if not numero.isdigit():
+        return
+    lot = experience.variantes(int(numero))
+    if not lot:
+        print(c("  Test inconnu ou sans variante.", "33"))
+        demander("  Appuyez sur Entree")
+        return
+
+    entete("Dater les variantes")
+    print("  " + c("Format AAAA-MM-JJ. Laissez vide pour passer.", "2"))
+    print("  " + c("Fin vide : la variante est toujours en ligne.", "2"))
+    print()
+    for variante in lot:
+        print("  [{}] {}".format(variante["etiquette"],
+                                 variante["contenu"][:46]))
+        if variante.get("debut"):
+            print("      deja : du {} au {}".format(
+                variante["debut"], variante.get("fin") or "aujourd'hui"))
+        debut = demander("      en ligne a partir du",
+                         variante.get("debut") or "")
+        if not debut:
+            continue
+        fin = demander("      jusqu'au", variante.get("fin") or "")
+        try:
+            experience.fixer_periode(variante["id"], debut, fin)
+            print(c("      enregistre.", "32"))
+        except ValueError as exc:
+            print(c("      refuse : {}".format(exc), "31"))
+    demander("\n  Appuyez sur Entree")
+
+
 def menu_ab(executer: Callable[[List[str]], int]) -> None:
-    """Tests A/B : creer des variantes, reporter les chiffres, lire le verdict."""
+    """Tests A/B : creer des variantes, les dater, lire le verdict.
+
+    Les six entrees couvrent maintenant toute la chaine. « Dater les
+    variantes » et « Rythme de vente reel » n'existaient qu'en ligne de
+    commande : depuis un telephone, la comparaison sur les ventes
+    reellement encaissees etait hors d'atteinte.
+    """
     while True:
         tests = experience.lister(20)
         entete("Tests A/B")
@@ -440,6 +486,8 @@ def menu_ab(executer: Callable[[List[str]], int]) -> None:
             ("Tester des titres", "5 variantes sur des angles differents"),
             ("Tester des couvertures", "4 directions visuelles distinctes"),
             ("Reporter des chiffres", "vues et ventes observees"),
+            ("Dater les variantes", "quand chacune etait en ligne"),
+            ("Rythme de vente reel", "comparer sur les ventes importees"),
             ("Voir un verdict", "ce que disent reellement vos donnees"),
         ], defaut=1)
 
@@ -504,6 +552,15 @@ def menu_ab(executer: Callable[[List[str]], int]) -> None:
             demander("\n  Appuyez sur Entree")
 
         elif choix == 4:
+            _dater_les_variantes()
+
+        elif choix == 5:
+            numero = demander("Numero du test")
+            if numero.isdigit():
+                executer(["ab", "rythme", numero])
+                demander("\n  Appuyez sur Entree")
+
+        elif choix == 6:
             numero = demander("Numero du test")
             if numero.isdigit():
                 executer(["ab", "verdict", numero])

@@ -6,12 +6,14 @@ niche existe. Elles ne disent pas ce qui y fait mal, ni avec quels mots.
 
 from __future__ import annotations
 
-import os
-import tempfile
+import sys
 import unittest
+from pathlib import Path
 
-os.environ.setdefault("USINE_HOME", tempfile.mkdtemp(prefix="usine-veille-"))
+RACINE = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RACINE))
 
+from tests import atelier  # noqa: E402
 from usine.core import veille  # noqa: E402
 from usine.core.http import HttpErreur  # noqa: E402
 
@@ -35,6 +37,11 @@ FLUX_POSTS = """<?xml version="1.0" encoding="UTF-8"?>
 <link href="https://www.reddit.com/r/MealPrepSunday/comments/c/"/>
 <updated>2026-08-03T10:00:00+00:00</updated></entry>
 </feed>"""
+
+
+def setUpModule():
+    """Cette suite travaille dans son propre atelier."""
+    atelier.isoler("veille")
 
 
 class FauxReseau:

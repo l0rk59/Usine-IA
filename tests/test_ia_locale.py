@@ -10,14 +10,22 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 import threading
+import sys
 import unittest
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-os.environ.setdefault("USINE_HOME", tempfile.mkdtemp(prefix="usine-locale-"))
+RACINE = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RACINE))
 
+from tests import atelier  # noqa: E402
 from usine.core import config, llm, store  # noqa: E402
+
+
+def setUpModule():
+    """Cette suite travaille dans son propre atelier."""
+    atelier.isoler("ia-locale")
 
 
 class FauxServeur:

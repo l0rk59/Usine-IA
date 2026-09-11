@@ -58,6 +58,26 @@ longtemps après la restauration.
 `store.close()` oublie désormais l'état du schéma. Un test le vérifie en
 restaurant puis en relisant `PRAGMA user_version`.
 
+### Et ce n'était pas le seul drapeau
+
+`_schema_pret` couvrait les tables déclarées dans `store.SCHEMA`. Trois
+modules — la file de production, les expériences A/B et l'apprentissage —
+créent les leurs **à la demande**, au premier usage, et retenaient chacun
+« c'est fait » dans un drapeau de module identique. Ces trois-là survivaient
+toujours à la restauration.
+
+Restaurer une archive écrite avant l'ajout de la file laissait donc le
+processus convaincu que `file_production` existait. La table n'était pas
+recréée, et la requête suivante levait `no such table: file_production` —
+jusqu'au redémarrage, qui « réparait » tout seul le défaut et le rendait
+introuvable.
+
+Ces modules s'inscrivent maintenant auprès de `store.oublier_avec_la_base()`,
+et `store.close()` fait tomber tous les drapeaux ensemble. Le test construit
+une archive dont la base n'a que le schéma de `store`, la restaure, puis
+utilise la file : sans l'inscription, il échoue avec exactement l'erreur
+ci-dessus.
+
 ## Empreintes des produits déjà fabriqués
 
 Les empreintes anti-doublon sont posées **à la fabrication**. Un catalogue

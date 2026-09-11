@@ -7,16 +7,27 @@ telephone, dont le dossier de travail est souvent sous /sdcard.
 
 from __future__ import annotations
 
+import json
 import os
+import shutil
 import sqlite3
 import tempfile
+import sys
 import unittest
 import zipfile
 from pathlib import Path
 
-os.environ.setdefault("USINE_HOME", tempfile.mkdtemp(prefix="usine-sauve-"))
+RACINE = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RACINE))
 
+from tests import atelier  # noqa: E402
 from usine.core import config, reglages, sauvegarde, store, ventes  # noqa: E402
+from usine.core import file as file_prod  # noqa: E402
+
+
+def setUpModule():
+    """Cette suite travaille dans son propre atelier."""
+    atelier.isoler("sauvegarde")
 
 
 def _peupler():
@@ -27,6 +38,34 @@ def _peupler():
                         "devise": "EUR", "remboursement": 0,
                         "plateforme": "gumroad", "empreinte": "sauve-v1"},
                        produit_id="sauve-p1")
+
+
+def _archive_ancienne(nettoyer):
+    """Une archive dont la base n'a QUE le schema de base de store.
+
+    C'est l'etat d'une sauvegarde ecrite avant que la file de production
+    n'existe : les tables creees a la demande n'y sont pas.
+    """
+    dossier = Path(tempfile.mkdtemp(prefix="usine-archive-"))
+    nettoyer(shutil.rmtree, str(dossier), True)
+    base = dossier / "ancienne.db"
+    connexion = sqlite3.connect(str(base))
+    try:
+        connexion.executescript(store.SCHEMA)
+        connexion.execute("PRAGMA user_version = {}".format(
+            store.VERSION_SCHEMA))
+        connexion.commit()
+    finally:
+        connexion.close()
+
+    archive = dossier / "ancienne.zip"
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zip_:
+        zip_.write(base, sauvegarde.NOM_BASE)
+        zip_.writestr(sauvegarde.NOM_FICHE, json.dumps(
+            {"version": sauvegarde.VERSION, "cree_le": "2026-01-01T00:00:00Z",
+             "avec_produits": False, "fichiers_produits": 0,
+             "schema": store.VERSION_SCHEMA}))
+    return archive
 
 
 def _sinistre():
@@ -132,6 +171,26 @@ class TestRestauration(unittest.TestCase):
         with store.cursor() as cur:
             version = cur.execute("PRAGMA user_version").fetchone()[0]
         self.assertEqual(version, store.VERSION_SCHEMA)
+
+    def test_restaurer_une_archive_d_avant_la_file_la_recree(self):
+        """Les tables nees a la demande doivent renaitre apres restauration.
+
+        « _schema_pret » n'etait pas le seul drapeau de ce genre : la file,
+        les experiences et l'apprentissage creent leurs tables au premier
+        usage et retenaient « c'est fait » chacun de leur cote. Restaurer
+        une archive anterieure a l'ajout de la file laissait donc le
+        processus convaincu que « file_production » existait, et la
+        premiere requete levait « no such table ».
+        """
+        file_prod.ajouter("un sujet de la file", "ebook")   # drapeau leve
+        archive = _archive_ancienne(self.addCleanup)
+
+        sauvegarde.restaurer(archive, avec_produits=False)
+
+        self.assertEqual(file_prod.lister(), [])
+        self.assertEqual(file_prod.compter()["en_attente"], 0)
+        identifiant = file_prod.ajouter("apres restauration", "ebook")
+        self.assertTrue(identifiant)
 
     def test_l_ancienne_base_est_mise_de_cote_pas_supprimee(self):
         """Restaurer par erreur ne doit pas etre irreversible."""

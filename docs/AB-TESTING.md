@@ -175,6 +175,25 @@ seule période chacune.
 
 ## Depuis le téléphone
 
-Le menu (`usine`, sans argument) → **Tests A/B** : créer des variantes,
-reporter les chiffres variante par variante, lire le verdict. Aucune option à
-retenir.
+Le menu (`usine`, sans argument) → **Tests A/B** propose les six opérations,
+sans une seule option à retenir :
+
+| Entrée | Ce qu'elle fait | Commande équivalente |
+|---|---|---|
+| Tester des titres | 5 variantes sur des angles différents | `usine ab creer --sur titre` |
+| Tester des couvertures | 4 directions visuelles distinctes | `usine ab creer --sur couverture` |
+| Reporter des chiffres | vues et ventes observées à l'écran | `usine ab observer` |
+| **Dater les variantes** | quand chacune était en ligne | `usine ab periode` |
+| **Rythme de vente réel** | comparer sur les ventes importées | `usine ab rythme` |
+| Voir un verdict | ce que disent réellement vos données | `usine ab verdict` |
+
+Les deux entrées en gras manquaient : la comparaison par le rythme existait,
+mais seulement au clavier — et sans période renseignée elle n'a rien à
+attribuer. Depuis un téléphone, la moitié la plus utile du dispositif était
+donc hors d'atteinte.
+
+« Dater les variantes » parcourt les variantes une par une et propose la
+période déjà enregistrée comme valeur par défaut : repasser dessus sans rien
+taper ne l'efface pas. Une date au mauvais format ou une fin antérieure au
+début est refusée variante par variante, sans interrompre la saisie des
+suivantes.

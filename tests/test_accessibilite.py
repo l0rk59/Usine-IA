@@ -13,11 +13,16 @@ from __future__ import annotations
 
 import re
 import tempfile
+import sys
 import unittest
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
+RACINE = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RACINE))
+
+from tests import atelier  # noqa: E402
 from usine.pipelines.base import code_langue
 from usine.render import epub, lisibilite, page
 from usine.render.couverture import contraste
@@ -26,6 +31,11 @@ from usine.render.raster import couleur_hex
 
 CHAPITRES = [("Premier chapitre", "<p>Du texte de premier chapitre.</p>"),
              ("Second chapitre", "<p>Du texte de second chapitre.</p>")]
+
+
+def setUpModule():
+    """Cette suite travaille dans son propre atelier."""
+    atelier.isoler("acces")
 
 
 def _construire(**extra):

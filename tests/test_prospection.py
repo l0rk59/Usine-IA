@@ -7,14 +7,21 @@ avait deja ete traitee.
 
 from __future__ import annotations
 
-import os
-import tempfile
+import sys
 import unittest
+from pathlib import Path
 
-os.environ.setdefault("USINE_HOME", tempfile.mkdtemp(prefix="usine-prosp-"))
+RACINE = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RACINE))
 
+from tests import atelier  # noqa: E402
 from usine import production  # noqa: E402
 from usine.core import apprentissage, empreinte, file, store, ventes  # noqa: E402
+
+
+def setUpModule():
+    """Cette suite travaille dans son propre atelier."""
+    atelier.isoler("prospection")
 
 
 def _vider():

@@ -6,7 +6,6 @@ REFUSE d'en trouver un quand les donnees ne le permettent pas.
 
 from __future__ import annotations
 
-import os
 import sys
 import tempfile
 import unittest
@@ -15,10 +14,14 @@ from pathlib import Path
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 
-os.environ["USINE_HOME"] = tempfile.mkdtemp(prefix="usine-ab-")
-
+from tests import atelier  # noqa: E402
 from usine.core import diagnostic_titre as dt  # noqa: E402
 from usine.core import experience as ex  # noqa: E402
+
+
+def setUpModule():
+    """Cette suite travaille dans son propre atelier."""
+    atelier.isoler("ab")
 
 
 class TestStatistiques(unittest.TestCase):

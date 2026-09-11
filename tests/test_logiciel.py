@@ -7,7 +7,6 @@ dangereux. Ces tests verifient surtout ce que l'usine REFUSE de faire.
 from __future__ import annotations
 
 import json
-import os
 import sys
 import tempfile
 import unittest
@@ -16,13 +15,17 @@ from pathlib import Path
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 
-os.environ["USINE_HOME"] = tempfile.mkdtemp(prefix="usine-logi-")
-
+from tests import atelier  # noqa: E402
 from usine.core import llm, reglages  # noqa: E402
 from usine.core import verification as V  # noqa: E402
 from usine.pipelines import catalogue, logiciel  # noqa: E402
 from usine.pipelines.base import Contexte, identifiant  # noqa: E402
 from tests.simulateur import simulateur  # noqa: E402
+
+
+def setUpModule():
+    """Cette suite travaille dans son propre atelier."""
+    atelier.isoler("logiciel")
 
 
 class TestPython(unittest.TestCase):

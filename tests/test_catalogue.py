@@ -9,7 +9,6 @@ ete vue qu'a la comparaison manuelle des sorties.
 
 from __future__ import annotations
 
-import os
 import sys
 import tempfile
 import unittest
@@ -18,13 +17,17 @@ from pathlib import Path
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 
-os.environ["USINE_HOME"] = tempfile.mkdtemp(prefix="usine-cat-")
-
+from tests import atelier  # noqa: E402
 from usine.core import llm, reglages  # noqa: E402
 from usine.pipelines import catalogue  # noqa: E402
 from usine.pipelines.base import Contexte  # noqa: E402
 from usine.render import livraison  # noqa: E402
 from tests.simulateur import simulateur  # noqa: E402
+
+
+def setUpModule():
+    """Cette suite travaille dans son propre atelier."""
+    atelier.isoler("catalogue")
 
 
 class TestCatalogue(unittest.TestCase):

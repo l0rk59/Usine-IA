@@ -95,6 +95,15 @@ def _assurer() -> None:
         _pret = True
 
 
+def _oublier() -> None:
+    """La base a change : les tables de ce module sont a recreer."""
+    global _pret
+    _pret = False
+
+
+store.oublier_avec_la_base(_oublier)
+
+
 # --------------------------------------------------------------------------
 # Statistiques
 # --------------------------------------------------------------------------

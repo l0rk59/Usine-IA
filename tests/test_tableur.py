@@ -12,13 +12,15 @@ News et de questions Stack Exchange recuperes sur internet.
 from __future__ import annotations
 
 import csv
-import os
 import tempfile
+import sys
 import unittest
 from pathlib import Path
 
-os.environ.setdefault("USINE_HOME", tempfile.mkdtemp(prefix="usine-tableur-"))
+RACINE = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RACINE))
 
+from tests import atelier  # noqa: E402
 from usine.render import tableur  # noqa: E402
 
 HOSTILES = [
@@ -36,6 +38,11 @@ LEGITIMES = [
     "+33 6 12 34 56 78",
     "@ retenir",
 ]
+
+
+def setUpModule():
+    """Cette suite travaille dans son propre atelier."""
+    atelier.isoler("tableur")
 
 
 class TestEchappement(unittest.TestCase):

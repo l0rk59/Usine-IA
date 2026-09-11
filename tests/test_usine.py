@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import os
 import sys
-import tempfile
 import unittest
 import zipfile
 import xml.etree.ElementTree as ET
@@ -17,10 +16,7 @@ from pathlib import Path
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 
-# Le dossier de travail doit etre isole AVANT le premier import de config.
-_TEMPORAIRE = tempfile.mkdtemp(prefix="usine-tests-")
-os.environ["USINE_HOME"] = _TEMPORAIRE
-
+from tests import atelier  # noqa: E402
 from usine.core import config, llm, store  # noqa: E402
 from usine.pipelines import base, ebook  # noqa: E402
 from usine.render import document as D  # noqa: E402
@@ -28,6 +24,15 @@ from usine.render.epub import construire_epub  # noqa: E402
 from usine.render.metriques import largeur_texte  # noqa: E402
 from usine.render.pdf import DocumentPDF, dimensions_jpeg  # noqa: E402
 from tests.simulateur import simulateur  # noqa: E402
+
+
+_TEMPORAIRE = ""
+
+
+def setUpModule():
+    """Cette suite travaille dans son propre atelier."""
+    global _TEMPORAIRE
+    _TEMPORAIRE = str(atelier.isoler("usine"))
 
 
 class TestConfiguration(unittest.TestCase):

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import os
 import sys
-import tempfile
 import time
 import unittest
 from pathlib import Path
@@ -15,8 +14,7 @@ from pathlib import Path
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 
-os.environ["USINE_HOME"] = tempfile.mkdtemp(prefix="usine-continue-")
-
+from tests import atelier  # noqa: E402
 from usine import production  # noqa: E402
 from usine.core import budget, config, file, llm, reglages, store  # noqa: E402
 from tests.simulateur import simulateur  # noqa: E402
@@ -24,6 +22,11 @@ from tests.simulateur import simulateur  # noqa: E402
 BASE = dict(images=False, qualite="rapide", pause_entre_produits=0,
             budget_appels_jour=0, budget_appels_produit=0,
             budget_produits_jour=0, budget_minutes_produit=0)
+
+
+def setUpModule():
+    """Cette suite travaille dans son propre atelier."""
+    atelier.isoler("usine-continue")
 
 
 def _remettre_a_zero():

@@ -687,7 +687,8 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         386 tests + test de fumée, aucun appel réseau
+tests/         401 tests + test de fumée, aucun appel réseau
+               un atelier temporaire par module (tests/atelier.py)
 install.sh     installation Termux
 ```
 
@@ -699,7 +700,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 386 tests
+python3 -m unittest discover -s tests -t .   # 401 tests
 python3 tests/fumee.py                       # les 9 chaînes via la vraie CLI
 ```
 
@@ -746,6 +747,20 @@ bout, et l'application web générée a été **ouverte dans un vrai Chromium**.
 La géométrie 3D est vérifiée séparément : les matrices de rotation, de caméra
 et la matrice normale inverse-transposée sont contrôlées numériquement, et le
 tableau de bord est rendu dans un vrai Chromium.
+
+Le **menu est piloté par son entrée standard**, comme un doigt sur un écran de
+téléphone, et l'on regarde quelle commande il lance vraiment. Un sous-menu est
+une table entre un numéro tapé et une branche de code, que rien ne vérifie à
+l'exécution : insérer une entrée décale toutes les suivantes, et le menu lance
+tranquillement la mauvaise commande.
+
+Chaque module de test travaille dans **son propre atelier**. Ce n'était pas le
+cas : chacun posait bien son `USINE_HOME`, mais `config` résout ses chemins une
+seule fois et `unittest discover` importe tous les modules avant d'en exécuter
+un — le premier import gagnait pour toute la suite. Les quinze modules
+partageaient une base et un dossier de produits, sans qu'aucun test n'échoue.
+La bascule a lieu maintenant dans `setUpModule`, et trois tests interdisent le
+retour en arrière.
 
 ---
 
