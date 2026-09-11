@@ -131,6 +131,7 @@ indisponibles. Pour l'utiliser en priorité : `USINE_LOCAL_FIRST=1` dans le `.en
 | `usine bilan` | Mémoire de l'usine | ce que vos productions révèlent sur vos réglages |
 | `usine doublons` | **Anti-répétition** | les produits qui se recouvrent, avant qu'un acheteur ne le voie |
 | `usine ventes` | **Ce qui rapporte** | import Gumroad/Etsy, chiffre d'affaires par niche, prix réels |
+| `usine sauvegarde` | Mettre à l'abri | ventes et historique dans une archive — le reste se refabrique |
 | `usine complet` | **Offre complète** | Ebook + 2 bonus + kit de vente + archive ZIP |
 | `usine file` | File de production | les niches en attente de fabrication |
 | `usine usine` | **Usine continue** | produit en boucle, sous budget, jusqu'à l'arrêt |
@@ -296,6 +297,25 @@ et sans son texte, et exige 4,5:1 (WCAG AA) sur les 40 combinaisons.
 
 > Pourquoi une fonte dessinée plutôt qu'embarquée, pourquoi pas de JPEG, et ce
 > que les tests ont trouvé : [docs/COUVERTURE.md](docs/COUVERTURE.md).
+
+### Les CSV livrés ne s'exécutent pas chez l'acheteur
+
+Un CSV produit par l'usine n'est pas un fichier de travail : les modèles
+Notion, le calendrier éditorial et les tableaux de la boîte à outils partent
+tels quels chez l'acheteur. Or Excel, LibreOffice et Google Sheets
+**interprètent comme une formule** toute cellule commençant par `=`, `+`, `-`
+ou `@`.
+
+Deux conséquences, l'une gênante et l'autre grave. Une cellule légitime comme
+« -50 % de temps passé » s'affichait `#NAME?` dans un fichier que l'acheteur a
+payé. Et le contenu vient d'un modèle nourri de titres Hacker News et de
+questions Stack Exchange récupérés sur internet : une cellule
+`=HYPERLINK(...)` s'exécute à l'ouverture, sur **sa** machine (CWE-1236).
+
+La parade tient en un caractère, invisible dans les trois tableurs. Vérifié en
+faisant traverser une charge hostile à quatre chaînes réelles : **87 cellules
+neutralisées, zéro exécutable**. Un test refuse par ailleurs toute écriture
+CSV qui ne passerait pas par le filtre.
 
 ### Ce qui rapporte, et non plus seulement ce qui note bien
 
@@ -606,7 +626,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         307 tests + test de fumée, aucun appel réseau
+tests/         324 tests + test de fumée, aucun appel réseau
 install.sh     installation Termux
 ```
 
@@ -618,7 +638,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 307 tests
+python3 -m unittest discover -s tests -t .   # 324 tests
 python3 tests/fumee.py                       # les 9 chaînes via la vraie CLI
 ```
 
@@ -678,6 +698,8 @@ tableau de bord est rendu dans un vrai Chromium.
 - **Elle ne publie pas à votre place.** Aucune intégration Gumroad ou Etsy :
   vous téléversez l'archive vous-même. Elle lit en revanche vos exports de
   ventes, et s'en sert pour choisir les niches suivantes.
+- **Elle ne sauvegarde pas toute seule.** `usine sauvegarde` existe, il faut
+  la lancer — et copier l'archive hors du téléphone.
 - **Elle ne vous dispense pas de publier lentement.** Produire quatre produits
   par jour et les déposer au même rythme est le profil exact d'un compte qui
   se fait fermer. L'usine le rappelle à la fin de chaque lot.

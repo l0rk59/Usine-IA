@@ -208,6 +208,29 @@ def _aplatir(noeud: Any, morceaux: List[str], titres: List[str]) -> None:
         morceaux.append(noeud)
 
 
+def empreinte_depuis_dossier(produit_id: str, type_produit: str, titre: str,
+                             sujet: str, dossier: Path) -> bool:
+    """Calcule l'empreinte d'un produit deja fabrique, depuis ses fichiers.
+
+    Les empreintes sont posees a la fabrication : un catalogue constitue
+    avant cette version n'en a aucune, et « usine doublons » n'a donc rien a
+    comparer chez celui qui en aurait le plus besoin. On relit ici ce qui est
+    sur le disque, exactement comme la chaine l'aurait fait en livrant.
+    """
+    if not dossier.exists():
+        return False
+    fichiers = sorted(f for f in dossier.iterdir() if f.is_file())
+    texte, titres = _matiere(fichiers)
+    if not texte:
+        return False
+    store.enregistrer_empreinte(
+        produit_id, type_produit, titre, sujet,
+        empreinte.encoder(empreinte.signature(texte)),
+        empreinte.encoder(empreinte.plan(titres)),
+        len(empreinte.mots_normalises(texte)))
+    return True
+
+
 def _verifier_doublon(ctx: Contexte, type_produit: str, fichiers: List[Path],
                       titre: str) -> Optional[Dict[str, Any]]:
     """Compare le produit fini a ceux deja fabriques, puis l'enregistre.

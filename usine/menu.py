@@ -646,6 +646,7 @@ def menu_principal(executer: Callable[[List[str]], int]) -> int:
             ("Mes produits", "consulter, vendre, empaqueter"),
             ("Ventes", "importer un export, voir ce qui rapporte vraiment"),
             ("Doublons", "les produits qui se recouvrent"),
+            ("Sauvegarder l'atelier", "ventes et historique dans une archive"),
             ("Cles et quotas", "etat des fournisseurs et du pool de cles"),
             ("Reglages", "auteur, marque, ton et qualite par defaut"),
             ("Tableau de bord 3D", "interface visuelle dans le navigateur"),
@@ -669,11 +670,14 @@ def menu_principal(executer: Callable[[List[str]], int]) -> int:
             executer(["doublons"])
             demander("\n  Appuyez sur Entree")
         elif choix == 7:
-            menu_cles()
+            executer(["sauvegarde"])
+            demander("\n  Appuyez sur Entree")
         elif choix == 8:
-            menu_reglages()
+            menu_cles()
         elif choix == 9:
-            executer(["web"])
+            menu_reglages()
         elif choix == 10:
+            executer(["web"])
+        elif choix == 11:
             executer(["docteur"])
             demander("\n  Appuyez sur Entree")

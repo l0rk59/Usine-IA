@@ -15,6 +15,7 @@ from typing import Any, Dict, List
 from ..agents import equipe
 from ..core import evenements, images
 from ..render import document as D
+from ..render import tableur
 from ..render import livraison
 from ..render.page import ecrire_page
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
@@ -128,11 +129,11 @@ def _exporter(ctx: Contexte, systeme: Dict[str, Any], guide: str) -> List[Path]:
         chemin = dossier_csv / "{:02d}-{}.csv".format(index, slug(base["nom"], 40))
         with chemin.open("w", encoding="utf-8-sig", newline="") as flux:
             auteur = csv.writer(flux)
-            auteur.writerow([c["nom"] for c in base["colonnes"]])
+            auteur.writerow(tableur.ligne(c["nom"] for c in base["colonnes"]))
             for exemple in base["exemples"][:8]:
                 ligne = list(exemple)[: len(base["colonnes"])]
                 ligne += [""] * (len(base["colonnes"]) - len(ligne))
-                auteur.writerow(ligne)
+                auteur.writerow(tableur.ligne(ligne))
         fichiers.append(chemin)
 
     # Markdown : colle directement dans une page Notion.

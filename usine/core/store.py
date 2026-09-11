@@ -227,11 +227,20 @@ def cursor() -> Iterator[sqlite3.Cursor]:
 
 
 def close() -> None:
-    """Ferme la connexion du thread courant."""
+    """Ferme la connexion du thread courant et oublie l'etat du schema.
+
+    Oublier le schema importe : « _schema_pret » est un drapeau de module
+    qui survivait a la fermeture. Apres une restauration de sauvegarde, le
+    fichier de base a change sous nos pieds — sans cet oubli, la reconnexion
+    sautait la creation des tables ET l'echelle de migrations, et une
+    archive plus ancienne revenait avec son schema d'origine.
+    """
+    global _schema_pret
     conn = getattr(_local, "conn", None)
     if conn is not None:
         conn.close()
         _local.conn = None
+    _schema_pret = False
 
 
 # --------------------------------------------------------------------------

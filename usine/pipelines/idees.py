@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 from ..core import config, llm, marche, ventes
 from . import catalogue
 from ..render import document as D
+from ..render import tableur
 from ..render.page import ecrire_page
 from .base import Contexte, nettoyer_titre
 
@@ -140,9 +141,11 @@ def produire(ctx: Contexte, nombre: int = 12,
     )
     chemin_csv = dossier / "idees.csv"
     with chemin_csv.open("w", encoding="utf-8", newline="") as flux:
-        auteur = csv.DictWriter(flux, fieldnames=list(idees[0].keys()))
+        colonnes = list(idees[0].keys())
+        auteur = csv.DictWriter(flux, fieldnames=colonnes)
         auteur.writeheader()
-        auteur.writerows(idees)
+        auteur.writerows({c: tableur.cellule(i.get(c, "")) for c in colonnes}
+                         for i in idees)
 
     lignes = ["# Idees de produits — {}\n".format(ctx.sujet)]
     if rapport_marche:

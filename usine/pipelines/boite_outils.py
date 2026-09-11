@@ -12,6 +12,7 @@ from typing import Any, Dict, List
 
 from ..core import images, llm
 from ..render import document as D
+from ..render import tableur
 from ..render import livraison
 from ..render.page import ecrire_page
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
@@ -182,9 +183,9 @@ def _exporter(ctx: Contexte, boite: Dict[str, Any]) -> List[Path]:
         chemin = dossier / "tableau-{:02d}-{}.csv".format(index, slug(outil["nom"], 30))
         with chemin.open("w", encoding="utf-8", newline="") as flux:
             auteur = csv.writer(flux)
-            auteur.writerow([str(c) for c in contenu["colonnes"]])
+            auteur.writerow(tableur.ligne(contenu["colonnes"]))
             for exemple in contenu.get("exemples") or []:
-                auteur.writerow([str(c) for c in exemple])
+                auteur.writerow(tableur.ligne(exemple))
         fichiers.append(chemin)
 
     couverture = None

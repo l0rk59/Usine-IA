@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from ..core import images
+from . import tableur
 from . import document as D
 from .epub import construire_epub
 from .page import ecrire_page
@@ -211,8 +212,9 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
         encodage = "utf-8-sig" if tableau.bom else "utf-8"
         with chemin.open("w", encoding=encodage, newline="") as flux:
             auteur = csv.writer(flux)
-            auteur.writerow(tableau.colonnes)
-            auteur.writerows(tableau.lignes)
+            auteur.writerow(tableur.ligne(tableau.colonnes))
+            for valeurs in tableau.lignes:
+                auteur.writerow(tableur.ligne(valeurs))
         fichiers.append(chemin)
 
     # --- donnees de travail ----------------------------------------------------

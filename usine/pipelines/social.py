@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from ..core import images, llm
-from ..render import livraison
+from ..render import livraison, tableur
 from ..render.page import ecrire_page
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
 
@@ -163,14 +163,17 @@ def _exporter(ctx: Contexte, titre: str, reseau: str, calendrier: List[Dict[str,
     chemin_csv = dossier / "calendrier.csv"
     with chemin_csv.open("w", encoding="utf-8", newline="") as flux:
         auteur = csv.writer(flux)
-        auteur.writerow(["Jour", "Angle", "Objectif", "Texte", "Hashtags", "Idee de visuel"])
+        auteur.writerow(tableur.ligne(
+            ["Jour", "Angle", "Objectif", "Texte", "Hashtags",
+             "Idee de visuel"]))
         index_calendrier = {str(p["jour"]): p for p in calendrier}
         for post in posts:
             reference = index_calendrier.get(post["jour"], {})
-            auteur.writerow([
-                post["jour"], reference.get("angle", ""), reference.get("objectif", ""),
+            auteur.writerow(tableur.ligne([
+                post["jour"], reference.get("angle", ""),
+                reference.get("objectif", ""),
                 post["texte"], post["hashtags"], post["visuel"],
-            ])
+            ]))
     fichiers.append(chemin_csv)
 
     lignes = ["# {}\n".format(titre)]

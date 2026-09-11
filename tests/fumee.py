@@ -75,6 +75,10 @@ SCENARIOS = [
                        "--sur", "gumroad"]),
     ("ventes-rattacher", ["ventes", "--rattacher"]),
     ("ventes-resume", ["ventes"]),
+    ("doublons-reconstruire", ["doublons", "--reconstruire"]),
+    ("sauvegarde", ["sauvegarde"]),
+    ("sauvegarde-inspecter", ["sauvegarde", "--inspecter",
+                              "{atelier}/sauvegardes"]),
     ("bilan", ["bilan"]),
     ("reglages", ["reglages"]),
     ("prompts-systeme", ["prompts-systeme"]),
@@ -130,10 +134,23 @@ def verifier_sorties(nom: str) -> str:
     return ""
 
 
+def _resoudre(argument: str) -> str:
+    """Remplace « {atelier} » par le dossier de test, et un dossier de
+    sauvegardes par l'archive la plus recente qu'il contient."""
+    if "{atelier}" not in argument:
+        return argument
+    chemin = Path(argument.format(atelier=ATELIER))
+    if chemin.is_dir():
+        archives = sorted(chemin.glob("*.zip"))
+        return str(archives[-1]) if archives else str(chemin)
+    return str(chemin)
+
+
 def principal() -> int:
     echecs = []
     for scenario in SCENARIOS:
-        nom, arguments = scenario[0], scenario[1]
+        nom, arguments = scenario[0], list(scenario[1])
+        arguments = [_resoudre(a) for a in arguments]
         attendu = scenario[2] if len(scenario) > 2 else 0
         print("\n" + "=" * 66)
         print(">>> usine " + " ".join(arguments))

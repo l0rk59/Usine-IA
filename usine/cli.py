@@ -411,8 +411,75 @@ def _resume_ventes(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_sauvegarde(args: argparse.Namespace) -> int:
+    """Mettre l'atelier a l'abri, ou le remettre en place."""
+    from .core import sauvegarde
+
+    if args.restaurer:
+        return _restaurer(args, sauvegarde)
+    if args.inspecter:
+        fiche = sauvegarde.inspecter(Path(args.inspecter))
+        titre_console("Contenu de l'archive")
+        if not fiche["valide"]:
+            erreur(fiche["probleme"])
+            return 1
+        print("  Creee le      : {}".format(fiche.get("cree_le", "?")))
+        print("  Schema        : version {}".format(fiche.get("schema", "?")))
+        print("  Reglages      : {}".format(
+            "inclus" if fiche.get("avec_reglages") else "absents"))
+        print("  Fichiers de produits : {}".format(
+            fiche.get("fichiers_produits", 0)))
+        return 0
+
+    titre_console("Sauvegarde de l'atelier")
+    archive = sauvegarde.creer(
+        Path(args.vers) if args.vers else None,
+        avec_produits=args.avec_produits)
+    taille = archive.stat().st_size
+    ok("{} ({} Ko)".format(archive, max(1, taille // 1024)))
+    print("\n  Contient l'historique de production, les empreintes, les tests")
+    print("  A/B et " + _c("les ventes", "1") + " — c'est cette derniere qui ne")
+    print("  se refabrique pas.")
+    if not args.avec_produits:
+        print("\n  Les fichiers des produits ne sont PAS inclus : "
+              + _c("--avec-produits", "1"))
+    print("  Les cles API non plus : elles vivent dans .env, et une archive")
+    print("  se copie sur un ordinateur ou dans un nuage.")
+    print("\n  Copiez-la hors du telephone. Une sauvegarde restee sur")
+    print("  l'appareil ne protege de rien.")
+    return 0
+
+
+def _restaurer(args: argparse.Namespace, sauvegarde) -> int:
+    chemin = Path(args.restaurer)
+    fiche = sauvegarde.inspecter(chemin)
+    titre_console("Restauration")
+    if not fiche["valide"]:
+        erreur(fiche["probleme"])
+        return 1
+    print("  Archive du {}, schema {}".format(
+        fiche.get("cree_le", "?"), fiche.get("schema", "?")))
+    if not args.oui:
+        alerte("Cette operation remplace l'atelier actuel.")
+        print("      L'ancienne base est mise de cote, pas supprimee.")
+        print("      Confirmez avec " + _c("--oui", "1"))
+        return 1
+    resultat = sauvegarde.restaurer(chemin, avec_produits=not args.sans_produits)
+    if not resultat["valide"]:
+        erreur(resultat["probleme"])
+        return 1
+    ok("Atelier restaure ({} fichier(s) de produits).".format(
+        resultat["fichiers_produits"]))
+    if resultat["ancienne_base"]:
+        print("  Ancienne base conservee : {}".format(
+            resultat["ancienne_base"]))
+    return 0
+
+
 def cmd_doublons(args: argparse.Namespace) -> int:
     """Les produits qui se recouvrent, tous types confondus."""
+    if args.reconstruire:
+        return _reconstruire_empreintes()
     titre_console("Ce que l'usine a ecrit deux fois")
     empreintes = store.lister_empreintes(args.type or "")
     if len(empreintes) < 2:
@@ -458,6 +525,40 @@ def cmd_doublons(args: argparse.Namespace) -> int:
     print("\n  Une place de marche retire les doublons, et un acheteur qui")
     print("  prend deux fois le meme livre demande deux remboursements.")
     return 1
+
+
+def _reconstruire_empreintes() -> int:
+    """Calcule les empreintes des produits fabriques avant cette version."""
+    from .pipelines.base import empreinte_depuis_dossier
+
+    titre_console("Reconstruction des empreintes")
+    connues = {e["produit_id"] for e in store.lister_empreintes(limite=5000)}
+    produits = [p for p in store.lister_produits(1000)
+                if p["id"] not in connues and p["statut"] != "bonus_integre"]
+    if not produits:
+        ok("Tous les produits connus ont deja leur empreinte.")
+        return 0
+
+    faits, sans_matiere = 0, []
+    for produit in produits:
+        dossier = Path(produit["dossier"] or "")
+        if empreinte_depuis_dossier(produit["id"], produit["type"],
+                                    produit["titre"] or "",
+                                    produit["sujet"] or "", dossier):
+            faits += 1
+        else:
+            sans_matiere.append(produit["titre"] or produit["id"])
+    ok("{} empreinte(s) reconstituee(s).".format(faits))
+    if sans_matiere:
+        alerte("{} produit(s) sans texte relisible sur le disque :".format(
+            len(sans_matiere)))
+        for titre in sans_matiere[:6]:
+            print("      {}".format(titre[:56]))
+        print("      Dossier deplace ou supprime, ou type sans fichier texte.")
+    if faits:
+        print("\n  " + _c("usine doublons", "1") + " compare desormais tout "
+              "le catalogue.")
+    return 0
 
 
 def cmd_reglages(args: argparse.Namespace) -> int:
@@ -1708,11 +1809,31 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.set_defaults(fonction=cmd_ventes)
 
     p = sous_parseurs.add_parser(
+        "sauvegarde", help="mettre l'atelier a l'abri, ou le remettre en place")
+    p.add_argument("--vers", default="", metavar="FICHIER.zip",
+                   help="ou ecrire l'archive")
+    p.add_argument("--avec-produits", dest="avec_produits",
+                   action="store_true",
+                   help="inclure les fichiers des produits (volumineux)")
+    p.add_argument("--restaurer", default="", metavar="FICHIER.zip",
+                   help="remettre l'atelier dans l'etat de cette archive")
+    p.add_argument("--sans-produits", dest="sans_produits",
+                   action="store_true",
+                   help="a la restauration, ne pas reecrire les produits")
+    p.add_argument("--inspecter", default="", metavar="FICHIER.zip",
+                   help="voir ce que contient une archive, sans rien changer")
+    p.add_argument("--oui", action="store_true",
+                   help="confirmer une restauration")
+    p.set_defaults(fonction=cmd_sauvegarde)
+
+    p = sous_parseurs.add_parser(
         "doublons", help="reperer les produits qui se recouvrent")
     p.add_argument("-t", "--type", default="", choices=[""] + catalogue.cles(),
                    help="ne comparer qu'un type de produit")
     p.add_argument("-n", "--nombre", type=int, default=12,
                    help="nombre de paires affichees")
+    p.add_argument("--reconstruire", action="store_true",
+                   help="calculer les empreintes des produits deja fabriques")
     p.set_defaults(fonction=cmd_doublons)
 
     p = sous_parseurs.add_parser("reglages", help="consulter ou modifier vos reglages")
