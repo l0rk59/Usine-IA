@@ -28,7 +28,11 @@ llm.definir_simulateur(simulateur)
 
 SCENARIOS = [
     ("idees", ["idees", "le jardinage urbain", "-n", "6", "--sans-image",
-               "--sans-marche"]),
+               "--sans-marche", "--hors-ligne"]),
+    # Sur-mesure : sept sections de neuf cents mots, ton libre.
+    ("sur-mesure", ["ebook", "la menuiserie du dimanche", "--chapitres", "7",
+                    "--mots", "900", "-t", "comme un menuisier a son apprenti",
+                    "--sans-image"]),
     ("ebook", ["ebook", "la prospection pour freelances", "-T", "mini",
                "--sans-image", "--marketing", "--zip"]),
     ("prompts", ["prompts", "la gestion de projet", "-n", "8", "--sans-image"]),
@@ -98,6 +102,7 @@ ATTENDUS = {
     "modeles": [".pdf", "a-importer", "modeles.md", "systeme.json"],
     "impression": ["-A4.pdf", "-Lettre-US.pdf", "cahier.json"],
     "qualite": ["rapport-qualite.json", ".pdf", ".epub"],
+    "sur-mesure": [".pdf", ".epub", "livre.md"],
     "couverture-ebook": ["couverture.png", "couverture.svg", ".pdf", ".epub"],
     "couverture-outils": ["couverture.png", "couverture.svg", ".pdf"],
     "logiciel-cli": ["source/outil.py", "source/test_outil.py", "verification.json",

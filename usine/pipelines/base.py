@@ -28,6 +28,50 @@ TAILLES = {
     "long": (18, 1300),
 }
 
+# Bornes du sur-mesure. En dessous de deux sections, il n'y a pas de plan ;
+# au-dela de soixante, aucun quota gratuit ne tient la distance et le livre
+# se repete. Un mot par section sous trois cents ne fait pas une section,
+# au-dela de quatre mille le modele coupe au milieu d'une phrase.
+CHAPITRES_MIN, CHAPITRES_MAX = 2, 60
+MOTS_MIN, MOTS_MAX = 300, 4000
+
+
+def resoudre_ton(valeur: str) -> str:
+    """Description du ton, qu'il vienne des raccourcis ou de l'utilisateur.
+
+    Les cinq tons predefinis sont des RACCOURCIS, pas une liste fermee :
+    « -t expert » vaut sa description, « -t "comme un vieux menuisier qui
+    explique a son apprenti" » passe telle quelle. Une liste de choix fermee
+    obligeait a choisir entre cinq voix pour tous les produits d'un
+    catalogue, ce qui est exactement ce qui les fait se ressembler.
+    """
+    propre = (valeur or "").strip()
+    if not propre:
+        return TONS["pro"]
+    return TONS.get(propre.lower(), propre)
+
+
+def resoudre_taille(taille: str, chapitres: int = 0,
+                    mots: int = 0) -> Tuple[int, int]:
+    """(sections, mots par section), du raccourci au sur-mesure.
+
+    « -T long » reste valable. « -T 15 » demande quinze sections. Et
+    « --chapitres 15 --mots 1400 » decide des deux.
+    """
+    defaut = TAILLES.get((taille or "").strip().lower())
+    if defaut is None and (taille or "").strip().isdigit():
+        # « -T 15 » : un nombre de sections, avec le volume du palier le
+        # plus proche pour ne pas avoir a le preciser aussi.
+        demande = int(taille)
+        proche = min(TAILLES.values(), key=lambda v: abs(v[0] - demande))
+        defaut = (demande, proche[1])
+    if defaut is None:
+        defaut = TAILLES["standard"]
+    nombre = int(chapitres) if chapitres else defaut[0]
+    volume = int(mots) if mots else defaut[1]
+    return (max(CHAPITRES_MIN, min(CHAPITRES_MAX, nombre)),
+            max(MOTS_MIN, min(MOTS_MAX, volume)))
+
 
 def slug(texte: str, longueur: int = 60) -> str:
     """Transforme un titre en nom de dossier sur : sans accent ni espace."""
@@ -93,6 +137,8 @@ class Contexte:
     sans_image: bool = False
     qualite: str = "standard"
     relectures: int = -1          # -1 : deduit du niveau de qualite
+    chapitres: int = 0            # 0 : deduit de la taille
+    mots_section: int = 0         # 0 : deduit de la taille
     produit_id: str = ""
     demarre_le: float = field(default_factory=time.time)
     dossier: Path = field(default_factory=Path)
@@ -106,7 +152,7 @@ class Contexte:
 
     @property
     def description_ton(self) -> str:
-        return TONS.get(self.ton, TONS["pro"])
+        return resoudre_ton(self.ton)
 
     @property
     def nb_passes(self) -> int:
@@ -119,11 +165,11 @@ class Contexte:
 
     @property
     def nb_chapitres(self) -> int:
-        return TAILLES.get(self.taille, TAILLES["standard"])[0]
+        return resoudre_taille(self.taille, self.chapitres, self.mots_section)[0]
 
     @property
     def mots_par_chapitre(self) -> int:
-        return TAILLES.get(self.taille, TAILLES["standard"])[1]
+        return resoudre_taille(self.taille, self.chapitres, self.mots_section)[1]
 
     def systeme(self, role_metier: str) -> str:
         return (

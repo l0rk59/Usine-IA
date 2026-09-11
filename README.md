@@ -128,6 +128,7 @@ indisponibles. Pour l'utiliser en priorité : `USINE_LOCAL_FIRST=1` dans le `.en
 | `usine logiciel` | **Outil logiciel** | Code source **vérifié**, CLI, app web ou extension Chrome |
 | `usine idees` | Étude de niche | 12 idées appuyées sur des **mesures de marché réelles** |
 | `usine marche` | Signaux de marché | demande, concurrence, tendance — 4 sources sans clé |
+| `usine veille` | **Ce que les gens disent** | communautés, formulations de problème, leur vocabulaire |
 | `usine bilan` | Mémoire de l'usine | ce que vos productions révèlent sur vos réglages |
 | `usine doublons` | **Anti-répétition** | les produits qui se recouvrent, avant qu'un acheteur ne le voie |
 | `usine ventes` | **Ce qui rapporte** | import Gumroad/Etsy, chiffre d'affaires par niche, prix réels |
@@ -371,6 +372,44 @@ usine doublons          # sort en code 1 s'il trouve : bon pour une tâche plani
 Le produit n'est pas bloqué — comparer avant supposerait de deviner ce que le
 modèle va écrire. Le quota est dépensé ; ce qu'on évite, c'est la mise en
 vente. Détails : [docs/DOUBLONS.md](docs/DOUBLONS.md).
+
+### Le sur-mesure, pas cinq tons pour tout un catalogue
+
+Cinq tons fermés et quatre volumes imposaient les mêmes réglages à tous les
+produits — ce qui est précisément ce qui les fait se ressembler.
+
+```bash
+usine ebook "la menuiserie du dimanche" \
+     --chapitres 7 --mots 900 \
+     -t "comme un vieux menuisier qui explique à son apprenti"
+usine ebook "un sujet" -T 15        # 15 sections, volume déduit
+```
+
+Les cinq tons restent des **raccourcis** : `-t punchy` vaut sa description,
+toute autre valeur passe telle quelle jusqu'à l'invite. Les valeurs absurdes
+sont bornées, pas refusées — aucun quota gratuit ne tient neuf cents
+chapitres.
+
+### Aller voir ce que les gens disent
+
+Les quatre sources de marché mesurent des **volumes** : elles disent si une
+niche existe. Elles ne disent pas ce qui y fait mal, ni avec quels mots.
+
+```bash
+usine veille "freelance invoicing"
+```
+
+> `Leurs mots : freelancers (5), built (3), invoicing (2), tracking (2)`
+> `The tool I built after 10 years of chasing late payments`
+
+« chasing late payments » est une promesse produit écrite par quelqu'un qui a
+le problème. `usine idees` s'en sert déjà.
+
+**La recherche globale de Reddit ne marche pas** — vérifié : sur « meal
+planning for busy parents » elle rend des chatons dans une bouche d'égout et
+un séjour en Slovénie. Le chemin qui marche demande d'abord *qui* parle du
+sujet, puis lit ce qui s'y dit. Détails et limites :
+[docs/VEILLE.md](docs/VEILLE.md).
 
 ### Les signaux de marché — sources réelles
 
@@ -626,7 +665,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         350 tests + test de fumée, aucun appel réseau
+tests/         373 tests + test de fumée, aucun appel réseau
 install.sh     installation Termux
 ```
 
@@ -638,7 +677,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 350 tests
+python3 -m unittest discover -s tests -t .   # 373 tests
 python3 tests/fumee.py                       # les 9 chaînes via la vraie CLI
 ```
 

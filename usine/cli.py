@@ -24,7 +24,8 @@ from .marketing import vente
 from .packaging import livraison
 from .pipelines import (boite_outils, catalogue, ebook, formation, idees,
                         impression, logiciel, modeles, pack_prompts, social)
-from .pipelines.base import Contexte, TAILLES, TONS
+from .pipelines.base import (CHAPITRES_MAX, CHAPITRES_MIN, Contexte, MOTS_MAX,
+                             MOTS_MIN, TAILLES, TONS)
 
 # Couleurs ANSI : Termux les gere, mais on s'abstient si la sortie est redirigee.
 _COULEUR = sys.stdout.isatty()
@@ -75,6 +76,8 @@ def contexte_depuis(args: argparse.Namespace) -> Contexte:
         taille=choisir("taille", "taille"),
         auteur=choisir("auteur", "auteur"),
         qualite=choisir("qualite", "qualite"),
+        chapitres=int(getattr(args, "chapitres", 0) or 0),
+        mots_section=int(getattr(args, "mots", 0) or 0),
         prix=getattr(args, "prix", "") or "",
         marque=getattr(args, "marque", "") or profil.get("marque", ""),
         hors_ligne=args.hors_ligne,
@@ -408,6 +411,51 @@ def _resume_ventes(args: argparse.Namespace) -> int:
                   " ({} ventes)".format(ligne["devise"], ligne["median"],
                                         ligne["bas"], ligne["haut"],
                                         ligne["ventes"]))
+    return 0
+
+
+def cmd_veille(args: argparse.Namespace) -> int:
+    """Aller voir ce que les gens disent d'une niche."""
+    from .core import veille
+
+    titre_console("Veille — « {} »".format(args.sujet))
+    print("  Deux appels espaces : Reddit limite fermement le debit.\n")
+    rapport = veille.scouter(args.sujet, periode=args.periode,
+                             combien=args.communautes)
+    if rapport.indisponible:
+        alerte(rapport.indisponible)
+        return 1
+
+    print("  " + _c("Communautes", "1"))
+    for communaute in rapport.communautes[:8]:
+        print("    r/{:<22} {}".format(communaute["nom"][:22],
+                                       communaute["titre"][:44]))
+
+    if rapport.mots:
+        print("\n  " + _c("Leurs mots", "1"))
+        print("    " + ", ".join("{} ({})".format(mot, nombre)
+                                 for mot, nombre in rapport.mots))
+
+    douleurs = rapport.douleurs
+    if douleurs:
+        print("\n  " + _c("Formulations de probleme", "1"))
+        for discussion in douleurs[:args.nombre]:
+            print("    - {}".format(discussion.titre[:72]))
+
+    print("\n  " + _c("Discussions les plus suivies", "1"))
+    for discussion in rapport.discussions[:args.nombre]:
+        print("    [{:<14}] {}".format(discussion.communaute[:14],
+                                       discussion.titre[:60]))
+
+    print("\n  " + _c("Ce que ceci n'est pas", "33"))
+    for ligne in _envelopper(
+            "Un signal de DOULEUR, pas d'intention d'achat : on se plaint "
+            "gratuitement. Reddit est par ailleurs anglophone et "
+            "technophile — une niche francaise peut n'y laisser aucune "
+            "trace sans que cela dise rien de son marche.", 68):
+        print("    " + ligne)
+    print("\n  " + _c('usine idees "{}"'.format(args.sujet[:36]), "1")
+          + " s'en sert deja pour formuler les promesses.")
     return 0
 
 
@@ -1634,10 +1682,22 @@ def _options_communes(sous: argparse.ArgumentParser, avec_sujet: bool = True) ->
     # (usine reglages), ce qui evite de retaper --auteur a chaque commande.
     sous.add_argument("-a", "--audience", default="",
                       help="a qui s'adresse le produit")
-    sous.add_argument("-t", "--ton", default="", choices=[""] + sorted(TONS),
-                      help="ton de redaction")
-    sous.add_argument("-T", "--taille", default="", choices=[""] + sorted(TAILLES),
-                      help="volume du produit")
+    # Pas de « choices » : les cinq tons sont des raccourcis, pas une liste
+    # fermee. Imposer cinq voix a tout un catalogue est precisement ce qui
+    # fait que les produits se ressemblent.
+    sous.add_argument("-t", "--ton", default="",
+                      help="raccourci ({}) ou description libre, ex : "
+                           "-t \"comme un menuisier a son apprenti\""
+                           .format("|".join(sorted(TONS))))
+    sous.add_argument("-T", "--taille", default="",
+                      help="raccourci ({}) ou nombre de sections, ex : -T 15"
+                           .format("|".join(sorted(TAILLES))))
+    sous.add_argument("--chapitres", type=int, default=0,
+                      help="nombre exact de sections ({} a {})".format(
+                          CHAPITRES_MIN, CHAPITRES_MAX))
+    sous.add_argument("--mots", type=int, default=0,
+                      help="mots visés par section ({} a {})".format(
+                          MOTS_MIN, MOTS_MAX))
     sous.add_argument("--auteur", default="", help="nom affiche comme auteur")
     sous.add_argument("--langue", default="", help="langue de redaction")
     sous.add_argument("--marque", default="", help="nom de votre marque")
@@ -1853,6 +1913,18 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.add_argument("--depuis", default="", help="ne compter qu'a partir de AAAA-MM-JJ")
     p.add_argument("-n", "--nombre", type=int, default=15)
     p.set_defaults(fonction=cmd_ventes)
+
+    p = sous_parseurs.add_parser(
+        "veille", help="ce que les gens disent vraiment d'une niche")
+    p.add_argument("sujet", help="la niche a explorer, entre guillemets")
+    p.add_argument("-n", "--nombre", type=int, default=12,
+                   help="discussions affichees")
+    p.add_argument("-c", "--communautes", type=int, default=2,
+                   help="communautes lues (chacune coute un appel)")
+    p.add_argument("--periode", default="year",
+                   choices=["day", "week", "month", "year", "all"],
+                   help="fenetre de temps")
+    p.set_defaults(fonction=cmd_veille)
 
     p = sous_parseurs.add_parser(
         "sauvegarde", help="mettre l'atelier a l'abri, ou le remettre en place")

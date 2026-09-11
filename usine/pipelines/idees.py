@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from ..core import config, llm, marche, ventes
+from ..core import config, llm, marche, veille, ventes
 from . import catalogue
 from ..render import document as D
 from ..render import tableur
@@ -21,7 +21,8 @@ ROLE = (
 
 
 def explorer(ctx: Contexte, nombre: int = 12,
-             donnees_marche: str = "") -> List[Dict[str, Any]]:
+             donnees_marche: str = "",
+             terrain: str = "") -> List[Dict[str, Any]]:
     contexte_marche = (
         "\n\n{}\n\nAppuie-toi sur ces mesures reelles plutot que sur des "
         "impressions : cite-les quand elles soutiennent ou contredisent une "
@@ -29,11 +30,17 @@ def explorer(ctx: Contexte, nombre: int = 12,
     # Ce que ce vendeur a REELLEMENT vendu pese plus qu'un avis general sur
     # le marche : c'est la seule mesure qui porte sur son audience a lui.
     constate = ventes.resume_pour_ia()
+    # Les mesures de marche disent si une niche existe ; la veille dit avec
+    # quels mots on y parle des problemes. Un titre qui reprend le
+    # vocabulaire des gens se trouve ; un titre ecrit en langue de brochure
+    # ne se cherche pas.
+    discussions = ("\n\n{}\n".format(terrain) if terrain else "")
     historique = ("\n\n{}\n\nTiens-en compte : ce qui s'est deja vendu chez "
                   "ce vendeur vaut mieux qu'une intuition de marche.\n"
                   .format(constate) if constate else "")
     invite = (
-        "NICHE : {niche}\nAUDIENCE VISEE : {audience}\n{marche}{constate}\n"
+        "NICHE : {niche}\nAUDIENCE VISEE : {audience}\n"
+        "{marche}{constate}{terrain}\n"
         "Propose {n} idees de produits digitaux realisables par une seule personne, "
         "sans stock ni equipe. Le type doit etre l'un de ceux que l'usine sait "
         "reellement fabriquer :\n{catalogue}\n\n"
@@ -49,6 +56,7 @@ def explorer(ctx: Contexte, nombre: int = 12,
         'acheteurs"}}]}}'
     ).format(niche=ctx.sujet, audience=ctx.audience, n=nombre,
              marche=contexte_marche, constate=historique,
+             terrain=discussions,
              catalogue=catalogue.resume_pour_ia(),
              types="|".join(catalogue.cles(vendables=True)))
     donnees = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="costaud",
@@ -111,7 +119,8 @@ def _ancrer_les_prix(idees: List[Dict[str, Any]]) -> None:
 
 
 def produire(ctx: Contexte, nombre: int = 12,
-             avec_marche: bool = True) -> Dict[str, Any]:
+             avec_marche: bool = True,
+             avec_veille: bool = True) -> Dict[str, Any]:
     rapport_marche: Dict[str, Any] = {}
     resume_marche = ""
     if avec_marche and not ctx.hors_ligne:
@@ -125,8 +134,26 @@ def produire(ctx: Contexte, nombre: int = 12,
         except Exception as exc:
             ctx.journal("  marche indisponible : {}".format(exc))
 
+    resume_terrain = ""
+    rapport_veille = None
+    if avec_veille and not ctx.hors_ligne:
+        ctx.journal("Veille : ce que les gens en disent...")
+        try:
+            rapport_veille = veille.scouter(ctx.sujet)
+            if rapport_veille.utilisable:
+                resume_terrain = veille.resume_pour_ia(rapport_veille)
+                ctx.journal("  {} discussions dans {} communaute(s) : {}".format(
+                    len(rapport_veille.discussions),
+                    len(rapport_veille.communautes),
+                    ", ".join(m for m, _ in rapport_veille.mots[:5])))
+            else:
+                ctx.journal("  " + (rapport_veille.indisponible
+                                    or "rien d'exploitable"))
+        except Exception as exc:
+            ctx.journal("  veille indisponible : {}".format(exc))
+
     ctx.journal("Exploration de la niche « {} »...".format(ctx.sujet))
-    idees = explorer(ctx, nombre, resume_marche)
+    idees = explorer(ctx, nombre, resume_marche, resume_terrain)
 
     config.ensure_dirs()
     from .base import slug

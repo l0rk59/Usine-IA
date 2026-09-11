@@ -424,3 +424,72 @@ class TestServeurWeb(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestPersonnalisation(unittest.TestCase):
+    """Le type, le ton et le volume doivent se regler a volonte.
+
+    Cinq tons fermes et quatre volumes imposaient les memes reglages a tout
+    un catalogue — ce qui est exactement ce qui fait que les produits se
+    ressemblent.
+    """
+
+    def test_un_ton_libre_est_accepte_tel_quel(self):
+        from usine.pipelines.base import resoudre_ton
+
+        libre = "comme un vieux menuisier qui explique a son apprenti"
+        self.assertEqual(resoudre_ton(libre), libre)
+
+    def test_les_tons_predefinis_restent_des_raccourcis(self):
+        from usine.pipelines.base import TONS, resoudre_ton
+
+        self.assertEqual(resoudre_ton("punchy"), TONS["punchy"])
+        self.assertEqual(resoudre_ton("PUNCHY"), TONS["punchy"])
+        self.assertEqual(resoudre_ton(""), TONS["pro"])
+
+    def test_le_ton_libre_atteint_l_invite(self):
+        from usine.pipelines.base import Contexte
+
+        contexte = Contexte(sujet="x", ton="sec et factuel, sans adjectif")
+        self.assertIn("sec et factuel, sans adjectif",
+                      contexte.systeme("un redacteur"))
+
+    def test_un_nombre_de_sections_se_demande_directement(self):
+        from usine.pipelines.base import resoudre_taille
+
+        self.assertEqual(resoudre_taille("", chapitres=15)[0], 15)
+        self.assertEqual(resoudre_taille("15")[0], 15)
+        self.assertEqual(resoudre_taille("standard", 24, 1500), (24, 1500))
+
+    def test_les_raccourcis_de_volume_restent_valables(self):
+        from usine.pipelines.base import TAILLES, resoudre_taille
+
+        for nom, attendu in TAILLES.items():
+            self.assertEqual(resoudre_taille(nom), attendu)
+
+    def test_les_valeurs_absurdes_sont_bornees_pas_refusees(self):
+        """Un quota gratuit ne tient pas neuf cents chapitres."""
+        from usine.pipelines.base import (CHAPITRES_MAX, CHAPITRES_MIN,
+                                          MOTS_MAX, MOTS_MIN, resoudre_taille)
+
+        self.assertEqual(resoudre_taille("", 900, 99999),
+                         (CHAPITRES_MAX, MOTS_MAX))
+        self.assertEqual(resoudre_taille("", 1, 10), (CHAPITRES_MIN, MOTS_MIN))
+
+    def test_le_contexte_suit_le_sur_mesure(self):
+        from usine.pipelines.base import Contexte
+
+        contexte = Contexte(sujet="x", taille="mini", chapitres=20, mots_section=900)
+        self.assertEqual(contexte.nb_chapitres, 20)
+        self.assertEqual(contexte.mots_par_chapitre, 900)
+
+    def test_la_ligne_de_commande_accepte_un_ton_libre(self):
+        """argparse refusait tout ton hors des cinq choix."""
+        from usine import cli
+
+        parseur = cli.construire_parseur()
+        args = parseur.parse_args(
+            ["ebook", "un sujet", "-t", "comme un menuisier", "-T", "15",
+             "--chapitres", "7"])
+        self.assertEqual(args.ton, "comme un menuisier")
+        self.assertEqual(args.chapitres, 7)
