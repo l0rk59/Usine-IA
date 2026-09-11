@@ -261,9 +261,15 @@ pre.journal .ligne { display: block; animation: apparait 0.3s ease both; }
   font-size: 0.72rem; }
 .dit.douleur { border-left: 3px solid var(--ambre); padding-left: 0.6rem; }
 
-.archive { display: grid; grid-template-columns: 1fr auto auto; gap: 0.6rem;
+/* Quatre elements par ligne — nom, taille, telecharger, restaurer — ne
+   tiennent pas cote a cote sur un telephone. En flex, le nom prend la
+   place disponible et les actions passent dessous quand il le faut. */
+.archive { display: flex; flex-wrap: wrap; gap: 0.4rem 0.6rem;
   align-items: center; border-top: 1px solid var(--bord);
-  padding: 0.45rem 0; font-size: 0.8rem; }
+  padding: 0.5rem 0; font-size: 0.8rem; }
+.archive .nom { flex: 1 1 10rem; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.archive button { flex: none; }
 .archive:first-of-type { border-top: 0; }
 .archive .quand { color: var(--doux); font-variant-numeric: tabular-nums;
   font-size: 0.74rem; }
@@ -289,3 +295,11 @@ button.danger {
   cursor: pointer; }
 button.danger:disabled { opacity: 0.45; cursor: not-allowed; }
 button.danger:not(:disabled):hover { filter: brightness(1.1); }
+
+/* Un champ de fichier ne se met pas en forme : on l'efface et on habille
+   son etiquette, qui reste cliquable et accessible au clavier. */
+label.fichier { display: inline-block; width: auto; margin: 0;
+  padding: 0.38rem 0.7rem; font-size: 0.76rem; border: 1px solid var(--bord);
+  border-radius: 10px; background: rgba(255,255,255,0.05); color: var(--doux);
+  cursor: pointer; }
+label.fichier:hover { color: var(--encre); border-color: var(--accent); }

@@ -674,6 +674,21 @@ serveur, `confirme` doit valoir exactement `true` : `"oui"` et `1`, vrais en
 JavaScript, sont refusés. La restauration est par ailleurs refusée tant qu'une
 fabrication, une veille ou l'usine continue tourne.
 
+**Téléverser une archive** couvre le cas de la réinstallation : téléphone
+effacé, sauvegarde sur l'ordinateur. Le corps est écrit par morceaux sur le
+disque, jamais gardé en mémoire ; le plafond est vérifié sur le
+`Content-Length` avant de lire quoi que ce soit ; le nom venu du navigateur
+est réduit à un nom de fichier (`../../etc/passwd` → `passwd.zip`) ; un nom
+déjà pris reçoit un rang au lieu d'écraser ; et ce qui n'est pas une archive
+lisible ne reste pas sur le disque.
+
+Une archive peut par ailleurs **annoncer bien plus qu'elle ne pèse** : six
+cents kilo-octets compressés déclarant une base de six cents mégaoctets
+suffiraient à faire tomber le téléphone, puisque `restaurer` lit la base d'un
+seul bloc en mémoire. Les tailles décompressées annoncées sont donc bornées
+dans `sauvegarde` — pas dans la page, car la ligne de commande acceptait déjà
+n'importe quel chemin.
+
 Ce dernier point a révélé un défaut que seule une interface à plusieurs
 threads pouvait montrer : `store.close()` ne ferme que la connexion du thread
 qui appelle, et la restauration *déplace* le fichier de base. Les autres
@@ -748,7 +763,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         438 tests + test de fumée, aucun appel réseau
+tests/         451 tests + test de fumée, aucun appel réseau
                un atelier temporaire par module (tests/atelier.py)
 install.sh     installation Termux
 ```
@@ -761,7 +776,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 438 tests
+python3 -m unittest discover -s tests -t .   # 451 tests
 python3 tests/fumee.py                       # les 9 chaînes via la vraie CLI
 ```
 

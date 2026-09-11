@@ -13,11 +13,14 @@ et l'usine n'installe aucune dependance) ; le filtrage, lui, se teste.
 
 from __future__ import annotations
 
+import io
 import json
+import socket
 import sys
 import threading
 import unittest
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from http.server import ThreadingHTTPServer
@@ -388,6 +391,175 @@ class TestRestauration(BaseServeur):
                       "le bouton doit naitre inactif")
 
 
+class TestTeleversement(BaseServeur):
+    """Faire revenir une archive qui n'est pas sur l'appareil.
+
+    C'est le cas de la reinstallation : le telephone a ete efface, et la
+    sauvegarde est sur un ordinateur ou dans un nuage. Ni la page ni la
+    ligne de commande ne savaient la faire revenir — toutes deux veulent un
+    fichier deja la.
+    """
+
+    def _dossier(self):
+        return config.WORKDIR / "sauvegardes"
+
+    def _archives(self):
+        dossier = self._dossier()
+        return sorted(f.name for f in dossier.iterdir()) if dossier.is_dir() else []
+
+    def _envoyer(self, octets, nom="sauvegarde.zip"):
+        requete = urllib.request.Request(
+            self.base + "/api/televerser?nom=" + urllib.parse.quote(nom),
+            data=octets, headers={"Content-Type": "application/zip"})
+        try:
+            with urllib.request.urlopen(requete, timeout=30) as reponse:
+                return reponse.status, json.loads(reponse.read())
+        except urllib.error.HTTPError as exc:
+            return exc.code, json.loads(exc.read())
+
+    def _vraie_archive(self):
+        """Une archive valide, retiree du dossier : elle « vient d'ailleurs »."""
+        from usine.core import sauvegarde
+
+        archive = sauvegarde.creer()
+        octets = archive.read_bytes()
+        archive.unlink()
+        return octets
+
+    def test_une_archive_venue_d_ailleurs_rejoint_les_autres(self):
+        octets = self._vraie_archive()
+        statut, recu = self._envoyer(octets, "ma sauvegarde du 3 mars.zip")
+        self.assertEqual(statut, 200, recu)
+        self.assertEqual(recu["archive"]["nom"], "ma-sauvegarde-du-3-mars.zip")
+        self.assertEqual(recu["fiche"]["schema"], store.VERSION_SCHEMA)
+        self.assertIn("ma-sauvegarde-du-3-mars.zip",
+                      [a["nom"] for a in recu["sauvegardes"]])
+
+    def test_un_nom_qui_contient_un_chemin_est_reduit(self):
+        """Le nom vient de la machine d'en face : c'est un nom, pas un chemin."""
+        octets = self._vraie_archive()
+        for propose, attendu in (
+                ("../../etc/passwd", "passwd.zip"),
+                ("/tmp/evade.zip", "evade.zip"),
+                ("C:\\Users\\moi\\sauve.zip", "sauve.zip")):
+            with self.subTest(nom=propose):
+                _, recu = self._envoyer(octets, propose)
+                self.assertEqual(recu["archive"]["nom"], attendu)
+        self.assertFalse(
+            (config.WORKDIR / "passwd.zip").exists(),
+            "une archive est sortie du dossier des sauvegardes")
+
+    def test_deux_envois_du_meme_nom_n_ecrasent_rien(self):
+        """Remplacer l'archive qui protege par celle qu'on teste serait la
+        pire facon de recevoir une sauvegarde."""
+        octets = self._vraie_archive()
+        _, premier = self._envoyer(octets, "collision.zip")
+        _, second = self._envoyer(octets, "collision.zip")
+        self.assertEqual(premier["archive"]["nom"], "collision.zip")
+        self.assertEqual(second["archive"]["nom"], "collision-2.zip")
+        self.assertIn("collision.zip", self._archives())
+
+    def test_ce_qui_n_est_pas_une_archive_est_refuse_et_ne_reste_pas(self):
+        avant = self._archives()
+        statut, refus = self._envoyer(b"je ne suis pas un zip" * 60, "faux.zip")
+        self.assertEqual(statut, 400)
+        self.assertIn("illisible", refus["erreur"])
+        self.assertEqual(self._archives(), avant,
+                         "un fichier refuse est reste dans le dossier")
+
+    def test_une_archive_sans_base_est_refusee(self):
+        creux = io.BytesIO()
+        with zipfile.ZipFile(creux, "w") as zip_:
+            zip_.writestr("lisez-moi.txt", "rien dedans")
+        avant = self._archives()
+        statut, refus = self._envoyer(creux.getvalue(), "creux.zip")
+        self.assertEqual(statut, 400)
+        self.assertIn("sans base", refus["erreur"])
+        self.assertEqual(self._archives(), avant)
+
+    def test_une_archive_qui_annonce_une_base_enorme_est_refusee(self):
+        """Restaurer lit « usine.db » d'un seul bloc en memoire.
+
+        Six cents kilo-octets compresses annoncant six cents mega-octets
+        suffiraient a faire tomber le telephone.
+        """
+        from usine.core import sauvegarde
+
+        bombe = io.BytesIO()
+        with zipfile.ZipFile(bombe, "w", zipfile.ZIP_DEFLATED) as zip_:
+            zip_.writestr("usine.db", b"\0" * (sauvegarde.BASE_MAX + 1024))
+        octets = bombe.getvalue()
+        self.assertLess(len(octets), 2 * 1024 * 1024,
+                        "le temoin doit rester petit une fois compresse")
+
+        avant = self._archives()
+        statut, refus = self._envoyer(octets, "bombe.zip")
+        self.assertEqual(statut, 400)
+        self.assertIn("refuse de la charger en memoire", refus["erreur"])
+        self.assertEqual(self._archives(), avant)
+
+    def test_un_corps_vide_est_refuse(self):
+        statut, refus = self._envoyer(b"", "vide.zip")
+        self.assertEqual(statut, 400)
+        self.assertIn("vide", refus["erreur"])
+
+    def test_une_taille_annoncee_hors_limite_est_refusee_sans_rien_lire(self):
+        """Le plafond est verifie AVANT de lire le corps.
+
+        Sinon un envoi annonce a dix giga-octets remplirait le disque du
+        telephone avant d'etre refuse.
+        """
+        annonce = serveur.TELEVERSEMENT_MAX + 1
+        prise = socket.create_connection(self.serveur.server_address, timeout=10)
+        try:
+            prise.sendall((
+                "POST /api/televerser?nom=enorme.zip HTTP/1.1\r\n"
+                "Host: 127.0.0.1\r\n"
+                "Content-Type: application/zip\r\n"
+                "Content-Length: {}\r\n\r\n".format(annonce)).encode())
+            # Pas un seul octet de corps : la reponse doit venir quand meme.
+            reponse = prise.recv(4096).decode("utf-8", "replace")
+        finally:
+            prise.close()
+        self.assertIn("413", reponse.splitlines()[0])
+        self.assertIn("limite", reponse)
+
+    def test_un_transfert_interrompu_ne_laisse_pas_de_fichier(self):
+        octets = self._vraie_archive()
+        avant = self._archives()
+        prise = socket.create_connection(self.serveur.server_address, timeout=10)
+        try:
+            prise.sendall((
+                "POST /api/televerser?nom=coupee.zip HTTP/1.1\r\n"
+                "Host: 127.0.0.1\r\n"
+                "Content-Type: application/zip\r\n"
+                "Content-Length: {}\r\n\r\n".format(len(octets)).encode()))
+            prise.sendall(octets[:len(octets) // 3])
+            prise.shutdown(socket.SHUT_WR)
+            reponse = prise.recv(4096).decode("utf-8", "replace")
+        finally:
+            prise.close()
+        self.assertIn("400", reponse.splitlines()[0])
+        self.assertEqual(self._archives(), avant)
+
+    def test_une_archive_televersee_est_restaurable(self):
+        """Le parcours complet : atelier efface, archive renvoyee, catalogue
+        de retour."""
+        store.creer_produit("tv-ancien", "ebook", "Le catalogue d'avant",
+                            sujet="s", dossier="/tmp")
+        octets = self._vraie_archive()
+        store.creer_produit("tv-apres", "ebook", "Fabrique apres l'archive",
+                            sujet="s", dossier="/tmp")
+
+        _, recu = self._envoyer(octets, "retour.zip")
+        _, fait = self.json("/api/sauvegarde",
+                            {"action": "restaurer",
+                             "nom": recu["archive"]["nom"], "confirme": True})
+        self.assertTrue(fait["restaure"])
+        self.assertIsNotNone(store.lire_produit("tv-ancien"))
+        self.assertIsNone(store.lire_produit("tv-apres"))
+
+
 class TestPageServie(BaseServeur):
     """Garde-fou sur ce que la page declare.
 
@@ -400,7 +572,8 @@ class TestPageServie(BaseServeur):
         _, corps = self.appeler("/")
         page = corps.decode("utf-8")
         for marqueur in ("veille-lancer", "doublons-reconstruire",
-                         "sauvegarde-creer", "veille-douleurs", "sauvegardes"):
+                         "sauvegarde-creer", "veille-douleurs", "sauvegardes",
+                         "archive-fichier"):
             self.assertIn('id="{}"'.format(marqueur), page, marqueur)
 
     def test_le_script_echappe_ce_qui_vient_du_flux(self):

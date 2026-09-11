@@ -234,6 +234,47 @@ class TestRestauration(unittest.TestCase):
                          "contenu original")
 
 
+class TestArchiveDemesuree(unittest.TestCase):
+    """Une archive peut annoncer bien plus qu'elle ne pese.
+
+    `restaurer` lit « usine.db » d'un seul bloc en memoire. Depuis que le
+    tableau de bord accepte qu'on lui televerse une archive, celle-ci peut
+    venir de nulle part — mais la ligne de commande acceptait deja
+    n'importe quel chemin, donc la borne est ici, pas dans la page.
+    """
+
+    def _archive(self, nom, octets):
+        chemin = Path(tempfile.mkdtemp(prefix="usine-demesure-")) / "a.zip"
+        self.addCleanup(shutil.rmtree, str(chemin.parent), True)
+        with zipfile.ZipFile(chemin, "w", zipfile.ZIP_DEFLATED) as zip_:
+            zip_.writestr(nom, b"\0" * octets)
+        return chemin
+
+    def test_une_base_annoncee_enorme_est_refusee(self):
+        archive = self._archive("usine.db", sauvegarde.BASE_MAX + 4096)
+        self.assertLess(archive.stat().st_size, 2 * 1024 * 1024,
+                        "le temoin doit rester petit une fois compresse")
+        fiche = sauvegarde.inspecter(archive)
+        self.assertFalse(fiche["valide"])
+        self.assertIn("memoire", fiche["probleme"])
+
+    def test_restaurer_refuse_la_meme_archive(self):
+        """La borne doit tenir sur le chemin qui decompresse, pas seulement
+        sur celui qui inspecte."""
+        archive = self._archive("usine.db", sauvegarde.BASE_MAX + 4096)
+        resultat = sauvegarde.restaurer(archive)
+        self.assertFalse(resultat["valide"])
+        self.assertTrue(config.DB_PATH.exists(),
+                        "la base courante a ete touchee malgre le refus")
+
+    def test_une_archive_normale_passe_et_annonce_sa_taille(self):
+        _peupler()
+        fiche = sauvegarde.inspecter(sauvegarde.creer())
+        self.assertTrue(fiche["valide"])
+        self.assertGreater(fiche["octets_base"], 0)
+        self.assertGreaterEqual(fiche["octets"], fiche["octets_base"])
+
+
 class TestAutresThreads(unittest.TestCase):
     """Une connexion appartient a son thread : les autres doivent suivre."""
 

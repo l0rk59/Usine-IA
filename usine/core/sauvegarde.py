@@ -41,6 +41,17 @@ NOM_REGLAGES = "reglages.json"
 NOM_FICHE = "sauvegarde.json"
 VERSION = 1
 
+# Une archive de sauvegarde voyage : elle passe par un ordinateur ou un
+# nuage, et depuis que le tableau de bord accepte qu'on lui en televerse
+# une, elle peut aussi arriver de nulle part. Restaurer lit « usine.db »
+# d'un seul bloc en memoire : une archive de trois kilo-octets annoncant
+# une base de dix giga-octets suffirait a faire tomber le telephone. Ces
+# bornes portent sur les tailles DECOMPRESSEES annoncees, celles que
+# zipfile fait respecter a la lecture.
+BASE_MAX = 512 * 1024 * 1024          # une base d'atelier, meme fournie
+TOTAL_MAX = 2 * 1024 * 1024 * 1024    # base + fichiers de produits
+ENTREES_MAX = 100_000                 # un atelier n'a pas cent mille fichiers
+
 
 def _copie_coherente(destination: Path) -> None:
     """Copie la base par l'API de sauvegarde SQLite, journal compris."""
@@ -111,10 +122,21 @@ def inspecter(archive: Path) -> Dict[str, Any]:
         return {"valide": False, "probleme": "fichier introuvable"}
     try:
         with zipfile.ZipFile(archive) as zip_:
-            noms = set(zip_.namelist())
+            entrees = zip_.infolist()
+            if len(entrees) > ENTREES_MAX:
+                return {"valide": False,
+                        "probleme": "archive a {} entrees : ce n'est pas un "
+                                    "atelier".format(len(entrees))}
+            noms = {info.filename for info in entrees}
             if NOM_BASE not in noms:
                 return {"valide": False,
                         "probleme": "archive sans base de donnees"}
+            octets = sum(info.file_size for info in entrees)
+            octets_base = next(info.file_size for info in entrees
+                               if info.filename == NOM_BASE)
+            trop = _demesuree(octets, octets_base)
+            if trop:
+                return {"valide": False, "probleme": trop}
             fiche = {}
             if NOM_FICHE in noms:
                 try:
@@ -122,12 +144,26 @@ def inspecter(archive: Path) -> Dict[str, Any]:
                 except ValueError:
                     fiche = {}
             produits = sum(1 for n in noms if n.startswith("produits/"))
-    except zipfile.BadZipFile:
+    except (zipfile.BadZipFile, OSError):
         return {"valide": False, "probleme": "archive illisible"}
     fiche.update({"valide": True, "probleme": "",
                   "fichiers_produits": produits,
+                  "octets": octets, "octets_base": octets_base,
                   "avec_reglages": NOM_REGLAGES in noms})
     return fiche
+
+
+def _demesuree(octets: int, octets_base: int) -> str:
+    """Raison de refuser de decompresser, ou chaine vide."""
+    if octets_base > BASE_MAX:
+        return ("la base annoncee fait {} Mo : au-dela de {} Mo, l'usine "
+                "refuse de la charger en memoire".format(
+                    octets_base // (1024 * 1024), BASE_MAX // (1024 * 1024)))
+    if octets > TOTAL_MAX:
+        return ("archive de {} Mo une fois decompressee : au-dela de {} Mo, "
+                "ce n'est plus un atelier".format(
+                    octets // (1024 * 1024), TOTAL_MAX // (1024 * 1024)))
+    return ""
 
 
 def restaurer(archive: Path, avec_produits: bool = True) -> Dict[str, Any]:

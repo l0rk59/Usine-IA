@@ -13,11 +13,12 @@ from __future__ import annotations
 import json
 import mimetypes
 import queue
+import re
 import threading
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -37,6 +38,11 @@ TRAVAUX: Dict[str, Dict[str, Any]] = {}
 # entre deux communautes. Une requete HTTP synchrone laisserait la page
 # tourner une demi-minute sans rien dire.
 VEILLES: Dict[str, Dict[str, Any]] = {}
+
+# Plafond du televersement d'archive. Il borne ce qu'on ECRIT sur le
+# disque du telephone ; ce qu'il faudra ensuite decompresser est
+# borne separement, dans « sauvegarde ».
+TELEVERSEMENT_MAX = 200 * 1024 * 1024
 _VERROU = threading.Lock()
 
 
@@ -291,6 +297,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if options is None:
                 return
             self._json(self._gerer_sauvegarde(options))
+        elif chemin == "/api/televerser":
+            self._televerser()
         else:
             self._json({"erreur": "route inconnue"}, 404)
 
@@ -562,6 +570,71 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 "ancienne_base": Path(resultat["ancienne_base"]).name
                 if resultat["ancienne_base"] else ""}
 
+    def _televerser(self) -> None:
+        """Recoit une archive venue d'ailleurs et la range avec les autres.
+
+        C'est le cas de la reinstallation : le telephone a ete efface, et
+        l'archive est sur un ordinateur ou dans un nuage. Sans cela, ni la
+        page ni la ligne de commande ne savent la faire revenir — toutes
+        deux veulent un fichier deja sur l'appareil.
+
+        Le corps est ecrit par morceaux sur le disque, jamais garde en
+        memoire : une archive avec les fichiers de produits pese plus que
+        ce qu'un telephone peut tenir en RAM.
+        """
+        from ..core import sauvegarde
+
+        try:
+            annonce = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            annonce = 0
+        if annonce <= 0:
+            self._json({"erreur": "archive vide"}, 400)
+            return
+        if annonce > TELEVERSEMENT_MAX:
+            self._json({"erreur": "archive de {} Mo : la limite est {} Mo"
+                        .format(annonce // (1024 * 1024),
+                                TELEVERSEMENT_MAX // (1024 * 1024))}, 413)
+            return
+
+        dossier = _dossier_sauvegardes()
+        dossier.mkdir(parents=True, exist_ok=True)
+        entrant = dossier / ".entrant-{}.zip".format(uuid.uuid4().hex[:12])
+        recus = 0
+        try:
+            with entrant.open("wb") as sortie:
+                while recus < annonce:
+                    morceau = self.rfile.read(min(65536, annonce - recus))
+                    if not morceau:
+                        break
+                    recus += len(morceau)
+                    sortie.write(morceau)
+            if recus != annonce:
+                entrant.unlink(missing_ok=True)
+                self._json({"erreur": "transfert interrompu"}, 400)
+                return
+
+            # On ne garde que ce qui est lisible : une archive invalide
+            # rangee avec les autres ferait croire a une sauvegarde.
+            fiche = sauvegarde.inspecter(entrant)
+            if not fiche["valide"]:
+                entrant.unlink(missing_ok=True)
+                self._json({"erreur": fiche["probleme"]}, 400)
+                return
+
+            depose = _nom_libre(dossier, _nom_archive_sur(
+                (parse_qs(urlparse(self.path).query).get("nom") or [""])[0]))
+            entrant.rename(depose)
+        except OSError as exc:
+            entrant.unlink(missing_ok=True)
+            self._json({"erreur": securite.expurger(str(exc))}, 500)
+            return
+
+        fiche["nom"] = depose.name
+        fiche["schema_courant"] = store.VERSION_SCHEMA
+        self._json({"archive": _fiche_archive(depose), "fiche": fiche,
+                    "sauvegardes": _sauvegardes()["archives"]})
+
     def _servir_archive(self, relatif: str) -> None:
         """Sert une archive de sauvegarde, et rien d'autre.
 
@@ -615,6 +688,37 @@ def _fiche_archive(archive: Path) -> Dict[str, Any]:
     etat = archive.stat()
     return {"nom": archive.name, "ko": max(1, etat.st_size // 1024),
             "ts": etat.st_mtime}
+
+
+def _nom_archive_sur(propose: Any) -> str:
+    """Un nom de fichier, jamais un chemin.
+
+    Le nom arrive du navigateur, donc de la machine d'en face. « Path.name »
+    coupe tout dossier, et le reste des caracteres est ramene a ce qui ne
+    veut rien dire pour un systeme de fichiers.
+    """
+    brut = PurePosixPath(str(propose or "").replace("\\", "/")).name
+    propre = re.sub(r"[^A-Za-z0-9._-]+", "-", brut).strip("-.")
+    if propre.lower().endswith(".zip"):
+        propre = propre[:-4]
+    return (propre[:72] or "archive-recue") + ".zip"
+
+
+def _nom_libre(dossier: Path, nom: str) -> Path:
+    """Le meme nom, augmente d'un rang s'il est deja pris.
+
+    Ecraser une archive existante serait la pire facon de recevoir une
+    sauvegarde : on remplacerait celle qui protege par celle qu'on teste.
+    """
+    cible = dossier / nom
+    if not cible.exists():
+        return cible
+    souche = nom[:-4]
+    for rang in range(2, 1000):
+        cible = dossier / "{}-{}.zip".format(souche, rang)
+        if not cible.exists():
+            return cible
+    return dossier / "{}-{}.zip".format(souche, uuid.uuid4().hex[:8])
 
 
 def _archive_nommee(nom: Any) -> Optional[Path]:

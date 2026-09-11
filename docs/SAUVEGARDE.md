@@ -117,6 +117,37 @@ de la page : `confirme` doit valoir exactement `true`. `"oui"`, `1` ou
 rejeu de requête ou un script tiers n'hérite pas d'une case cochée dans un
 navigateur que le serveur ne voit pas.
 
+### Faire revenir une archive qui n'est pas sur l'appareil
+
+**Téléverser une archive…** couvre le cas de la réinstallation : le téléphone
+a été effacé, et la sauvegarde est sur un ordinateur ou dans un nuage. Ni la
+page ni la ligne de commande ne savaient la faire revenir — toutes deux
+veulent un fichier déjà là.
+
+Le corps est écrit **par morceaux sur le disque**, jamais gardé en mémoire :
+une archive contenant les fichiers de produits pèse plus que ce qu'un
+téléphone tient en RAM. Le plafond (200 Mo) est vérifié sur le `Content-Length`
+**avant** de lire quoi que ce soit ; sinon un envoi annoncé à dix gigaoctets
+remplirait le disque avant d'être refusé.
+
+Ce qui arrive n'est gardé que si c'est lisible : une archive invalide rangée
+avec les autres ferait croire à une sauvegarde. Le nom vient de la machine
+d'en face, donc c'est un **nom, pas un chemin** — `../../etc/passwd` devient
+`passwd.zip` — et un nom déjà pris reçoit un rang plutôt que d'écraser :
+remplacer l'archive qui protège par celle qu'on teste serait la pire façon de
+recevoir une sauvegarde.
+
+### Une archive peut annoncer bien plus qu'elle ne pèse
+
+`restaurer` lit `usine.db` **d'un seul bloc en mémoire**. Six cents
+kilo-octets compressés annonçant six cents mégaoctets suffiraient à faire
+tomber le téléphone.
+
+`inspecter` mesure donc les tailles **décompressées annoncées** — celles que
+`zipfile` fait respecter à la lecture — et refuse au-delà de 512 Mo pour la
+base, 2 Go au total, 100 000 entrées. La borne est dans `sauvegarde`, pas
+dans la page : la ligne de commande acceptait déjà n'importe quel chemin.
+
 ### Ce que la page refuse de faire
 
 La restauration est refusée tant que **l'usine continue tourne**, qu'une

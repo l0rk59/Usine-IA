@@ -8,7 +8,7 @@ if (!scene.actif) $('scene').classList.add('sans-3d');
 const etat = {
   types: [],
   travail: null, agents: {}, fournisseurs: [], avancement: 0, objectif: 0,
-  dernierEvenement: 0, produitsCharges: 0,
+  dernierEvenement: 0, produitsCharges: null,
 };
 
 /* ------------------------------------------------------------ utilitaires */
@@ -140,8 +140,13 @@ async function chargerProduits() {
   const reponse = await fetch('/api/produits');
   if (!reponse.ok) return;
   const donnees = await reponse.json();
-  if (donnees.produits.length === etat.produitsCharges && etat.produitsCharges) return;
-  etat.produitsCharges = donnees.produits.length;
+  // Comparer le NOMBRE de produits suffisait tant que la liste ne faisait
+  // que grandir. Une restauration la remplace : un atelier d'un produit
+  // rendu a un autre atelier d'un produit laissait la page afficher
+  // l'ancien, indefiniment. On compare donc ce qui est affiche.
+  const empreinte = donnees.produits.map((p) => p.id).join('|');
+  if (empreinte === etat.produitsCharges) return;
+  etat.produitsCharges = empreinte;
 
   if (!donnees.produits.length) {
     $('produits').innerHTML = "<span class='vide'>Aucun produit pour l'instant.</span>";
@@ -744,6 +749,43 @@ $('restauration-faire').addEventListener('click', async () => {
   chargerUsine();
   chargerSauvegardes();
   chargerEtat();
+});
+
+/* ----------------------------------------------------- archive televersee */
+// Le plafond doit valoir celui du serveur : refuser ici evite d'envoyer
+// cent megaoctets par le reseau du telephone pour se faire dire non.
+const TELEVERSEMENT_MAX = 200 * 1024 * 1024;
+
+$('archive-fichier').addEventListener('change', async () => {
+  const fichier = $('archive-fichier').files[0];
+  if (!fichier) return;
+  const dire = (texte) => { $('televersement-etat').textContent = texte; };
+  if (fichier.size > TELEVERSEMENT_MAX) {
+    dire(`${Math.round(fichier.size / 1048576)} Mo : la limite est ${
+      TELEVERSEMENT_MAX / 1048576} Mo.`);
+    $('archive-fichier').value = '';
+    return;
+  }
+  dire(`envoi de ${fichier.name}...`);
+  let d;
+  try {
+    const reponse = await fetch(
+      '/api/televerser?nom=' + encodeURIComponent(fichier.name),
+      { method: 'POST', headers: { 'Content-Type': 'application/zip' },
+        body: fichier });
+    d = await reponse.json();
+  } catch (e) {
+    dire('transfert interrompu.');
+    $('archive-fichier').value = '';
+    return;
+  }
+  // Le champ est remis a zero dans tous les cas : sans cela, reprendre le
+  // meme fichier apres une erreur ne declenche aucun evenement.
+  $('archive-fichier').value = '';
+  if (d.erreur) { dire(d.erreur); return; }
+  dire(`${echapper(d.archive.nom)} recue — ${d.archive.ko} Ko, schema ${
+    d.fiche.schema}. Elle est dans la liste ci-dessous.`);
+  afficherSauvegardes(d.sauvegardes);
 });
 
 /* ---------------------------------------------------------------- demarrage */
