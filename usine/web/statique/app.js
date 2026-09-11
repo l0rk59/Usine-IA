@@ -128,6 +128,74 @@ async function chargerProduits() {
   }).join('');
 }
 
+/* --------------------------------------------------- commerce et doublons */
+async function chargerCommerce() {
+  const reponse = await fetch('/api/commerce');
+  if (!reponse.ok) return;
+  const d = await reponse.json();
+  afficherVentes(d);
+  afficherDoublons(d);
+}
+
+function afficherVentes(d) {
+  const aDesVentes = (d.devises || []).length > 0;
+  $('commerce-vide').hidden = aDesVentes;
+  $('commerce-chiffres').hidden = !aDesVentes;
+  $('commerce-produits').hidden = !aDesVentes;
+  $('commerce-prix').hidden = !aDesVentes;
+  if (!aDesVentes) return;
+
+  // Une devise par bloc : elles ne sont jamais additionnees, parce que
+  // convertir sans source de taux reviendrait a fabriquer le resultat.
+  $('commerce-chiffres').innerHTML = d.devises.map((t) => {
+    const net = t.net_inconnu
+      ? '<span class="note">net inconnu sur ' + t.net_inconnu + ' ligne(s)</span>'
+      : '<span class="note">net ' + (t.net || 0).toFixed(2) + '</span>';
+    return `<div class="bloc">
+      <div class="valeur">${(t.brut || 0).toFixed(2)} ${echapper(t.devise)}</div>
+      <div class="libelle">${t.unites || 0} unites vendues</div>
+      ${net}</div>`;
+  }).join('');
+
+  const produits = d.produits || [];
+  const maximum = produits.reduce((m, p) => Math.max(m, p.brut || 0), 0) || 1;
+  $('commerce-produits').innerHTML = produits.map((p) => `
+    <div class="ligne-vente">
+      <div class="haut">
+        <span class="nom">${echapper(p.titre || p.produit_id)}</span>
+        <span class="montant">${(p.brut || 0).toFixed(2)} ${echapper(p.devise)}</span>
+      </div>
+      <div class="piste"><span style="width:${
+        Math.max(3, Math.round((p.brut || 0) / maximum * 100))}%"></span></div>
+    </div>`).join('');
+
+  const prix = (d.prix || []).filter((x) => x.ventes >= 3);
+  $('commerce-prix').innerHTML = prix.length
+    ? prix.map((x) => `Prix median reellement encaisse : <strong>${
+        x.median.toFixed(2)} ${echapper(x.devise)}</strong> (${x.ventes} ventes,
+        moitie centrale ${x.bas.toFixed(2)} a ${x.haut.toFixed(2)})`).join('<br/>')
+    : 'Moins de trois ventes : pas encore de prix median a montrer.';
+}
+
+function afficherDoublons(d) {
+  const paires = d.doublons || [];
+  if (!paires.length) {
+    $('doublons').innerHTML = d.produits_compares > 1
+      ? `<span class="vide">${d.produits_compares} produits compares,
+         aucun recouvrement notable.</span>`
+      : `<span class="vide">Moins de deux produits : rien a comparer.</span>`;
+    return;
+  }
+  $('doublons').innerHTML = paires.map((p) => `
+    <div class="doublon">
+      <div class="paire">${echapper(p.un)}<br/>
+        <span style="opacity:.7">et</span> ${echapper(p.autre)}</div>
+      <div class="mesure">${echapper(p.motif)} commun &middot; ${
+        Math.round(p.texte * 100)} % de texte, ${
+        Math.round(p.plan * 100)} % de plan &middot; ${echapper(p.type)}</div>
+    </div>`).join('');
+}
+
 /* ---------------------------------------------------------- usine continue */
 const ETIQUETTES = {
   en_attente: 'en file', en_cours: 'en cours', fait: 'livre',
@@ -282,6 +350,7 @@ function traiter(evenement) {
       `produit termine : ${echapper(evenement.titre)}`, 'succes');
     $('etat-scene').textContent = 'Produit livre';
     chargerProduits();
+    chargerCommerce();
   }
 }
 
@@ -409,5 +478,7 @@ chargerEtat();
 chargerProduits();
 chargerUsine();
 brancherFlux();
+chargerCommerce();
 setInterval(chargerEtat, 15000);
+setInterval(chargerCommerce, 30000);
 setInterval(chargerUsine, 6000);

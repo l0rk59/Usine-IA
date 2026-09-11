@@ -424,6 +424,25 @@ variantes (ce qui évite le piège des comparaisons multiples), résultat graîn
 donc reproductible, et vérifié dans les tests contre une formule exacte
 indépendante.
 
+**Les chiffres viennent des ventes, plus de la saisie.** Renseignez la période
+pendant laquelle chaque variante était en ligne, et l'usine lui attribue les
+ventes réellement encaissées :
+
+```bash
+usine ab periode 3 --du 2026-07-01 --au 2026-07-30
+usine ab rythme 1
+```
+
+Les vues, elles, ne figurent dans aucun export — il faut les relever à l'écran,
+et l'usine ne les invente pas. Quand vous ne les avez pas, `usine ab rythme`
+compare des **rythmes de vente** : « 7 ventes en 14 jours » contre « 4 en 12 »
+n'est pas un problème binomial mais un comptage sur une durée, donc un modèle
+gamma-poisson, vérifié lui aussi contre une formule exacte.
+
+> Ce test est **séquentiel** : les variantes n'ont pas été exposées en même
+> temps, une semaine de vacances se confond avec l'effet du titre, et aucun
+> calcul ne répare cela. L'usine le dit à chaque verdict.
+
 > Les couvertures comparées sont celles de l'atelier local : **ce qui gagne le
 > test est ce qui part chez l'acheteur**. Avant, le test comparait des images
 > filigranées — quatre propositions dont aucune n'était vendable.
@@ -587,7 +606,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         292 tests + test de fumée, aucun appel réseau
+tests/         307 tests + test de fumée, aucun appel réseau
 install.sh     installation Termux
 ```
 
@@ -599,7 +618,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 292 tests
+python3 -m unittest discover -s tests -t .   # 307 tests
 python3 tests/fumee.py                       # les 9 chaînes via la vraie CLI
 ```
 

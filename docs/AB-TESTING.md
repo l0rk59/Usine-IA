@@ -121,6 +121,58 @@ en page de l'atelier local : PNG 1200 × 1800, sans filigrane, prêtes à
 téléverser. **Ce qui gagne le test est ce qui part chez l'acheteur.** Voir
 [COUVERTURE.md](COUVERTURE.md).
 
+## Les chiffres viennent des ventes, plus de la saisie
+
+Reporter à la main les ventes de chaque variante était la partie la plus
+pénible et la plus facile à rater. Elle n'est plus nécessaire.
+
+```bash
+usine ab periode 3 --du 2026-07-01 --au 2026-07-30
+usine ab periode 4 --du 2026-08-01
+usine ab rythme 1
+```
+
+Une fois la période de mise en ligne renseignée, l'usine attribue à chaque
+variante les ventes réellement encaissées pendant qu'elle était affichée.
+`usine ab observer --vues 800` reprend le nombre d'actions de cette source au
+lieu de vous le faire compter.
+
+### Les vues, elles, ne sont dans aucun export
+
+Il faut aller les relever à l'écran. **L'usine ne les invente pas** — elle
+compte ce qu'elle a et dit ce qui lui manque.
+
+### Comparer sans les vues
+
+Ce qu'un vendeur possède sans effort, c'est le nombre de ventes et la durée
+pendant laquelle chaque variante était en ligne. Comparer « 7 ventes en 14
+jours » à « 4 ventes en 12 jours » n'est **pas un problème binomial** : il n'y
+a pas d'essais, il y a un comptage sur une durée. Le modèle qui convient est
+gamma-poisson.
+
+| | Modèle | Ce qu'il exige |
+|---|---|---|
+| `usine ab verdict` | beta-binomial | vues **et** actions |
+| `usine ab rythme` | gamma-poisson | ventes **et** durée d'exposition |
+
+La loi a priori est `Gamma(1, 0)` — plate sur le rythme — et la loi a
+posteriori `Gamma(1 + ventes, durée)` reste propre dès que la durée est non
+nulle. Sa forme entière permet de **vérifier le tirage aléatoire contre une
+formule exacte**, exactement comme pour le beta-binomial : les tests comparent
+les deux sur six jeux de données.
+
+Le seuil porte sur le nombre de **ventes**, jamais sur la durée. Dix jours
+d'exposition sans vente ne renseignent sur rien, et laisser le temps tenir
+lieu de preuve serait le principal piège de ce modèle.
+
+### Ce que ce test ne peut pas réparer
+
+**Il est séquentiel.** Les variantes n'ont pas été exposées en même temps. Une
+semaine de vacances scolaires ou un partage inattendu se confond avec l'effet
+du titre, et aucun calcul ne corrige cela. L'usine l'affiche à chaque verdict.
+Alternez les variantes sur plusieurs cycles plutôt que de leur donner une
+seule période chacune.
+
 ## Depuis le téléphone
 
 Le menu (`usine`, sans argument) → **Tests A/B** : créer des variantes,

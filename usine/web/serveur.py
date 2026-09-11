@@ -24,7 +24,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 from .. import __version__
 from ..agents import equipe
 from ..core import cles as pool_cles
-from ..core import config, evenements, file as file_prod, llm, reglages, securite, store
+from ..core import config, empreinte, evenements, file as file_prod, llm
+from ..core import reglages, securite, store, ventes
 from ..pipelines import catalogue, social
 from ..pipelines.base import TAILLES, TONS, Contexte
 
@@ -145,6 +146,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
             self._json(_etat())
         elif chemin == "/api/produits":
             self._json({"produits": _produits()})
+        elif chemin == "/api/commerce":
+            self._json(_commerce())
         elif chemin == "/api/usine":
             from ..production import statut
 
@@ -379,6 +382,52 @@ class Gestionnaire(BaseHTTPRequestHandler):
         self._repondre(200, cible.read_bytes(), type_mime)
 
 
+def _commerce() -> Dict[str, Any]:
+    """Ce que le tableau de bord ne montrait pas : l'argent et les repetitions.
+
+    Deux mesures que rien n'affichait alors qu'elles decident de ce qu'on
+    fabrique ensuite — le chiffre d'affaires reel, et les produits qui se
+    recouvrent assez pour qu'une place de marche les retire.
+    """
+    charges = [{
+        "produit_id": ligne["produit_id"], "titre": ligne["titre"],
+        "type": ligne["type"],
+        "signature": empreinte.decoder(ligne["signature"]),
+        "plan": empreinte.decoder(ligne["plan"]),
+    } for ligne in store.lister_empreintes()]
+
+    paires = []
+    for index, courant in enumerate(charges):
+        for autre in charges[index + 1:]:
+            if courant["type"] != autre["type"]:
+                continue
+            voisin = empreinte.Voisin(
+                produit_id=autre["produit_id"], titre=autre["titre"] or "",
+                sujet="",
+                texte=empreinte.ressemblance(courant["signature"],
+                                             autre["signature"]),
+                plan=empreinte.ressemblance_plan(courant["plan"],
+                                                 autre["plan"]))
+            if voisin.doublon:
+                paires.append({
+                    "un": courant["titre"] or courant["produit_id"],
+                    "autre": voisin.titre or voisin.produit_id,
+                    "type": courant["type"], "motif": voisin.motif,
+                    "texte": round(voisin.texte, 2),
+                    "plan": round(voisin.plan, 2),
+                })
+    paires.sort(key=lambda p: p["texte"] + p["plan"], reverse=True)
+
+    return {
+        "devises": ventes.total_par_devise(),
+        "produits": ventes.par_produit(12),
+        "types": ventes.par_champ("type"),
+        "prix": ventes.prix_observes(),
+        "doublons": paires[:12],
+        "produits_compares": len(charges),
+    }
+
+
 def _etat() -> Dict[str, Any]:
     fournisseurs = [
         {
@@ -409,6 +458,7 @@ def _etat() -> Dict[str, Any]:
         "reglages": {k: profil[k] for k in
                      ("auteur", "audience", "ton", "taille", "qualite", "images")},
         "file": file_prod.compter(),
+        "commerce": _commerce(),
     }
 
 

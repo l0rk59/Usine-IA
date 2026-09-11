@@ -10,7 +10,7 @@ import sqlite3
 import threading
 import time
 from contextlib import contextmanager
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
 from . import config
 
@@ -109,7 +109,7 @@ CREATE INDEX IF NOT EXISTS idx_ventes_date ON ventes(date);
 # plus tard ne serait jamais creee chez qui a deja produit, et l'erreur SQL
 # tomberait des semaines apres, sur un telephone, avec tout l'historique
 # dedans. Chaque evolution s'inscrit donc ici.
-VERSION_SCHEMA = 3
+VERSION_SCHEMA = 4
 
 MIGRATIONS = {
     # v1 -> v2 : empreintes des produits, pour detecter les doublons.
@@ -129,7 +129,35 @@ MIGRATIONS = {
              cree_le REAL NOT NULL)""",
         "CREATE INDEX IF NOT EXISTS idx_ventes_produit ON ventes(produit_id)",
         "CREATE INDEX IF NOT EXISTS idx_ventes_date ON ventes(date)"],
+    # v3 -> v4 : periode de mise en ligne d'une variante A/B. Les tables
+    # d'experience sont creees a la demande par core/experience.py, donc
+    # elles peuvent ne pas exister ici : la migration est conditionnelle,
+    # d'ou une fonction plutot qu'une suite d'ordres SQL.
+    4: [lambda conn: _ajouter_colonnes(
+        conn, "variantes", (("debut", "TEXT"), ("fin", "TEXT")))],
 }
+
+
+def _ajouter_colonnes(conn: sqlite3.Connection, table: str,
+                      colonnes: Sequence[Tuple[str, str]]) -> None:
+    """Ajoute des colonnes a une table existante, sans echouer si elle manque.
+
+    « CREATE TABLE IF NOT EXISTS » ne touche pas une table deja creee : une
+    colonne ajoutee dans une nouvelle version n'apparaitrait jamais chez qui
+    a deja produit. C'est ce que l'echelle de migrations repare, et une
+    colonne se rajoute par ALTER, pas par une redefinition du schema.
+    """
+    presente = conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
+        (table,)).fetchone()[0]
+    if not presente:
+        return
+    existantes = {ligne[1] for ligne in conn.execute(
+        "PRAGMA table_info({})".format(table))}
+    for nom, genre in colonnes:
+        if nom not in existantes:
+            conn.execute("ALTER TABLE {} ADD COLUMN {} {}".format(
+                table, nom, genre))
 
 
 def _migrer(conn: sqlite3.Connection, base_neuve: bool) -> None:
@@ -149,7 +177,10 @@ def _migrer(conn: sqlite3.Connection, base_neuve: bool) -> None:
         return
     for palier in range(max(actuelle, 1) + 1, VERSION_SCHEMA + 1):
         for ordre in MIGRATIONS.get(palier, []):
-            conn.execute(ordre)
+            if callable(ordre):
+                ordre(conn)
+            else:
+                conn.execute(ordre)
     conn.execute("PRAGMA user_version = {}".format(VERSION_SCHEMA))
 
 # Une connexion SQLite appartient au thread qui l'a creee. Le tableau de bord

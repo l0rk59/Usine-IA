@@ -212,3 +212,27 @@ pre.journal .ligne { display: block; animation: apparait 0.3s ease both; }
   cursor: pointer; }
 .file button:hover { color: var(--rouge); }
 .etat.marche { color: var(--vert); }
+
+/* --------------------------------------------------- commerce et doublons */
+.chiffres { display: flex; flex-wrap: wrap; gap: 0.9rem; margin-bottom: 0.9rem; }
+.chiffres .bloc { flex: 1 1 7rem; }
+.chiffres .valeur { font-size: 1.45rem; font-weight: 650; letter-spacing: -0.02em; }
+.chiffres .libelle { font-size: 0.7rem; color: var(--doux);
+  text-transform: uppercase; letter-spacing: 0.08em; }
+.chiffres .note { font-size: 0.72rem; color: var(--doux); }
+
+.barres .ligne-vente { margin-bottom: 0.62rem; }
+.barres .haut { display: flex; justify-content: space-between; gap: 0.6rem;
+  font-size: 0.8rem; margin-bottom: 0.22rem; }
+.barres .haut .nom { overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.barres .haut .montant { color: var(--doux); flex: none; font-variant-numeric:
+  tabular-nums; }
+.barres .piste { height: 6px; border-radius: 3px; background: var(--bord); }
+.barres .piste span { display: block; height: 100%; border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent), #6f5bf5); }
+
+.doublon { border-left: 3px solid #e0a33e; padding: 0.45rem 0 0.45rem 0.7rem;
+  margin-bottom: 0.7rem; }
+.doublon .paire { font-size: 0.82rem; line-height: 1.45; }
+.doublon .mesure { font-size: 0.72rem; color: var(--doux); margin-top: 0.15rem; }

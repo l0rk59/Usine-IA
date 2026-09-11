@@ -676,6 +676,84 @@ def _barre(bas: float, haut: float, maximum: float, largeur: int = 22) -> str:
     return ("." * debut + "#" * (fin - debut) + "." * (largeur - fin))[:largeur]
 
 
+def _actions_reelles(variante_id: int) -> Optional[int]:
+    """Ventes encaissees pendant la periode de cette variante, si elle est
+    renseignee et si l'experience porte sur un produit connu."""
+    with store.cursor() as cur:
+        ligne = cur.execute(
+            "SELECT experience_id FROM variantes WHERE id=?",
+            (variante_id,)).fetchone()
+    if not ligne:
+        return None
+    mesures = experience.mesures_reelles(int(ligne["experience_id"]))
+    if mesures.get("probleme"):
+        return None
+    for mesure in mesures["variantes"]:
+        if mesure["variante"]["id"] == variante_id and mesure["periode"]:
+            return mesure["ventes"]
+    return None
+
+
+def _rythme_ab(args: argparse.Namespace) -> int:
+    """Compare les variantes sur leur rythme de vente reel."""
+    mesures = experience.mesures_reelles(args.identifiant)
+    titre_console("Rythme de vente par variante")
+    if mesures.get("probleme"):
+        erreur(mesures["probleme"])
+        if "sans produit" in mesures["probleme"]:
+            print("  Creez le test depuis un produit : "
+                  + _c("usine ab creer --produit <produit_id>", "1"))
+        return 1
+
+    sans_periode = [m for m in mesures["variantes"] if not m["periode"]]
+    for mesure in mesures["variantes"]:
+        variante = mesure["variante"]
+        if not mesure["periode"]:
+            print("  {} {:<40} {}".format(
+                _c("[" + variante["etiquette"] + "]", "1;36"),
+                variante["contenu"][:40], _c("periode non renseignee", "33")))
+            continue
+        print("  {} {:<40} {:>3} vente(s) en {:>3.0f} j = {:.2f}/jour".format(
+            _c("[" + variante["etiquette"] + "]", "1;36"),
+            variante["contenu"][:40], mesure["ventes"], mesure["jours"],
+            mesure["ventes"] / mesure["jours"]))
+        print("      {}".format(_c(mesure["periode"], "90")))
+    if sans_periode:
+        print()
+        alerte("{} variante(s) sans periode : elles ne peuvent rien recevoir."
+               .format(len(sans_periode)))
+        print("      " + _c("usine ab periode <variante> --du AAAA-MM-JJ", "1"))
+
+    utiles = [m for m in mesures["variantes"] if m["periode"]]
+    if len(utiles) < 2:
+        print("\n  Il faut au moins deux variantes datees pour comparer.")
+        return 1
+
+    comparaison = experience.comparer_rythmes(
+        [(m["ventes"], m["jours"]) for m in utiles])
+    titre_console("Comparaison")
+    for resultat in comparaison["variantes"]:
+        variante = utiles[resultat["index"]]["variante"]
+        print("  {}  P(meilleure) {:>5.0f} %   rythme median {:.2f}/jour"
+              "   (90 % entre {:.2f} et {:.2f})".format(
+                  _c("[" + variante["etiquette"] + "]", "1;36"),
+                  resultat["probabilite_meilleure"] * 100,
+                  resultat["rythme_median"], resultat["bas"], resultat["haut"]))
+
+    conclusion = experience.verdict_rythme(comparaison)
+    print()
+    print("  " + _c(conclusion["etat"].upper(),
+                    _COULEURS_VERDICT.get(conclusion["etat"], "0")))
+    for ligne in _envelopper(conclusion["message"], 70):
+        print("  " + ligne)
+    print()
+    print("  " + _c("Ce test est sequentiel", "1") + " : les variantes n'ont pas")
+    print("  ete exposees en meme temps. Une semaine de vacances ou un partage")
+    print("  inattendu se confond avec l'effet du titre, et aucun calcul ne")
+    print("  repare cela. Alternez les variantes sur plusieurs cycles.")
+    return 0 if conclusion["etat"] in ("gagnant", "tendance") else 1
+
+
 def cmd_ab(args: argparse.Namespace) -> int:
     """Creer, alimenter et lire un test A/B."""
     from .pipelines import variantes as pipeline_variantes
@@ -756,10 +834,37 @@ def cmd_ab(args: argparse.Namespace) -> int:
                    _COULEURS_VERDICT.get(verdict_courant["etat"], "0"))))
         return 0
 
+    if action == "periode":
+        try:
+            pose = experience.fixer_periode(args.identifiant, args.du, args.au)
+        except ValueError as exc:
+            erreur(str(exc))
+            return 1
+        if not pose:
+            erreur("Variante {} introuvable.".format(args.identifiant))
+            return 1
+        ok("Variante {} en ligne du {} au {}".format(
+            args.identifiant, args.du, args.au or "aujourd'hui"))
+        print("  Les ventes de cette periode lui seront attribuees :")
+        print("  " + _c("usine ab rythme <numero du test>", "1"))
+        return 0
+
+    if action == "rythme":
+        return _rythme_ab(args)
+
     if action == "observer":
         if args.vues is None and args.actions is None:
             erreur("Indiquez au moins --vues ou --actions.")
             return 1
+        # Les actions peuvent venir des ventes reellement encaissees : c'est
+        # le chiffre le plus penible a compter a la main, et le plus facile a
+        # se tromper. Les vues, elles, ne figurent dans aucun export.
+        if args.actions is None and args.vues is not None:
+            reelles = _actions_reelles(args.identifiant)
+            if reelles is not None:
+                args.actions = reelles
+                ok("{} action(s) reprises des ventes enregistrees.".format(
+                    reelles))
         try:
             experience.observer(args.identifiant, vues=args.vues or 0,
                                 actions=args.actions or 0, note=args.note or "")
@@ -1495,8 +1600,9 @@ def construire_parseur() -> argparse.ArgumentParser:
 
     p = sous_parseurs.add_parser("ab", help="tester des titres et des couvertures")
     p.add_argument("action",
-                   choices=["creer", "liste", "observer", "verdict", "planche",
-                            "clore", "supprimer"])
+                   choices=["creer", "liste", "observer", "periode",
+                            "rythme", "verdict", "planche", "clore",
+                            "supprimer"])
     p.add_argument("identifiant", nargs="?", type=int, default=0,
                    help="numero du test, ou de la variante pour « observer »")
     p.add_argument("--produit", default="", help="partir d'un produit existant")
@@ -1510,6 +1616,10 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.add_argument("--vues", type=int, help="vues observees, pour « observer »")
     p.add_argument("--actions", type=int,
                    help="clics ou ventes observes, pour « observer »")
+    p.add_argument("--du", default="", metavar="AAAA-MM-JJ",
+                   help="debut de mise en ligne, pour « periode »")
+    p.add_argument("--au", default="", metavar="AAAA-MM-JJ",
+                   help="fin de mise en ligne (defaut : toujours en ligne)")
     p.add_argument("--note", default="", help="commentaire libre")
     p.add_argument("--gagnante", type=int, default=0,
                    help="variante retenue, pour « clore »")

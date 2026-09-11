@@ -420,6 +420,36 @@ class TestTableauDeBord(unittest.TestCase):
         self.assertIn("impression", [t["cle"] for t in donnees["types"]])
         self.assertIn("exigeant", donnees["qualites"])
 
+    def test_le_commerce_est_servi_meme_sans_vente(self):
+        """C'est l'etat que voit un nouvel utilisateur : il doit tenir."""
+        statut, corps = self._appeler("/api/commerce")
+        self.assertEqual(statut, 200)
+        donnees = json.loads(corps)
+        for cle in ("devises", "produits", "types", "prix", "doublons",
+                    "produits_compares"):
+            self.assertIn(cle, donnees)
+        self.assertIsInstance(donnees["devises"], list)
+
+    def test_le_commerce_remonte_les_ventes_et_les_doublons(self):
+        from usine.core import store, ventes
+
+        store.creer_produit("web-p1", "ebook", "Un produit", sujet="s",
+                            dossier="/tmp")
+        ventes.enregistrer({"date": "2026-08-01", "reference": "Un produit",
+                            "unites": 2, "brut": 58.0, "net": 50.0,
+                            "devise": "EUR", "remboursement": 0,
+                            "plateforme": "gumroad", "empreinte": "web-v1"},
+                           produit_id="web-p1")
+        _, corps = self._appeler("/api/commerce")
+        donnees = json.loads(corps)
+        # Porte sur CE produit, pas sur le total : tous les modules de test
+        # partagent le meme atelier, donc la somme globale depend de l'ordre
+        # d'execution et ne prouverait rien.
+        ligne = [p for p in donnees["produits"] if p["produit_id"] == "web-p1"]
+        self.assertTrue(ligne, "la vente doit apparaitre")
+        self.assertAlmostEqual(ligne[0]["brut"], 58.0)
+        self.assertEqual(ligne[0]["unites"], 2)
+
     def test_l_etat_ne_contient_aucune_cle_en_clair(self):
         os.environ["GROQ_API_KEY"] = "gsk_" + "Q" * 32
         pool_cles.oublier()

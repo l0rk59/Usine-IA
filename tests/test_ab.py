@@ -210,6 +210,138 @@ class TestDiagnosticTitre(unittest.TestCase):
         self.assertLess(proche, 0.2)
 
 
+class TestRythmeDeVente(unittest.TestCase):
+    """Comparer des variantes sans connaitre les vues.
+
+    Le modele beta-binomial exige des vues, qu'aucune place de marche ne met
+    dans son export : il faut aller les relever a l'ecran. Ce qu'un vendeur
+    possede sans effort, c'est le nombre de ventes et la duree pendant
+    laquelle chaque variante etait en ligne. Ce n'est pas un probleme
+    binomial — il n'y a pas d'essais, il y a un comptage sur une duree.
+    """
+
+    def test_la_formule_exacte_et_le_tirage_concordent(self):
+        """Meme garde-fou que pour le beta-binomial : deux chemins, un resultat."""
+        for ka, ta, kb, tb in ((7, 14, 4, 12), (0, 14, 0, 14), (3, 10, 3, 10),
+                               (20, 30, 5, 30), (1, 7, 9, 7), (48, 30, 12, 30)):
+            exact = ex.probabilite_rythme_superieur(ka, ta, kb, tb)
+            tirage = ex.comparer_rythmes(
+                [(ka, ta), (kb, tb)])["variantes"][0]["probabilite_meilleure"]
+            self.assertAlmostEqual(
+                exact, tirage, delta=0.02,
+                msg="{}/{}j vs {}/{}j : {:.4f} contre {:.4f}".format(
+                    ka, ta, kb, tb, exact, tirage))
+
+    def test_trois_variantes_identiques_ne_donnent_pas_de_gagnant(self):
+        """Assez de ventes pour conclure, et pourtant rien a conclure."""
+        comparaison = ex.comparer_rythmes([(20, 20), (20, 20), (20, 20)])
+        for resultat in comparaison["variantes"]:
+            self.assertAlmostEqual(resultat["probabilite_meilleure"], 1 / 3,
+                                   delta=0.06)
+        self.assertEqual(
+            ex.verdict_rythme(comparaison)["etat"], "indecis")
+
+    def test_la_duree_ne_tient_pas_lieu_de_preuve(self):
+        """Cent jours sans vente ne renseignent sur rien."""
+        comparaison = ex.comparer_rythmes([(1, 100), (0, 100)])
+        conclusion = ex.verdict_rythme(comparaison)
+        self.assertEqual(conclusion["etat"], "insuffisant")
+        self.assertIn("du bruit", conclusion["message"])
+
+    def test_un_ecart_franc_et_nourri_conclut(self):
+        conclusion = ex.verdict_rythme(
+            ex.comparer_rythmes([(48, 30), (12, 30)]))
+        self.assertEqual(conclusion["etat"], "gagnant")
+        self.assertEqual(conclusion["gagnante"], 0)
+
+    def test_une_periode_plus_longue_ne_suffit_pas_a_gagner(self):
+        """Le piege du modele : 20 ventes en 60 jours valent moins que 15 en 20."""
+        comparaison = ex.comparer_rythmes([(20, 60), (15, 20)])
+        self.assertGreater(comparaison["variantes"][1]["probabilite_meilleure"],
+                           comparaison["variantes"][0]["probabilite_meilleure"])
+
+    def test_le_resultat_ne_change_pas_d_un_appel_a_l_autre(self):
+        premier = ex.comparer_rythmes([(7, 14), (4, 12)])
+        second = ex.comparer_rythmes([(7, 14), (4, 12)])
+        self.assertEqual(premier, second)
+
+
+class TestVentesReelles(unittest.TestCase):
+    """Les chiffres viennent des ventes, plus de la saisie."""
+
+    def setUp(self):
+        from usine.core import store, ventes
+
+        with store.cursor() as cur:
+            cur.execute("DELETE FROM ventes")
+        store.creer_produit("prod-ab", "ebook", "Le systeme", sujet="s",
+                            dossier="/tmp")
+        self.experience_id = ex.creer("Le systeme", sujet="titre",
+                                              produit_id="prod-ab")
+        self.a = ex.ajouter_variante(self.experience_id, "Titre A")
+        self.b = ex.ajouter_variante(self.experience_id, "Titre B")
+        self.ventes = ventes
+
+    def _vendre(self, jour, nombre, rembourse=0):
+        for index in range(nombre):
+            self.ventes.enregistrer({
+                "date": jour, "reference": "x", "unites": 1, "brut": 29.0,
+                "net": None, "devise": "EUR", "remboursement": rembourse,
+                "plateforme": "gumroad",
+                "empreinte": "{}-{}-{}".format(jour, index, rembourse),
+            }, produit_id="prod-ab")
+
+    def test_chaque_variante_recoit_les_ventes_de_sa_periode(self):
+        ex.fixer_periode(self.a, "2026-07-01", "2026-07-14")
+        ex.fixer_periode(self.b, "2026-07-15", "2026-07-28")
+        self._vendre("2026-07-05", 3)
+        self._vendre("2026-07-20", 8)
+        mesures = ex.mesures_reelles(self.experience_id)
+        self.assertEqual([m["ventes"] for m in mesures["variantes"]], [3, 8])
+        self.assertEqual([m["jours"] for m in mesures["variantes"]], [14.0, 14.0])
+
+    def test_une_vente_hors_periode_n_est_attribuee_a_personne(self):
+        ex.fixer_periode(self.a, "2026-07-01", "2026-07-14")
+        self._vendre("2026-06-20", 5)
+        mesures = ex.mesures_reelles(self.experience_id)
+        self.assertEqual(mesures["variantes"][0]["ventes"], 0)
+
+    def test_les_remboursements_ne_comptent_pas(self):
+        ex.fixer_periode(self.a, "2026-07-01", "2026-07-14")
+        self._vendre("2026-07-05", 4)
+        self._vendre("2026-07-06", 2, rembourse=1)
+        self.assertEqual(
+            ex.mesures_reelles(self.experience_id)["variantes"][0]["ventes"],
+            4)
+
+    def test_une_variante_sans_periode_est_signalee_pas_comptee_a_zero(self):
+        ex.fixer_periode(self.a, "2026-07-01", "2026-07-14")
+        self._vendre("2026-07-05", 3)
+        mesures = ex.mesures_reelles(self.experience_id)
+        self.assertEqual(mesures["variantes"][1]["periode"], "")
+        self.assertEqual(mesures["variantes"][1]["jours"], 0.0)
+
+    def test_un_test_sans_produit_le_dit_au_lieu_de_deviner(self):
+        orphelin = ex.creer("Sans produit", sujet="titre")
+        ex.ajouter_variante(orphelin, "A")
+        mesures = ex.mesures_reelles(orphelin)
+        self.assertIn("sans produit", mesures["probleme"])
+        self.assertEqual(mesures["variantes"], [])
+
+    def test_une_journee_unique_compte_pour_un_jour(self):
+        """Bornes comprises : sinon une periode d'un jour vaudrait zero."""
+        ex.fixer_periode(self.a, "2026-07-01", "2026-07-01")
+        self._vendre("2026-07-01", 2)
+        mesure = ex.mesures_reelles(self.experience_id)["variantes"][0]
+        self.assertEqual((mesure["ventes"], mesure["jours"]), (2, 1.0))
+
+    def test_une_date_malformee_est_refusee(self):
+        with self.assertRaises(ValueError):
+            ex.fixer_periode(self.a, "01/07/2026")
+        with self.assertRaises(ValueError):
+            ex.fixer_periode(self.a, "2026-07-14", "2026-07-01")
+
+
 class TestGenerationVariantes(unittest.TestCase):
     """Chaine complete avec le simulateur, sans reseau."""
 

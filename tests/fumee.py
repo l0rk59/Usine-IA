@@ -62,6 +62,9 @@ SCENARIOS = [
                   "-n", "4", "--hors-ligne", "--sans-image"]),
     ("ab-observer", ["ab", "observer", "1", "--vues", "200", "--actions", "9"]),
     ("ab-verdict", ["ab", "verdict", "1"]),
+    # Sans periode renseignee, la comparaison des rythmes doit refuser de
+    # conclure plutot que de compter zero pour tout le monde.
+    ("ab-rythme", ["ab", "rythme", "1"], 1),
     ("ab-liste", ["ab", "liste"]),
     # Tous les produits du test viennent du meme simulateur : ils SONT des
     # doublons. La commande sort en 1 quand elle en trouve — c'est ce qui

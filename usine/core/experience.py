@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import math
 import random
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -51,6 +52,8 @@ CREATE TABLE IF NOT EXISTS variantes (
     contenu TEXT NOT NULL,
     fichier TEXT,
     meta TEXT NOT NULL DEFAULT '{}',
+    debut TEXT,
+    fin TEXT,
     cree_le REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_variantes_exp ON variantes(experience_id);
@@ -82,7 +85,13 @@ _pret = False
 def _assurer() -> None:
     global _pret
     if not _pret:
-        store.connect().executescript(SCHEMA)
+        connexion = store.connect()
+        connexion.executescript(SCHEMA)
+        # Les tables d'experience naissent a la demande : si elles existaient
+        # deja avant l'ajout des colonnes de periode, le script ci-dessus ne
+        # les a pas touchees.
+        store._ajouter_colonnes(connexion, "variantes",
+                                (("debut", "TEXT"), ("fin", "TEXT")))
         _pret = True
 
 
@@ -177,6 +186,94 @@ def comparer(
             "tirages": tirages}
 
 
+# --------------------------------------------------------------------------
+# Comparer des rythmes de vente, quand on n'a pas les vues
+# --------------------------------------------------------------------------
+#
+# Le modele beta-binomial ci-dessus compare des TAUX : il lui faut des vues.
+# Une place de marche les donne, mais seulement a l'ecran, et il faut aller
+# les relever a la main.
+#
+# Ce qu'un vendeur possede sans effort, en revanche, c'est le nombre de
+# ventes et la duree pendant laquelle chaque variante etait en ligne. Comparer
+# « 7 ventes en 14 jours » a « 4 ventes en 12 jours » n'est pas un probleme
+# binomial : il n'y a pas d'essais, il y a un comptage sur une duree. Le
+# modele qui convient est gamma-poisson.
+#
+# La loi a priori est Gamma(1, 0) : plate sur le rythme, et la loi a
+# posteriori Gamma(1 + ventes, duree) reste propre des que la duree est non
+# nulle. Sa forme entiere permet de verifier le tirage aleatoire contre une
+# formule exacte, comme pour le beta-binomial.
+
+
+def probabilite_rythme_superieur(ventes_a: int, jours_a: float,
+                                 ventes_b: int, jours_b: float) -> float:
+    """P(rythme A > rythme B), exactement.
+
+    X ~ Gamma(a, taux p), Y ~ Gamma(b, taux q) :
+        P(X > Y) = somme sur j < a de  G(b+j)/(G(b) j!) * q^b p^j / (p+q)^(b+j)
+    """
+    if jours_a <= 0 or jours_b <= 0:
+        return 0.5
+    a, p = 1 + max(0, int(ventes_a)), float(jours_a)
+    b, q = 1 + max(0, int(ventes_b)), float(jours_b)
+    total = 0.0
+    for j in range(a):
+        terme = (math.lgamma(b + j) - math.lgamma(b) - math.lgamma(j + 1)
+                 + b * math.log(q) + j * math.log(p)
+                 - (b + j) * math.log(p + q))
+        total += math.exp(terme)
+    return min(1.0, max(0.0, total))
+
+
+def comparer_rythmes(
+    mesures: Sequence[Tuple[int, float]],
+    tirages: int = 40000,
+    graine: int = 20260911,
+) -> Dict[str, Any]:
+    """Compare N variantes sur leur rythme. `mesures` = [(ventes, jours), ...].
+
+    Meme discipline que `comparer` : un tirage CONJOINT, graine, et des
+    pertes esperees — comparer les variantes deux a deux ferait dire a
+    plusieurs comparaisons ce qu'aucune ne dit seule.
+    """
+    if not mesures:
+        return {"variantes": [], "meilleure": None}
+    alea = random.Random(graine)
+    posterieures = [(1 + max(0, int(ventes)), max(1e-6, float(jours)))
+                    for ventes, jours in mesures]
+    nombre = len(posterieures)
+    victoires = [0] * nombre
+    echantillons: List[List[float]] = [[] for _ in range(nombre)]
+    perte = [0.0] * nombre
+
+    for _ in range(tirages):
+        # gammavariate prend une ECHELLE : l'inverse du taux.
+        tirage = [alea.gammavariate(forme, 1.0 / duree)
+                  for forme, duree in posterieures]
+        meilleur = max(tirage)
+        victoires[tirage.index(meilleur)] += 1
+        for index, valeur in enumerate(tirage):
+            echantillons[index].append(valeur)
+            perte[index] += meilleur - valeur
+
+    resultats = []
+    for index, (ventes, jours) in enumerate(mesures):
+        serie = sorted(echantillons[index])
+        resultats.append({
+            "index": index, "ventes": int(ventes), "jours": round(jours, 1),
+            "rythme": (ventes / jours) if jours else 0.0,
+            "rythme_median": serie[len(serie) // 2],
+            "bas": serie[int(len(serie) * 0.05)],
+            "haut": serie[int(len(serie) * 0.95)],
+            "probabilite_meilleure": victoires[index] / tirages,
+            "perte_esperee": perte[index] / tirages,
+        })
+    meilleure = max(resultats, key=lambda r: r["probabilite_meilleure"])
+    return {"variantes": resultats, "meilleure": meilleure["index"],
+            "tirages": tirages, "modele": "gamma-poisson"}
+
+
 def observations_necessaires(taux: float, effet_relatif: float = 0.20) -> int:
     """Ordre de grandeur du nombre de vues par variante pour trancher.
 
@@ -189,6 +286,66 @@ def observations_necessaires(taux: float, effet_relatif: float = 0.20) -> int:
     if delta <= 0:
         return 0
     return int(math.ceil(16.0 * taux * (1 - taux) / (delta ** 2)))
+
+
+def verdict_rythme(comparaison: Dict[str, Any],
+                   minimum_ventes: int = MINIMUM_ACTIONS) -> Dict[str, Any]:
+    """Conclusion sur des rythmes de vente, avec la meme severite.
+
+    Le seuil porte sur le nombre de VENTES, pas sur le nombre de jours : dix
+    jours d'exposition sans vente ne renseignent sur rien, et laisser le
+    temps tenir lieu de preuve serait le principal piege de ce modele.
+    """
+    variantes = comparaison.get("variantes") or []
+    if not variantes:
+        return {"etat": "vide", "message": "Aucune variante."}
+    total_ventes = sum(v["ventes"] for v in variantes)
+    total_jours = sum(v["jours"] for v in variantes)
+    meilleure = variantes[comparaison["meilleure"]]
+
+    if total_jours <= 0:
+        return {"etat": "sans_donnees",
+                "message": "Aucune periode de mise en ligne renseignee. "
+                           "« usine ab periode <variante> --du ... --au ... »"}
+    if total_ventes < minimum_ventes:
+        return {
+            "etat": "insuffisant",
+            "tete": meilleure["index"],
+            "manque": minimum_ventes - total_ventes,
+            "message": "{} vente(s) sur {:.0f} jours d'exposition : trop peu "
+                       "pour conclure. En dessous de {}, l'ecart de rythme est "
+                       "du bruit.".format(total_ventes, total_jours,
+                                          minimum_ventes),
+        }
+    if (meilleure["probabilite_meilleure"] >= CERTITUDE_GAGNANT
+            and meilleure["perte_esperee"] <= PERTE_ACCEPTABLE):
+        return {
+            "etat": "gagnant", "gagnante": meilleure["index"],
+            "certitude": meilleure["probabilite_meilleure"],
+            "message": "Variante {} gagnante : {:.0f} % de chances d'avoir le "
+                       "meilleur rythme ({:.2f} vente/jour contre {:.2f}).".format(
+                           _etiquette(meilleure["index"]),
+                           meilleure["probabilite_meilleure"] * 100,
+                           meilleure["rythme"],
+                           max((v["rythme"] for v in variantes
+                                if v["index"] != meilleure["index"]), default=0.0)),
+        }
+    if meilleure["probabilite_meilleure"] >= CERTITUDE_TENDANCE:
+        return {
+            "etat": "tendance", "tete": meilleure["index"],
+            "certitude": meilleure["probabilite_meilleure"],
+            "message": "Variante {} en tete ({:.0f} %), sans certitude. "
+                       "Laissez tourner.".format(
+                           _etiquette(meilleure["index"]),
+                           meilleure["probabilite_meilleure"] * 100),
+        }
+    return {
+        "etat": "indecis", "tete": meilleure["index"],
+        "certitude": meilleure["probabilite_meilleure"],
+        "message": "Aucune variante ne se detache ({:.0f} % pour la mieux "
+                   "placee). L'ecart de rythme observe ne dit rien.".format(
+                       meilleure["probabilite_meilleure"] * 100),
+    }
 
 
 def verdict(comparaison: Dict[str, Any],
@@ -320,6 +477,73 @@ def observer(variante_id: int, vues: int = 0, actions: int = 0,
             " VALUES (?,?,?,?,?)",
             (variante_id, vues, actions, note[:200], time.time()),
         )
+
+
+def fixer_periode(variante_id: int, debut: str, fin: str = "") -> bool:
+    """Note quand une variante etait en ligne. Sans cela, aucune vente ne
+    peut lui etre attribuee."""
+    _assurer()
+    for valeur in (debut, fin):
+        if valeur and not re.match(r"^\d{4}-\d{2}-\d{2}$", valeur):
+            raise ValueError("date attendue au format AAAA-MM-JJ : " + valeur)
+    if fin and debut and fin < debut:
+        raise ValueError("la fin precede le debut")
+    with store.cursor() as cur:
+        cur.execute("UPDATE variantes SET debut=?, fin=? WHERE id=?",
+                    (debut or None, fin or None, variante_id))
+        return cur.rowcount > 0
+
+
+def mesures_reelles(experience_id: int) -> Dict[str, Any]:
+    """Ventes reellement encaissees pendant la periode de chaque variante.
+
+    C'est le remplacement du chiffre saisi a la main. Les vues, elles, ne
+    sont pas recuperables : aucune place de marche ne les met dans son export
+    de ventes. L'usine ne les invente donc pas — elle compte ce qu'elle a, et
+    dit ce qui lui manque.
+
+    Le test est SEQUENTIEL, et ce n'est pas un detail : les variantes n'ont
+    pas ete exposees en meme temps. Une semaine de vacances scolaires ou un
+    partage inattendu se confond avec l'effet du titre, et aucun calcul ne
+    repare cela.
+    """
+    _assurer()
+    fiche = lire(experience_id)
+    if not fiche:
+        return {"variantes": [], "probleme": "experience introuvable"}
+    if not fiche.get("produit_id"):
+        return {"variantes": [],
+                "probleme": "experience sans produit : impossible de savoir "
+                            "quelles ventes lui attribuer"}
+    mesures = []
+    for variante in variantes(experience_id):
+        debut, fin = variante.get("debut"), variante.get("fin")
+        if not debut:
+            mesures.append({"variante": variante, "ventes": 0, "jours": 0.0,
+                            "periode": ""})
+            continue
+        fin_effective = fin or time.strftime("%Y-%m-%d")
+        with store.cursor() as cur:
+            ligne = cur.execute(
+                "SELECT COALESCE(SUM(CASE WHEN remboursement = 0"
+                " THEN unites ELSE 0 END), 0) AS ventes"
+                " FROM ventes WHERE produit_id = ? AND date >= ? AND date <= ?",
+                (fiche["produit_id"], debut, fin_effective)).fetchone()
+        mesures.append({
+            "variante": variante, "ventes": int(ligne["ventes"] or 0),
+            "jours": _jours(debut, fin_effective),
+            "periode": "{} au {}".format(debut, fin_effective),
+        })
+    return {"variantes": mesures, "probleme": "",
+            "produit_id": fiche["produit_id"]}
+
+
+def _jours(debut: str, fin: str) -> float:
+    """Duree d'exposition, bornes comprises : un seul jour compte pour un."""
+    format_date = "%Y-%m-%d"
+    ecart = (time.mktime(time.strptime(fin, format_date))
+             - time.mktime(time.strptime(debut, format_date)))
+    return max(1.0, round(ecart / 86400.0) + 1.0)
 
 
 def variantes(experience_id: int) -> List[Dict[str, Any]]:
