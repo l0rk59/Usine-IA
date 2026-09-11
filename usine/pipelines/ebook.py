@@ -1,0 +1,316 @@
+"""Chaine de production d'un ebook vendable.
+
+Enchainement : plan -> chapitres -> avant-propos/conclusion -> mise en forme
+PDF + EPUB + HTML + Markdown + TXT, couverture comprise.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
+from ..core import images, llm
+from ..render import document as D
+from ..render.epub import construire_epub
+from ..render.page import ecrire_page
+from ..render.pdf import DocumentPDF
+from .base import Contexte, elaguer_markdown, nettoyer_titre, preparer, terminer
+
+ROLE = "un auteur de guides pratiques qui se vendent, editeur exigeant"
+
+
+def construire_plan(ctx: Contexte) -> Dict[str, Any]:
+    """Titre commercial + structure detaillee, en JSON."""
+    invite = (
+        "Concois le plan d'un ebook pratique et vendable sur ce sujet :\n"
+        "SUJET : {sujet}\n"
+        "LECTEUR : {audience}\n"
+        "LONGUEUR : {n} chapitres.\n\n"
+        "Contraintes :\n"
+        "- Le titre doit etre commercial et specifique (pas de titre generique).\n"
+        "- Chaque chapitre resout UN probleme precis et progresse vers la promesse.\n"
+        "- Les titres de chapitres sont des benefices concrets, pas des categories.\n"
+        "- 'points' liste 4 a 6 idees a couvrir dans le chapitre, en style telegraphique.\n\n"
+        "Schema JSON exact attendu :\n"
+        '{{"titre": "...", "sous_titre": "...", "promesse": "une phrase : ce que le '
+        'lecteur sait faire a la fin", "lecteur_ideal": "...", '
+        '"chapitres": [{{"titre": "...", "objectif": "...", '
+        '"points": ["...", "..."]}}]}}'
+    ).format(sujet=ctx.sujet, audience=ctx.audience, n=ctx.nb_chapitres)
+
+    plan = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="costaud", temperature=0.65)
+
+    if not isinstance(plan, dict) or not plan.get("chapitres"):
+        raise ValueError("Plan invalide renvoye par le modele")
+    plan["titre"] = nettoyer_titre(str(plan.get("titre") or ctx.sujet))
+    plan["sous_titre"] = str(plan.get("sous_titre") or "").strip().strip('"')
+    chapitres: List[Dict[str, Any]] = []
+    for brut in plan["chapitres"]:
+        if isinstance(brut, str):
+            brut = {"titre": brut, "objectif": "", "points": []}
+        titre = nettoyer_titre(str(brut.get("titre") or "Chapitre"))
+        points = brut.get("points") or []
+        if isinstance(points, str):
+            points = [points]
+        chapitres.append(
+            {
+                "titre": titre,
+                "objectif": str(brut.get("objectif") or "").strip(),
+                "points": [str(p).strip() for p in points if str(p).strip()],
+            }
+        )
+    plan["chapitres"] = chapitres[: ctx.nb_chapitres]
+    return plan
+
+
+def rediger_chapitre(
+    ctx: Contexte, plan: Dict[str, Any], index: int, chapitre: Dict[str, Any]
+) -> str:
+    """Redige un chapitre en markdown, sans repeter le titre de niveau 1."""
+    autres = " | ".join(
+        c["titre"] for j, c in enumerate(plan["chapitres"]) if j != index
+    )
+    invite = (
+        "Redige le chapitre {num} sur {total} de l'ebook « {livre} ».\n"
+        "PROMESSE DU LIVRE : {promesse}\n"
+        "TITRE DU CHAPITRE : {titre}\n"
+        "OBJECTIF : {objectif}\n"
+        "POINTS A COUVRIR : {points}\n"
+        "AUTRES CHAPITRES (ne les traite pas, evite les redites) : {autres}\n\n"
+        "Consignes de redaction :\n"
+        "- Environ {mots} mots.\n"
+        "- Commence directement par un paragraphe d'accroche : une situation concrete "
+        "que le lecteur reconnait. Pas de repetition du titre.\n"
+        "- Structure avec des sous-titres markdown de niveau 2 (##) et 3 (###).\n"
+        "- Inclus au moins une liste numerotee d'etapes applicables aujourd'hui.\n"
+        "- Inclus un exemple chiffre realiste (presente comme un exemple, pas comme "
+        "une statistique officielle).\n"
+        "- Termine par une ligne exactement au format : "
+        "**A retenir :** suivi de deux phrases maximum.\n"
+        "- N'ecris PAS de titre de niveau 1 (#), il est ajoute automatiquement.\n"
+        "- Reponds uniquement en markdown, sans commentaire d'introduction."
+    ).format(
+        num=index + 1,
+        total=len(plan["chapitres"]),
+        livre=plan["titre"],
+        promesse=plan.get("promesse", ""),
+        titre=chapitre["titre"],
+        objectif=chapitre.get("objectif", ""),
+        points=" ; ".join(chapitre.get("points", [])) or "libre",
+        autres=autres or "aucun",
+        mots=ctx.mots_par_chapitre,
+    )
+    reponse = llm.generer(
+        invite,
+        systeme=ctx.systeme(ROLE),
+        role="standard",
+        temperature=0.78,
+        max_tokens=min(4096, int(ctx.mots_par_chapitre * 2.6)),
+    )
+    texte = elaguer_markdown(reponse.texte)
+    # Le modele reintroduit parfois un titre h1 : on le retire pour eviter le doublon.
+    lignes = texte.split("\n")
+    if lignes and lignes[0].startswith("# "):
+        lignes.pop(0)
+    return "\n".join(lignes).strip()
+
+
+def rediger_annexe(ctx: Contexte, plan: Dict[str, Any], genre: str) -> Tuple[str, str]:
+    """Avant-propos ou conclusion. Renvoie (titre, markdown)."""
+    sommaire = "\n".join("- " + c["titre"] for c in plan["chapitres"])
+    if genre == "introduction":
+        titre = "Avant-propos : pourquoi ce livre"
+        consigne = (
+            "Redige l'avant-propos (450 mots environ) : le probleme que vit le lecteur, "
+            "pourquoi les solutions habituelles echouent, ce que ce livre change, "
+            "et comment le lire (parcours conseille). Termine par une invitation a "
+            "commencer par le chapitre 1."
+        )
+    else:
+        titre = "Et maintenant : votre plan des 30 prochains jours"
+        consigne = (
+            "Redige la conclusion (450 mots environ) : une synthese des principes cles, "
+            "puis un plan d'action concret semaine par semaine sur 4 semaines, "
+            "sous forme de liste. Termine sur une phrase de motivation sobre, "
+            "sans promesse de resultat garanti."
+        )
+    invite = (
+        "Ebook : « {livre} »\nPROMESSE : {promesse}\nSOMMAIRE :\n{sommaire}\n\n{consigne}\n"
+        "Markdown uniquement, sous-titres de niveau 2 (##) autorises, "
+        "pas de titre de niveau 1."
+    ).format(
+        livre=plan["titre"],
+        promesse=plan.get("promesse", ""),
+        sommaire=sommaire,
+        consigne=consigne,
+    )
+    reponse = llm.generer(invite, systeme=ctx.systeme(ROLE), role="standard",
+                          temperature=0.7, max_tokens=1800)
+    return titre, elaguer_markdown(reponse.texte)
+
+
+def produire(ctx: Contexte) -> Dict[str, Any]:
+    """Produit l'ebook complet et renvoie un resume des fichiers generes."""
+    ctx.journal("Etape 1/5 — construction du plan...")
+    plan = construire_plan(ctx)
+    titre = plan["titre"]
+    sous_titre = plan.get("sous_titre", "")
+    dossier = preparer(ctx, "ebook", titre)
+    ctx.etape("plan", "ok", "{} chapitres".format(len(plan["chapitres"])))
+    ctx.journal('  Titre retenu : « {} »'.format(titre))
+    (dossier / "plan.json").write_text(
+        json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    total = len(plan["chapitres"])
+    sections: List[Tuple[str, str]] = []
+
+    ctx.journal("Etape 2/5 — avant-propos...")
+    titre_intro, corps_intro = rediger_annexe(ctx, plan, "introduction")
+    sections.append((titre_intro, corps_intro))
+    ctx.etape("introduction")
+
+    ctx.journal("Etape 3/5 — redaction des {} chapitres...".format(total))
+    for index, chapitre in enumerate(plan["chapitres"]):
+        ctx.journal("  [{}/{}] {}".format(index + 1, total, chapitre["titre"]))
+        try:
+            corps = rediger_chapitre(ctx, plan, index, chapitre)
+        except Exception as exc:
+            ctx.journal("     echec : {} — chapitre conserve en resume".format(exc))
+            ctx.etape("chapitre-{}".format(index + 1), "echec", str(exc))
+            corps = "## {}\n\n{}\n\n{}".format(
+                chapitre.get("objectif") or "Points cles",
+                chapitre.get("objectif", ""),
+                "\n".join("- " + p for p in chapitre.get("points", [])),
+            )
+        sections.append((chapitre["titre"], corps))
+        ctx.etape("chapitre-{}".format(index + 1), "ok", chapitre["titre"])
+
+    ctx.journal("Etape 4/5 — conclusion...")
+    titre_fin, corps_fin = rediger_annexe(ctx, plan, "conclusion")
+    sections.append((titre_fin, corps_fin))
+    ctx.etape("conclusion")
+
+    ctx.journal("Etape 5/5 — mise en forme et export...")
+    fichiers = exporter(ctx, plan, sections)
+
+    mots = sum(D.compter_mots(corps) for _, corps in sections)
+    resume = {
+        "produit_id": ctx.produit_id,
+        "titre": titre,
+        "sous_titre": sous_titre,
+        "dossier": str(dossier),
+        "chapitres": total,
+        "mots": mots,
+        "fichiers": [f.name for f in fichiers],
+    }
+    terminer(ctx, fichiers, {"mots": mots, "chapitres": total, "promesse": plan.get("promesse")})
+    (dossier / "produit.json").write_text(
+        json.dumps(resume, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return resume
+
+
+def exporter(
+    ctx: Contexte, plan: Dict[str, Any], sections: List[Tuple[str, str]]
+) -> List[Path]:
+    """Ecrit tous les formats de sortie dans le dossier du produit."""
+    dossier = ctx.dossier
+    titre = plan["titre"]
+    sous_titre = plan.get("sous_titre", "")
+    fichiers: List[Path] = []
+
+    # --- Markdown maitre ------------------------------------------------
+    morceaux = ["# {}".format(titre)]
+    if sous_titre:
+        morceaux.append("*{}*".format(sous_titre))
+    morceaux.append("\n_{}_\n".format(ctx.auteur))
+    for titre_section, corps in sections:
+        morceaux.append("\n# {}\n".format(titre_section))
+        morceaux.append(corps)
+    markdown = "\n".join(morceaux).strip() + "\n"
+    chemin_md = dossier / "livre.md"
+    chemin_md.write_text(markdown, encoding="utf-8")
+    fichiers.append(chemin_md)
+
+    blocs_par_section = [(t, D.analyser(c)) for t, c in sections]
+
+    # --- Couverture -----------------------------------------------------
+    couverture = None
+    if not ctx.sans_image:
+        couverture = images.generer_couverture(
+            dossier, titre, sous_titre, ctx.auteur,
+            style="modern editorial book cover, {}".format(ctx.sujet),
+            en_ligne=not ctx.hors_ligne,
+        )
+        fichiers.append(couverture)
+
+    # --- PDF ------------------------------------------------------------
+    doc = DocumentPDF(titre_courant=titre)
+    octets_jpeg = None
+    if couverture and couverture.suffix.lower() in (".jpg", ".jpeg"):
+        octets_jpeg = couverture.read_bytes()
+    doc.page_couverture(titre, sous_titre, ctx.auteur, image_jpeg=octets_jpeg)
+    for titre_section, blocs in blocs_par_section:
+        doc.titre(titre_section, 1)
+        D.vers_pdf(blocs, doc, sauter_h1=True)
+    doc.inserer_sommaire(apres=1)
+    chemin_pdf = dossier / "{}.pdf".format(_nom_fichier(titre))
+    doc.enregistrer(chemin_pdf)
+    fichiers.append(chemin_pdf)
+
+    # --- EPUB -----------------------------------------------------------
+    image_epub = None
+    if couverture and couverture.suffix.lower() in (".jpg", ".jpeg", ".png"):
+        image_epub = (couverture.name, couverture.read_bytes())
+    chapitres_html = [
+        (titre_section, D.vers_html(blocs, niveau_depart=2))
+        for titre_section, blocs in blocs_par_section
+    ]
+    chemin_epub = dossier / "{}.epub".format(_nom_fichier(titre))
+    construire_epub(
+        chemin_epub,
+        titre,
+        ctx.auteur,
+        chapitres_html,
+        langue="fr" if ctx.langue.lower().startswith("fran") else "en",
+        sous_titre=sous_titre,
+        description=plan.get("promesse", ""),
+        couverture=image_epub,
+    )
+    fichiers.append(chemin_epub)
+
+    # --- HTML autonome (lisible sur telephone, imprimable) --------------
+    corps_html = []
+    for titre_section, blocs in blocs_par_section:
+        corps_html.append("<h2>{}</h2>".format(titre_section))
+        corps_html.append(D.vers_html(blocs, niveau_depart=3))
+    chemin_html = dossier / "lire.html"
+    ecrire_page(
+        chemin_html,
+        titre,
+        "\n".join(corps_html),
+        sous_titre=sous_titre,
+        meta="{} — {} chapitres".format(ctx.auteur, len(sections)),
+        couverture=couverture.name if couverture else None,
+    )
+    fichiers.append(chemin_html)
+
+    # --- Texte brut -----------------------------------------------------
+    chemin_txt = dossier / "livre.txt"
+    chemin_txt.write_text(
+        "\n\n".join(
+            "{}\n{}\n\n{}".format(t.upper(), "=" * len(t), D.vers_texte(b))
+            for t, b in blocs_par_section
+        ),
+        encoding="utf-8",
+    )
+    fichiers.append(chemin_txt)
+    return fichiers
+
+
+def _nom_fichier(titre: str) -> str:
+    from .base import slug
+
+    return slug(titre, 48)
