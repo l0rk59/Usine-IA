@@ -191,6 +191,15 @@ _local = threading.local()
 _verrou_schema = threading.Lock()
 _schema_pret = False
 
+# Une connexion appartient a son thread, et « close() » ne ferme que celle du
+# thread qui appelle. Or une restauration DEPLACE le fichier de base : les
+# autres threads gardent alors une poignee ouverte sur un fichier qui n'est
+# plus la base de personne. Ils continuent de lire l'ancien atelier, et ce
+# qu'ils y ecrivent est perdu — sans la moindre erreur. Chaque connexion
+# retient donc la generation ou elle est nee, et se refait quand elle a
+# change.
+_generation = 0
+
 # « _schema_pret » n'est pas le seul drapeau de ce genre. La file, les
 # experiences et l'apprentissage creent leurs tables a la demande et
 # retiennent « c'est fait » dans un drapeau de module. Ce drapeau ne vaut
@@ -209,7 +218,13 @@ def connect() -> sqlite3.Connection:
     global _schema_pret
     conn = getattr(_local, "conn", None)
     if conn is not None:
-        return conn
+        if getattr(_local, "generation", -1) == _generation:
+            return conn
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass  # le fichier a pu disparaitre sous la connexion
+        _local.conn = None
     config.ensure_dirs()
     conn = sqlite3.connect(str(config.DB_PATH), timeout=30, isolation_level=None)
     conn.row_factory = sqlite3.Row
@@ -227,6 +242,7 @@ def connect() -> sqlite3.Connection:
             _migrer(conn, neuve)
             _schema_pret = True
     _local.conn = conn
+    _local.generation = _generation
     return conn
 
 
@@ -251,13 +267,18 @@ def close() -> None:
 
     Les modules qui se sont inscrits par « oublier_avec_la_base » sont
     remis a zero de la meme facon, et pour la meme raison.
+
+    Les connexions des AUTRES threads ne peuvent pas etre fermees d'ici —
+    une connexion SQLite appartient a son thread. On avance la generation :
+    chacune se refera d'elle-meme au prochain usage.
     """
-    global _schema_pret
+    global _schema_pret, _generation
     conn = getattr(_local, "conn", None)
     if conn is not None:
         conn.close()
         _local.conn = None
     _schema_pret = False
+    _generation += 1
     for rappel in _oublis:
         rappel()
 

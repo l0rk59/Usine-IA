@@ -639,7 +639,17 @@ function afficherSauvegardes(archives) {
       <span class="nom">${echapper(a.nom)}</span>
       <span class="quand">${a.ko} Ko &middot; ${dateCourte(a.ts)}</span>
       <a href="/archive/${encodeURIComponent(a.nom)}" download>Telecharger</a>
+      <button class="discret refaire" data-restaurer="${echapper(a.nom)}"
+        >Restaurer</button>
     </div>`).join('');
+}
+
+function dateLisible(iso) {
+  // La fiche d'archive porte un horodatage ISO en UTC. Lu tel quel sur un
+  // telephone, il ne dit pas grand-chose de « hier soir ».
+  const quand = new Date(iso);
+  if (!iso || Number.isNaN(quand.getTime())) return '?';
+  return quand.toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short' });
 }
 
 function dateCourte(ts) {
@@ -661,6 +671,79 @@ $('sauvegarde-creer').addEventListener('click', async () => {
   $('sauvegarde-etat').textContent =
     `${echapper(d.archive.nom)} — ${d.archive.ko} Ko. Telechargez-la.`;
   afficherSauvegardes(d.sauvegardes);
+});
+
+/* ------------------------------------------------------------ restauration */
+// Remplacer l'atelier se demande en deux temps : d'abord regarder ce que
+// contient l'archive, ensuite seulement l'installer. Un seul geste separant
+// « je consulte mes sauvegardes » de « j'efface aujourd'hui » serait trop
+// peu, surtout au pouce sur un telephone.
+let archiveAremettre = '';
+
+$('sauvegardes').addEventListener('click', async (evenement) => {
+  const nom = evenement.target.dataset?.restaurer;
+  if (!nom) return;
+  const reponse = await fetch('/api/sauvegarde', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'inspecter', nom }),
+  });
+  const fiche = await reponse.json();
+  if (fiche.erreur || !fiche.valide) {
+    $('sauvegarde-etat').textContent = fiche.erreur || fiche.probleme;
+    return;
+  }
+  archiveAremettre = nom;
+  $('restauration-fiche').innerHTML = `
+    <strong>${echapper(nom)}</strong><br/>
+    Ecrite le ${echapper(dateLisible(fiche.cree_le))} &middot; schema ${
+      fiche.schema} (l'usine en est a ${fiche.schema_courant})<br/>
+    ${fiche.avec_reglages ? 'Reglages inclus' : 'Sans les reglages'} &middot; ${
+      fiche.fichiers_produits} fichier(s) de produits`;
+  $('restauration-compris').checked = false;
+  $('restauration-faire').disabled = true;
+  $('restauration').hidden = false;
+  $('restauration').scrollIntoView({ behavior: 'smooth', block: 'center' });
+});
+
+$('restauration-compris').addEventListener('change', () => {
+  $('restauration-faire').disabled = !$('restauration-compris').checked;
+});
+
+$('restauration-annuler').addEventListener('click', () => {
+  archiveAremettre = '';
+  $('restauration').hidden = true;
+});
+
+$('restauration-faire').addEventListener('click', async () => {
+  if (!archiveAremettre || !$('restauration-compris').checked) return;
+  $('restauration-faire').disabled = true;
+  $('sauvegarde-etat').textContent = 'restauration en cours...';
+  const reponse = await fetch('/api/sauvegarde', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    // La confirmation voyage avec la requete : le serveur ne se fie pas a
+    // l'etat d'une page qu'il ne voit pas.
+    body: JSON.stringify({ action: 'restaurer', nom: archiveAremettre,
+                           confirme: true }),
+  });
+  const d = await reponse.json();
+  if (d.erreur) {
+    $('restauration-faire').disabled = false;
+    $('sauvegarde-etat').textContent = d.erreur;
+    return;
+  }
+  $('restauration').hidden = true;
+  archiveAremettre = '';
+  const mise = d.ancienne_base
+    ? ` L'ancienne base est gardee sous ${echapper(d.ancienne_base)}.`
+    : '';
+  $('sauvegarde-etat').textContent =
+    `Atelier restaure depuis ${echapper(d.nom)}.${mise}`;
+  // Tout ce que la page affiche vient de la base qui vient d'etre remplacee.
+  chargerProduits();
+  chargerCommerce();
+  chargerUsine();
+  chargerSauvegardes();
+  chargerEtat();
 });
 
 /* ---------------------------------------------------------------- demarrage */

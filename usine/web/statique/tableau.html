@@ -185,10 +185,28 @@
   </div>
   <span class="aide" id="sauvegarde-etat"></span>
   <div id="sauvegardes"><span class="vide">chargement...</span></div>
+
+  <div class="confirmation" id="restauration" hidden>
+    <h3 class="sous">Remplacer l'atelier par une archive</h3>
+    <p class="fiche" id="restauration-fiche"></p>
+    <ul class="consequences">
+      <li>Les ventes, l'historique, les tests A/B et les empreintes
+        d'aujourd'hui laissent la place a ceux de l'archive.</li>
+      <li>La base actuelle est <strong>mise de cote</strong>, pas supprimee.</li>
+      <li>Les fichiers de produits contenus dans l'archive ecrasent les
+        votres, s'ils portent le meme nom.</li>
+    </ul>
+    <label class="case"><input type="checkbox" id="restauration-compris"/>
+      J'ai compris que l'atelier actuel sera remplace</label>
+    <div class="rangee">
+      <button class="danger" id="restauration-faire" disabled>Remplacer l'atelier</button>
+      <button class="discret" id="restauration-annuler">Annuler</button>
+    </div>
+  </div>
+
   <p class="aide">Telechargez-la hors du telephone : une sauvegarde restee sur
-    l'appareil ne protege de rien. <strong>Restaurer</strong> reste a la ligne
-    de commande — <code>usine sauvegarde --restaurer</code> — parce que
-    l'operation remplace tout l'atelier et demande confirmation.</p>
+    l'appareil ne protege de rien. La restauration est refusee tant qu'une
+    fabrication, une veille ou l'usine continue tourne.</p>
 </div>
 
 </div>

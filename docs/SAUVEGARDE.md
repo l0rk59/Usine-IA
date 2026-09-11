@@ -99,10 +99,48 @@ La carte **Sauvegarder l'atelier** écrit l'archive et, surtout, la
 archive écrite dans `atelier/sauvegardes/` ne protège de rien tant qu'elle
 n'est pas sortie de l'appareil, et la ligne de commande ne sait pas la sortir.
 
-**Restaurer ne passe pas par le navigateur**, et c'est délibéré. L'opération
-remplace l'atelier entier ; c'est le genre de bouton sur lequel on ne clique
-jamais volontairement. Elle reste à `usine sauvegarde --restaurer`, qui
-demande confirmation et met l'ancienne base de côté.
+**Restaurer y est aussi**, mais en deux temps. Un seul geste séparant « je
+consulte mes sauvegardes » de « j'efface aujourd'hui » serait trop peu,
+surtout au pouce.
+
+1. **Restaurer** sur une archive ouvre un panneau qui dit ce qu'elle contient :
+   sa date lisible, son numéro de schéma comparé à celui de l'usine, si les
+   réglages y sont, combien de fichiers de produits. On ne remplace pas son
+   atelier par quelque chose qu'on n'a pas regardé.
+2. Le bouton **Remplacer l'atelier** naît inactif et ne s'active qu'une fois
+   la case cochée. Un clic forcé dessus avant cela ne fait rien — c'est
+   vérifié dans un vrai navigateur.
+
+Côté serveur, la confirmation est un **argument de la requête**, pas un état
+de la page : `confirme` doit valoir exactement `true`. `"oui"`, `1` ou
+`"true"` — tous vrais en JavaScript — sont refusés. Une page rechargée, un
+rejeu de requête ou un script tiers n'hérite pas d'une case cochée dans un
+navigateur que le serveur ne voit pas.
+
+### Ce que la page refuse de faire
+
+La restauration est refusée tant que **l'usine continue tourne**, qu'une
+fabrication est en cours, ou qu'une veille est en route. Remplacer la base
+sous un produit en cours de fabrication le ferait écrire dans un atelier qui
+n'existe plus. La ligne de commande n'a pas ce garde-fou : elle est tapée
+délibérément, la page se touche du pouce.
+
+### Un défaut que seule la page pouvait révéler
+
+Une connexion SQLite appartient au thread qui l'a créée, et `store.close()`
+ne ferme **que celle du thread qui appelle**. Or la restauration *déplace* le
+fichier de base : les autres threads gardaient une poignée ouverte sur un
+fichier qui n'était plus la base de personne.
+
+Le tableau de bord sert chaque connexion HTTP dans son propre thread, et les
+garde ouvertes. Restaurer depuis la page affichait donc l'atelier d'avant,
+indéfiniment — et ce que ce thread y écrivait partait dans le fichier mis de
+côté, **sans la moindre erreur**.
+
+Chaque connexion retient désormais la génération où elle est née, et se refait
+quand elle a changé. Le test monte un second thread, lui fait ouvrir sa
+connexion *avant* la restauration, et vérifie qu'il voit ensuite le bon
+atelier. Sans le correctif, il voit l'ancien.
 
 ### La route qui sert les archives ne sert qu'elles
 

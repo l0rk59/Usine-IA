@@ -271,3 +271,21 @@ pre.journal .ligne { display: block; animation: apparait 0.3s ease both; }
   border: 1px solid var(--bord); border-radius: 8px; padding: 0.14rem 0.55rem;
   font-size: 0.74rem; color: var(--accent); text-decoration: none; }
 .archive a:hover { border-color: var(--accent); }
+
+.archive .refaire { color: var(--ambre); }
+
+/* Remplacer l'atelier ne doit pas ressembler aux autres boutons : la carte
+   se detache, et le bouton n'est actif qu'apres un geste explicite. */
+.confirmation { border: 1px solid var(--ambre); border-radius: 12px;
+  padding: 0.8rem; margin-top: 0.9rem;
+  background: rgba(245, 181, 68, 0.06); }
+.confirmation .sous { margin-top: 0; color: var(--ambre); }
+.confirmation .fiche { font-size: 0.8rem; margin: 0 0 0.5rem; }
+.confirmation .consequences { margin: 0 0 0.7rem; padding-left: 1.1rem;
+  font-size: 0.78rem; color: var(--doux); line-height: 1.5; }
+button.danger {
+  width: auto; padding: 0.38rem 0.8rem; font-size: 0.78rem; font-weight: 600;
+  background: var(--rouge); border-color: var(--rouge); color: #fff;
+  cursor: pointer; }
+button.danger:disabled { opacity: 0.45; cursor: not-allowed; }
+button.danger:not(:disabled):hover { filter: brightness(1.1); }

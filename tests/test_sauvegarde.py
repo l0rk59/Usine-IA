@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import shutil
 import sqlite3
 import tempfile
 import sys
+import threading
 import unittest
 import zipfile
 from pathlib import Path
@@ -230,6 +232,59 @@ class TestRestauration(unittest.TestCase):
         self.assertTrue(resultat["valide"])
         self.assertEqual((dossier / "livre.md").read_text(encoding="utf-8"),
                          "contenu original")
+
+
+class TestAutresThreads(unittest.TestCase):
+    """Une connexion appartient a son thread : les autres doivent suivre."""
+
+    def test_un_autre_thread_ne_lit_pas_la_base_d_avant(self):
+        """Le defaut se voit seulement dans un processus a plusieurs threads.
+
+        `close()` ne ferme que la connexion du thread qui appelle. La
+        restauration DEPLACE le fichier de base : les autres threads
+        gardaient une poignee ouverte sur un fichier qui n'etait plus la
+        base de personne. Ils continuaient a lire l'ancien atelier — et ce
+        qu'ils y ecrivaient etait perdu, sans la moindre erreur.
+
+        Le tableau de bord sert chaque connexion HTTP dans son propre
+        thread, et les garde ouvertes : restaurer depuis la page affichait
+        donc l'atelier d'avant, indefiniment.
+        """
+        store.creer_produit("fil-avant", "ebook", "Produit d'avant",
+                            sujet="s", dossier="/tmp")
+        archive = sauvegarde.creer()
+        self.addCleanup(lambda: archive.unlink(missing_ok=True))
+
+        demandes: "queue.Queue" = queue.Queue()
+        reponses: "queue.Queue" = queue.Queue()
+
+        def autre_thread():
+            while demandes.get() is not None:
+                with store.cursor() as cur:
+                    reponses.put({r["id"] for r in cur.execute(
+                        "SELECT id FROM produits").fetchall()})
+
+        fil = threading.Thread(target=autre_thread, daemon=True)
+        fil.start()
+        self.addCleanup(lambda: demandes.put(None))
+
+        # Le thread ouvre sa connexion AVANT la restauration : c'est la
+        # condition du defaut.
+        demandes.put("lire")
+        self.assertIn("fil-avant", reponses.get(timeout=10))
+
+        store.creer_produit("fil-apres", "ebook", "Produit d'apres",
+                            sujet="s", dossier="/tmp")
+        demandes.put("lire")
+        self.assertIn("fil-apres", reponses.get(timeout=10))
+
+        sauvegarde.restaurer(archive, avec_produits=False)
+
+        demandes.put("lire")
+        vus = reponses.get(timeout=10)
+        self.assertIn("fil-avant", vus)
+        self.assertNotIn("fil-apres", vus,
+                         "l'autre thread lit encore la base mise de cote")
 
 
 class TestArchiveHostile(unittest.TestCase):

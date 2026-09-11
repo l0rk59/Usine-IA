@@ -500,24 +500,67 @@ class Gestionnaire(BaseHTTPRequestHandler):
         return _reconstruire_empreintes()
 
     def _gerer_sauvegarde(self, options: Dict[str, Any]) -> Dict[str, Any]:
-        """Ecrit une archive de l'atelier.
+        """Ecrire une archive, regarder ce qu'elle contient, ou la remettre.
 
-        Restaurer ne passe pas par ici, et c'est deliberé : l'operation
-        remplace l'atelier entier, et c'est le genre de bouton sur lequel
-        on ne clique jamais volontairement. Elle reste a la ligne de
-        commande, qui demande confirmation.
+        Restaurer remplace l'atelier entier. Ce n'est pas une operation
+        qu'on lance par inadvertance, donc la page la demande en deux
+        temps — et le serveur exige que la confirmation lui parvienne
+        explicitement : un POST egare ne doit rien remplacer.
         """
         from ..core import sauvegarde
 
-        if str(options.get("action") or "creer") != "creer":
-            return {"erreur": "action inconnue"}
-        try:
-            archive = sauvegarde.creer(
-                avec_produits=bool(options.get("avec_produits")))
-        except OSError as exc:
-            return {"erreur": securite.expurger(str(exc))}
-        return {"archive": _fiche_archive(archive),
-                "sauvegardes": _sauvegardes()["archives"]}
+        action = str(options.get("action") or "creer")
+        if action == "creer":
+            try:
+                archive = sauvegarde.creer(
+                    avec_produits=bool(options.get("avec_produits")))
+            except OSError as exc:
+                return {"erreur": securite.expurger(str(exc))}
+            return {"archive": _fiche_archive(archive),
+                    "sauvegardes": _sauvegardes()["archives"]}
+
+        if action == "inspecter":
+            archive = _archive_nommee(options.get("nom"))
+            if archive is None:
+                return {"erreur": "archive introuvable"}
+            fiche = sauvegarde.inspecter(archive)
+            fiche["nom"] = archive.name
+            fiche["schema_courant"] = store.VERSION_SCHEMA
+            return fiche
+
+        if action == "restaurer":
+            return self._restaurer(sauvegarde, options)
+
+        return {"erreur": "action inconnue"}
+
+    def _restaurer(self, sauvegarde, options: Dict[str, Any]) -> Dict[str, Any]:
+        """Remet l'atelier dans l'etat d'une archive."""
+        if options.get("confirme") is not True:
+            # Ce n'est pas une politesse : la confirmation est un argument
+            # de la requete, pas un etat de la page. Une page rechargee,
+            # un rejeu de requete ou un script tiers n'en herite pas.
+            return {"erreur": "restauration non confirmee"}
+        archive = _archive_nommee(options.get("nom"))
+        if archive is None:
+            return {"erreur": "archive introuvable"}
+
+        occupe = _atelier_occupe()
+        if occupe:
+            # Remplacer la base sous un produit en cours de fabrication le
+            # ferait ecrire dans un atelier qui n'existe plus.
+            return {"erreur": occupe}
+
+        resultat = sauvegarde.restaurer(
+            archive, avec_produits=bool(options.get("avec_produits", True)))
+        if not resultat["valide"]:
+            return {"erreur": resultat["probleme"]}
+        evenements.publier("journal",
+                           message="atelier restaure depuis " + archive.name)
+        return {"restaure": True, "nom": archive.name,
+                "fichiers_produits": resultat["fichiers_produits"],
+                "refuses": resultat["refuses"],
+                "ancienne_base": Path(resultat["ancienne_base"]).name
+                if resultat["ancienne_base"] else ""}
 
     def _servir_archive(self, relatif: str) -> None:
         """Sert une archive de sauvegarde, et rien d'autre.
@@ -572,6 +615,42 @@ def _fiche_archive(archive: Path) -> Dict[str, Any]:
     etat = archive.stat()
     return {"nom": archive.name, "ko": max(1, etat.st_size // 1024),
             "ts": etat.st_mtime}
+
+
+def _archive_nommee(nom: Any) -> Optional[Path]:
+    """L'archive portant ce nom dans le dossier des sauvegardes, ou None.
+
+    Meme controle que pour le telechargement : le dossier des sauvegardes
+    est a cote de « usine.db », et un nom est un nom, pas un chemin.
+    """
+    texte = str(nom or "")
+    if not texte or "/" in texte or "\\" in texte or ".." in texte:
+        return None
+    if not texte.endswith(".zip"):
+        return None
+    racine = _dossier_sauvegardes().resolve()
+    cible = (racine / texte).resolve()
+    try:
+        cible.relative_to(racine)
+    except ValueError:
+        return None
+    return cible if cible.is_file() else None
+
+
+def _atelier_occupe() -> str:
+    """Raison de ne pas toucher a la base maintenant, ou chaine vide."""
+    from ..production import verrou_actif
+
+    pid = verrou_actif()
+    if pid is not None:
+        return ("l'usine continue tourne (pid {}) : arretez-la avant de "
+                "restaurer".format(pid))
+    with _VERROU:
+        if any(t["statut"] == "en_cours" for t in TRAVAUX.values()):
+            return "une fabrication est en cours : attendez qu'elle se termine"
+        if any(v["statut"] == "en_cours" for v in VEILLES.values()):
+            return "une veille est en cours : attendez qu'elle se termine"
+    return ""
 
 
 def _sauvegardes() -> Dict[str, Any]:

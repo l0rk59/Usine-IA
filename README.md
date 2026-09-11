@@ -665,12 +665,22 @@ sont posées à la fabrication, et un catalogue plus ancien n'en a aucune. Elle
 compte désormais ce qu'elle n'a pas pu comparer, et propose le bouton qui
 répare.
 
-**Sauvegarde.** Créer l'archive, et surtout la **télécharger**. C'est la
-partie qui manquait : sur un téléphone, une archive restée dans
-`atelier/sauvegardes/` ne protège de rien, et la ligne de commande ne sait pas
-l'en sortir. **Restaurer** reste à la console : l'opération remplace l'atelier
-entier, et c'est le genre de bouton sur lequel on ne clique jamais
-volontairement.
+**Sauvegarde.** Créer l'archive, la **télécharger** — c'est la partie qui
+manquait : sur un téléphone, une archive restée dans `atelier/sauvegardes/`
+ne protège de rien, et la ligne de commande ne sait pas l'en sortir — et la
+**restaurer**, en deux temps. Un panneau dit d'abord ce que contient
+l'archive ; le bouton rouge ne s'active qu'une fois la case cochée. Côté
+serveur, `confirme` doit valoir exactement `true` : `"oui"` et `1`, vrais en
+JavaScript, sont refusés. La restauration est par ailleurs refusée tant qu'une
+fabrication, une veille ou l'usine continue tourne.
+
+Ce dernier point a révélé un défaut que seule une interface à plusieurs
+threads pouvait montrer : `store.close()` ne ferme que la connexion du thread
+qui appelle, et la restauration *déplace* le fichier de base. Les autres
+threads gardaient une poignée sur un fichier qui n'était plus la base de
+personne — ils lisaient l'atelier d'avant, et ce qu'ils y écrivaient était
+perdu sans erreur. Chaque connexion retient maintenant sa génération et se
+refait quand la base a changé.
 
 ---
 
@@ -738,7 +748,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         427 tests + test de fumée, aucun appel réseau
+tests/         438 tests + test de fumée, aucun appel réseau
                un atelier temporaire par module (tests/atelier.py)
 install.sh     installation Termux
 ```
@@ -751,7 +761,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 427 tests
+python3 -m unittest discover -s tests -t .   # 438 tests
 python3 tests/fumee.py                       # les 9 chaînes via la vraie CLI
 ```
 

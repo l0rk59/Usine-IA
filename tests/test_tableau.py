@@ -260,8 +260,132 @@ class TestSauvegarde(BaseServeur):
         self.assertNotIn(b"un secret", corps)
 
     def test_une_action_inconnue_n_ecrit_aucune_archive(self):
-        _, resultat = self.json("/api/sauvegarde", {"action": "restaurer"})
+        _, resultat = self.json("/api/sauvegarde", {"action": "tout effacer"})
         self.assertIn("erreur", resultat)
+
+
+class TestRestauration(BaseServeur):
+    """Remplacer l'atelier depuis la page, sans pouvoir le faire par megarde."""
+
+    def _archive_et_produit_neuf(self):
+        """Une archive, puis un produit fabrique APRES elle.
+
+        Le produit d'apres est le temoin : une restauration reussie le fait
+        disparaitre, une restauration refusee le laisse en place.
+        """
+        _, cree = self.json("/api/sauvegarde", {"action": "creer"})
+        nom = cree["archive"]["nom"]
+        temoin = "temoin-" + nom.replace(".", "-")
+        store.creer_produit(temoin, "ebook", "Fabrique apres l'archive",
+                            sujet="s", dossier="/tmp")
+        return nom, temoin
+
+    def _existe(self, produit_id):
+        return store.lire_produit(produit_id) is not None
+
+    def test_inspecter_dit_ce_que_contient_l_archive(self):
+        _, cree = self.json("/api/sauvegarde", {"action": "creer"})
+        _, fiche = self.json("/api/sauvegarde",
+                             {"action": "inspecter",
+                              "nom": cree["archive"]["nom"]})
+        self.assertTrue(fiche["valide"])
+        self.assertEqual(fiche["schema"], store.VERSION_SCHEMA)
+        self.assertEqual(fiche["schema_courant"], store.VERSION_SCHEMA)
+        self.assertIn("cree_le", fiche)
+
+    def test_inspecter_ne_sort_pas_du_dossier_des_sauvegardes(self):
+        for nom in ("../usine.db", "..%2Fusine.db", "usine.db",
+                    "sauvegardes/x.zip", "../reglages.json", "", "x.zip"):
+            _, fiche = self.json("/api/sauvegarde",
+                                 {"action": "inspecter", "nom": nom})
+            self.assertIn("erreur", fiche, nom)
+
+    def test_sans_confirmation_rien_n_est_remplace(self):
+        """La confirmation voyage avec la requete, pas avec la page.
+
+        Une page rechargee, un rejeu de requete ou un script tiers n'herite
+        pas d'une case cochee dans un navigateur que le serveur ne voit pas.
+        """
+        nom, temoin = self._archive_et_produit_neuf()
+        _, refus = self.json("/api/sauvegarde",
+                             {"action": "restaurer", "nom": nom})
+        self.assertIn("non confirmee", refus["erreur"])
+        self.assertTrue(self._existe(temoin), "l'atelier a ete touche")
+
+    def test_une_confirmation_approximative_ne_suffit_pas(self):
+        """« oui », 1, « true » sont vrais en JavaScript. Pas ici."""
+        nom, temoin = self._archive_et_produit_neuf()
+        for valeur in ("oui", "true", 1, [1], {"ok": 1}):
+            with self.subTest(confirme=valeur):
+                _, refus = self.json("/api/sauvegarde",
+                                     {"action": "restaurer", "nom": nom,
+                                      "confirme": valeur})
+                self.assertIn("erreur", refus)
+                self.assertTrue(self._existe(temoin))
+
+    def test_une_archive_inconnue_est_refusee(self):
+        _, refus = self.json("/api/sauvegarde",
+                             {"action": "restaurer", "nom": "../usine.db",
+                              "confirme": True})
+        self.assertIn("introuvable", refus["erreur"])
+
+    def test_la_restauration_confirmee_remet_l_atelier_d_avant(self):
+        nom, temoin = self._archive_et_produit_neuf()
+        self.assertTrue(self._existe(temoin))
+        _, fait = self.json("/api/sauvegarde",
+                            {"action": "restaurer", "nom": nom,
+                             "confirme": True})
+        self.assertTrue(fait["restaure"])
+        self.assertFalse(self._existe(temoin))
+        self.assertTrue(fait["ancienne_base"],
+                        "l'ancienne base doit etre mise de cote, pas supprimee")
+        self.assertNotIn("/", fait["ancienne_base"],
+                         "un chemin d'atelier n'a rien a faire dans la page")
+
+    def test_on_ne_restaure_pas_sous_une_fabrication_en_cours(self):
+        """Remplacer la base sous un produit en cours le ferait ecrire dans
+        un atelier qui n'existe plus."""
+        nom, temoin = self._archive_et_produit_neuf()
+        occupe = {"x": {"id": "x", "statut": "en_cours", "debut": 0,
+                        "journal": [], "resultat": None, "erreur": ""}}
+        with mock.patch.object(serveur, "TRAVAUX", occupe):
+            _, refus = self.json("/api/sauvegarde",
+                                 {"action": "restaurer", "nom": nom,
+                                  "confirme": True})
+        self.assertIn("fabrication est en cours", refus["erreur"])
+        self.assertTrue(self._existe(temoin))
+
+    def test_on_ne_restaure_pas_sous_une_veille_en_cours(self):
+        nom, temoin = self._archive_et_produit_neuf()
+        with mock.patch.object(serveur, "VEILLES",
+                               {"v": {"id": "v", "statut": "en_cours"}}):
+            _, refus = self.json("/api/sauvegarde",
+                                 {"action": "restaurer", "nom": nom,
+                                  "confirme": True})
+        self.assertIn("veille est en cours", refus["erreur"])
+        self.assertTrue(self._existe(temoin))
+
+    def test_on_ne_restaure_pas_sous_l_usine_continue(self):
+        from usine import production
+
+        nom, temoin = self._archive_et_produit_neuf()
+        with mock.patch.object(production, "verrou_actif", lambda: 4242):
+            _, refus = self.json("/api/sauvegarde",
+                                 {"action": "restaurer", "nom": nom,
+                                  "confirme": True})
+        self.assertIn("4242", refus["erreur"])
+        self.assertTrue(self._existe(temoin))
+
+    def test_la_page_demande_deux_gestes(self):
+        """Garde-fou : la case et le bouton sont ce qui separe « je consulte
+        mes sauvegardes » de « j'efface aujourd'hui »."""
+        _, corps = self.appeler("/")
+        page = corps.decode("utf-8")
+        for marqueur in ("restauration", "restauration-compris",
+                         "restauration-faire", "restauration-annuler"):
+            self.assertIn('id="{}"'.format(marqueur), page, marqueur)
+        self.assertIn("disabled", page.split('id="restauration-faire"')[1][:40],
+                      "le bouton doit naitre inactif")
 
 
 class TestPageServie(BaseServeur):
