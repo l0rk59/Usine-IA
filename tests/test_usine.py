@@ -483,6 +483,16 @@ class TestPersonnalisation(unittest.TestCase):
         self.assertEqual(contexte.nb_chapitres, 20)
         self.assertEqual(contexte.mots_par_chapitre, 900)
 
+    def test_la_veille_se_coupe_sans_tout_couper(self):
+        """« usine idees » va lire Reddit : il faut pouvoir s'en passer sans
+        renoncer aussi aux mesures de marche et aux images."""
+        from usine import cli
+
+        args = cli.construire_parseur().parse_args(
+            ["idees", "un sujet", "--sans-veille"])
+        self.assertTrue(args.sans_veille)
+        self.assertFalse(args.sans_marche)
+
     def test_la_ligne_de_commande_accepte_un_ton_libre(self):
         """argparse refusait tout ton hors des cinq choix."""
         from usine import cli

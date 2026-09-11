@@ -69,6 +69,16 @@ Un refus est rapporté comme tel. **« Aucune discussion » et « on n'a pas pu
 regarder » ne se confondent pas** — c'est la distinction qui empêche de
 conclure qu'une niche est vide alors qu'on s'est simplement fait éconduire.
 
+## S'en passer
+
+`usine idees` consulte la veille par défaut : deux appels espacés, parfois une
+attente de vingt secondes si Reddit répond `429`. Quand ce n'est pas le moment :
+
+```bash
+usine idees "une niche" --sans-veille    # garde les mesures de marché
+usine idees "une niche" --hors-ligne     # coupe tout
+```
+
 ## Ce que ce module n'est pas
 
 | | |

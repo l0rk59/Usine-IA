@@ -18,7 +18,8 @@ from .core import cles as pool_cles
 from .core import config, experience
 from .core import file as file_prod
 from .core import llm, reglages, securite, store
-from .pipelines.base import TAILLES, TONS
+from .pipelines.base import (CHAPITRES_MAX, CHAPITRES_MIN, MOTS_MAX,
+                             MOTS_MIN, TAILLES, TONS)
 
 _COULEUR = sys.stdout.isatty()
 
@@ -159,19 +160,38 @@ def menu_fabriquer(executer: Callable[[List[str]], int]) -> None:
 
     if demander_oui("Personnaliser le ton, le volume et la qualite ?", False):
         tons = sorted(TONS)
+        # La derniere entree ouvre la saisie libre : les cinq tons sont des
+        # raccourcis, et imposer cinq voix a tout un catalogue est ce qui
+        # fait que les produits se ressemblent.
         index = choisir("Ton de redaction",
-                        [(t, TONS[t]) for t in tons],
+                        [(t, TONS[t]) for t in tons]
+                        + [("autre...", "decrivez la voix que vous voulez")],
                         defaut=tons.index(valeurs["ton"]) + 1)
-        if index:
+        if index and index <= len(tons):
             arguments += ["-t", tons[index - 1]]
+        elif index:
+            libre = demander("Decrivez le ton",
+                             "comme un artisan qui explique a son apprenti")
+            if libre:
+                arguments += ["-t", libre]
 
         tailles = sorted(TAILLES, key=lambda t: TAILLES[t][0])
         index = choisir("Volume",
                         [(t, "{} sections d'environ {} mots".format(*TAILLES[t]))
-                         for t in tailles],
+                         for t in tailles]
+                        + [("sur mesure...", "choisir le nombre de sections")],
                         defaut=tailles.index(valeurs["taille"]) + 1)
-        if index:
+        if index and index <= len(tailles):
             arguments += ["-T", tailles[index - 1]]
+        elif index:
+            sections = demander("Combien de sections ({} a {})".format(
+                CHAPITRES_MIN, CHAPITRES_MAX), "12")
+            if sections.isdigit():
+                arguments += ["--chapitres", sections]
+            mots = demander("Mots par section ({} a {}, Entree pour auto)".format(
+                MOTS_MIN, MOTS_MAX), "")
+            if mots.isdigit():
+                arguments += ["--mots", mots]
 
         qualites = ["rapide", "standard", "exigeant"]
         index = choisir("Niveau de qualite", [
@@ -646,6 +666,7 @@ def menu_principal(executer: Callable[[List[str]], int]) -> int:
             ("Mes produits", "consulter, vendre, empaqueter"),
             ("Ventes", "importer un export, voir ce qui rapporte vraiment"),
             ("Doublons", "les produits qui se recouvrent"),
+            ("Veille de niche", "ce que les gens disent vraiment d'un sujet"),
             ("Sauvegarder l'atelier", "ventes et historique dans une archive"),
             ("Cles et quotas", "etat des fournisseurs et du pool de cles"),
             ("Reglages", "auteur, marque, ton et qualite par defaut"),
@@ -670,14 +691,19 @@ def menu_principal(executer: Callable[[List[str]], int]) -> int:
             executer(["doublons"])
             demander("\n  Appuyez sur Entree")
         elif choix == 7:
-            executer(["sauvegarde"])
+            sujet = demander("Quelle niche explorer", obligatoire=True)
+            if sujet:
+                executer(["veille", sujet])
             demander("\n  Appuyez sur Entree")
         elif choix == 8:
-            menu_cles()
+            executer(["sauvegarde"])
+            demander("\n  Appuyez sur Entree")
         elif choix == 9:
-            menu_reglages()
+            menu_cles()
         elif choix == 10:
-            executer(["web"])
+            menu_reglages()
         elif choix == 11:
+            executer(["web"])
+        elif choix == 12:
             executer(["docteur"])
             demander("\n  Appuyez sur Entree")

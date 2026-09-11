@@ -1320,7 +1320,8 @@ def cmd_idees(args: argparse.Namespace) -> int:
     ctx = contexte_depuis(args)
     titre_console("Exploration de niche")
     resultat = idees.produire(ctx, nombre=args.nombre,
-                              avec_marche=not getattr(args, "sans_marche", False))
+                              avec_marche=not getattr(args, "sans_marche", False),
+                              avec_veille=not getattr(args, "sans_veille", False))
     if resultat.get("marche", {}).get("signaux"):
         print()
         for signal in resultat["marche"]["signaux"]:
@@ -1786,6 +1787,9 @@ def construire_parseur() -> argparse.ArgumentParser:
     p = sous_parseurs.add_parser("idees", help="trouver quoi vendre dans une niche")
     _options_communes(p)
     p.add_argument("-n", "--nombre", type=int, default=12, help="nombre d'idees")
+    p.add_argument("--sans-veille", dest="sans_veille", action="store_true",
+                   help="ne pas aller lire les discussions (Reddit limite le "
+                        "debit : deux appels espaces, parfois une attente)")
     p.add_argument("--sans-marche", dest="sans_marche", action="store_true",
                    help="ne pas interroger les sources de marche")
     p.set_defaults(fonction=cmd_idees)

@@ -92,6 +92,12 @@ async function chargerEtat() {
     decrireType();
     remplirListe($('ton'), donnees.tons, donnees.reglages.ton);
     remplirListe($('taille'), donnees.tailles, donnees.reglages.taille);
+    // Les listes sont des raccourcis, pas des limites : la derniere entree
+    // ouvre la saisie libre.
+    ajouterSurMesure($('ton'), 'autre...');
+    ajouterSurMesure($('taille'), 'sur mesure...');
+    $('ton').addEventListener('change', basculerSurMesure);
+    $('taille').addEventListener('change', basculerSurMesure);
     remplirListe($('qualite'), donnees.qualites, donnees.reglages.qualite);
     remplirListe($('reseau'), donnees.reseaux, 'linkedin');
     $('auteur').value = donnees.reglages.auteur || '';
@@ -100,6 +106,20 @@ async function chargerEtat() {
       `<span class="agent" data-agent="${a.nom}">
          <span class="pastille"></span>${echapper(a.nom)}</span>`).join('');
   }
+}
+
+function ajouterSurMesure(liste, libelle) {
+  const option = document.createElement('option');
+  option.value = '__libre__';
+  option.textContent = libelle;
+  liste.appendChild(option);
+}
+
+function basculerSurMesure() {
+  const tonLibre = $('ton').value === '__libre__';
+  const volumeLibre = $('taille').value === '__libre__';
+  $('ton-libre').hidden = !tonLibre;
+  $('bloc-sur-mesure').hidden = !volumeLibre;
 }
 
 async function chargerProduits() {
@@ -263,7 +283,9 @@ $('file-ajouter').addEventListener('click', async () => {
   const donnees = await envoyerFile({
     action: 'ajouter', sujet, type: $('type').value,
     nombre: $('nombre').value, audience: $('audience').value.trim(),
-    ton: $('ton').value, qualite: $('qualite').value,
+    ton: $('ton').value === '__libre__'
+      ? $('ton-libre').value.trim() : $('ton').value,
+    qualite: $('qualite').value,
   });
   if (donnees.doublon) ajouterLigne('deja en file : ' + echapper(sujet), 'souci');
   else if (donnees.ajoute) {
@@ -429,8 +451,12 @@ $('lancer').addEventListener('click', async () => {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       type: $('type').value, sujet,
-      audience: $('audience').value.trim(), ton: $('ton').value,
-      taille: $('taille').value, qualite: $('qualite').value,
+      audience: $('audience').value.trim(),
+      ton: $('ton').value === '__libre__'
+        ? $('ton-libre').value.trim() : $('ton').value,
+      taille: $('taille').value === '__libre__' ? '' : $('taille').value,
+      chapitres: $('chapitres').value, mots: $('mots').value,
+      qualite: $('qualite').value,
       auteur: $('auteur').value.trim(), nombre: $('nombre').value,
       reseau: $('reseau').value,
     }),

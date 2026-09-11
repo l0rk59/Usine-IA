@@ -450,6 +450,21 @@ class TestTableauDeBord(unittest.TestCase):
         self.assertAlmostEqual(ligne[0]["brut"], 58.0)
         self.assertEqual(ligne[0]["unites"], 2)
 
+    def test_le_sur_mesure_arrive_jusqu_au_contexte(self):
+        """Le tableau de bord n'offrait que les listes fermees.
+
+        Sur Termux, c'est l'une des trois seules interfaces : une option
+        absente ici n'existe pas pour qui travaille depuis le navigateur du
+        telephone.
+        """
+        from usine.web.serveur import _entier
+
+        self.assertEqual(_entier("7"), 7)
+        self.assertEqual(_entier(""), 0)
+        self.assertEqual(_entier(None), 0)
+        self.assertEqual(_entier("abc"), 0)
+        self.assertEqual(_entier(-5), 0)
+
     def test_l_etat_ne_contient_aucune_cle_en_clair(self):
         os.environ["GROQ_API_KEY"] = "gsk_" + "Q" * 32
         pool_cles.oublier()

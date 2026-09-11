@@ -44,6 +44,14 @@ def _catalogue() -> List[Dict[str, Any]]:
     ]
 
 
+def _entier(valeur: Any) -> int:
+    """Un champ de formulaire vide vaut zero, pas une erreur."""
+    try:
+        return max(0, int(valeur or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None:
     def journal(message: str) -> None:
         with _VERROU:
@@ -58,6 +66,8 @@ def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None
         ton=options.get("ton") or profil["ton"],
         taille=options.get("taille") or profil["taille"],
         qualite=options.get("qualite") or profil["qualite"],
+        chapitres=_entier(options.get("chapitres")),
+        mots_section=_entier(options.get("mots")),
         auteur=options.get("auteur") or profil["auteur"],
         sans_image=bool(options.get("sans_image")) or not profil["images"],
         journal=journal,

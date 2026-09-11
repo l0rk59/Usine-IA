@@ -390,6 +390,10 @@ toute autre valeur passe telle quelle jusqu'à l'invite. Les valeurs absurdes
 sont bornées, pas refusées — aucun quota gratuit ne tient neuf cents
 chapitres.
 
+Le sur-mesure est accessible depuis les **trois** interfaces : la ligne de
+commande, le menu Termux (`autre...` / `sur mesure...`) et le tableau de bord.
+Sur un téléphone, une option absente du menu n'existe pas.
+
 ### Aller voir ce que les gens disent
 
 Les quatre sources de marché mesurent des **volumes** : elles disent si une
@@ -665,7 +669,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         373 tests + test de fumée, aucun appel réseau
+tests/         375 tests + test de fumée, aucun appel réseau
 install.sh     installation Termux
 ```
 
@@ -677,7 +681,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 373 tests
+python3 -m unittest discover -s tests -t .   # 375 tests
 python3 tests/fumee.py                       # les 9 chaînes via la vraie CLI
 ```
 
