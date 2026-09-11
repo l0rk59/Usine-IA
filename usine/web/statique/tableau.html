@@ -50,7 +50,10 @@
 <div class="carte">
   <h2>Fabriquer</h2>
   <label for="type">Type de produit</label>
+  <!-- Rempli depuis /api/etat, lui-meme lu du catalogue : recopier cette
+       liste ici la ferait diverger, comme c'est deja arrive. -->
   <select id="type"></select>
+  <p class="aide" id="type-detail"></p>
 
   <label for="sujet">Sujet</label>
   <textarea id="sujet" placeholder="ex : la prospection pour freelances debutants"></textarea>

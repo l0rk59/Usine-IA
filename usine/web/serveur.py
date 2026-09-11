@@ -25,8 +25,7 @@ from .. import __version__
 from ..agents import equipe
 from ..core import cles as pool_cles
 from ..core import config, evenements, file as file_prod, llm, reglages, securite, store
-from ..pipelines import (boite_outils, ebook, formation, idees, impression,
-                         modeles, pack_prompts, social)
+from ..pipelines import catalogue, social
 from ..pipelines.base import TAILLES, TONS, Contexte
 
 STATIQUE = Path(__file__).resolve().parent / "statique"
@@ -34,28 +33,14 @@ STATIQUE = Path(__file__).resolve().parent / "statique"
 TRAVAUX: Dict[str, Dict[str, Any]] = {}
 _VERROU = threading.Lock()
 
-TYPES_PRODUITS = [
-    {"cle": "ebook", "nom": "Ebook complet"},
-    {"cle": "prompts", "nom": "Pack de prompts"},
-    {"cle": "formation", "nom": "Mini-formation"},
-    {"cle": "outils", "nom": "Boite a outils"},
-    {"cle": "modeles", "nom": "Modeles Notion / tableur"},
-    {"cle": "impression", "nom": "Cahier imprimable"},
-    {"cle": "social", "nom": "Pack de publications"},
-    {"cle": "idees", "nom": "Etude de niche"},
-]
-
-FABRIQUES = {
-    "ebook": lambda ctx, opt: ebook.produire(ctx),
-    "prompts": lambda ctx, opt: pack_prompts.produire(ctx, nombre=opt.get("nombre", 50)),
-    "formation": lambda ctx, opt: formation.produire(ctx, modules=opt.get("nombre", 0)),
-    "outils": lambda ctx, opt: boite_outils.produire(ctx, nombre=opt.get("nombre", 10)),
-    "modeles": lambda ctx, opt: modeles.produire(ctx, nombre=opt.get("nombre", 4)),
-    "impression": lambda ctx, opt: impression.produire(ctx, pages=opt.get("nombre", 12)),
-    "social": lambda ctx, opt: social.produire(
-        ctx, nombre=opt.get("nombre", 30), reseau=opt.get("reseau", "linkedin")),
-    "idees": lambda ctx, opt: idees.produire(ctx, nombre=opt.get("nombre", 12)),
-}
+def _catalogue() -> List[Dict[str, Any]]:
+    """Types offerts par l'interface. Lu du catalogue, jamais recopie."""
+    return [
+        {"cle": t.cle, "nom": t.nom, "resume": t.resume, "detail": t.detail,
+         "duree": t.duree, "quantite": t.nom_quantite,
+         "defaut": t.defaut_quantite()}
+        for t in catalogue.tous(fabricables=True)
+    ]
 
 
 def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None:
@@ -78,7 +63,7 @@ def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None
     )
     try:
         journal("Demarrage...")
-        resultat = FABRIQUES[type_produit](ctx, options)
+        resultat = catalogue.executer(type_produit, ctx, options)
         with _VERROU:
             TRAVAUX[travail_id].update(statut="termine", resultat=resultat)
         journal("Termine.")
@@ -218,7 +203,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
         if options is None:
             return
         type_produit = str(options.get("type") or "ebook")
-        if type_produit not in FABRIQUES:
+        if catalogue.obtenir(type_produit) is None:
             self._json({"erreur": "type de produit inconnu"}, 400)
             return
         if not str(options.get("sujet") or "").strip():
@@ -255,7 +240,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
             type_produit = str(options.get("type") or "ebook")
             if not sujet:
                 return {"erreur": "sujet manquant"}
-            if type_produit not in FABRIQUES:
+            if catalogue.obtenir(type_produit) is None:
                 return {"erreur": "type inconnu"}
             try:
                 nombre = int(options.get("nombre") or 0)
@@ -415,7 +400,7 @@ def _etat() -> Dict[str, Any]:
                         if f["disponible"] and not f["local"] and not f["sans_cle"]),
         "cles": pool_cles.resume(),
         "travaux": travaux,
-        "types": TYPES_PRODUITS,
+        "types": _catalogue(),
         "agents": [{"nom": a.nom, "emoji": a.emoji} for a in equipe.EQUIPE.values()],
         "tons": sorted(TONS),
         "tailles": sorted(TAILLES, key=lambda t: TAILLES[t][0]),

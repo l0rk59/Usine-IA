@@ -6,6 +6,7 @@ const scene = new SceneUsine($('toile'));
 if (!scene.actif) $('scene').classList.add('sans-3d');
 
 const etat = {
+  types: [],
   travail: null, agents: {}, fournisseurs: [], avancement: 0, objectif: 0,
   dernierEvenement: 0, produitsCharges: 0,
 };
@@ -86,7 +87,9 @@ async function chargerEtat() {
     : "Aucune cle API : quota tres limite. Lancez « usine cles » dans Termux.";
 
   if (!$('ton').options.length) {
+    etat.types = donnees.types;
     remplirListe($('type'), donnees.types.map((t) => [t.cle, t.nom]), 'ebook');
+    decrireType();
     remplirListe($('ton'), donnees.tons, donnees.reglages.ton);
     remplirListe($('taille'), donnees.tailles, donnees.reglages.taille);
     remplirListe($('qualite'), donnees.qualites, donnees.reglages.qualite);
@@ -304,8 +307,18 @@ async function sonder() {
 }
 
 /* ------------------------------------------------------------- interactions */
+function decrireType() {
+  const choisi = (etat.types || []).find((t) => t.cle === $('type').value);
+  if (!choisi) return;
+  $('type-detail').textContent = `${choisi.detail} · ${choisi.duree}`;
+  const champ = $('nombre');
+  champ.placeholder = choisi.quantite ? String(choisi.defaut) : 'sans objet';
+  champ.disabled = !choisi.quantite;
+}
+
 $('type').addEventListener('change', () => {
   $('bloc-reseau').hidden = $('type').value !== 'social';
+  decrireType();
 });
 
 let minuterieAlerte = null;

@@ -22,8 +22,8 @@ from .core import reglages, securite, store
 from .core.http import en_ligne
 from .marketing import vente
 from .packaging import livraison
-from .pipelines import (boite_outils, ebook, formation, idees, impression,
-                        modeles, pack_prompts, social)
+from .pipelines import (boite_outils, catalogue, ebook, formation, idees,
+                        impression, modeles, pack_prompts, social)
 from .pipelines.base import Contexte, TAILLES, TONS
 
 # Couleurs ANSI : Termux les gere, mais on s'abstient si la sortie est redirigee.
@@ -1253,12 +1253,16 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.add_argument("--sans-image", dest="sans_image", action="store_true")
     p.set_defaults(fonction=cmd_ab)
 
-    p = sous_parseurs.add_parser("file", help="gerer la file des niches a produire")
+    p = sous_parseurs.add_parser(
+        "file",
+        help="gerer la file des niches a produire",
+        epilog="Types disponibles :\n" + "\n".join(
+            "  {:<12} {} — {}".format(t.cle, t.resume, t.duree)
+            for t in catalogue.tous(en_file=True)),
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--ajouter", nargs="+", metavar="NICHE",
                    help="ajouter une ou plusieurs niches")
-    p.add_argument("--type", default="ebook",
-                   choices=["ebook", "prompts", "formation", "outils", "modeles",
-                            "impression", "social"],
+    p.add_argument("--type", default="ebook", choices=catalogue.cles(en_file=True),
                    help="type de produit a fabriquer")
     p.add_argument("-n", "--nombre", type=int, default=0,
                    help="quantite (prompts, fiches, modules...)")

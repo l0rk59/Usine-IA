@@ -6,6 +6,7 @@ PDF + EPUB + HTML + Markdown + TXT, couverture comprise.
 
 from __future__ import annotations
 
+
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -14,11 +15,9 @@ from ..agents import equipe
 from ..agents.base import Critique
 from ..core import budget
 from ..core import controle as ctrl
-from ..core import evenements, images, llm, securite
+from ..core import evenements, llm, securite
 from ..render import document as D
-from ..render.epub import construire_epub
-from ..render.page import ecrire_page
-from ..render.pdf import DocumentPDF
+from ..render import livraison
 from .base import Contexte, elaguer_markdown, nettoyer_titre, preparer, terminer
 
 ROLE = "un auteur de guides pratiques qui se vendent, editeur exigeant"
@@ -344,102 +343,22 @@ def _repli(chapitre: Dict[str, Any]) -> str:
 def exporter(
     ctx: Contexte, plan: Dict[str, Any], sections: List[Tuple[str, str]]
 ) -> List[Path]:
-    """Ecrit tous les formats de sortie dans le dossier du produit."""
-    dossier = ctx.dossier
-    titre = plan["titre"]
-    sous_titre = plan.get("sous_titre", "")
-    fichiers: List[Path] = []
+    """Confie le livre a l'assemblage commun.
 
-    # --- Markdown maitre ------------------------------------------------
-    morceaux = ["# {}".format(titre)]
-    if sous_titre:
-        morceaux.append("*{}*".format(sous_titre))
-    morceaux.append("\n_{}_\n".format(ctx.auteur))
-    for titre_section, corps in sections:
-        morceaux.append("\n# {}\n".format(titre_section))
-        morceaux.append(corps)
-    markdown = "\n".join(morceaux).strip() + "\n"
-    chemin_md = dossier / "livre.md"
-    chemin_md.write_text(markdown, encoding="utf-8")
-    fichiers.append(chemin_md)
-
-    blocs_par_section = [(t, D.analyser(c)) for t, c in sections]
-
-    # --- Couverture -----------------------------------------------------
-    couverture = None
-    if not ctx.sans_image:
-        couverture = images.generer_couverture(
-            dossier, titre, sous_titre, ctx.auteur,
-            style="modern editorial book cover, {}".format(ctx.sujet),
-            en_ligne=not ctx.hors_ligne,
-        )
-        fichiers.append(couverture)
-
-    # --- PDF ------------------------------------------------------------
-    doc = DocumentPDF(titre_courant=titre)
-    octets_jpeg = None
-    if couverture and couverture.suffix.lower() in (".jpg", ".jpeg"):
-        octets_jpeg = couverture.read_bytes()
-    doc.page_couverture(titre, sous_titre, ctx.auteur, image_jpeg=octets_jpeg)
-    for titre_section, blocs in blocs_par_section:
-        doc.titre(titre_section, 1)
-        D.vers_pdf(blocs, doc, sauter_h1=True)
-    doc.inserer_sommaire(apres=1)
-    chemin_pdf = dossier / "{}.pdf".format(_nom_fichier(titre))
-    doc.enregistrer(chemin_pdf)
-    fichiers.append(chemin_pdf)
-
-    # --- EPUB -----------------------------------------------------------
-    image_epub = None
-    if couverture and couverture.suffix.lower() in (".jpg", ".jpeg", ".png"):
-        image_epub = (couverture.name, couverture.read_bytes())
-    chapitres_html = [
-        (titre_section, D.vers_html(blocs, niveau_depart=2))
-        for titre_section, blocs in blocs_par_section
-    ]
-    chemin_epub = dossier / "{}.epub".format(_nom_fichier(titre))
-    construire_epub(
-        chemin_epub,
-        titre,
-        ctx.auteur,
-        chapitres_html,
+    Un ebook est le cas le plus simple : des sections en prose, aucune mise en
+    page particuliere. Tout — couverture, markdown, PDF, EPUB, HTML, texte —
+    est le comportement par defaut de usine/render/livraison.py.
+    """
+    produit = livraison.Produit(
+        type="ebook",
+        titre=plan["titre"],
+        sous_titre=plan.get("sous_titre", ""),
+        promesse=plan.get("promesse", ""),
+        blocs=livraison.blocs_depuis_sections(sections),
+        formats=("md", "pdf", "epub", "html", "txt"),
+        police_corps="Times-Roman",
+        style_couverture="modern editorial book cover, {}".format(ctx.sujet),
         langue="fr" if ctx.langue.lower().startswith("fran") else "en",
-        sous_titre=sous_titre,
-        description=plan.get("promesse", ""),
-        couverture=image_epub,
+        libelle_sections="chapitres",
     )
-    fichiers.append(chemin_epub)
-
-    # --- HTML autonome (lisible sur telephone, imprimable) --------------
-    corps_html = []
-    for titre_section, blocs in blocs_par_section:
-        corps_html.append("<h2>{}</h2>".format(titre_section))
-        corps_html.append(D.vers_html(blocs, niveau_depart=3))
-    chemin_html = dossier / "lire.html"
-    ecrire_page(
-        chemin_html,
-        titre,
-        "\n".join(corps_html),
-        sous_titre=sous_titre,
-        meta="{} — {} chapitres".format(ctx.auteur, len(sections)),
-        couverture=couverture.name if couverture else None,
-    )
-    fichiers.append(chemin_html)
-
-    # --- Texte brut -----------------------------------------------------
-    chemin_txt = dossier / "livre.txt"
-    chemin_txt.write_text(
-        "\n\n".join(
-            "{}\n{}\n\n{}".format(t.upper(), "=" * len(t), D.vers_texte(b))
-            for t, b in blocs_par_section
-        ),
-        encoding="utf-8",
-    )
-    fichiers.append(chemin_txt)
-    return fichiers
-
-
-def _nom_fichier(titre: str) -> str:
-    from .base import slug
-
-    return slug(titre, 48)
+    return livraison.livrer(ctx, produit)

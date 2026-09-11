@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from ..core import config, llm, marche
+from . import catalogue
 from ..render import document as D
 from ..render.page import ecrire_page
 from .base import Contexte, nettoyer_titre
@@ -27,20 +28,22 @@ def explorer(ctx: Contexte, nombre: int = 12,
     invite = (
         "NICHE : {niche}\nAUDIENCE VISEE : {audience}\n{marche}\n"
         "Propose {n} idees de produits digitaux realisables par une seule personne, "
-        "sans stock ni equipe, livrables en fichiers telechargeables "
-        "(ebook, pack de prompts, mini-formation, boite a outils, pack de contenu).\n\n"
+        "sans stock ni equipe. Le type doit etre l'un de ceux que l'usine sait "
+        "reellement fabriquer :\n{catalogue}\n\n"
         "Sois honnete : signale la concurrence quand elle est forte, et evite les "
         "idees qui exigent une expertise certifiee (medical, juridique, financier "
         "reglemente).\n\n"
         "Schema JSON exact :\n"
-        '{{"idees": [{{"titre": "...", "type": "ebook|prompts|formation|outils|social", '
+        '{{"idees": [{{"titre": "...", "type": "{types}", '
         '"probleme": "le probleme precis resolu", "acheteur": "qui paie et pourquoi", '
         '"promesse": "...", "prix_eur": 19, "difficulte": "facile|moyenne|elevee", '
         '"concurrence": "faible|moyenne|forte", '
         '"angle_differenciant": "...", "premier_canal": "ou trouver les 10 premiers '
         'acheteurs"}}]}}'
     ).format(niche=ctx.sujet, audience=ctx.audience, n=nombre,
-             marche=contexte_marche)
+             marche=contexte_marche,
+             catalogue=catalogue.resume_pour_ia(),
+             types="|".join(catalogue.cles(vendables=True)))
     donnees = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="costaud",
                                temperature=0.85, max_tokens=4096)
     idees = donnees.get("idees") if isinstance(donnees, dict) else donnees
@@ -48,9 +51,10 @@ def explorer(ctx: Contexte, nombre: int = 12,
     for idee in idees or []:
         if not isinstance(idee, dict) or not idee.get("titre"):
             continue
-        type_produit = str(idee.get("type") or "ebook").lower().strip()
-        if type_produit not in ("ebook", "prompts", "formation", "outils", "social"):
-            type_produit = "ebook"
+        # Le catalogue tolere les synonymes : un modele ecrit « planner » ou
+        # « Notion » plutot que nos cles internes. Sans cela, ces idees
+        # etaient silencieusement converties en ebooks.
+        type_produit = catalogue.normaliser(str(idee.get("type") or ""))
         propres.append(
             {
                 "titre": nettoyer_titre(str(idee["titre"])),

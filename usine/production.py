@@ -21,20 +21,12 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from .core import apprentissage, budget, config, evenements, file, llm, reglages
-from .pipelines import (boite_outils, ebook, formation, idees, impression,
-                        modeles, pack_prompts, social)
+from .pipelines import catalogue, idees
 from .pipelines.base import Contexte
 
-FABRIQUES: Dict[str, Callable[[Contexte, Dict[str, Any]], Dict[str, Any]]] = {
-    "ebook": lambda ctx, opt: ebook.produire(ctx),
-    "prompts": lambda ctx, opt: pack_prompts.produire(ctx, nombre=opt.get("nombre", 50)),
-    "formation": lambda ctx, opt: formation.produire(ctx, modules=opt.get("nombre", 0)),
-    "outils": lambda ctx, opt: boite_outils.produire(ctx, nombre=opt.get("nombre", 10)),
-    "modeles": lambda ctx, opt: modeles.produire(ctx, nombre=opt.get("nombre", 4)),
-    "impression": lambda ctx, opt: impression.produire(ctx, pages=opt.get("nombre", 12)),
-    "social": lambda ctx, opt: social.produire(
-        ctx, nombre=opt.get("nombre", 30), reseau=opt.get("reseau", "linkedin")),
-}
+def types_disponibles() -> List[str]:
+    """Types que la file accepte. Lu du catalogue, jamais recopie."""
+    return catalogue.cles(en_file=True)
 
 
 def chemin_etat() -> Path:
@@ -251,7 +243,7 @@ class UsineContinue:
     # -- fabrication d'une entree -------------------------------------------
     def _fabriquer(self, entree: Dict[str, Any]) -> bool:
         type_produit = entree["type"]
-        if type_produit not in FABRIQUES:
+        if catalogue.obtenir(type_produit) is None:
             file.echouer(entree["id"], "type inconnu : {}".format(type_produit))
             self.journal("  type inconnu : {}".format(type_produit))
             return False
@@ -273,7 +265,7 @@ class UsineContinue:
         budget.brancher(self.compteur)
         debut = time.time()
         try:
-            resume = FABRIQUES[type_produit](contexte, options)
+            resume = catalogue.executer(type_produit, contexte, options)
         except budget.BudgetEpuise as exc:
             # Un plafond atteint n'est pas une faute de la niche : elle repart
             # en file, intacte, pour la prochaine session.

@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-import csv
+
 import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from ..core import images, llm
+from ..core import llm
 from ..render import document as D
-from ..render.page import ecrire_page
-from ..render.pdf import DocumentPDF
-from .base import Contexte, nettoyer_titre, preparer, terminer
+from ..render import livraison
+from .base import Contexte, nettoyer_titre, preparer, slug, terminer
 
 ROLE = "un ingenieur prompt qui concoit des bibliotheques de prompts professionnelles"
 
@@ -129,77 +128,75 @@ def produire(ctx: Contexte, nombre: int = 50) -> Dict[str, Any]:
 
 
 def _exporter(ctx: Contexte, titre: str, categories: List[Dict[str, Any]]) -> List[Path]:
-    dossier = ctx.dossier
-    fichiers: List[Path] = []
+    """Prepare le produit et le confie a l'assemblage commun.
 
-    # Markdown
-    lignes = ["# {}\n".format(titre), "_Pack de prompts — {}_\n".format(ctx.auteur)]
+    Seules la mise en page PDF et la structure HTML sont propres aux prompts :
+    le reste — couverture, markdown, CSV, JSON, sommaire — est identique a tous
+    les autres types et vit dans usine/render/livraison.py.
+    """
+    sous_titre = "Pret a copier-coller"
+
+    def mode_emploi(doc) -> None:
+        doc.paragraphe(
+            "Chaque prompt est autonome. Remplacez les variables entre crochets par vos "
+            "informations, puis collez le texte dans l'IA de votre choix (Claude, ChatGPT, "
+            "Gemini, Mistral ou un modele local). Les prompts sont classes par intention : "
+            "commencez par la categorie qui correspond a votre tache du jour.",
+            justifier=True)
+        doc.encadre(
+            "Conseil",
+            "Gardez le contexte d'une conversation a l'autre : plus l'IA connait votre "
+            "activite, meilleurs sont les resultats. Collez d'abord un descriptif de votre "
+            "activite, puis enchainez les prompts du pack.")
+
+    blocs = [livraison.Bloc(titre="Comment utiliser ce pack", rendu_pdf=mode_emploi,
+                            rendu_html="")]
     for categorie in categories:
-        lignes.append("\n# {}\n".format(categorie["nom"]))
-        if categorie["intention"]:
-            lignes.append("*{}*\n".format(categorie["intention"]))
-        for detail in categorie.get("details", []):
-            lignes.append("\n## {}\n".format(detail["titre"]))
-            if detail["quand"]:
-                lignes.append("**Quand l'utiliser :** {}\n".format(detail["quand"]))
-            lignes.append("```\n{}\n```\n".format(detail["prompt"]))
-            if detail["astuce"]:
-                lignes.append("**Astuce :** {}\n".format(detail["astuce"]))
-    chemin_md = dossier / "prompts.md"
-    chemin_md.write_text("\n".join(lignes), encoding="utf-8")
-    fichiers.append(chemin_md)
+        blocs.append(livraison.Bloc(
+            titre=categorie["nom"],
+            corps=_markdown_categorie(categorie),
+            rendu_pdf=_mise_en_page(categorie),
+            rendu_html=_html_categorie(categorie),
+        ))
 
-    # CSV : import direct dans Notion, Airtable ou un tableur
-    chemin_csv = dossier / "prompts.csv"
-    with chemin_csv.open("w", encoding="utf-8", newline="") as flux:
-        auteur = csv.writer(flux)
-        auteur.writerow(["Categorie", "Titre", "Quand l'utiliser", "Prompt", "Astuce"])
-        for categorie in categories:
-            for detail in categorie.get("details", []):
-                auteur.writerow([categorie["nom"], detail["titre"], detail["quand"],
-                                 detail["prompt"], detail["astuce"]])
-    fichiers.append(chemin_csv)
-
-    # JSON : reutilisable dans une application
-    chemin_json = dossier / "prompts.json"
-    chemin_json.write_text(
-        json.dumps({"titre": titre, "categories": categories}, ensure_ascii=False, indent=2),
-        encoding="utf-8",
+    produit = livraison.Produit(
+        type="prompts", titre=titre, sous_titre=sous_titre,
+        promesse=sous_titre, blocs=blocs,
+        tableaux=[livraison.Tableau(
+            nom="prompts",
+            colonnes=["Categorie", "Titre", "Quand l'utiliser", "Prompt", "Astuce"],
+            lignes=[[categorie["nom"], detail["titre"], detail["quand"],
+                     detail["prompt"], detail["astuce"]]
+                    for categorie in categories
+                    for detail in categorie.get("details", [])])],
+        donnees={"titre": titre, "categories": categories},
+        nom_donnees="prompts",
+        formats=("md", "pdf", "html"),
+        police_corps="Helvetica",
+        style_couverture="abstract tech pattern, prompt library",
+        nom_fichier=slug(titre, 48),
     )
-    fichiers.append(chemin_json)
+    return livraison.livrer(ctx, produit)
 
-    # Couverture
-    couverture = None
-    if not ctx.sans_image:
-        couverture = images.generer_couverture(
-            dossier, titre, "Pret a copier-coller", ctx.auteur,
-            style="abstract tech pattern, prompt library",
-            en_ligne=not ctx.hors_ligne,
-        )
-        fichiers.append(couverture)
 
-    # PDF
-    doc = DocumentPDF(titre_courant=titre, police_corps="Helvetica")
-    octets = couverture.read_bytes() if (
-        couverture and couverture.suffix.lower() in (".jpg", ".jpeg")
-    ) else None
-    doc.page_couverture(titre, "Pret a copier-coller", ctx.auteur, image_jpeg=octets)
-    doc.titre("Comment utiliser ce pack", 1)
-    doc.paragraphe(
-        "Chaque prompt est autonome. Remplacez les variables entre crochets par vos "
-        "informations, puis collez le texte dans l'IA de votre choix (Claude, ChatGPT, "
-        "Gemini, Mistral ou un modele local). Les prompts sont classes par intention : "
-        "commencez par la categorie qui correspond a votre tache du jour.",
-        justifier=True,
-    )
-    doc.encadre(
-        "Conseil",
-        "Gardez le contexte d'une conversation a l'autre : plus l'IA connait votre "
-        "activite, meilleurs sont les resultats. Collez d'abord un descriptif de votre "
-        "activite, puis enchainez les prompts du pack.",
-    )
-    for categorie in categories:
-        doc.titre(categorie["nom"], 1)
+def _markdown_categorie(categorie: Dict[str, Any]) -> str:
+    lignes = []
+    if categorie["intention"]:
+        lignes.append("*{}*\n".format(categorie["intention"]))
+    for detail in categorie.get("details", []):
+        lignes.append("\n## {}\n".format(detail["titre"]))
+        if detail["quand"]:
+            lignes.append("**Quand l'utiliser :** {}\n".format(detail["quand"]))
+        lignes.append("```\n{}\n```\n".format(detail["prompt"]))
+        if detail["astuce"]:
+            lignes.append("**Astuce :** {}\n".format(detail["astuce"]))
+    return "\n".join(lignes)
+
+
+def _mise_en_page(categorie: Dict[str, Any]):
+    """Rendu PDF d'une categorie : chaque prompt dans son encadre."""
+
+    def rendre(doc) -> None:
         if categorie["intention"]:
             doc.citation(categorie["intention"])
         for detail in categorie.get("details", []):
@@ -211,29 +208,19 @@ def _exporter(ctx: Contexte, titre: str, categories: List[Dict[str, Any]]) -> Li
             if detail["astuce"]:
                 doc.paragraphe("Astuce : " + detail["astuce"], taille=10,
                                police="Helvetica-Oblique")
-    doc.inserer_sommaire(apres=1)
-    from .base import slug
 
-    chemin_pdf = dossier / "{}.pdf".format(slug(titre, 48))
-    doc.enregistrer(chemin_pdf)
-    fichiers.append(chemin_pdf)
+    return rendre
 
-    # HTML
+
+def _html_categorie(categorie: Dict[str, Any]) -> str:
     corps = []
-    for categorie in categories:
-        corps.append("<h2>{}</h2>".format(categorie["nom"]))
-        for detail in categorie.get("details", []):
-            corps.append("<h3>{}</h3>".format(detail["titre"]))
-            if detail["quand"]:
-                corps.append("<p><em>{}</em></p>".format(detail["quand"]))
-            corps.append(D.vers_html(D.analyser("```\n{}\n```".format(detail["prompt"]))))
-            if detail["astuce"]:
-                corps.append(
-                    '<aside class="encadre"><p class="encadre-titre">Astuce</p>'
-                    "<p>{}</p></aside>".format(detail["astuce"])
-                )
-    chemin_html = dossier / "lire.html"
-    ecrire_page(chemin_html, titre, "\n".join(corps), "Pack de prompts", ctx.auteur,
-                couverture=couverture.name if couverture else None)
-    fichiers.append(chemin_html)
-    return fichiers
+    for detail in categorie.get("details", []):
+        corps.append("<h3>{}</h3>".format(detail["titre"]))
+        if detail["quand"]:
+            corps.append("<p><em>{}</em></p>".format(detail["quand"]))
+        corps.append(D.vers_html(D.analyser("```\n{}\n```".format(detail["prompt"]))))
+        if detail["astuce"]:
+            corps.append(
+                '<aside class="encadre"><p class="encadre-titre">Astuce</p>'
+                "<p>{}</p></aside>".format(detail["astuce"]))
+    return "\n".join(corps)

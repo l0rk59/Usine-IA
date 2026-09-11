@@ -98,46 +98,40 @@ def choisir(titre: str, options: List[Tuple[str, str]],
 # Catalogue des produits fabricables
 # --------------------------------------------------------------------------
 
-PRODUITS: List[Dict[str, Any]] = [
-    {"cle": "ebook", "nom": "Ebook complet",
-     "detail": "PDF + EPUB + HTML + couverture — 10 a 25 min",
-     "quantite": None},
-    {"cle": "prompts", "nom": "Pack de prompts",
-     "detail": "PDF + CSV importable dans Notion — 5 a 12 min",
-     "quantite": ("Combien de prompts", "50")},
-    {"cle": "formation", "nom": "Mini-formation",
-     "detail": "Manuel + cahier d'exercices + sequence e-mail — 12 a 25 min",
-     "quantite": ("Combien de modules", "6")},
-    {"cle": "outils", "nom": "Boite a outils",
-     "detail": "Checklists, modeles et tableaux — 6 a 14 min",
-     "quantite": ("Combien d'outils", "10")},
-    {"cle": "modeles", "nom": "Modeles Notion / tableur",
-     "detail": "Bases liees + CSV a importer — 5 a 12 min",
-     "quantite": ("Combien de bases", "4")},
-    {"cle": "impression", "nom": "Cahier imprimable",
-     "detail": "Plannings et fiches, formats A4 et Lettre US — 5 a 12 min",
-     "quantite": ("Combien de fiches", "12")},
-    {"cle": "social", "nom": "Pack de publications",
-     "detail": "Calendrier editorial + posts rediges — 5 a 15 min",
-     "quantite": ("Combien de publications", "30")},
-    {"cle": "idees", "nom": "Etude de niche",
-     "detail": "Idees chiffrees : prix, difficulte, concurrence — 2 a 4 min",
-     "quantite": ("Combien d'idees", "12")},
-    {"cle": "complet", "nom": "Offre complete",
-     "detail": "Ebook + 2 bonus + kit de vente + archive — 25 a 45 min",
-     "quantite": None},
-]
+def produits_offerts(en_file: bool = False) -> List[Dict[str, Any]]:
+    """Types proposes par le menu, lus du catalogue.
+
+    Cette liste etait autrefois recopiee ici. Elle avait diverge de celle de
+    l'explorateur de niches, qui ne connaissait pas deux types pourtant
+    fabricables.
+    """
+    from .pipelines import catalogue
+
+    offerts = [
+        {"cle": t.cle, "nom": t.nom,
+         "detail": "{} — {}".format(t.detail, t.duree),
+         "quantite": (t.quantite[1], t.quantite[2]) if t.quantite else None}
+        for t in catalogue.tous(fabricables=True, en_file=en_file)
+    ]
+    if not en_file:
+        offerts.append({
+            "cle": "complet", "nom": "Offre complete",
+            "detail": "Ebook + 2 bonus + kit de vente + archive — 25 a 45 min",
+            "quantite": None,
+        })
+    return offerts
 
 
 def menu_fabriquer(executer: Callable[[List[str]], int]) -> None:
+    offerts = produits_offerts()
     choix = choisir(
         "Que voulez-vous fabriquer ?",
-        [(p["nom"], p["detail"]) for p in PRODUITS],
+        [(p["nom"], p["detail"]) for p in offerts],
         defaut=1,
     )
     if choix == 0:
         return
-    produit = PRODUITS[choix - 1]
+    produit = offerts[choix - 1]
     valeurs = reglages.charger()
 
     entete(produit["nom"])
@@ -288,13 +282,12 @@ def menu_usine(executer: Callable[[List[str]], int]) -> None:
 
 
 def _ajouter_a_la_file() -> None:
+    offerts = produits_offerts(en_file=True)
     index = choisir("Type de produit",
-                    [(p["nom"], p["detail"]) for p in PRODUITS
-                     if p["cle"] not in ("idees", "complet")],
-                    defaut=1)
+                    [(p["nom"], p["detail"]) for p in offerts], defaut=1)
     if index == 0:
         return
-    produit = [p for p in PRODUITS if p["cle"] not in ("idees", "complet")][index - 1]
+    produit = offerts[index - 1]
     entete("Ajouter a la file")
     sujet = demander("Sujet", obligatoire=True)
     if not sujet:

@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 from ..core import images, llm
-from ..render import document as D
-from ..render.page import ecrire_page
+from ..render import livraison
 from ..render.pdf import DocumentPDF
 from .base import Contexte, elaguer_markdown, nettoyer_titre, preparer, slug, terminer
 
@@ -169,94 +169,72 @@ def produire(ctx: Contexte, modules: int = 0) -> Dict[str, Any]:
 
 def _exporter(ctx: Contexte, programme: Dict[str, Any], contenus: List[Tuple[str, str]],
               emails: List[Dict[str, str]]) -> List[Path]:
-    dossier = ctx.dossier
+    """Confie la formation a l'assemblage commun.
+
+    Deux specificites : un cahier d'exercices qui est un second document PDF,
+    et la sequence e-mail, un markdown a part. Le reste est standard.
+    """
     titre = programme["titre"]
-    fichiers: List[Path] = []
+    prerequis = str(programme.get("prerequis") or "")
 
-    (dossier / "programme.json").write_text(
-        json.dumps(programme, ensure_ascii=False, indent=2), encoding="utf-8"
+    def avant_propos(doc) -> None:
+        doc.paragraphe(programme.get("promesse", ""), justifier=True)
+        if prerequis:
+            doc.encadre("Prerequis", prerequis)
+        doc.paragraphe(
+            "Traitez un module par session de travail. Ne passez au suivant qu'apres "
+            "avoir produit le livrable demande : c'est lui qui transforme la lecture "
+            "en resultat.", justifier=True)
+
+    blocs = [livraison.Bloc(titre="Avant de commencer", rendu_pdf=avant_propos)]
+    blocs += livraison.blocs_depuis_sections(contenus)
+
+    produit = livraison.Produit(
+        type="formation", titre=titre,
+        sous_titre=programme.get("promesse", ""),
+        promesse=programme.get("promesse", ""),
+        blocs=blocs,
+        donnees=programme, nom_donnees="programme",
+        formats=("md", "pdf", "html"),
+        style_couverture="online course cover, educational, clean geometric",
+        nom_fichier=slug(titre, 40),
+        suffixe_pdf="-manuel",
+        libelle_sections="modules",
+        documents=[("cahier-exercices", _cahier(ctx, programme, titre))],
     )
+    fichiers = livraison.livrer(ctx, produit)
 
-    # Manuel markdown
-    lignes = ["# {}\n".format(titre), "*{}*\n".format(programme.get("promesse", ""))]
-    for titre_module, corps in contenus:
-        lignes.append("\n# {}\n".format(titre_module))
-        lignes.append(corps)
-    chemin_md = dossier / "formation.md"
-    chemin_md.write_text("\n".join(lignes), encoding="utf-8")
-    fichiers.append(chemin_md)
-
-    couverture = None
-    if not ctx.sans_image:
-        couverture = images.generer_couverture(
-            dossier, titre, programme.get("promesse", ""), ctx.auteur,
-            style="online course cover, educational, clean geometric",
-            en_ligne=not ctx.hors_ligne,
-        )
-        fichiers.append(couverture)
-
-    # Manuel PDF
-    doc = DocumentPDF(titre_courant=titre)
-    octets = couverture.read_bytes() if (
-        couverture and couverture.suffix.lower() in (".jpg", ".jpeg")
-    ) else None
-    doc.page_couverture(titre, programme.get("promesse", ""), ctx.auteur, image_jpeg=octets)
-    doc.titre("Avant de commencer", 1)
-    doc.paragraphe(programme.get("promesse", ""), justifier=True)
-    if programme.get("prerequis"):
-        doc.encadre("Prerequis", str(programme["prerequis"]))
-    doc.paragraphe(
-        "Traitez un module par session de travail. Ne passez au suivant qu'apres avoir "
-        "produit le livrable demande : c'est lui qui transforme la lecture en resultat.",
-        justifier=True,
-    )
-    for titre_module, corps in contenus:
-        doc.titre(titre_module, 1)
-        D.vers_pdf(D.analyser(corps), doc, sauter_h1=True)
-    doc.inserer_sommaire(apres=1)
-    chemin_pdf = dossier / "{}-manuel.pdf".format(slug(titre, 40))
-    doc.enregistrer(chemin_pdf)
-    fichiers.append(chemin_pdf)
-
-    # Cahier d'exercices
-    cahier = DocumentPDF(titre_courant="{} — cahier d'exercices".format(titre),
-                         police_corps="Helvetica")
-    cahier.page_couverture("Cahier d'exercices", titre, ctx.auteur)
-    for index, module in enumerate(programme["modules"], 1):
-        cahier.titre("Module {} — {}".format(index, module["titre"]), 1)
-        if module["objectif"]:
-            cahier.paragraphe("Objectif : " + module["objectif"], taille=10.5)
-        if module["livrable"]:
-            cahier.encadre("Livrable attendu", module["livrable"])
-        if module["exercice"]:
-            cahier.titre("Consigne", 2)
-            cahier.paragraphe(module["exercice"], justifier=True)
-        cahier.titre("Vos notes", 2)
-        cahier.lignes_a_remplir(9)
-    chemin_cahier = dossier / "{}-cahier-exercices.pdf".format(slug(titre, 40))
-    cahier.enregistrer(chemin_cahier)
-    fichiers.append(chemin_cahier)
-
-    # Sequence e-mail
     if emails:
-        lignes_email = ["# Sequence e-mail — {}\n".format(titre)]
+        lignes = ["# Sequence e-mail — {}\n".format(titre)]
         for email in emails:
-            lignes_email.append("\n## Jour {} — {}\n".format(email["jour"], email["objet"]))
-            lignes_email.append(email["corps"])
+            lignes.append("\n## Jour {} — {}\n".format(email["jour"], email["objet"]))
+            lignes.append(email["corps"])
             if email["action"]:
-                lignes_email.append("\n**Action demandee :** {}\n".format(email["action"]))
-        chemin_emails = dossier / "sequence-emails.md"
-        chemin_emails.write_text("\n".join(lignes_email), encoding="utf-8")
-        fichiers.append(chemin_emails)
-
-    # HTML
-    corps_html = []
-    for titre_module, corps in contenus:
-        corps_html.append("<h2>{}</h2>".format(titre_module))
-        corps_html.append(D.vers_html(D.analyser(corps), niveau_depart=3))
-    chemin_html = dossier / "lire.html"
-    ecrire_page(chemin_html, titre, "\n".join(corps_html),
-                programme.get("promesse", ""), ctx.auteur,
-                couverture=couverture.name if couverture else None)
-    fichiers.append(chemin_html)
+                lignes.append("\n**Action demandee :** {}\n".format(email["action"]))
+        chemin = ctx.dossier / "sequence-emails.md"
+        chemin.write_text("\n".join(lignes), encoding="utf-8")
+        fichiers.append(chemin)
     return fichiers
+
+
+def _cahier(ctx: Contexte, programme: Dict[str, Any], titre: str):
+    """Construit le cahier d'exercices, second document du produit."""
+
+    def construire(octets_jpeg):
+        doc = DocumentPDF(titre_courant="{} — cahier d'exercices".format(titre),
+                          police_corps="Helvetica")
+        doc.page_couverture("Cahier d'exercices", titre, ctx.auteur)
+        for index, module in enumerate(programme["modules"], 1):
+            doc.titre("Module {} — {}".format(index, module["titre"]), 1)
+            if module["objectif"]:
+                doc.paragraphe("Objectif : " + module["objectif"], taille=10.5)
+            if module["livrable"]:
+                doc.encadre("Livrable attendu", module["livrable"])
+            if module["exercice"]:
+                doc.titre("Consigne", 2)
+                doc.paragraphe(module["exercice"], justifier=True)
+            doc.titre("Vos notes", 2)
+            doc.lignes_a_remplir(9)
+        return doc
+
+    return construire

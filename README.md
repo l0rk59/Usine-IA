@@ -136,6 +136,16 @@ indisponibles. Pour l'utiliser en priorité : `USINE_LOCAL_FIRST=1` dans le `.en
 Les deux types marqués en gras sont, d'après les classements 2026 des places de
 marché, les produits digitaux les plus vendus après l'ebook.
 
+**Un seul endroit les déclare** : `usine/pipelines/catalogue.py`. La CLI, le
+menu, la file de production, le tableau de bord et l'explorateur de niches le
+lisent. Avant, la liste était recopiée dans sept fichiers — et deux avaient déjà
+divergé : l'explorateur de niches ne connaissait ni `impression` ni `modeles`,
+et convertissait silencieusement ces idées en ebooks.
+
+« Vrai type » signifie : une chaîne de fabrication qui lui est propre. C'est la
+différence entre huit types et une énumération de soixante.
+Voir [docs/TYPES-PRODUITS.md](docs/TYPES-PRODUITS.md).
+
 ### Exemples
 
 ```bash
@@ -433,16 +443,17 @@ usine/
                diagnostic de titre, prompts, réglages, sécurité,
                bus d'événements, HTTP, SQLite
   agents/      les sept rôles et la boucle critique → révision
-  render/      moteur PDF, EPUB, HTML, modèle de document, métriques polices
-  pipelines/   ebook, prompts, formation, outils, modèles, imprimables,
-               social, idées, variantes
+  render/      moteur PDF, EPUB, HTML, modèle de document, métriques polices,
+               assemblage commun des livrables
+  pipelines/   catalogue (source unique des types), ebook, prompts, formation,
+               outils, modèles, imprimables, social, idées, variantes
   marketing/   fiche produit, page de vente, séquence de lancement
   packaging/   notice, licence, archive ZIP
   web/         serveur SSE + tableau de bord 3D (statique/scene.js, app.js)
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         157 tests + test de fumée, aucun appel réseau
+tests/         174 tests + test de fumée, aucun appel réseau
 install.sh     installation Termux
 ```
 
@@ -454,7 +465,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 157 tests
+python3 -m unittest discover -s tests -t .   # 174 tests
 python3 tests/fumee.py                       # les 8 chaînes via la vraie CLI
 ```
 
@@ -464,6 +475,11 @@ serveur, **rotation effective des clés sur un 429**, non-fuite des secrets dans
 les erreurs et les événements, authentification du tableau de bord, diffusion
 temps réel par SSE, évitement du fournisseur pour la relecture, refus d'une
 révision tronquée, et le fait que le kit de vente ne parte pas chez l'acheteur.
+
+Un test exécute **chaque type de produit déclaré**, de bout en bout, et vérifie
+que chaque format annoncé est réellement produit. Il a été ajouté après qu'une
+erreur d'import ait cassé une chaîne sans qu'aucun des 157 tests d'alors ne s'en
+aperçoive.
 
 L'A/B testing est testé sur ce qui compte : que la formule exacte et le tirage
 aléatoire **concordent** sur six jeux de données, que cinq variantes identiques
