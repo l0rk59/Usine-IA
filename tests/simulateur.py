@@ -292,6 +292,26 @@ def simulateur(messages, role):
             "verdict": "Pret pour la mise en vente.",
         }, ensure_ascii=False)
 
+    # --- variantes de titres -------------------------------------------------
+    if '"pourquoi"' in invite and '"angle"' in invite:
+        import re as _re
+        angles = _re.findall(r"angle . ([a-z]+) .", invite) or ["benefice"]
+        modeles = {
+            "benefice": "Facturer mieux en travaillant moins chaque semaine",
+            "methode": "Le systeme en 7 etapes du freelance rentable",
+            "probleme": "Pourquoi votre agenda se vide apres chaque grosse mission",
+            "contraste": "Baisser ses tarifs ne remplit pas un agenda",
+            "audience": "Freelance depuis deux ans, toujours a court de clients",
+            "delai": "Remplir son agenda en 30 jours sans demarchage froid",
+            "question": "Combien vaut reellement votre journee de travail",
+            "preuve": "Douze jours factures, trois canaux, zero demarchage",
+        }
+        return json.dumps({"titres": [
+            {"angle": a, "titre": modeles.get(a, "Titre " + a),
+             "pourquoi": "Repond a une attente precise du lecteur."}
+            for a in angles
+        ]}, ensure_ascii=False)
+
     # --- fiche de vente ----------------------------------------------------
     if '"prix_conseille"' in invite:
         return json.dumps({

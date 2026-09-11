@@ -131,6 +131,7 @@ indisponibles. Pour l'utiliser en priorité : `USINE_LOCAL_FIRST=1` dans le `.en
 | `usine complet` | **Offre complète** | Ebook + 2 bonus + kit de vente + archive ZIP |
 | `usine file` | File de production | les niches en attente de fabrication |
 | `usine usine` | **Usine continue** | produit en boucle, sous budget, jusqu'à l'arrêt |
+| `usine ab` | Tests A/B | variantes de titres et de couvertures, verdict honnête |
 
 Les deux types marqués en gras sont, d'après les classements 2026 des places de
 marché, les produits digitaux les plus vendus après l'ebook.
@@ -237,6 +238,55 @@ répond à des questions qu'aucun modèle ne peut trancher — quel ton donne vo
 meilleures notes, si la relecture vaut son coût chez vous, quel défaut revient
 assez souvent pour mériter une règle. Chaque conseil cite le nombre de
 productions sur lequel il s'appuie.
+
+## Tester des titres et des couvertures
+
+```bash
+usine ab creer --produit ebook-xxx --sur titre -n 5
+usine ab observer 2 --vues 910 --actions 58
+usine ab verdict 1
+```
+
+**Le chiffre à connaître : à 5 % de conversion, détecter un écart de 20 %
+demande environ 7 600 vues par variante.** Un vendeur qui fait 300 vues par
+mois ne l'atteindra jamais. Ce n'est pas une limite de l'outil, c'est la
+quantité d'information nécessaire pour distinguer un effet du hasard.
+
+La conséquence est assumée : **l'usine refuse de désigner un gagnant** tant
+que les données ne le permettent pas.
+
+```
+[A] Facturer mieux en travaillant moins    140 vues   5 ventes   3.6%    9%
+[B] Le systeme en 7 etapes du freelance    155 vues   9 ventes   5.8%   47%
+[C] Pourquoi votre agenda se vide          130 vues   4 ventes   3.1%    6%
+
+INDECIS — aucune variante ne se detache (47 % pour la mieux placee).
+```
+
+B fait presque le double de C, et il n'y a rien à conclure. Un outil qui
+annoncerait « B gagne » ici vous ferait refaire une couverture pour rien.
+
+La valeur immédiate est ailleurs :
+
+- **des variantes réellement différentes** — chaque titre est écrit sur un
+  angle imposé (bénéfice, méthode, problème, contraste, audience, délai), puis
+  l'outil **vérifie** la distinction : au-delà de 55 % de vocabulaire commun,
+  il le dit et régénère. Comparer cinq reformulations du même titre ne révèle
+  jamais rien ;
+- **un diagnostic local** de chaque titre, sans appel IA : chiffre, délai,
+  audience nommée, mots creux, longueur. Des faits, pas une prédiction de CTR ;
+- **une planche de comparaison** HTML qui met les variantes côte à côte.
+
+Statistiques : modèle beta-binomial, tirage **conjoint** sur toutes les
+variantes (ce qui évite le piège des comparaisons multiples), résultat graîné
+donc reproductible, et vérifié dans les tests contre une formule exacte
+indépendante.
+
+> **Filigrane :** au palier anonyme, Pollinations marque chaque image
+> « @pollinations.ai » — `nologo` n'a aucun effet sans jeton, vérifié octet pour
+> octet. Les couvertures en ligne servent à choisir une direction ; pour une
+> couverture livrable, `--sans-image` produit des SVG locaux sans filigrane.
+> Détails : [docs/AB-TESTING.md](docs/AB-TESTING.md).
 
 ## L'usine continue
 
@@ -379,19 +429,20 @@ Trois mécanismes rendent la production fiable sur un forfait mobile :
 usine/
   core/        fournisseurs, routeur IA, pool de clés, contrôle qualité
                déterministe, signaux de marché, mémoire de production,
-               file de production, budget, prompts, réglages, sécurité,
+               file de production, budget, A/B testing (beta-binomial),
+               diagnostic de titre, prompts, réglages, sécurité,
                bus d'événements, HTTP, SQLite
   agents/      les sept rôles et la boucle critique → révision
   render/      moteur PDF, EPUB, HTML, modèle de document, métriques polices
   pipelines/   ebook, prompts, formation, outils, modèles, imprimables,
-               social, idées
+               social, idées, variantes
   marketing/   fiche produit, page de vente, séquence de lancement
   packaging/   notice, licence, archive ZIP
   web/         serveur SSE + tableau de bord 3D (statique/scene.js, app.js)
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         127 tests + test de fumée, aucun appel réseau
+tests/         157 tests + test de fumée, aucun appel réseau
 install.sh     installation Termux
 ```
 
@@ -403,7 +454,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 127 tests
+python3 -m unittest discover -s tests -t .   # 157 tests
 python3 tests/fumee.py                       # les 8 chaînes via la vraie CLI
 ```
 
@@ -413,6 +464,11 @@ serveur, **rotation effective des clés sur un 429**, non-fuite des secrets dans
 les erreurs et les événements, authentification du tableau de bord, diffusion
 temps réel par SSE, évitement du fournisseur pour la relecture, refus d'une
 révision tronquée, et le fait que le kit de vente ne parte pas chez l'acheteur.
+
+L'A/B testing est testé sur ce qui compte : que la formule exacte et le tirage
+aléatoire **concordent** sur six jeux de données, que cinq variantes identiques
+ne produisent jamais de gagnant, et surtout que 8/100 contre 12/100 — 50 %
+d'écart apparent — soit correctement refusé.
 
 L'usine continue est testée sur ce qui peut réellement mal tourner : reprise
 après un arrêt brutal, verrou orphelin d'un processus tué, refus de démarrer un

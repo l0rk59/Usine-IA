@@ -2,6 +2,13 @@
 
 Source principale : Pollinations (aucune cle API requise).
 Repli hors ligne : couverture SVG generee localement, sans dependance.
+
+ATTENTION, POINT VERIFIE : au palier anonyme, Pollinations appose un
+filigrane « @pollinations.ai » sur chaque image. Le parametre « nologo », que
+la documentation mentionne, n'a AUCUN effet sans jeton : la reponse est
+identique octet pour octet avec ou sans lui. Une couverture destinee a la
+vente ne doit donc pas venir de la : utilisez la couverture SVG locale
+(sans filigrane, entierement votre propriete) ou votre propre illustration.
 """
 
 from __future__ import annotations
@@ -25,9 +32,12 @@ PALETTES: List[Tuple[str, str, str]] = [
 ]
 
 
-def _palette(graine: str) -> Tuple[str, str, str]:
-    index = int(hashlib.md5(graine.encode("utf-8")).hexdigest(), 16) % len(PALETTES)
-    return PALETTES[index]
+def _palette(graine: str, index: Optional[int] = None) -> Tuple[str, str, str]:
+    """Palette choisie par empreinte du titre, ou imposee pour une variante."""
+    if index is not None:
+        return PALETTES[index % len(PALETTES)]
+    position = int(hashlib.md5(graine.encode("utf-8")).hexdigest(), 16) % len(PALETTES)
+    return PALETTES[position]
 
 
 def _echapper_xml(texte: str) -> str:
@@ -62,9 +72,10 @@ def couverture_svg(
     auteur: str = "",
     largeur: int = 1200,
     hauteur: int = 1600,
+    palette: Optional[int] = None,
 ) -> str:
     """Couverture vectorielle autonome : fonctionne toujours, meme hors ligne."""
-    fond, accent, encre = _palette(titre)
+    fond, accent, encre = _palette(titre, palette)
     lignes = decouper(titre.upper(), 18)[:5]
     taille = 92 if len(lignes) <= 3 else 74
     depart = hauteur // 2 - (len(lignes) - 1) * taille // 2 - 60
@@ -97,7 +108,7 @@ def couverture_svg(
             )
         )
 
-    rnd = random.Random(titre)
+    rnd = random.Random("{}-{}".format(titre, palette if palette is not None else ""))
     cercles = "".join(
         '<circle cx="{}" cy="{}" r="{}" fill="{}" opacity="{:.2f}"/>'.format(
             rnd.randint(0, largeur), rnd.randint(0, hauteur),
@@ -143,6 +154,8 @@ def image_pollinations(
         "width": str(largeur),
         "height": str(hauteur),
         "model": modele,
+        # Conserve parce qu'il devient effectif avec un jeton ; sans jeton il
+        # est ignore et le filigrane reste.
         "nologo": "true",
         "referrer": "usine-ia",
     }
@@ -172,6 +185,15 @@ def extension_image(brut: bytes) -> str:
     return "bin"
 
 
+def filigrane_probable() -> bool:
+    """Vrai si les images generees porteront un filigrane.
+
+    Sert a prevenir avant de livrer : une couverture filigranee est
+    inutilisable sur une fiche de vente.
+    """
+    return not bool(config.env("POLLINATIONS_TOKEN"))
+
+
 def generer_couverture(
     dossier: Path,
     titre: str,
@@ -179,6 +201,9 @@ def generer_couverture(
     auteur: str = "",
     style: str = "",
     en_ligne: bool = True,
+    nom: str = "couverture",
+    palette: Optional[int] = None,
+    graine: Optional[int] = None,
 ) -> Path:
     """Ecrit une couverture dans `dossier`. Renvoie le chemin produit.
 
@@ -192,14 +217,15 @@ def generer_couverture(
             "premium minimal poster, theme: {titre}. No text, no letters, no words."
         ).format(style=style or "modern flat vector", titre=titre)
         try:
-            brut = image_pollinations(invite, 1024, 1365)
-            chemin = dossier / "couverture.{}".format(extension_image(brut))
+            brut = image_pollinations(invite, 1024, 1365, graine=graine)
+            chemin = dossier / "{}.{}".format(nom, extension_image(brut))
             chemin.write_bytes(brut)
             return chemin
         except Exception:
             pass  # repli local silencieux : la couverture SVG reste presentable
-    chemin = dossier / "couverture.svg"
-    chemin.write_text(couverture_svg(titre, sous_titre, auteur), encoding="utf-8")
+    chemin = dossier / "{}.svg".format(nom)
+    chemin.write_text(couverture_svg(titre, sous_titre, auteur, palette=palette),
+                      encoding="utf-8")
     return chemin
 
 

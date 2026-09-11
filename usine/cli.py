@@ -14,7 +14,9 @@ from typing import Any, Dict, List, Optional
 
 from . import __version__
 from .core import cles as pool_cles
-from .core import apprentissage, budget, config, file as file_prod, llm, marche
+from .core import apprentissage, budget, config, experience, images
+from .core import file as file_prod
+from .core import llm, marche
 from .core import prompts as registre_prompts
 from .core import reglages, securite, store
 from .core.http import en_ligne
@@ -434,6 +436,222 @@ def cmd_usine(args: argparse.Namespace) -> int:
                            journal=lambda message: print("  " + message),
                            pause=args.pause)
     return moteur.tourner()
+
+
+# --------------------------------------------------------------------------
+# A/B testing
+# --------------------------------------------------------------------------
+
+_COULEURS_VERDICT = {
+    "gagnant": "32", "tendance": "33", "indecis": "33",
+    "insuffisant": "33", "sans_donnees": "90", "vide": "90",
+}
+
+
+def _barre(bas: float, haut: float, maximum: float, largeur: int = 22) -> str:
+    """Intervalle credible rendu en caracteres : visible sur un ecran etroit."""
+    if maximum <= 0:
+        return " " * largeur
+    debut = int(bas / maximum * largeur)
+    fin = max(debut + 1, int(haut / maximum * largeur))
+    return ("." * debut + "#" * (fin - debut) + "." * (largeur - fin))[:largeur]
+
+
+def cmd_ab(args: argparse.Namespace) -> int:
+    """Creer, alimenter et lire un test A/B."""
+    from .pipelines import variantes as pipeline_variantes
+
+    action = args.action
+
+    if action == "creer":
+        if not _verifier_fournisseurs():
+            return 2
+        titre_actuel, produit_id, description = args.titre, "", ""
+        if args.produit:
+            produit = store.lire_produit(args.produit)
+            if not produit:
+                erreur("Produit inconnu : {}".format(args.produit))
+                print("  Liste : " + _c("usine liste", "1"))
+                return 1
+            titre_actuel = produit["titre"]
+            produit_id = produit["id"]
+            meta = json.loads(produit.get("meta") or "{}")
+            description = str(meta.get("promesse") or produit.get("sujet") or "")
+        if not titre_actuel:
+            erreur("Indiquez --titre \"...\" ou --produit <identifiant>.")
+            return 1
+
+        ctx = contexte_depuis(argparse.Namespace(
+            sujet=description or titre_actuel, audience=args.audience,
+            ton="", taille="", auteur="", langue="", qualite="",
+            marque="", prix="", hors_ligne=args.hors_ligne,
+            sans_image=args.sans_image))
+        dossier = (Path(store.lire_produit(produit_id)["dossier"]) / "variantes"
+                   if produit_id and store.lire_produit(produit_id)
+                   else config.PRODUITS_DIR / "variantes-{}".format(
+                       slug_titre(titre_actuel)))
+
+        titre_console("Test A/B — {}".format(args.sur))
+        if (args.sur == "couverture" and not args.hors_ligne
+                and not args.sans_image and images.filigrane_probable()):
+            alerte("Sans jeton Pollinations, les images generees portent un "
+                   "filigrane « @pollinations.ai ».")
+            print("      Elles servent a choisir une direction visuelle, pas a "
+                  "etre vendues.")
+            print("      Pour une couverture livrable : " +
+                  _c("--sans-image", "1") + " (couvertures SVG locales, sans "
+                  "filigrane).")
+        resultat = pipeline_variantes.preparer_test(
+            ctx, titre_actuel, dossier, sujet=args.sur, nombre=args.nombre,
+            description=description, produit_id=produit_id)
+
+        print()
+        for variante in experience.variantes(resultat["experience_id"]):
+            meta = variante["meta"]
+            print("  {} {}".format(_c("[" + variante["etiquette"] + "]", "1;36"),
+                                   variante["contenu"]))
+            if meta.get("angle"):
+                print("      angle : {}".format(_c(meta["angle"], "2")))
+            if meta.get("diagnostic"):
+                print("      {}".format(_c(meta["diagnostic"], "2")))
+            print("      " + _c("usine ab observer {} --vues N --actions N".format(
+                variante["id"]), "2"))
+
+        if not resultat["distinction"]["testable"]:
+            print()
+            alerte(resultat["distinction"]["message"])
+
+        print()
+        ok("Planche de comparaison : {}".format(resultat["planche"]))
+        print("  Ouvrir sur Termux : " + _c(
+            "termux-open '{}'".format(resultat["planche"]), "2"))
+        _rappel_echelle()
+        return 0
+
+    if action == "liste":
+        experiences = experience.lister()
+        titre_console("Tests A/B")
+        if not experiences:
+            print("  Aucun test.")
+            print("\n  Creer : " + _c('usine ab creer --titre "votre titre"', "1"))
+            return 0
+        for exp in experiences:
+            analyse = experience.analyser(exp["id"])
+            verdict_courant = analyse["verdict"]
+            print("  {:>3}  {:<11} {:<10} {}".format(
+                exp["id"], exp["sujet"], exp["statut"], exp["titre"][:38]))
+            print("       {} variante(s) — {}".format(
+                exp["nb_variantes"],
+                _c(verdict_courant["etat"],
+                   _COULEURS_VERDICT.get(verdict_courant["etat"], "0"))))
+        return 0
+
+    if action == "observer":
+        if args.vues is None and args.actions is None:
+            erreur("Indiquez au moins --vues ou --actions.")
+            return 1
+        try:
+            experience.observer(args.identifiant, vues=args.vues or 0,
+                                actions=args.actions or 0, note=args.note or "")
+        except ValueError as exc:
+            erreur(str(exc))
+            return 1
+        ok("Observation enregistree : +{} vue(s), +{} action(s)".format(
+            args.vues or 0, args.actions or 0))
+        print("  Les chiffres s'additionnent aux releves precedents.")
+        return 0
+
+    if action in ("verdict", "planche", "clore"):
+        analyse = experience.analyser(args.identifiant)
+        if "erreur" in analyse:
+            erreur(analyse["erreur"])
+            return 1
+        if action == "planche":
+            from .pipelines import variantes as pipeline_variantes
+
+            exp = analyse["experience"]
+            dossier = config.PRODUITS_DIR
+            if exp["produit_id"]:
+                produit = store.lire_produit(exp["produit_id"])
+                if produit and produit["dossier"]:
+                    dossier = Path(produit["dossier"]) / "variantes"
+            chemin = pipeline_variantes.planche(args.identifiant, dossier)
+            ok("Planche : {}".format(chemin))
+            return 0
+        if action == "clore":
+            experience.cloturer(args.identifiant, args.gagnante or 0,
+                                args.note or "")
+            ok("Test cloture.")
+            return 0
+        _afficher_verdict(analyse)
+        return 0
+
+    if action == "supprimer":
+        (ok if experience.supprimer(args.identifiant) else alerte)(
+            "test {} supprime".format(args.identifiant))
+        return 0
+
+    erreur("Action inconnue : {}".format(action))
+    return 1
+
+
+def _afficher_verdict(analyse: Dict[str, Any]) -> None:
+    exp = analyse["experience"]
+    lot = analyse["variantes"]
+    verdict_courant = analyse["verdict"]
+
+    titre_console("Test A/B n° {} — {}".format(exp["id"], exp["sujet"]))
+    print("  Produit : {}".format(exp["titre"][:56]))
+    print("  Objectif : {}".format(
+        experience.OBJECTIFS.get(exp["objectif"], exp["objectif"])))
+    print()
+
+    maximum = max((v["stats"]["haut"] for v in lot if v.get("stats")), default=0.01)
+    print("  {:<3} {:<34} {:>6} {:>7} {:>7}  {}".format(
+        "", "variante", "vues", "actions", "taux", "intervalle credible 90 %"))
+    for variante in lot:
+        stats = variante.get("stats") or {}
+        tete = (verdict_courant.get("gagnante") == stats.get("index")
+                or verdict_courant.get("tete") == stats.get("index"))
+        print("  {:<3} {:<34} {:>6} {:>7} {:>6.1f}%  {} {:>4.0f}%".format(
+            _c("[" + variante["etiquette"] + "]", "1;36" if tete else "0"),
+            variante["contenu"][:34],
+            stats.get("vues", 0), stats.get("actions", 0),
+            stats.get("taux", 0) * 100,
+            _barre(stats.get("bas", 0), stats.get("haut", 0), maximum),
+            stats.get("probabilite_meilleure", 0) * 100))
+    print("  {:<3} {:<34} {:>6} {:>7} {:>7}  {}".format(
+        "", "", "", "", "", _c("^ probabilite d'etre la meilleure", "2")))
+
+    print()
+    couleur = _COULEURS_VERDICT.get(verdict_courant["etat"], "0")
+    print("  " + _c(verdict_courant["etat"].upper(), "1;" + couleur))
+    for ligne in _envelopper(verdict_courant["message"], 70):
+        print("  " + ligne)
+    if verdict_courant.get("besoin_par_variante"):
+        print()
+        print("  " + _c("Ordre de grandeur : environ {} vues par variante pour "
+                        "detecter un ecart de 20 %.".format(
+                            verdict_courant["besoin_par_variante"]), "2"))
+
+
+def _rappel_echelle() -> None:
+    print()
+    print("  " + _c("A savoir avant de lancer le test", "1"))
+    for ligne in _envelopper(
+        "Un test A/B honnete demande beaucoup de trafic : a 5 % de conversion, "
+        "il faut de l'ordre de 7 600 vues par variante pour detecter un ecart "
+        "de 20 %. En dessous, l'usine refusera de designer un gagnant — et "
+        "c'est voulu. La valeur immediate de ces variantes est ailleurs : "
+        "choisir a l'oeil celle qui vous ressemble le plus, et garder les "
+        "autres pour vos publications.", 70):
+        print("  " + _c(ligne, "2"))
+
+
+def slug_titre(titre: str) -> str:
+    from .pipelines.base import slug
+
+    return slug(titre, 40)
 
 
 def cmd_marche(args: argparse.Namespace) -> int:
@@ -1010,6 +1228,30 @@ def construire_parseur() -> argparse.ArgumentParser:
     p = sous_parseurs.add_parser("liste", help="lister les produits fabriques")
     p.add_argument("-n", "--nombre", type=int, default=25)
     p.set_defaults(fonction=cmd_liste)
+
+    p = sous_parseurs.add_parser("ab", help="tester des titres et des couvertures")
+    p.add_argument("action",
+                   choices=["creer", "liste", "observer", "verdict", "planche",
+                            "clore", "supprimer"])
+    p.add_argument("identifiant", nargs="?", type=int, default=0,
+                   help="numero du test, ou de la variante pour « observer »")
+    p.add_argument("--produit", default="", help="partir d'un produit existant")
+    p.add_argument("--titre", default="", help="titre actuel a ameliorer")
+    p.add_argument("--sur", default="titre",
+                   choices=["titre", "couverture", "accroche", "prix"],
+                   help="ce que le test compare")
+    p.add_argument("-n", "--nombre", type=int, default=5,
+                   help="nombre de variantes")
+    p.add_argument("-a", "--audience", default="")
+    p.add_argument("--vues", type=int, help="vues observees, pour « observer »")
+    p.add_argument("--actions", type=int,
+                   help="clics ou ventes observes, pour « observer »")
+    p.add_argument("--note", default="", help="commentaire libre")
+    p.add_argument("--gagnante", type=int, default=0,
+                   help="variante retenue, pour « clore »")
+    p.add_argument("--hors-ligne", dest="hors_ligne", action="store_true")
+    p.add_argument("--sans-image", dest="sans_image", action="store_true")
+    p.set_defaults(fonction=cmd_ab)
 
     p = sous_parseurs.add_parser("file", help="gerer la file des niches a produire")
     p.add_argument("--ajouter", nargs="+", metavar="NICHE",

@@ -15,7 +15,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from . import __version__
 from .core import cles as pool_cles
-from .core import config, file as file_prod, llm, reglages, securite, store
+from .core import config, experience
+from .core import file as file_prod
+from .core import llm, reglages, securite, store
 from .pipelines.base import TAILLES, TONS
 
 _COULEUR = sys.stdout.isatty()
@@ -370,6 +372,96 @@ def _regler_budget() -> None:
     demander("  Appuyez sur Entree")
 
 
+def menu_ab(executer: Callable[[List[str]], int]) -> None:
+    """Tests A/B : creer des variantes, reporter les chiffres, lire le verdict."""
+    while True:
+        tests = experience.lister(20)
+        entete("Tests A/B")
+        if tests:
+            for test in tests:
+                analyse = experience.analyser(test["id"])
+                couleur = {"gagnant": "32", "tendance": "33"}.get(
+                    analyse["verdict"]["etat"], "90")
+                print("  {:>3}  {:<11} {:<22} {}".format(
+                    test["id"], test["sujet"], test["titre"][:22],
+                    c(analyse["verdict"]["etat"], couleur)))
+        else:
+            print("  Aucun test pour l'instant.")
+
+        choix = choisir("Que faire ?", [
+            ("Tester des titres", "5 variantes sur des angles differents"),
+            ("Tester des couvertures", "4 directions visuelles distinctes"),
+            ("Reporter des chiffres", "vues et ventes observees"),
+            ("Voir un verdict", "ce que disent reellement vos donnees"),
+        ], defaut=1)
+
+        if choix == 0:
+            return
+        if choix in (1, 2):
+            sujet = "titre" if choix == 1 else "couverture"
+            entete("Tester des {}s".format(sujet))
+            produits = [p for p in store.lister_produits(20)
+                        if p["statut"] != "bonus_integre"]
+            arguments = ["ab", "creer", "--sur", sujet]
+            if produits and demander_oui("Partir d'un produit existant ?", True):
+                index = choisir("Quel produit ?",
+                                [(p["titre"][:40], p["type"]) for p in produits],
+                                defaut=1)
+                if index == 0:
+                    continue
+                arguments += ["--produit", produits[index - 1]["id"]]
+            else:
+                titre = demander("Titre actuel du produit", obligatoire=True)
+                if not titre:
+                    continue
+                arguments += ["--titre", titre]
+            nombre = demander("Combien de variantes", "5" if choix == 1 else "4")
+            if nombre.isdigit():
+                arguments += ["-n", nombre]
+            if not reglages.lire("images", True) and choix == 2:
+                arguments.append("--sans-image")
+            print()
+            executer(arguments)
+            demander("\n  Appuyez sur Entree")
+
+        elif choix == 3:
+            numero = demander("Numero du test")
+            if not numero.isdigit():
+                continue
+            lot = experience.variantes(int(numero))
+            if not lot:
+                print(c("  Test inconnu ou sans variante.", "33"))
+                demander("  Appuyez sur Entree")
+                continue
+            entete("Reporter les chiffres")
+            print("  " + c("Laissez vide pour passer une variante.", "2"))
+            print()
+            for variante in lot:
+                print("  [{}] {}".format(variante["etiquette"],
+                                         variante["contenu"][:46]))
+                print("      deja : {} vue(s), {} action(s)".format(
+                    variante["total_vues"], variante["total_actions"]))
+                vues = demander("      vues a ajouter")
+                if not vues.isdigit():
+                    continue
+                actions = demander("      ventes ou clics a ajouter", "0")
+                try:
+                    experience.observer(variante["id"], vues=int(vues),
+                                        actions=int(actions) if actions.isdigit()
+                                        else 0)
+                    print(c("      enregistre.", "32"))
+                except ValueError as exc:
+                    print(c("      refuse : {}".format(exc), "31"))
+            executer(["ab", "verdict", numero])
+            demander("\n  Appuyez sur Entree")
+
+        elif choix == 4:
+            numero = demander("Numero du test")
+            if numero.isdigit():
+                executer(["ab", "verdict", numero])
+                demander("\n  Appuyez sur Entree")
+
+
 def menu_produits(executer: Callable[[List[str]], int]) -> None:
     produits = [p for p in store.lister_produits(20)
                 if p["statut"] != "bonus_integre"]
@@ -515,6 +607,7 @@ def menu_principal(executer: Callable[[List[str]], int]) -> int:
         choix = choisir("Menu principal", [
             ("Fabriquer un produit", "ebook, prompts, formation, imprimables..."),
             ("Usine continue", "file de niches, budget, production en boucle"),
+            ("Tests A/B", "titres et couvertures : comparer et decider"),
             ("Mes produits", "consulter, vendre, empaqueter"),
             ("Cles et quotas", "etat des fournisseurs et du pool de cles"),
             ("Reglages", "auteur, marque, ton et qualite par defaut"),
@@ -530,13 +623,15 @@ def menu_principal(executer: Callable[[List[str]], int]) -> int:
         elif choix == 2:
             menu_usine(executer)
         elif choix == 3:
-            menu_produits(executer)
+            menu_ab(executer)
         elif choix == 4:
-            menu_cles()
+            menu_produits(executer)
         elif choix == 5:
-            menu_reglages()
+            menu_cles()
         elif choix == 6:
-            executer(["web"])
+            menu_reglages()
         elif choix == 7:
+            executer(["web"])
+        elif choix == 8:
             executer(["docteur"])
             demander("\n  Appuyez sur Entree")
