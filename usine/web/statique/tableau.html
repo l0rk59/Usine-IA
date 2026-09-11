@@ -89,6 +89,38 @@
 </div>
 
 <div class="carte">
+  <h2>Veille de niche</h2>
+  <p class="aide">Ce que les gens disent d'un sujet, sur Reddit. Un signal de
+    <strong>douleur</strong>, pas d'intention d'achat : on se plaint
+    gratuitement.</p>
+  <div class="duo">
+    <div><label for="veille-niche">Niche</label>
+      <input id="veille-niche" placeholder="ex : meal planning for busy parents"/></div>
+    <div><label for="veille-periode">Periode</label>
+      <select id="veille-periode">
+        <option value="month">le mois</option>
+        <option value="year" selected>l'annee</option>
+        <option value="all">depuis toujours</option>
+      </select></div>
+  </div>
+  <div class="rangee">
+    <button class="discret" id="veille-lancer">Consulter</button>
+    <span class="aide" id="veille-etat"></span>
+  </div>
+  <div id="veille-resultat" hidden>
+    <div class="etiquettes" id="veille-communautes"></div>
+    <div class="etiquettes doux" id="veille-mots"></div>
+    <h3 class="sous" id="veille-titre-douleurs" hidden>Formulations de probleme</h3>
+    <div id="veille-douleurs"></div>
+    <h3 class="sous">Discussions les plus suivies</h3>
+    <div id="veille-discussions"></div>
+    <p class="aide">Reddit est anglophone et technophile : une niche
+      francaise peut n'y laisser aucune trace sans que cela dise rien de son
+      marche.</p>
+  </div>
+</div>
+
+<div class="carte">
   <h2>Usine continue</h2>
   <p class="etat" id="usine-etat">chargement...</p>
   <div class="rangee">
@@ -129,12 +161,34 @@
 
 <div class="carte">
   <h2>Produits qui se recouvrent</h2>
+  <div class="alerte" id="doublons-manquants" hidden></div>
   <div id="doublons"><span class="vide">chargement...</span></div>
+  <div class="rangee">
+    <button class="discret" id="doublons-reconstruire">Reconstruire les empreintes</button>
+    <span class="aide" id="doublons-etat"></span>
+  </div>
 </div>
 
 <div class="carte">
   <h2>Produits</h2>
   <div id="produits"><span class="vide">chargement...</span></div>
+</div>
+
+<div class="carte">
+  <h2>Sauvegarder l'atelier</h2>
+  <p class="aide">Les produits se refabriquent. Une annee de ventes importees,
+    non. Les cles API ne sont jamais dans l'archive.</p>
+  <div class="rangee">
+    <button class="discret" id="sauvegarde-creer">Creer une archive</button>
+    <label class="case"><input type="checkbox" id="sauvegarde-produits"/>
+      avec les fichiers des produits</label>
+  </div>
+  <span class="aide" id="sauvegarde-etat"></span>
+  <div id="sauvegardes"><span class="vide">chargement...</span></div>
+  <p class="aide">Telechargez-la hors du telephone : une sauvegarde restee sur
+    l'appareil ne protege de rien. <strong>Restaurer</strong> reste a la ligne
+    de commande — <code>usine sauvegarde --restaurer</code> — parce que
+    l'operation remplace tout l'atelier et demande confirmation.</p>
 </div>
 
 </div>

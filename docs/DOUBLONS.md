@@ -138,3 +138,17 @@ un téléphone, avec tout l'historique dedans.
 Le schéma porte désormais un `PRAGMA user_version` et une échelle de
 migrations. Le cas « base d'hier, sans numéro de version » est testé sur une
 vraie base ancienne, données comprises.
+
+## « Aucun recouvrement » ou « rien n'a été comparé » ?
+
+Les deux se lisaient pareil sur le tableau de bord, et l'un est une bonne
+nouvelle quand l'autre est une lacune. Les empreintes sont posées **à la
+fabrication** : un catalogue constitué avant leur introduction n'en a aucune,
+et la carte affichait paisiblement « aucun recouvrement notable » après avoir
+comparé zéro produit.
+
+La carte compte désormais les produits sans empreinte, le dit, et propose le
+bouton qui répare — `usine doublons --reconstruire` a maintenant son
+équivalent dans le navigateur. Les produits dont le dossier a été déplacé
+sont nommés, pas comptés comme vides.
+

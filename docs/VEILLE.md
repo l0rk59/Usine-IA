@@ -100,3 +100,33 @@ filtre approximatif.
 
 Les douleurs passent maintenant en premier, puis le reste complète. Un filtre
 qui trie ne doit pas jeter.
+
+## Depuis le tableau de bord
+
+La carte **Veille de niche** fait la même consultation dans le navigateur, et
+ajoute ce que la console ne peut pas offrir : chaque titre trouvé porte un
+bouton **→ sujet** qui l'écrit dans le champ de fabrication, et le passe au
+contrôle des domaines sensibles comme s'il avait été tapé à la main. Une
+formulation de problème lue chez les gens devient un produit sans recopie —
+c'est tout l'intérêt d'aller les lire.
+
+La consultation tourne **en tâche de fond** : `scouter` s'impose trois
+secondes entre deux communautés, parce que Reddit répond 429 dès le deuxième
+appel rapproché. La page interroge l'avancement au lieu d'attendre une
+réponse qui mettrait une demi-minute à venir. Deux consultations simultanées
+sont refusées : Reddit compte par adresse, pas par onglet — elles se
+prendraient mutuellement le 429.
+
+### Les titres viennent de l'extérieur
+
+Le flux n'est pas signé, et le tableau de bord est la page qui pilote
+l'usine. Deux barrières, toutes deux testées :
+
+- **Côté serveur**, seul un lien `https` vers `reddit.com` est transmis. Un
+  `javascript:` ou un hôte qui imite Reddit arrive à la page comme une chaîne
+  vide, et le titre s'affiche alors sans lien. Filtrer ici plutôt que dans le
+  script : ce qui n'est jamais envoyé ne peut pas être affiché par erreur
+  plus tard.
+- **Côté page**, le texte du titre est échappé. Le serveur, lui, ne le nettoie
+  pas : le nettoyer mentirait sur ce que les gens ont écrit.
+

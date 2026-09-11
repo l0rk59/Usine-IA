@@ -212,6 +212,16 @@ function afficherVentes(d) {
 }
 
 function afficherDoublons(d) {
+  // « Aucun recouvrement » se lit comme une bonne nouvelle. Ce peut etre
+  // « rien n'a ete compare » : les empreintes sont posees a la fabrication,
+  // et un catalogue plus ancien n'en a aucune.
+  const manquantes = d.sans_empreinte || 0;
+  $('doublons-manquants').hidden = manquantes === 0;
+  $('doublons-manquants').textContent = manquantes
+    ? `${manquantes} produit(s) sans empreinte : ils ne sont compares a rien.`
+    : '';
+  $('doublons-reconstruire').hidden = manquantes === 0;
+
   const paires = d.doublons || [];
   if (!paires.length) {
     $('doublons').innerHTML = d.produits_compares > 1
@@ -502,6 +512,157 @@ async function surveiller(identifiant) {
   chargerProduits();
 }
 
+/* ------------------------------------------------------- veille de niche */
+$('veille-lancer').addEventListener('click', async () => {
+  const niche = $('veille-niche').value.trim() || $('sujet').value.trim();
+  if (!niche) { $('veille-niche').focus(); return; }
+  $('veille-niche').value = niche;
+  $('veille-lancer').disabled = true;
+  $('veille-etat').textContent = 'consultation en cours — deux appels espaces...';
+  const reponse = await fetch('/api/veille', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sujet: niche, periode: $('veille-periode').value }),
+  });
+  const donnees = await reponse.json();
+  if (donnees.erreur) {
+    $('veille-lancer').disabled = false;
+    $('veille-etat').textContent = donnees.erreur;
+    return;
+  }
+  suivreVeille(donnees.veille);
+});
+
+async function suivreVeille(identifiant) {
+  const reponse = await fetch('/api/veille/' + identifiant);
+  if (!reponse.ok) { $('veille-lancer').disabled = false; return; }
+  const consultation = await reponse.json();
+  if (consultation.statut === 'en_cours') {
+    setTimeout(() => suivreVeille(identifiant), 2000);
+    return;
+  }
+  $('veille-lancer').disabled = false;
+  if (consultation.statut === 'echec') {
+    $('veille-etat').textContent = consultation.erreur;
+    return;
+  }
+  afficherVeille(consultation.resultat);
+}
+
+function afficherVeille(r) {
+  if (r.indisponible) {
+    // Une niche muette sur Reddit n'est pas une niche morte : c'est une
+    // absence de mesure, et le tableau de bord doit le dire ainsi.
+    $('veille-etat').textContent = r.indisponible;
+    $('veille-resultat').hidden = true;
+    return;
+  }
+  $('veille-etat').textContent = `${r.discussions.length} discussion(s), ${
+    r.douleurs.length} formulation(s) de probleme.`;
+  $('veille-resultat').hidden = false;
+
+  $('veille-communautes').innerHTML = r.communautes.map((c) => c.lien
+    ? `<a href="${echapper(c.lien)}" target="_blank" rel="noopener noreferrer"
+         >r/${echapper(c.nom)}</a>`
+    : `<span>r/${echapper(c.nom)}</span>`).join('');
+
+  $('veille-mots').innerHTML = r.mots.map(([mot, n]) =>
+    `<span>${echapper(mot)} <span class="nombre">${n}</span></span>`).join('');
+
+  $('veille-titre-douleurs').hidden = r.douleurs.length === 0;
+  $('veille-douleurs').innerHTML = r.douleurs.slice(0, 10)
+    .map((d) => ligneDite(d, 'douleur')).join('');
+  $('veille-discussions').innerHTML = r.discussions.slice(0, 12)
+    .map((d) => ligneDite(d, '')).join('');
+}
+
+function ligneDite(d, classe) {
+  // Le titre vient d'un flux exterieur : il est echappe, et son lien a deja
+  // ete filtre cote serveur (https, reddit.com, rien d'autre).
+  const titre = echapper(d.titre);
+  const propos = d.lien
+    ? `<a href="${echapper(d.lien)}" target="_blank" rel="noopener noreferrer"
+        >${titre}</a>`
+    : titre;
+  return `<div class="dit ${classe}">
+    <div class="propos">${propos}
+      <span class="ou">r/${echapper(d.communaute)}</span></div>
+    <button class="discret" data-sujet="${titre}">&rarr; sujet</button>
+  </div>`;
+}
+
+// Un titre trouve doit pouvoir devenir un produit sans recopie : c'est tout
+// l'interet de regarder ce que les gens disent.
+document.addEventListener('click', (evenement) => {
+  const propose = evenement.target.dataset?.sujet;
+  if (!propose) return;
+  $('sujet').value = propose;
+  $('sujet').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  $('sujet').focus();
+  // Le controle des domaines sensibles est branche sur « input » : un sujet
+  // pose par programme doit y passer comme un sujet tape a la main.
+  $('sujet').dispatchEvent(new Event('input'));
+});
+
+/* --------------------------------------------------- empreintes manquantes */
+$('doublons-reconstruire').addEventListener('click', async () => {
+  $('doublons-reconstruire').disabled = true;
+  $('doublons-etat').textContent = 'lecture des fichiers sur le disque...';
+  const reponse = await fetch('/api/doublons', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'reconstruire' }),
+  });
+  const d = await reponse.json();
+  $('doublons-reconstruire').disabled = false;
+  if (d.erreur) { $('doublons-etat').textContent = d.erreur; return; }
+  const reste = d.reste
+    ? ` ${d.reste} sans texte relisible (dossier deplace ou type sans texte).`
+    : '';
+  $('doublons-etat').textContent = `${d.reconstruites} empreinte(s) posee(s).${reste}`;
+  chargerCommerce();
+});
+
+/* ----------------------------------------------------- sauvegarde */
+async function chargerSauvegardes() {
+  const reponse = await fetch('/api/sauvegardes');
+  if (!reponse.ok) return;
+  afficherSauvegardes((await reponse.json()).archives);
+}
+
+function afficherSauvegardes(archives) {
+  if (!archives.length) {
+    $('sauvegardes').innerHTML =
+      '<span class="vide">Aucune archive pour l\'instant.</span>';
+    return;
+  }
+  $('sauvegardes').innerHTML = archives.map((a) => `
+    <div class="archive">
+      <span class="nom">${echapper(a.nom)}</span>
+      <span class="quand">${a.ko} Ko &middot; ${dateCourte(a.ts)}</span>
+      <a href="/archive/${encodeURIComponent(a.nom)}" download>Telecharger</a>
+    </div>`).join('');
+}
+
+function dateCourte(ts) {
+  return new Date(ts * 1000).toLocaleString('fr-FR',
+    { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+$('sauvegarde-creer').addEventListener('click', async () => {
+  $('sauvegarde-creer').disabled = true;
+  $('sauvegarde-etat').textContent = 'copie de la base en cours...';
+  const reponse = await fetch('/api/sauvegarde', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'creer',
+                           avec_produits: $('sauvegarde-produits').checked }),
+  });
+  const d = await reponse.json();
+  $('sauvegarde-creer').disabled = false;
+  if (d.erreur) { $('sauvegarde-etat').textContent = d.erreur; return; }
+  $('sauvegarde-etat').textContent =
+    `${echapper(d.archive.nom)} — ${d.archive.ko} Ko. Telechargez-la.`;
+  afficherSauvegardes(d.sauvegardes);
+});
+
 /* ---------------------------------------------------------------- demarrage */
 try {
   const theme = localStorage.getItem('usine-theme');
@@ -519,6 +680,7 @@ chargerProduits();
 chargerUsine();
 brancherFlux();
 chargerCommerce();
+chargerSauvegardes();
 setInterval(chargerEtat, 15000);
 setInterval(chargerCommerce, 30000);
 setInterval(chargerUsine, 6000);

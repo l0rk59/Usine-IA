@@ -642,6 +642,36 @@ Le serveur écoute sur `127.0.0.1`. Ouvert au réseau local
 (`usine web --hote 0.0.0.0`), un **jeton d'accès est généré automatiquement**
 et devient obligatoire.
 
+### Ce que le navigateur sait faire, et que la console ne peut pas
+
+Trois outils n'existaient qu'en ligne de commande et dans le menu Termux.
+
+**Veille de niche.** La même consultation Reddit, en tâche de fond — `scouter`
+s'impose trois secondes entre deux communautés, donc la page interroge
+l'avancement au lieu d'attendre. Chaque titre trouvé porte un bouton
+**→ sujet** qui l'écrit dans le champ de fabrication et le passe au contrôle
+des domaines sensibles. Une plainte lue chez les gens devient un produit sans
+recopie.
+
+Les titres et les liens viennent d'un flux que personne ne signe, et cette
+page pilote l'usine : seul un lien `https` vers `reddit.com` est transmis au
+navigateur — un `javascript:` arrive comme une chaîne vide — et le texte est
+échappé à l'affichage. Le serveur ne nettoie pas le titre lui-même : le
+nettoyer mentirait sur ce que les gens ont écrit.
+
+**Empreintes manquantes.** La carte des doublons affichait « aucun
+recouvrement notable » après avoir comparé **zéro** produit — les empreintes
+sont posées à la fabrication, et un catalogue plus ancien n'en a aucune. Elle
+compte désormais ce qu'elle n'a pas pu comparer, et propose le bouton qui
+répare.
+
+**Sauvegarde.** Créer l'archive, et surtout la **télécharger**. C'est la
+partie qui manquait : sur un téléphone, une archive restée dans
+`atelier/sauvegardes/` ne protège de rien, et la ligne de commande ne sait pas
+l'en sortir. **Restaurer** reste à la console : l'opération remplace l'atelier
+entier, et c'est le genre de bouton sur lequel on ne clique jamais
+volontairement.
+
 ---
 
 ## Comment ça marche
@@ -708,7 +738,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         411 tests + test de fumée, aucun appel réseau
+tests/         427 tests + test de fumée, aucun appel réseau
                un atelier temporaire par module (tests/atelier.py)
 install.sh     installation Termux
 ```
@@ -721,7 +751,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 411 tests
+python3 -m unittest discover -s tests -t .   # 427 tests
 python3 tests/fumee.py                       # les 9 chaînes via la vraie CLI
 ```
 
@@ -768,6 +798,12 @@ bout, et l'application web générée a été **ouverte dans un vrai Chromium**.
 La géométrie 3D est vérifiée séparément : les matrices de rotation, de caméra
 et la matrice normale inverse-transposée sont contrôlées numériquement, et le
 tableau de bord est rendu dans un vrai Chromium.
+
+Les routes du tableau de bord sont testées par le réseau, sur un vrai serveur
+HTTP. Ce qui compte le plus y est ce qu'elles **refusent** : un lien
+`javascript:` venu du flux de veille, un hôte qui imite Reddit, une sortie du
+dossier des sauvegardes vers `usine.db`, un fichier qui n'est pas une archive.
+Chaque garde a été retiré une fois pour vérifier que le test tombe.
 
 Le **menu est piloté par son entrée standard**, comme un doigt sur un écran de
 téléphone, et l'on regarde quelle commande il lance vraiment. Un sous-menu est

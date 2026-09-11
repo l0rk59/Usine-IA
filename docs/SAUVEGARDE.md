@@ -91,3 +91,26 @@ usine doublons --reconstruire
 relit ce qui est sur le disque, exactement comme la chaîne l'aurait fait en
 livrant. Les produits dont le dossier a été déplacé ou supprimé sont nommés,
 pas comptés comme vides.
+
+## Depuis le tableau de bord
+
+La carte **Sauvegarder l'atelier** écrit l'archive et, surtout, la
+**télécharge**. C'est la partie qui manquait vraiment : sur un téléphone, une
+archive écrite dans `atelier/sauvegardes/` ne protège de rien tant qu'elle
+n'est pas sortie de l'appareil, et la ligne de commande ne sait pas la sortir.
+
+**Restaurer ne passe pas par le navigateur**, et c'est délibéré. L'opération
+remplace l'atelier entier ; c'est le genre de bouton sur lequel on ne clique
+jamais volontairement. Elle reste à `usine sauvegarde --restaurer`, qui
+demande confirmation et met l'ancienne base de côté.
+
+### La route qui sert les archives ne sert qu'elles
+
+Le dossier des sauvegardes est **à côté** de `usine.db` et de
+`reglages.json`. Une sortie de dossier livrerait la base en clair — ventes et
+historique compris — à qui a atteint le tableau de bord. La route refuse tout
+nom contenant un séparateur, vérifie que le chemin résolu reste sous le
+dossier, et ne sert que les fichiers `.zip`. Les trois barrières sont testées,
+la dernière parce qu'elle est la seule à empêcher de lire un fichier
+quelconque déposé là.
+
