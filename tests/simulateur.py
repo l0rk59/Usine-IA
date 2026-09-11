@@ -42,6 +42,35 @@ def _texte_markdown() -> str:
     )
 
 
+def _code(invite: str) -> str:
+    """Code reellement valide : le verificateur doit avoir quelque chose a valider.
+
+    Le nom du fichier demande est extrait de la consigne, pas cherche n'importe
+    ou dans l'invite : celle-ci contient aussi les fichiers deja ecrits, et une
+    correspondance approximative renverrait du HTML pour un fichier .js.
+    """
+    import re as _re
+
+    trouve = (_re.search(r"Ecris le fichier « ([^»]+) »", invite)
+              or _re.search(r"FICHIER : (\S+)", invite))
+    demande = trouve.group(1).strip() if trouve else ""
+    modeles = {
+        "outil.py": CODE_OUTIL,
+        "test_outil.py": CODE_TESTS,
+        "index.html": CODE_HTML,
+        "manifest.json": CODE_MANIFESTE,
+        "popup.html": ('<!doctype html>\n<html lang="fr"><head>'
+                       '<meta charset="utf-8"/><title>Extension</title></head>'
+                       '<body><h1>Compteur</h1><p id="total">0</p>'
+                       '<script src="popup.js"></script></body></html>\n'),
+        "popup.js": ('const zone = document.getElementById("total");\n'
+                     'zone.textContent = "pret";\n'),
+        "contenu.js": ('const compter = (texte) => texte.trim().split(/\\s+/).length;\n'
+                       'console.log(compter(document.body.innerText));\n'),
+    }
+    return modeles.get(demande, "const pret = true;\nconsole.log(pret);\n")
+
+
 def simulateur(messages, role):
     """Signature attendue par llm.definir_simulateur : (messages, role) -> texte."""
     invite = messages[-1]["content"]
@@ -105,6 +134,23 @@ def simulateur(messages, role):
                 for i in range(n)
             ],
         }, ensure_ascii=False)
+
+    # --- specification logicielle -------------------------------------------
+    if '"fonctionnalites"' in invite and '"limites"' in invite:
+        return json.dumps({
+            "nom": "compteur-mots",
+            "titre": "Compteur de mots en ligne de commande",
+            "promesse": "Compter mots, lignes et caracteres d'un fichier texte.",
+            "probleme": "Verifier la longueur d'un manuscrit sans ouvrir un traitement de texte.",
+            "fonctionnalites": ["Compter les mots", "Compter les lignes",
+                                "Afficher le resultat en JSON"],
+            "utilisation": "python3 outil.py fichier.txt --json",
+            "limites": ["Ne lit pas les PDF", "Ne corrige rien"],
+        }, ensure_ascii=False)
+
+    # --- generation de fichiers de code --------------------------------------
+    if "Ecris le fichier" in invite or "CONTENU ACTUEL" in invite:
+        return _code(invite)
 
     # --- pack de prompts : categories ------------------------------------
     if '"categories"' in invite:
@@ -334,3 +380,113 @@ def simulateur(messages, role):
     if "json" in bas and "schema" in bas:
         return json.dumps({"elements": ["Element A", "Element B"]}, ensure_ascii=False)
     return _texte_markdown()
+
+
+CODE_OUTIL = '''#!/usr/bin/env python3
+"""Compteur de mots, de lignes et de caracteres."""
+
+import argparse
+import json
+import sys
+
+
+def compter(texte):
+    return {
+        "mots": len(texte.split()),
+        "lignes": len(texte.splitlines()),
+        "caracteres": len(texte),
+    }
+
+
+def principal(argv=None):
+    analyseur = argparse.ArgumentParser(description="Compte mots et lignes.")
+    analyseur.add_argument("fichier", nargs="?", help="fichier a analyser")
+    analyseur.add_argument("--json", action="store_true", help="sortie JSON")
+    arguments = analyseur.parse_args(argv)
+
+    if arguments.fichier:
+        with open(arguments.fichier, encoding="utf-8") as flux:
+            texte = flux.read()
+    else:
+        texte = ""
+
+    resultat = compter(texte)
+    if arguments.json:
+        print(json.dumps(resultat, ensure_ascii=False))
+    else:
+        for cle, valeur in resultat.items():
+            print("{}: {}".format(cle, valeur))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(principal())
+'''
+
+CODE_TESTS = '''import unittest
+
+from outil import compter
+
+
+class TestCompter(unittest.TestCase):
+    def test_texte_vide(self):
+        self.assertEqual(compter("")["mots"], 0)
+
+    def test_trois_mots(self):
+        self.assertEqual(compter("un deux trois")["mots"], 3)
+
+    def test_lignes(self):
+        self.assertEqual(compter("a\\nb\\nc")["lignes"], 3)
+
+
+if __name__ == "__main__":
+    unittest.main()
+'''
+
+CODE_HTML = '''<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Compteur de mots</title>
+<style>
+body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 2rem auto;
+       padding: 0 1rem; }
+textarea { width: 100%; min-height: 12rem; padding: .6rem; }
+.chiffres { display: flex; gap: 1.5rem; margin-top: 1rem; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<h1>Compteur de mots</h1>
+<textarea id="texte" placeholder="Collez votre texte ici"></textarea>
+<div class="chiffres">
+  <span><strong id="mots">0</strong> mots</span>
+  <span><strong id="lignes">0</strong> lignes</span>
+  <span><strong id="caracteres">0</strong> caracteres</span>
+</div>
+<script>
+const zone = document.getElementById("texte");
+function majuscules() {
+  const valeur = zone.value;
+  document.getElementById("mots").textContent =
+    valeur.trim() ? valeur.trim().split(/\\s+/).length : 0;
+  document.getElementById("lignes").textContent =
+    valeur ? valeur.split("\\n").length : 0;
+  document.getElementById("caracteres").textContent = valeur.length;
+}
+zone.addEventListener("input", majuscules);
+majuscules();
+</script>
+</body>
+</html>
+'''
+
+CODE_MANIFESTE = '''{
+  "manifest_version": 3,
+  "name": "Compteur de mots",
+  "version": "1.0.0",
+  "description": "Compte les mots de la page courante.",
+  "permissions": ["activeTab"],
+  "action": { "default_popup": "popup.html" }
+}
+'''

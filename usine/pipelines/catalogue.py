@@ -80,8 +80,8 @@ class TypeProduit:
 
 def _chaines() -> Dict[str, Callable]:
     """Import tardif : le catalogue est lu par des modules que les chaines importent."""
-    from . import (boite_outils, ebook, formation, idees, impression, modeles,
-                   pack_prompts, social)
+    from . import (boite_outils, ebook, formation, idees, impression, logiciel,
+                   modeles, pack_prompts, social)
 
     return {
         "ebook": ebook.produire,
@@ -91,6 +91,7 @@ def _chaines() -> Dict[str, Callable]:
         "modeles": modeles.produire,
         "impression": impression.produire,
         "social": social.produire,
+        "logiciel": logiciel.produire,
         "idees": idees.produire,
     }
 
@@ -161,6 +162,17 @@ TYPES: List[TypeProduit] = [
         options={"reseau": "linkedin"},
         mots_cles=("reseaux", "linkedin", "instagram", "contenu", "post",
                    "calendrier editorial"),
+    ),
+    TypeProduit(
+        cle="logiciel", nom="Outil logiciel",
+        resume="Un outil qui demarre, verifie avant livraison",
+        detail="Code source + documentation + rapport de verification",
+        formats=("py", "md", "pdf", "html"),
+        minutes=(8, 20),
+        options={"cible": "cli", "executer": None},
+        mots_cles=("outil", "script", "application", "extension", "logiciel",
+                   "automatisation", "convertisseur", "generateur",
+                   "calculateur", "tableau de bord"),
     ),
     TypeProduit(
         cle="idees", nom="Etude de niche",

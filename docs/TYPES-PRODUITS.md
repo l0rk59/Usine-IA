@@ -33,7 +33,7 @@ Ils doivent rester **sans accent** — ils sont comparés à du texte normalisé
 mot-clé accentué ne correspondrait jamais à rien : une assertion à l'import le
 refuse bruyamment plutôt que de le laisser silencieusement inopérant.
 
-## Les huit types réels
+## Les neuf types réels
 
 | Clé | Produit | Formats livrés |
 |---|---|---|
@@ -44,11 +44,12 @@ refuse bruyamment plutôt que de le laisser silencieusement inopérant.
 | `modeles` | Bases Notion / tableur | CSV, PDF, HTML, MD |
 | `impression` | Fiches à remplir | PDF A4 + Lettre US, HTML |
 | `social` | Calendrier éditorial | CSV, PDF, JSON, HTML, MD |
+| `logiciel` | Outil CLI, web ou extension | code source + PDF, HTML, MD |
 | `idees` | Étude de niche | CSV, JSON, HTML, MD |
 
 **« Vrai type » signifie : une chaîne de fabrication qui lui est propre.** Un
 type qui produirait le même fichier qu'un autre sous un nom différent n'a pas sa
-place ici — c'est la différence entre huit types et une énumération de soixante.
+place ici — c'est la différence entre neuf types et une énumération de soixante.
 
 ## L'assemblage commun
 
@@ -101,6 +102,14 @@ deux bugs réels corrigés, une liste déclarée une fois au lieu de sept, un
 nouveau type dont l'export coûte dix lignes au lieu de soixante, et un test qui
 exécute chaque type. Si le seul objectif avait été de compter moins de lignes,
 il ne fallait pas le faire.
+
+## Le type qui ne ressemble pas aux autres
+
+`logiciel` est le seul dont le livrable peut être **faux plutôt que médiocre**.
+Un ebook maladroit se vend ; un script qui ne démarre pas se fait rembourser.
+Sa chaîne ajoute donc une étape que les huit autres n'ont pas : analyse du code
+généré, réparation par le modèle à partir de l'erreur exacte, puis exécution
+réelle en bac à sable pour la cible `cli`. Voir `docs/LOGICIEL.md`.
 
 ## Ajouter un type
 

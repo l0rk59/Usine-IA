@@ -225,6 +225,7 @@ def _nom_markdown(type_produit: str) -> str:
         "outils": "boite-outils",
         "modeles": "modeles",
         "social": "posts",
+        "logiciel": "notice",
     }.get(type_produit, type_produit)
 
 

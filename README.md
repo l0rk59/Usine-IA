@@ -125,6 +125,7 @@ indisponibles. Pour l'utiliser en priorité : `USINE_LOCAL_FIRST=1` dans le `.en
 | `usine modeles` | **Modèles Notion / tableur** | Bases liées, CSV prêts à importer, vues |
 | `usine impression` | **Cahier imprimable** | Plannings et fiches à remplir, A4 **et** Lettre US |
 | `usine social` | Pack de publications | Calendrier CSV, posts, visuels optionnels |
+| `usine logiciel` | **Outil logiciel** | Code source **vérifié**, CLI, app web ou extension Chrome |
 | `usine idees` | Étude de niche | 12 idées appuyées sur des **mesures de marché réelles** |
 | `usine marche` | Signaux de marché | demande, concurrence, tendance — 4 sources sans clé |
 | `usine bilan` | Mémoire de l'usine | ce que vos productions révèlent sur vos réglages |
@@ -133,8 +134,11 @@ indisponibles. Pour l'utiliser en priorité : `USINE_LOCAL_FIRST=1` dans le `.en
 | `usine usine` | **Usine continue** | produit en boucle, sous budget, jusqu'à l'arrêt |
 | `usine ab` | Tests A/B | variantes de titres et de couvertures, verdict honnête |
 
-Les deux types marqués en gras sont, d'après les classements 2026 des places de
-marché, les produits digitaux les plus vendus après l'ebook.
+`modeles` et `impression` sont, d'après les classements 2026 des places de
+marché, les produits digitaux les plus vendus après l'ebook. `logiciel` est le
+seul dont le livrable peut être **faux plutôt que médiocre** : rien n'en sort
+sans avoir été analysé, réparé si besoin, et — pour un outil en ligne de
+commande — réellement exécuté.
 
 **Un seul endroit les déclare** : `usine/pipelines/catalogue.py`. La CLI, le
 menu, la file de production, le tableau de bord et l'explorateur de niches le
@@ -143,7 +147,7 @@ divergé : l'explorateur de niches ne connaissait ni `impression` ni `modeles`,
 et convertissait silencieusement ces idées en ebooks.
 
 « Vrai type » signifie : une chaîne de fabrication qui lui est propre. C'est la
-différence entre huit types et une énumération de soixante.
+différence entre neuf types et une énumération de soixante.
 Voir [docs/TYPES-PRODUITS.md](docs/TYPES-PRODUITS.md).
 
 ### Exemples
@@ -163,6 +167,12 @@ usine complet "la méditation pour parents débordés" --hors-ligne
 
 # 30 posts LinkedIn avec 10 visuels générés
 usine social "le freelancing" -r linkedin -n 30 --visuels 10
+
+# Un outil en ligne de commande, vérifié et réellement lancé avant livraison
+usine logiciel "le nettoyage de fichiers en double" -c cli
+
+# Une application web autonome, qui marche hors connexion
+usine logiciel "le calcul de tarif pour freelances" -c web
 ```
 
 ### Options communes
@@ -219,6 +229,38 @@ deux (la détection puis la correction).
 Étalonnage : un texte rédigé avec exemples et rythme varié obtient **10/10** ;
 une sortie générique de modèle obtient **0 à 2/10**. Détails et seuils dans
 [docs/QUALITE.md](docs/QUALITE.md).
+
+### Le code généré est vérifié, pas supposé correct
+
+Un ebook maladroit se vend quand même. Un script qui ne démarre pas se fait
+rembourser. `usine logiciel` est donc le seul type dont **rien n'est livré sans
+avoir été vérifié**.
+
+```
+   génération d'un fichier
+      │
+   analyse statique   ──►  syntaxe + appels système, réseau, eval,
+      │                    écritures hors du dossier de travail
+   réparation         ──►  l'erreur exacte est renvoyée au modèle
+      │
+   exécution réelle   ──►  bac à sable, limite de temps — cible « cli »
+                           uniquement, et seulement si l'analyse est propre
+```
+
+L'exécution n'a lieu que sur du code dont l'arbre syntaxique ne contient rien
+de dangereux : ce code vient d'un modèle, pas de vous, et un `os.system` généré
+par accident dans un exemple effacerait le téléphone. Six échantillons hostiles
+écrits pour l'analyseur — `os.system`, `shutil.rmtree`, `eval`, socket,
+`subprocess`, écriture sur chemin absolu — sont tous refusés.
+
+L'outil livré est lancé deux fois avant la mise en carton : `--help`, puis les
+tests unitaires générés avec lui. Le rapport complet part avec le produit, dans
+`verification.json` : le contrat annoncé à l'acheteur est **contrôlable**, pas
+seulement affirmé.
+
+> Catalyst, le dépôt dont cette usine reprend les idées, assemblait le code
+> renvoyé par le modèle et le déclarait livrable. Aucune vérification de
+> syntaxe, à aucun moment. Voir [docs/LOGICIEL.md](docs/LOGICIEL.md).
 
 ### Les signaux de marché — sources réelles
 
@@ -438,7 +480,8 @@ Trois mécanismes rendent la production fiable sur un forfait mobile :
 ```
 usine/
   core/        fournisseurs, routeur IA, pool de clés, contrôle qualité
-               déterministe, signaux de marché, mémoire de production,
+               déterministe, vérification du code généré (AST + bac à sable),
+               signaux de marché, mémoire de production,
                file de production, budget, A/B testing (beta-binomial),
                diagnostic de titre, prompts, réglages, sécurité,
                bus d'événements, HTTP, SQLite
@@ -446,14 +489,14 @@ usine/
   render/      moteur PDF, EPUB, HTML, modèle de document, métriques polices,
                assemblage commun des livrables
   pipelines/   catalogue (source unique des types), ebook, prompts, formation,
-               outils, modèles, imprimables, social, idées, variantes
+               outils, modèles, imprimables, social, logiciel, idées, variantes
   marketing/   fiche produit, page de vente, séquence de lancement
   packaging/   notice, licence, archive ZIP
   web/         serveur SSE + tableau de bord 3D (statique/scene.js, app.js)
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         174 tests + test de fumée, aucun appel réseau
+tests/         205 tests + test de fumée, aucun appel réseau
 install.sh     installation Termux
 ```
 
@@ -465,8 +508,8 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 174 tests
-python3 tests/fumee.py                       # les 8 chaînes via la vraie CLI
+python3 -m unittest discover -s tests -t .   # 205 tests
+python3 tests/fumee.py                       # les 9 chaînes via la vraie CLI
 ```
 
 Couvre notamment : validité de la table xref du PDF, conformité de l'archive
@@ -495,6 +538,13 @@ Le contrôle qualité est testé sur sa **reproductibilité** (deux exécutions
 donnent la même note), sa calibration (bon texte 10/10, texte générique 2/10)
 et ses garde-fous. Les sources de marché sont testées avec des réponses figées,
 dont le cas « Freelance (2023 film) » qui ne doit jamais être retenu.
+
+La vérification du code généré est testée sur du code **hostile**, pas sur des
+cas d'école : six échantillons (`os.system`, `shutil.rmtree`, `eval`, socket,
+`subprocess`, écriture sur chemin absolu) doivent tous être refusés à
+l'exécution, du code propre doit passer, et une boucle infinie doit être arrêtée
+à la limite de temps. Les trois cibles logicielles sont produites de bout en
+bout, et l'application web générée a été **ouverte dans un vrai Chromium**.
 
 La géométrie 3D est vérifiée séparément : les matrices de rotation, de caméra
 et la matrice normale inverse-transposée sont contrôlées numériquement, et le

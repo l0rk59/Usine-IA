@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import secrets
 import time
 import unicodedata
 from dataclasses import dataclass, field
@@ -36,7 +37,15 @@ def slug(texte: str, longueur: int = 60) -> str:
 
 
 def identifiant(type_produit: str, titre: str) -> str:
-    return "{}-{}-{}".format(type_produit, slug(titre, 32), time.strftime("%Y%m%d-%H%M%S"))
+    """Identifiant unique d'un produit, qui sert aussi de nom de dossier.
+
+    L'horodatage seul ne suffit pas : sa precision est la seconde, et l'usine
+    continue peut livrer deux produits dans la meme seconde. Les quatre
+    caracteres aleatoires evitent que le second ecrase les fichiers du premier.
+    """
+    return "{}-{}-{}-{}".format(
+        type_produit, slug(titre, 32), time.strftime("%Y%m%d-%H%M%S"),
+        secrets.token_hex(2))
 
 
 @dataclass

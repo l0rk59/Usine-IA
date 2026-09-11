@@ -18,12 +18,12 @@ from .core import apprentissage, budget, config, experience, images
 from .core import file as file_prod
 from .core import llm, marche
 from .core import prompts as registre_prompts
-from .core import reglages, securite, store
+from .core import reglages, securite, store, verification
 from .core.http import en_ligne
 from .marketing import vente
 from .packaging import livraison
 from .pipelines import (boite_outils, catalogue, ebook, formation, idees,
-                        impression, modeles, pack_prompts, social)
+                        impression, logiciel, modeles, pack_prompts, social)
 from .pipelines.base import Contexte, TAILLES, TONS
 
 # Couleurs ANSI : Termux les gere, mais on s'abstient si la sortie est redirigee.
@@ -245,6 +245,28 @@ def cmd_impression(args: argparse.Namespace) -> int:
         "Cahier de {} fiches a imprimer, formats A4 et Lettre US.".format(
             resume["fiches"])))
     return 0
+
+
+def cmd_logiciel(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication d'un outil logiciel")
+    resume = logiciel.produire(ctx, cible=args.cible,
+                               executer=not args.sans_essai)
+    if not resume["code_valide"]:
+        alerte("Du code n'a pas passe la verification : voir verification.json")
+    etat = "verifie"
+    if resume["demarre"] is True:
+        etat = "verifie et demarre"
+    elif resume["demarre"] is False:
+        etat = "verifie, mais l'essai reel a echoue"
+    _resume_console(_apres_production(
+        args, ctx, resume,
+        "{} en {} fichiers, {}.".format(
+            logiciel.CIBLES[resume["cible"]]["nom"].capitalize(),
+            resume["fichiers_code"], etat)))
+    return 0 if resume["code_valide"] else 1
 
 
 def cmd_reglages(args: argparse.Namespace) -> int:
@@ -981,6 +1003,15 @@ def cmd_docteur(args: argparse.Namespace) -> int:
                              "indisponible — seule l'IA locale fonctionnera")
     )
 
+    # Node n'est pas requis pour produire, mais son absence affaiblit la
+    # verification du JavaScript genere : le repli structurel ne voit pas une
+    # erreur de syntaxe fine.
+    if verification.node_disponible():
+        ok("Node.js present : verification complete du JavaScript genere")
+    else:
+        alerte("Node.js absent : le JavaScript genere sera verifie en mode "
+               "degrade (pkg install nodejs-lts)")
+
     titre_console("Fournisseurs IA")
     lignes = llm.diagnostic()
     for ligne in lignes:
@@ -1200,6 +1231,16 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.add_argument("--visuels", type=int, default=0,
                    help="nombre de visuels a generer")
     p.set_defaults(fonction=cmd_social)
+
+    p = sous_parseurs.add_parser("logiciel",
+                                 help="fabriquer un outil logiciel verifie")
+    _options_communes(p)
+    p.add_argument("-c", "--cible", default="cli", choices=sorted(logiciel.CIBLES),
+                   help="cli (outil en ligne de commande), web (page autonome), "
+                        "extension (Chrome Manifest V3)")
+    p.add_argument("--sans-essai", dest="sans_essai", action="store_true",
+                   help="analyser le code sans jamais l'executer")
+    p.set_defaults(fonction=cmd_logiciel)
 
     p = sous_parseurs.add_parser("complet",
                                  help="offre complete : ebook + bonus + kit de vente + zip")

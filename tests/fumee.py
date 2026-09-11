@@ -40,6 +40,12 @@ SCENARIOS = [
     ("impression", ["impression", "la planification hebdomadaire", "-n", "6",
                     "--sans-image"]),
     ("complet", ["complet", "la meditation au bureau", "-T", "mini", "--sans-image"]),
+    ("logiciel-cli", ["logiciel", "le nettoyage de fichiers en double", "-c", "cli",
+                      "--sans-image"]),
+    ("logiciel-web", ["logiciel", "le calcul de tarif pour freelances", "-c", "web",
+                      "--sans-image"]),
+    ("logiciel-extension", ["logiciel", "la lecture sans distraction",
+                            "-c", "extension", "--sans-image"]),
     ("qualite", ["ebook", "la negociation", "-T", "mini", "--sans-image",
                  "--qualite", "exigeant"]),
     ("file-ajout", ["file", "--ajouter", "une niche de test", "--type", "ebook"]),
@@ -71,6 +77,12 @@ ATTENDUS = {
     "modeles": [".pdf", "a-importer", "modeles.md", "systeme.json"],
     "impression": ["-A4.pdf", "-Lettre-US.pdf", "cahier.json"],
     "qualite": ["rapport-qualite.json", ".pdf", ".epub"],
+    "logiciel-cli": ["source/outil.py", "source/test_outil.py", "verification.json",
+                     "notice.md", "lire.html", ".pdf"],
+    "logiciel-web": ["source/index.html", "verification.json", "notice.md", ".pdf"],
+    "logiciel-extension": ["source/manifest.json", "source/popup.html",
+                           "source/popup.js", "source/contenu.js",
+                           "verification.json"],
 }
 
 
