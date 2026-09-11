@@ -679,6 +679,24 @@ def cmd_file(args: argparse.Namespace) -> int:
         print("\n  File : " + _resume_file())
         return 0
 
+    if args.explorer is not None:
+        from .production import prospecter
+
+        titre_console("Prospection")
+        rapport = prospecter(nombre=args.nombre or 8,
+                             graine=args.explorer or "",
+                             journal=lambda message: print("  " + message),
+                             avec_veille=not args.sans_veille)
+        if not rapport["graine"]:
+            return 1
+        if rapport["ajoutees"]:
+            ok("{} niche(s) ajoutee(s) a la file.".format(rapport["ajoutees"]))
+        elif rapport["pistes"]:
+            alerte("Aucune piste retenue : toutes recouvrent un produit deja "
+                   "fabrique.")
+        print("\n  File : " + _resume_file())
+        return 0 if rapport["ajoutees"] else 1
+
     if args.retirer:
         for identifiant in args.retirer:
             if file_prod.retirer(identifiant):
@@ -1847,6 +1865,12 @@ def construire_parseur() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--ajouter", nargs="+", metavar="NICHE",
                    help="ajouter une ou plusieurs niches")
+    p.add_argument("--explorer", nargs="?", const="", default=None,
+                   metavar="NICHE",
+                   help="chercher des niches voisines et les mettre en file "
+                        "(sans argument : part de ce qui a le mieux rapporte)")
+    p.add_argument("--sans-veille", dest="sans_veille", action="store_true",
+                   help="explorer sans aller lire les discussions")
     p.add_argument("--type", default="ebook", choices=catalogue.cles(en_file=True),
                    help="type de produit a fabriquer")
     p.add_argument("-n", "--nombre", type=int, default=0,

@@ -91,6 +91,43 @@ def historique(limite: int = 100) -> List[Dict[str, Any]]:
         return [dict(row) for row in cur.fetchall()]
 
 
+def meilleures_niches(limite: int = 5) -> List[Dict[str, Any]]:
+    """Sujets a reprendre pour en chercher de voisins, du meilleur au moins bon.
+
+    Deux criteres, dans cet ordre : ce qui a RAPPORTE, puis ce qui a bien
+    note. Le chiffre d'affaires est une mesure du marche, la note une mesure
+    de l'usine — quand les deux existent, c'est le marche qui tranche.
+    """
+    _assurer()
+    with store.cursor() as cur:
+        ventes = {ligne["sujet"]: ligne["brut"] for ligne in cur.execute(
+            "SELECT p.sujet AS sujet,"
+            " SUM(CASE WHEN v.remboursement = 0 THEN v.brut ELSE -v.brut END)"
+            " AS brut"
+            " FROM ventes v JOIN produits p ON p.id = v.produit_id"
+            " WHERE p.sujet IS NOT NULL AND p.sujet != ''"
+            " GROUP BY p.sujet") if ligne["brut"]}
+        notes = [dict(ligne) for ligne in cur.execute(
+            "SELECT sujet, AVG(note) AS note, COUNT(*) AS productions"
+            " FROM productions WHERE sujet IS NOT NULL AND sujet != ''"
+            " AND note IS NOT NULL GROUP BY sujet")]
+
+    classees = []
+    for entree in notes:
+        classees.append({
+            "sujet": entree["sujet"],
+            "note": round(float(entree["note"] or 0), 2),
+            "brut": round(float(ventes.get(entree["sujet"], 0.0)), 2),
+            "productions": entree["productions"],
+        })
+    for sujet, brut in ventes.items():
+        if not any(c["sujet"] == sujet for c in classees):
+            classees.append({"sujet": sujet, "note": 0.0,
+                             "brut": round(float(brut), 2), "productions": 0})
+    classees.sort(key=lambda c: (c["brut"], c["note"]), reverse=True)
+    return classees[:limite]
+
+
 def _racine(defaut: str) -> str:
     """Ramene un defaut a sa categorie, chiffres exclus.
 

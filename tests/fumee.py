@@ -59,6 +59,9 @@ SCENARIOS = [
     ("couverture-outils", ["outils", "le suivi de tresorerie", "-n", "4"]),
     ("file-ajout", ["file", "--ajouter", "une niche de test", "--type", "ebook"]),
     ("file-liste", ["file"]),
+    # Prospection : l'usine choisit une niche voisine a partir de ce qui a
+    # le mieux marche, sans refaire ce qu'elle a deja fabrique.
+    ("file-explorer", ["file", "--explorer", "--sans-veille", "-n", "5"]),
     ("usine-statut", ["usine", "statut"]),
     ("usine-demarrer", ["usine", "demarrer", "--max", "1", "--pause", "0"]),
     ("file-nettoyage", ["file", "--vider"]),

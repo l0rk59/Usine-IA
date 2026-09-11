@@ -20,7 +20,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from .core import apprentissage, budget, config, evenements, file, llm, reglages, store
+from .core import (apprentissage, budget, config, empreinte, evenements,
+                   file, llm, reglages, store)
 from .pipelines import catalogue, idees
 from .pipelines.base import Contexte
 
@@ -138,6 +139,78 @@ def demander_arret() -> bool:
 # --------------------------------------------------------------------------
 
 
+def graine_de_depart() -> str:
+    """Le sujet a partir duquel chercher des niches voisines.
+
+    L'ancienne version prenait la production la plus RECENTE portant une
+    note, alors que son commentaire annoncait « les sujets qui ont donne les
+    meilleures notes ». Entre une niche notee 9,5 et une notee 4,0 produite
+    apres, elle repartait de celle a 4,0.
+
+    Le classement se fait maintenant par chiffre d'affaires d'abord, note
+    ensuite : le revenu est une mesure du marche, la note une mesure de
+    l'usine, et quand les deux existent c'est le marche qui tranche.
+    """
+    meilleures = apprentissage.meilleures_niches(1)
+    return meilleures[0]["sujet"] if meilleures else ""
+
+
+def prospecter(nombre: int = 8, graine: str = "",
+               journal: Optional[Callable[[str], None]] = None,
+               avec_veille: bool = True) -> Dict[str, Any]:
+    """Cherche des niches voisines et met en file celles qui sont nouvelles.
+
+    C'est ce qui permet a l'usine de CHOISIR ce qu'elle fabrique au lieu
+    d'attendre qu'on le lui dise. Trois garde-fous, dans cet ordre :
+
+      1. la graine vient de ce qui a RAPPORTE, pas du dernier produit fait ;
+      2. l'exploration s'appuie sur des discussions reelles et sur les
+         mesures de marche, pas sur la seule imagination du modele. Le
+         remplissage automatique se passait des deux ;
+      3. une piste trop proche d'un produit DEJA FABRIQUE est ecartee avant
+         d'entrer en file. La file ne se dedoublonne que sur elle-meme :
+         sans ce filtre, l'usine refabriquait une niche deja traitee, et
+         « usine doublons » ne le signalait qu'apres coup, le quota depense.
+    """
+    dire = journal or (lambda message: None)
+    graine = graine or graine_de_depart()
+    if not graine:
+        dire("Aucun historique pour choisir une niche : ajoutez-en une a la "
+             "main, l'usine partira de la.")
+        return {"graine": "", "ajoutees": 0, "ecartees": [], "pistes": 0}
+
+    dire("Exploration a partir de « {} »...".format(graine))
+    contexte = Contexte(sujet=graine, journal=lambda m: None, sans_image=True)
+    try:
+        resultat = idees.produire(contexte, nombre=nombre, avec_marche=True,
+                                  avec_veille=avec_veille)
+    except Exception as exc:
+        dire("Exploration impossible : {}".format(exc))
+        return {"graine": graine, "ajoutees": 0, "ecartees": [], "pistes": 0}
+
+    pistes = resultat.get("idees", [])
+    ajoutees, ecartees = 0, []
+    for idee in pistes:
+        titre = idee.get("titre") or ""
+        type_produit = idee.get("type", "ebook")
+        proches = empreinte.sujets_proches(titre, type_produit)
+        if proches:
+            ecartees.append((titre, proches[0]["titre"] or proches[0]["sujet"]))
+            continue
+        if file.ajouter(titre, type_produit,
+                        options={"audience": idee.get("acheteur", "")},
+                        priorite=5, source="auto"):
+            ajoutees += 1
+
+    dire("{} piste(s) explorees, {} mise(s) en file.".format(
+        len(pistes), ajoutees))
+    for titre, deja in ecartees[:4]:
+        dire("  ecartee : « {} » recouvre « {} »".format(
+            titre[:38], (deja or "")[:38]))
+    return {"graine": graine, "ajoutees": ajoutees, "ecartees": ecartees,
+            "pistes": len(pistes)}
+
+
 class UsineContinue:
     def __init__(
         self,
@@ -205,40 +278,8 @@ class UsineContinue:
 
     # -- remplissage automatique -------------------------------------------
     def _remplir(self) -> int:
-        """Genere de nouvelles niches quand la file se vide.
-
-        On part des sujets qui ont donne les meilleures notes : c'est la seule
-        base dont l'usine dispose, et elle vaut mieux qu'un tirage au hasard.
-        """
-        graine = ""
-        for production in apprentissage.historique(30):
-            if production.get("sujet") and production.get("note"):
-                graine = production["sujet"]
-                break
-        if not graine:
-            self.journal("Mode auto : aucun historique pour choisir une niche. "
-                         "Ajoutez une premiere niche a la main.")
-            return 0
-
-        self.journal("File vide — exploration a partir de « {} »...".format(graine))
-        contexte = Contexte(sujet=graine, journal=lambda m: None,
-                            sans_image=True)
-        try:
-            resultat = idees.produire(contexte, nombre=8, avec_marche=False)
-        except Exception as exc:
-            self.journal("Exploration impossible : {}".format(exc))
-            return 0
-
-        ajoutees = 0
-        for idee in resultat.get("idees", []):
-            identifiant = file.ajouter(
-                idee["titre"], idee.get("type", "ebook"),
-                options={"audience": idee.get("acheteur", "")},
-                priorite=5, source="auto")
-            if identifiant:
-                ajoutees += 1
-        self.journal("{} niche(s) ajoutee(s) automatiquement.".format(ajoutees))
-        return ajoutees
+        """Genere de nouvelles niches quand la file se vide."""
+        return prospecter(nombre=8, journal=self.journal)["ajoutees"]
 
     # -- fabrication d'une entree -------------------------------------------
     def _fabriquer(self, entree: Dict[str, Any]) -> bool:

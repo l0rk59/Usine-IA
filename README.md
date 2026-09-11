@@ -394,6 +394,24 @@ Le sur-mesure est accessible depuis les **trois** interfaces : la ligne de
 commande, le menu Termux (`autre...` / `sur mesure...`) et le tableau de bord.
 Sur un téléphone, une option absente du menu n'existe pas.
 
+### L'usine choisit ses niches
+
+```bash
+usine file --explorer        # part de ce qui a le mieux rapporté
+```
+
+Un remplissage automatique existait : il partait du **dernier** produit
+fabriqué — son commentaire disait pourtant « les meilleures notes » —,
+explorait sans aucune mesure, et ne vérifiait pas si la piste avait déjà été
+traitée.
+
+Trois garde-fous maintenant : la graine vient de ce qui a **rapporté** (le
+revenu mesure le marché, la note mesure l'usine) ; l'exploration reçoit les
+quatre sources de marché **et** les discussions réelles ; et une piste trop
+proche d'un produit déjà fabriqué est écartée **avant** d'entrer en file — la
+file ne se dédoublonne que sur elle-même, et `usine doublons` ne rattrapait la
+répétition qu'après coup, le quota dépensé.
+
 ### Aller voir ce que les gens disent
 
 Les quatre sources de marché mesurent des **volumes** : elles disent si une
@@ -669,7 +687,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         375 tests + test de fumée, aucun appel réseau
+tests/         386 tests + test de fumée, aucun appel réseau
 install.sh     installation Termux
 ```
 
@@ -681,7 +699,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 375 tests
+python3 -m unittest discover -s tests -t .   # 386 tests
 python3 tests/fumee.py                       # les 9 chaînes via la vraie CLI
 ```
 

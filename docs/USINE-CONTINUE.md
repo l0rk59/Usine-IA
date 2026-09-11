@@ -10,6 +10,50 @@ usine file --ajouter "50 prompts pour community managers" --type prompts -n 50 -
 usine usine demarrer --budget appels_jour=250 produits_jour=3
 ```
 
+## L'usine choisit ses niches
+
+Jusqu'ici, la file attendait qu'on la remplisse. Un remplissage automatique
+existait — il partait du **dernier** produit fabriqué, explorait sans aucune
+mesure, et ne vérifiait pas si la piste avait déjà été traitée.
+
+```bash
+usine file --explorer                  # part de ce qui a le mieux rapporté
+usine file --explorer "une niche"      # part d'où vous voulez
+usine file --explorer --sans-veille    # sans aller lire les discussions
+```
+
+### Trois garde-fous, dans cet ordre
+
+**1. La graine vient de ce qui a rapporté.** Le commentaire de l'ancienne
+version annonçait « les sujets qui ont donné les meilleures notes ». Le code
+prenait le plus **récent** portant une note : entre une niche à 9,5 et une à
+4,0 produite après, il repartait de celle à 4,0.
+
+Le classement se fait maintenant par chiffre d'affaires d'abord, note ensuite.
+Le revenu mesure le marché, la note mesure l'usine — quand les deux existent,
+c'est le marché qui tranche.
+
+**2. L'exploration s'appuie sur des mesures.** Le remplissage automatique
+appelait l'explorateur avec `avec_marche=False` et sans veille : il tournait
+sur la seule imagination du modèle. Il reçoit désormais les quatre sources de
+marché **et** les discussions réelles.
+
+**3. Une piste déjà fabriquée est écartée avant d'entrer en file.** La file ne
+se dédoublonne que sur elle-même — sur le couple exact (sujet, type). Sans ce
+filtre, l'usine refabriquait une niche déjà traitée sous un titre voisin, et
+`usine doublons` ne le signalait qu'**après coup**, le quota dépensé.
+
+```
+  Exploration a partir de « la prospection pour freelances »...
+  8 piste(s) explorees, 6 mise(s) en file.
+    ecartee : « Prospection freelance » recouvre « Le systeme du freelance »
+```
+
+### Depuis le téléphone
+
+Menu → *Usine continue* → **Laisser l'usine chercher**. Il propose la graine,
+dit d'où elle vient, et laisse la remplacer.
+
 ## La file
 
 Persistée en base, pas en mémoire — et c'est la décision qui compte le plus

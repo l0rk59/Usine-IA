@@ -263,6 +263,7 @@ def menu_usine(executer: Callable[[List[str]], int]) -> None:
 
         choix = choisir("Que faire ?", [
             ("Ajouter une niche a la file", "elle sera fabriquee a son tour"),
+            ("Laisser l'usine chercher", "niches voisines de ce qui a marche"),
             ("Voir la file", "consulter, retirer, relancer un echec"),
             ("Demarrer l'usine", "produit en boucle jusqu'au budget ou a la fin"),
             ("Arreter l'usine", "termine le produit en cours puis s'arrete"),
@@ -274,8 +275,10 @@ def menu_usine(executer: Callable[[List[str]], int]) -> None:
         if choix == 1:
             _ajouter_a_la_file()
         elif choix == 2:
-            _voir_la_file()
+            _prospecter(executer)
         elif choix == 3:
+            _voir_la_file()
+        elif choix == 4:
             if verrou_actif() is not None:
                 print(c("\n  Une usine tourne deja.", "33"))
                 demander("  Appuyez sur Entree")
@@ -294,11 +297,43 @@ def menu_usine(executer: Callable[[List[str]], int]) -> None:
             print(c("\n  Ctrl+C arrete proprement apres le produit en cours.\n", "2"))
             executer(arguments)
             demander("\n  Appuyez sur Entree")
-        elif choix == 4:
+        elif choix == 5:
             executer(["usine", "arreter"])
             demander("\n  Appuyez sur Entree")
-        elif choix == 5:
+        elif choix == 6:
             _regler_budget()
+
+
+def _prospecter(executer: Callable[[List[str]], int]) -> None:
+    """Laisser l'usine proposer des niches voisines de ce qui a marche."""
+    from .production import graine_de_depart
+
+    entete("Prospection")
+    graine = graine_de_depart()
+    if graine:
+        print("  Depart : « {} »".format(graine[:46]))
+        print("  " + c("c'est la niche qui a le mieux rapporte, a defaut la "
+                       "mieux notee.", "2"))
+        if not demander_oui("Partir de la ?", True):
+            graine = demander("Partir de quelle niche", obligatoire=True)
+            if not graine:
+                return
+    else:
+        print("  " + c("Aucun historique : l'usine ne sait pas encore ce qui "
+                       "marche chez vous.", "33"))
+        graine = demander("Partir de quelle niche", obligatoire=True)
+        if not graine:
+            return
+
+    arguments = ["file", "--explorer", graine]
+    combien = demander("Combien de pistes", "8")
+    if combien.isdigit():
+        arguments += ["-n", combien]
+    if not demander_oui("Aller lire les discussions ? (plus lent)", True):
+        arguments.append("--sans-veille")
+    print()
+    executer(arguments)
+    demander("\n  Appuyez sur Entree")
 
 
 def _ajouter_a_la_file() -> None:
