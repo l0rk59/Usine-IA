@@ -32,20 +32,15 @@ ANGLES = [
 ]
 
 # Directions visuelles nettement distinctes : comparer six degrades de bleu ne
-# testerait rien non plus.
+# testerait rien non plus. Chaque direction combine une mise en page et une
+# palette de l'atelier — donc des couvertures REELLEMENT LIVRABLES. Tester
+# des images filigranees revenait a choisir entre deux propositions dont
+# aucune ne pouvait etre vendue.
 STYLES_COUVERTURE = [
-    ("editorial", "minimal editorial book cover, generous white space, one bold "
-                  "geometric shape, muted palette"),
-    ("contraste", "high contrast poster design, single saturated color on dark "
-                  "background, brutalist typography space"),
-    ("organique", "soft organic shapes, warm gradient, hand-drawn texture, "
-                  "calm and approachable"),
-    ("technique", "technical blueprint aesthetic, thin grid lines, schematic "
-                  "diagram, precise and analytical"),
-    ("photo", "abstract macro photography, shallow depth of field, natural "
-              "light, premium feel"),
-    ("retro", "retro print aesthetic, halftone texture, two-tone risograph "
-              "palette, vintage paper grain"),
+    ("bandeau-nuit", 0, 0), ("centre-encre", 1, 1),
+    ("diagonale-foret", 2, 2), ("arcs-prune", 3, 3),
+    ("bloc-acier", 4, 4), ("bandeau-argile", 6, 0),
+    ("centre-menthe", 7, 1), ("arcs-safran", 5, 3),
 ]
 
 
@@ -163,28 +158,27 @@ def generer_couvertures(
     nombre: int = 4,
     sous_titre: str = "",
 ) -> List[Dict[str, str]]:
-    """Une couverture par direction visuelle, en ligne ou en repli local."""
+    """Une couverture livrable par direction visuelle."""
     dossier.mkdir(parents=True, exist_ok=True)
     styles = STYLES_COUVERTURE[: max(2, min(nombre, len(STYLES_COUVERTURE)))]
     resultat: List[Dict[str, str]] = []
-    for index, (nom_style, invite_style) in enumerate(styles):
+    for index, (nom_style, palette, modele) in enumerate(styles):
         ctx.journal("  couverture {}/{} — style « {} »".format(
             index + 1, len(styles), nom_style))
         evenements.publier("section", etape="couverture", index=index + 1,
                            total=len(styles), titre=nom_style)
         chemin = images.generer_couverture(
             dossier, titre, sous_titre, ctx.auteur,
-            style="{}, theme: {}".format(invite_style, ctx.sujet),
-            en_ligne=not ctx.hors_ligne and not ctx.sans_image,
+            en_ligne=False,          # l'atelier, toujours : on teste du vendable
             nom="couverture-{}-{}".format(index + 1, nom_style),
-            palette=index,
-            graine=1000 + index * 137,
+            palette=palette, modele=modele,
+            marque=getattr(ctx, "marque", "") or "",
         )
         resultat.append({
             "style": nom_style,
             "fichier": chemin.name,
             "chemin": str(chemin),
-            "genere": "en ligne" if chemin.suffix != ".svg" else "local (SVG)",
+            "genere": "atelier",
         })
     return resultat
 

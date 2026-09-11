@@ -13,6 +13,7 @@ from typing import Any, Dict, List
 
 from ..agents import equipe
 from ..core import evenements, images
+from ..render import livraison
 from ..render.page import ecrire_page
 from ..render.pdf import A4, LETTRE, DocumentPDF
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
@@ -123,14 +124,10 @@ def produire(ctx: Contexte, pages: int = 12) -> Dict[str, Any]:
     fichiers: List[Path] = []
     if couverture:
         fichiers.append(couverture)
-    octets = couverture.read_bytes() if (
-        couverture and couverture.suffix.lower() in (".jpg", ".jpeg")) else None
-
     for nom_format, format_page in (("A4", A4), ("Lettre-US", LETTRE)):
-        doc = DocumentPDF(format_page=format_page, titre_courant=titre,
-                          police_corps="Helvetica", marge=54)
-        doc.page_couverture(titre, cahier.get("sous_titre", ""), ctx.auteur,
-                            image_jpeg=octets)
+        doc = livraison.document(ctx, titre, cahier.get("sous_titre", ""),
+                                 couverture, format_page=format_page,
+                                 marge=54, police_corps="Helvetica")
         doc.titre("Mode d'emploi", 1)
         doc.paragraphe(
             "Imprimez ce cahier en recto simple, sur papier ordinaire. Chaque fiche "

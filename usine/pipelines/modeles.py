@@ -15,8 +15,8 @@ from typing import Any, Dict, List
 from ..agents import equipe
 from ..core import evenements, images
 from ..render import document as D
+from ..render import livraison
 from ..render.page import ecrire_page
-from ..render.pdf import DocumentPDF
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
 
 
@@ -166,11 +166,8 @@ def _exporter(ctx: Contexte, systeme: Dict[str, Any], guide: str) -> List[Path]:
             en_ligne=not ctx.hors_ligne)
         fichiers.append(couverture)
 
-    doc = DocumentPDF(titre_courant=titre, police_corps="Helvetica")
-    octets = couverture.read_bytes() if (
-        couverture and couverture.suffix.lower() in (".jpg", ".jpeg")) else None
-    doc.page_couverture(titre, systeme.get("promesse", ""), ctx.auteur,
-                        image_jpeg=octets)
+    doc = livraison.document(ctx, titre, systeme.get("promesse", ""),
+                             couverture, police_corps="Helvetica")
     doc.titre("Guide d'installation", 1)
     D.vers_pdf(D.analyser(guide), doc, sauter_h1=True)
     for base in systeme["bases"]:

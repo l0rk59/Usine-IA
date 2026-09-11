@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from ..core import images, llm
+from ..render import livraison
 from ..render.page import ecrire_page
-from ..render.pdf import DocumentPDF
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
 
 ROLE = "un strategiste de contenu qui ecrit des posts qui font reagir, sans clickbait"
@@ -191,8 +191,14 @@ def _exporter(ctx: Contexte, titre: str, reseau: str, calendrier: List[Dict[str,
     )
     fichiers.append(chemin_json)
 
-    doc = DocumentPDF(titre_courant=titre, police_corps="Helvetica")
-    doc.page_couverture(titre, "Calendrier editorial pret a publier", ctx.auteur)
+    couverture = None
+    if not ctx.sans_image:
+        couverture = images.generer_couverture(
+            ctx.dossier, titre, "Calendrier editorial pret a publier",
+            ctx.auteur, marque=getattr(ctx, "marque", "") or "")
+        fichiers.append(couverture)
+    doc = livraison.document(ctx, titre, "Calendrier editorial pret a publier",
+                             couverture, police_corps="Helvetica")
     doc.titre("Mode d'emploi", 1)
     doc.paragraphe(
         "Publiez une piece de contenu par jour ouvre. Adaptez les chiffres et les "

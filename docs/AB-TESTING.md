@@ -106,22 +106,20 @@ titre avec celui de la période. Une semaine de vacances scolaires ou un partage
 inattendu fausse la comparaison. Alternez les variantes sur plusieurs cycles
 plutôt que de faire une seule semaine chacune.
 
-## Le filigrane des couvertures
+## Les couvertures testées sont vendables
 
-**Vérifié :** au palier anonyme, Pollinations appose un filigrane
-« @pollinations.ai » sur chaque image. Le paramètre `nologo` que mentionne la
-documentation **n'a aucun effet** sans jeton — la réponse est identique octet
-pour octet avec ou sans lui.
+Ce test comparait jusqu'ici des images générées par Pollinations. **Vérifié,
+deux fois :** au palier anonyme, ce service appose un filigrane
+`pollinations.ai` sur chaque image, et le paramètre `nologo` que mentionne sa
+documentation n'a aucun effet sans jeton.
 
-Conséquence pratique :
+On choisissait donc entre quatre propositions dont aucune ne pouvait être
+vendue — un test dont le gagnant était inutilisable.
 
-- les couvertures générées en ligne servent à **choisir une direction
-  visuelle**, pas à être vendues ;
-- pour une couverture livrable, utilisez `--sans-image` : les couvertures SVG
-  sont générées localement, sans filigrane, et vous appartiennent entièrement ;
-- ou fournissez votre propre illustration.
-
-L'usine vous prévient au moment de créer un test de couvertures.
+Les huit directions visuelles sont désormais des combinaisons palette × mise
+en page de l'atelier local : PNG 1200 × 1800, sans filigrane, prêtes à
+téléverser. **Ce qui gagne le test est ce qui part chez l'acheteur.** Voir
+[COUVERTURE.md](COUVERTURE.md).
 
 ## Depuis le téléphone
 

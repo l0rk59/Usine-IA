@@ -1,145 +1,31 @@
 """Generation d'images : couverture, visuels reseaux sociaux.
 
-Source principale : Pollinations (aucune cle API requise).
-Repli hors ligne : couverture SVG generee localement, sans dependance.
+Source par defaut : l'atelier local (usine/render/couverture.py), qui compose
+la couverture en Python pur — degrade, geometrie, titre compose dans une
+fonte dessinee pour l'occasion. Aucun reseau, aucune cle, aucun filigrane.
 
-ATTENTION, POINT VERIFIE : au palier anonyme, Pollinations appose un
-filigrane « @pollinations.ai » sur chaque image. Le parametre « nologo », que
-la documentation mentionne, n'a AUCUN effet sans jeton : la reponse est
-identique octet pour octet avec ou sans lui. Une couverture destinee a la
-vente ne doit donc pas venir de la : utilisez la couverture SVG locale
-(sans filigrane, entierement votre propriete) ou votre propre illustration.
+POURQUOI CE N'EST PAS POLLINATIONS QUI EST PAR DEFAUT, alors que le service
+est gratuit et sans cle : au palier anonyme, il appose un filigrane
+« pollinations.ai » en bas de chaque image. Le parametre « nologo » que la
+documentation mentionne n'a aucun effet sans jeton — verifie, image a
+l'appui. Une couverture filigranee ne se vend pas : la place de marche la
+refuse ou l'acheteur la prend pour une contrefacon.
+
+L'usine a donc longtemps produit, par defaut, des couvertures inutilisables
+tout en documentant, dans ce meme fichier, qu'elles l'etaient. L'illustration
+par IA reste disponible — reglage « couverture=ia » — mais elle exige un
+jeton, justement parce que sans jeton elle ne sert a rien.
 """
 
 from __future__ import annotations
 
-import hashlib
-import random
 import urllib.parse
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 from . import config
+from ..render import couverture
 from .http import HttpErreur, get_bytes
-
-PALETTES: List[Tuple[str, str, str]] = [
-    ("#0f172a", "#38bdf8", "#f8fafc"),
-    ("#1e1b4b", "#a78bfa", "#faf5ff"),
-    ("#052e16", "#4ade80", "#f0fdf4"),
-    ("#450a0a", "#fb923c", "#fff7ed"),
-    ("#0c4a6e", "#facc15", "#f8fafc"),
-    ("#18181b", "#f472b6", "#fafafa"),
-]
-
-
-def _palette(graine: str, index: Optional[int] = None) -> Tuple[str, str, str]:
-    """Palette choisie par empreinte du titre, ou imposee pour une variante."""
-    if index is not None:
-        return PALETTES[index % len(PALETTES)]
-    position = int(hashlib.md5(graine.encode("utf-8")).hexdigest(), 16) % len(PALETTES)
-    return PALETTES[position]
-
-
-def _echapper_xml(texte: str) -> str:
-    return (
-        texte.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )
-
-
-def decouper(texte: str, largeur: int) -> List[str]:
-    """Coupe un texte en lignes d'au plus `largeur` caracteres."""
-    lignes: List[str] = []
-    courante = ""
-    for mot in texte.split():
-        essai = (courante + " " + mot).strip()
-        if len(essai) <= largeur:
-            courante = essai
-        else:
-            if courante:
-                lignes.append(courante)
-            courante = mot
-    if courante:
-        lignes.append(courante)
-    return lignes
-
-
-def couverture_svg(
-    titre: str,
-    sous_titre: str = "",
-    auteur: str = "",
-    largeur: int = 1200,
-    hauteur: int = 1600,
-    palette: Optional[int] = None,
-) -> str:
-    """Couverture vectorielle autonome : fonctionne toujours, meme hors ligne."""
-    fond, accent, encre = _palette(titre, palette)
-    lignes = decouper(titre.upper(), 18)[:5]
-    taille = 92 if len(lignes) <= 3 else 74
-    depart = hauteur // 2 - (len(lignes) - 1) * taille // 2 - 60
-
-    blocs = []
-    for i, ligne in enumerate(lignes):
-        blocs.append(
-            '<text x="{x}" y="{y}" font-family="Georgia,serif" font-size="{t}" '
-            'font-weight="bold" fill="{c}" text-anchor="middle">{s}</text>'.format(
-                x=largeur // 2, y=depart + i * int(taille * 1.15), t=taille,
-                c=encre, s=_echapper_xml(ligne)
-            )
-        )
-    if sous_titre:
-        for j, ligne in enumerate(decouper(sous_titre, 42)[:2]):
-            blocs.append(
-                '<text x="{x}" y="{y}" font-family="Helvetica,Arial,sans-serif" '
-                'font-size="38" fill="{c}" text-anchor="middle" opacity="0.9">{s}</text>'.format(
-                    x=largeur // 2,
-                    y=depart + len(lignes) * int(taille * 1.15) + 70 + j * 52,
-                    c=accent,
-                    s=_echapper_xml(ligne),
-                )
-            )
-    if auteur:
-        blocs.append(
-            '<text x="{x}" y="{y}" font-family="Helvetica,Arial,sans-serif" font-size="34" '
-            'fill="{c}" text-anchor="middle" opacity="0.75">{s}</text>'.format(
-                x=largeur // 2, y=hauteur - 130, c=encre, s=_echapper_xml(auteur)
-            )
-        )
-
-    rnd = random.Random("{}-{}".format(titre, palette if palette is not None else ""))
-    cercles = "".join(
-        '<circle cx="{}" cy="{}" r="{}" fill="{}" opacity="{:.2f}"/>'.format(
-            rnd.randint(0, largeur), rnd.randint(0, hauteur),
-            rnd.randint(60, 320), accent, rnd.uniform(0.04, 0.13)
-        )
-        for _ in range(9)
-    )
-
-    return (
-        '<?xml version="1.0" encoding="UTF-8"?>\n'
-        '<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" '
-        'viewBox="0 0 {w} {h}">'
-        '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">'
-        '<stop offset="0%" stop-color="{fond}"/>'
-        '<stop offset="100%" stop-color="{fond2}"/></linearGradient></defs>'
-        '<rect width="{w}" height="{h}" fill="url(#g)"/>{cercles}'
-        '<rect x="70" y="70" width="{wi}" height="{hi}" fill="none" '
-        'stroke="{accent}" stroke-width="4" opacity="0.55"/>'
-        "{blocs}</svg>"
-    ).format(
-        w=largeur,
-        h=hauteur,
-        fond=fond,
-        fond2=accent + "22",
-        cercles=cercles,
-        wi=largeur - 140,
-        hi=hauteur - 140,
-        accent=accent,
-        blocs="".join(blocs),
-    )
-
 
 def image_pollinations(
     invite: str,
@@ -194,6 +80,16 @@ def filigrane_probable() -> bool:
     return not bool(config.env("POLLINATIONS_TOKEN"))
 
 
+LARGEUR_COUVERTURE = 1200
+HAUTEUR_COUVERTURE = 1800
+
+
+def illustration_demandee() -> bool:
+    """Vrai si l'utilisateur a explicitement demande une couverture par IA."""
+    from . import reglages
+    return str(reglages.lire("couverture", "atelier")).lower() == "ia"
+
+
 def generer_couverture(
     dossier: Path,
     titre: str,
@@ -204,14 +100,16 @@ def generer_couverture(
     nom: str = "couverture",
     palette: Optional[int] = None,
     graine: Optional[int] = None,
+    marque: str = "",
+    modele: Optional[int] = None,
 ) -> Path:
-    """Ecrit une couverture dans `dossier`. Renvoie le chemin produit.
+    """Ecrit une couverture dans `dossier`. Renvoie le chemin du PNG.
 
-    Tente Pollinations ; retombe systematiquement sur le SVG local en cas
-    d'echec, pour qu'un produit ne soit jamais bloque par le reseau.
+    Le PNG est le fichier qui compte : Gumroad, Etsy et KDP n'acceptent pas
+    le SVG. Le SVG est ecrit a cote, meme geometrie, pour qui veut retoucher.
     """
     dossier.mkdir(parents=True, exist_ok=True)
-    if en_ligne:
+    if en_ligne and illustration_demandee() and not filigrane_probable():
         invite = (
             "book cover artwork, {style}, abstract editorial design, bold geometric shapes, "
             "premium minimal poster, theme: {titre}. No text, no letters, no words."
@@ -222,11 +120,34 @@ def generer_couverture(
             chemin.write_bytes(brut)
             return chemin
         except Exception:
-            pass  # repli local silencieux : la couverture SVG reste presentable
-    chemin = dossier / "{}.svg".format(nom)
-    chemin.write_text(couverture_svg(titre, sous_titre, auteur, palette=palette),
-                      encoding="utf-8")
+            pass  # repli sur l'atelier : un produit n'attend pas le reseau
+    dessin = couverture.composer(
+        titre, sous_titre, auteur, marque,
+        largeur=LARGEUR_COUVERTURE, hauteur=HAUTEUR_COUVERTURE,
+        palette=palette, modele=modele)
+    chemin = dossier / "{}.png".format(nom)
+    chemin.write_bytes(couverture.png(dessin))
+    (dossier / "{}.svg".format(nom)).write_text(couverture.svg(dessin),
+                                                encoding="utf-8")
     return chemin
+
+
+def couverture_pleine_page(
+    titre: str, sous_titre: str = "", auteur: str = "", marque: str = "",
+    palette: Optional[int] = None, modele: Optional[int] = None,
+    largeur: int = 760, hauteur: int = 1075,
+) -> Tuple[bytes, int, int]:
+    """Pixels bruts de la meme couverture, au format d'une page PDF.
+
+    Recomposee plutot que redimensionnee : la mise en page se reajuste au
+    rapport de la page, et le rendu reste net. La palette et le modele
+    derivent du titre, donc le PDF et le PNG montrent le meme dessin.
+    """
+    dessin = couverture.composer(titre, sous_titre, auteur, marque,
+                                 largeur=largeur, hauteur=hauteur,
+                                 palette=palette, modele=modele)
+    toile = couverture.toile(dessin)
+    return (toile.rvb(), toile.largeur, toile.hauteur)
 
 
 def generer_visuel(

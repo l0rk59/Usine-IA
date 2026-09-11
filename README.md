@@ -262,6 +262,39 @@ seulement affirmé.
 > renvoyé par le modèle et le déclarait livrable. Aucune vérification de
 > syntaxe, à aucun moment. Voir [docs/LOGICIEL.md](docs/LOGICIEL.md).
 
+### La couverture est composée ici, et son contraste est mesuré
+
+Chaque produit sortait avec une couverture générée par Pollinations. Au palier
+anonyme, ce service **appose un filigrane `pollinations.ai` sur chaque image** —
+`nologo` n'a aucun effet sans jeton, vérifié image à l'appui. Une couverture
+filigranée ne se vend pas : la place de marché la refuse, ou l'acheteur la
+prend pour une contrefaçon.
+
+Le plus gênant n'était pas l'erreur mais qu'elle soit **écrite dans le fichier
+qui la commettait** : `usine/core/images.py` documentait en tête, en majuscules,
+pourquoi ces images ne pouvaient pas servir de couverture — puis appelait
+Pollinations par défaut, à chaque produit.
+
+La couverture est désormais **dessinée localement**, sans réseau ni dépendance :
+une fonte capitale écrite en polygones, un rasteriseur, cinq mises en page et
+huit palettes.
+
+```
+couverture.png     1200 × 1800 — Gumroad, Etsy, KDP n'acceptent pas le SVG
+couverture.svg     même géométrie, vectorielle, pour retoucher
+<produit>.pdf      la couverture occupe la première page, pleine page
+```
+
+**Le contraste n'est plus décrété, il est calculé.** L'ancienne version prenait
+la couleur du sous-titre dans la palette : sur le fond prune, cela donnait du
+rose sur du rose — 1,4:1. L'encre est maintenant retenue par son rapport de
+contraste avec **ce qu'il y a vraiment derrière** — le dégradé, plus tout décor
+qui traverse la bande de texte. Un test rend chaque couverture deux fois, avec
+et sans son texte, et exige 4,5:1 (WCAG AA) sur les 40 combinaisons.
+
+> Pourquoi une fonte dessinée plutôt qu'embarquée, pourquoi pas de JPEG, et ce
+> que les tests ont trouvé : [docs/COUVERTURE.md](docs/COUVERTURE.md).
+
 ### Les signaux de marché — sources réelles
 
 ```bash
@@ -334,10 +367,9 @@ variantes (ce qui évite le piège des comparaisons multiples), résultat graîn
 donc reproductible, et vérifié dans les tests contre une formule exacte
 indépendante.
 
-> **Filigrane :** au palier anonyme, Pollinations marque chaque image
-> « @pollinations.ai » — `nologo` n'a aucun effet sans jeton, vérifié octet pour
-> octet. Les couvertures en ligne servent à choisir une direction ; pour une
-> couverture livrable, `--sans-image` produit des SVG locaux sans filigrane.
+> Les couvertures comparées sont celles de l'atelier local : **ce qui gagne le
+> test est ce qui part chez l'acheteur**. Avant, le test comparait des images
+> filigranées — quatre propositions dont aucune n'était vendable.
 > Détails : [docs/AB-TESTING.md](docs/AB-TESTING.md).
 
 ## L'usine continue
@@ -460,7 +492,7 @@ et devient obligatoire.
      ├──► EPUB 3 (+ toc.ncx pour les vieilles liseuses)
      ├──► HTML   (responsive, thème clair/sombre, imprimable)
      ├──► CSV / JSON / Markdown / TXT
-     ├──► couverture (API sans clé, ou SVG local)
+     ├──► couverture PNG + SVG (composée localement, sans filigrane)
      └──► kit de vente + archive ZIP
 ```
 
@@ -487,7 +519,8 @@ usine/
                bus d'événements, HTTP, SQLite
   agents/      les sept rôles et la boucle critique → révision
   render/      moteur PDF, EPUB, HTML, modèle de document, métriques polices,
-               assemblage commun des livrables
+               assemblage commun des livrables, fonte capitale en polygones,
+               rasteriseur + encodeur PNG, composition de couverture
   pipelines/   catalogue (source unique des types), ebook, prompts, formation,
                outils, modèles, imprimables, social, logiciel, idées, variantes
   marketing/   fiche produit, page de vente, séquence de lancement
@@ -496,7 +529,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         205 tests + test de fumée, aucun appel réseau
+tests/         231 tests + test de fumée, aucun appel réseau
 install.sh     installation Termux
 ```
 
@@ -508,7 +541,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 205 tests
+python3 -m unittest discover -s tests -t .   # 231 tests
 python3 tests/fumee.py                       # les 9 chaînes via la vraie CLI
 ```
 
@@ -538,6 +571,12 @@ Le contrôle qualité est testé sur sa **reproductibilité** (deux exécutions
 donnent la même note), sa calibration (bon texte 10/10, texte générique 2/10)
 et ses garde-fous. Les sources de marché sont testées avec des réponses figées,
 dont le cas « Freelance (2023 film) » qui ne doit jamais être retenu.
+
+La couverture est testée en la **regardant** : chaque combinaison palette ×
+mise en page est rendue deux fois, avec et sans son texte, et le contraste est
+mesuré sur les pixels obtenus. Le test exige 4,5:1 et refuse qu'un titre
+déborde de la page. Il a trouvé, à l'écriture, huit combinaisons illisibles,
+un sous-titre imprimé sous le bord de la page, et cinq lettres mal dessinées.
 
 La vérification du code généré est testée sur du code **hostile**, pas sur des
 cas d'école : six échantillons (`os.system`, `shutil.rmtree`, `eval`, socket,

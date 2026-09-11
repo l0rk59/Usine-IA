@@ -220,10 +220,17 @@ def _exporter(ctx: Contexte, programme: Dict[str, Any], contenus: List[Tuple[str
 def _cahier(ctx: Contexte, programme: Dict[str, Any], titre: str):
     """Construit le cahier d'exercices, second document du produit."""
 
-    def construire(octets_jpeg):
+    def construire(_couverture):
+        # Le cahier compose la sienne plutot que de reprendre celle du manuel :
+        # c'est un document distinct, que l'acheteur ouvre separement.
         doc = DocumentPDF(titre_courant="{} — cahier d'exercices".format(titre),
                           police_corps="Helvetica")
-        doc.page_couverture("Cahier d'exercices", titre, ctx.auteur)
+        if ctx.sans_image:
+            doc.page_couverture("Cahier d'exercices", titre, ctx.auteur)
+        else:
+            doc.page_couverture_image(*images.couverture_pleine_page(
+                "Cahier d'exercices", titre, ctx.auteur,
+                getattr(ctx, "marque", "") or ""))
         for index, module in enumerate(programme["modules"], 1):
             doc.titre("Module {} — {}".format(index, module["titre"]), 1)
             if module["objectif"]:

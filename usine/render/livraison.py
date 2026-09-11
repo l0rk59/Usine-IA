@@ -77,7 +77,8 @@ class Produit:
     # type garde son vocabulaire plutot que d'heriter d'un terme generique.
     libelle_sections: str = "section(s)"
     # Documents supplementaires : cahier d'exercices, second format de page.
-    documents: List[Tuple[str, Callable[[Optional[bytes]], DocumentPDF]]] = \
+    documents: List[Tuple[str, Callable[[Optional[Tuple[str, Any]]],
+                                        DocumentPDF]]] = \
         field(default_factory=list)
 
     def base(self) -> str:
@@ -96,15 +97,28 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
 
     # --- couverture (avant le PDF, qui peut l'incorporer) -----------------
     couverture = None
+    page_couverture = None
     if not ctx.sans_image:
         couverture = images.generer_couverture(
             dossier, produit.titre, produit.sous_titre, ctx.auteur,
             style=produit.style_couverture or produit.type,
-            en_ligne=not ctx.hors_ligne)
+            en_ligne=not ctx.hors_ligne,
+            marque=getattr(ctx, "marque", "") or "")
         fichiers.append(couverture)
-    octets_jpeg = (couverture.read_bytes()
-                   if couverture and couverture.suffix.lower() in (".jpg", ".jpeg")
-                   else None)
+        svg = couverture.with_suffix(".svg")
+        if svg.exists():
+            fichiers.append(svg)
+        if couverture.suffix.lower() in (".jpg", ".jpeg"):
+            # Illustration IA : le PDF garde sa vignette centree.
+            page_couverture = ("jpeg", couverture.read_bytes())
+        else:
+            # Couverture d'atelier : elle porte deja son titre, donc elle
+            # prend la page entiere au lieu d'etre repetee en vignette.
+            page_couverture = ("rvb", images.couverture_pleine_page(
+                produit.titre, produit.sous_titre, ctx.auteur,
+                getattr(ctx, "marque", "") or "",
+                largeur=int(produit.format_page[0] * 1.28),
+                hauteur=int(produit.format_page[1] * 1.28)))
 
     blocs_analyses = [(b, D.analyser(b.corps) if b.corps else []) for b in produit.blocs]
     # Un bloc qui n'a qu'une mise en page PDF est PDF par nature : l'inscrire
@@ -126,7 +140,7 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
 
     # --- PDF --------------------------------------------------------------
     if "pdf" in formats:
-        doc = _document(produit, ctx, octets_jpeg)
+        doc = _document(produit, ctx, page_couverture)
         for bloc, blocs_md in blocs_analyses:
             doc.titre(bloc.titre, 1, sommaire=bloc.sommaire)
             if bloc.rendu_pdf is not None:
@@ -140,7 +154,7 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
 
     # --- documents supplementaires ----------------------------------------
     for suffixe, constructeur in produit.documents:
-        doc = constructeur(octets_jpeg)
+        doc = constructeur(page_couverture)
         chemin = dossier / "{}-{}.pdf".format(base, suffixe)
         doc.enregistrer(chemin)
         fichiers.append(chemin)
@@ -207,12 +221,53 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
 
 
 def _document(produit: Produit, ctx: Any,
-              octets_jpeg: Optional[bytes]) -> DocumentPDF:
+              couverture: Optional[Tuple[str, Any]]) -> DocumentPDF:
     doc = DocumentPDF(format_page=produit.format_page, marge=produit.marge,
                       titre_courant=produit.titre,
                       police_corps=produit.police_corps)
-    doc.page_couverture(produit.titre, produit.sous_titre, ctx.auteur,
-                        image_jpeg=octets_jpeg)
+    poser_couverture(doc, produit.titre, produit.sous_titre, ctx.auteur,
+                     couverture)
+    return doc
+
+
+def poser_couverture(doc: DocumentPDF, titre: str, sous_titre: str,
+                     auteur: str, couverture: Optional[Tuple[str, Any]]) -> None:
+    """Premiere page du PDF, selon l'origine de la couverture."""
+    if couverture and couverture[0] == "rvb":
+        rvb, largeur, hauteur = couverture[1]
+        doc.page_couverture_image(rvb, largeur, hauteur)
+        return
+    doc.page_couverture(titre, sous_titre, auteur,
+                        image_jpeg=couverture[1] if couverture else None)
+
+
+def document(ctx: Any, titre: str, sous_titre: str,
+             couverture: Optional[Path] = None, format_page: Tuple[float, float] = A4,
+             marge: float = 62.0, police_corps: str = "Times-Roman",
+             titre_courant: str = "") -> DocumentPDF:
+    """Un PDF ouvert sur sa couverture, quelle qu'en soit la provenance.
+
+    Les chaines qui gardent leur propre exportateur passaient toutes par les
+    trois memes lignes : lire le fichier s'il est en JPEG, le donner au PDF,
+    sinon rien. Le jour ou la couverture est devenue un PNG compose
+    localement, ces trois lignes ont cesse d'en incorporer aucune — sans
+    bruit, puisque le PDF restait valide. Elles vivent ici desormais.
+    """
+    doc = DocumentPDF(format_page=format_page, marge=marge,
+                      police_corps=police_corps,
+                      titre_courant=titre_courant or titre)
+    if couverture is None:
+        poser_couverture(doc, titre, sous_titre, ctx.auteur, None)
+    elif couverture.suffix.lower() in (".jpg", ".jpeg"):
+        poser_couverture(doc, titre, sous_titre, ctx.auteur,
+                         ("jpeg", couverture.read_bytes()))
+    else:
+        poser_couverture(doc, titre, sous_titre, ctx.auteur, ("rvb",
+            images.couverture_pleine_page(
+                titre, sous_titre, ctx.auteur,
+                getattr(ctx, "marque", "") or "",
+                largeur=int(format_page[0] * 1.28),
+                hauteur=int(format_page[1] * 1.28))))
     return doc
 
 

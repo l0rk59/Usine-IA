@@ -48,6 +48,11 @@ SCENARIOS = [
                             "-c", "extension", "--sans-image"]),
     ("qualite", ["ebook", "la negociation", "-T", "mini", "--sans-image",
                  "--qualite", "exigeant"]),
+    # Les seuls scenarios AVEC couverture : tout le reste passe --sans-image,
+    # si bien que la chaine graphique n'etait exercee nulle part.
+    ("couverture-ebook", ["ebook", "la negociation commerciale", "-T", "mini",
+                          "--auteur", "Claire Fontaine", "--marque", "Atelier"]),
+    ("couverture-outils", ["outils", "le suivi de tresorerie", "-n", "4"]),
     ("file-ajout", ["file", "--ajouter", "une niche de test", "--type", "ebook"]),
     ("file-liste", ["file"]),
     ("usine-statut", ["usine", "statut"]),
@@ -77,6 +82,8 @@ ATTENDUS = {
     "modeles": [".pdf", "a-importer", "modeles.md", "systeme.json"],
     "impression": ["-A4.pdf", "-Lettre-US.pdf", "cahier.json"],
     "qualite": ["rapport-qualite.json", ".pdf", ".epub"],
+    "couverture-ebook": ["couverture.png", "couverture.svg", ".pdf", ".epub"],
+    "couverture-outils": ["couverture.png", "couverture.svg", ".pdf"],
     "logiciel-cli": ["source/outil.py", "source/test_outil.py", "verification.json",
                      "notice.md", "lire.html", ".pdf"],
     "logiciel-web": ["source/index.html", "verification.json", "notice.md", ".pdf"],
@@ -105,6 +112,9 @@ def verifier_sorties(nom: str) -> str:
     vides = [p for p in dossier.rglob("*") if p.is_file() and p.stat().st_size == 0]
     if vides:
         return "fichiers vides : {}".format(", ".join(v.name for v in vides))
+    png = dossier / "couverture.png"
+    if png.exists() and not png.read_bytes().startswith(b"\x89PNG"):
+        return "couverture.png n'est pas un PNG"
     return ""
 
 

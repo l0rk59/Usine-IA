@@ -514,15 +514,6 @@ def cmd_ab(args: argparse.Namespace) -> int:
                        slug_titre(titre_actuel)))
 
         titre_console("Test A/B — {}".format(args.sur))
-        if (args.sur == "couverture" and not args.hors_ligne
-                and not args.sans_image and images.filigrane_probable()):
-            alerte("Sans jeton Pollinations, les images generees portent un "
-                   "filigrane « @pollinations.ai ».")
-            print("      Elles servent a choisir une direction visuelle, pas a "
-                  "etre vendues.")
-            print("      Pour une couverture livrable : " +
-                  _c("--sans-image", "1") + " (couvertures SVG locales, sans "
-                  "filigrane).")
         resultat = pipeline_variantes.preparer_test(
             ctx, titre_actuel, dossier, sujet=args.sur, nombre=args.nombre,
             description=description, produit_id=produit_id)

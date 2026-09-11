@@ -12,8 +12,8 @@ from typing import Any, Dict, List
 
 from ..core import images, llm
 from ..render import document as D
+from ..render import livraison
 from ..render.page import ecrire_page
-from ..render.pdf import DocumentPDF
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
 
 ROLE = "un consultant operationnel qui transforme des methodes en outils utilisables"
@@ -196,11 +196,8 @@ def _exporter(ctx: Contexte, boite: Dict[str, Any]) -> List[Path]:
         )
         fichiers.append(couverture)
 
-    doc = DocumentPDF(titre_courant=titre, police_corps="Helvetica")
-    octets = couverture.read_bytes() if (
-        couverture and couverture.suffix.lower() in (".jpg", ".jpeg")
-    ) else None
-    doc.page_couverture(titre, boite.get("promesse", ""), ctx.auteur, image_jpeg=octets)
+    doc = livraison.document(ctx, titre, boite.get("promesse", ""),
+                             couverture, police_corps="Helvetica")
     doc.titre("Comment utiliser cette boite a outils", 1)
     doc.paragraphe(
         "Ces documents sont faits pour etre imprimes ou remplis a l'ecran. Choisissez "

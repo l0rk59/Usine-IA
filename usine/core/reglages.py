@@ -24,6 +24,7 @@ DEFAUTS: Dict[str, Any] = {
     "plateforme": "gumroad",
     "devise": "EUR",
     "images": True,
+    "couverture": "atelier",       # atelier (composee localement) | ia
     "qualite": "standard",        # rapide | standard | exigeant
     "relectures": 1,              # passages de revision par l'agent editeur
     "theme": "nuit",              # nuit | jour

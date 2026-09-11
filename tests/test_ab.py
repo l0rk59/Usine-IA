@@ -254,9 +254,13 @@ class TestGenerationVariantes(unittest.TestCase):
         self.assertEqual(len(resultat["variantes"]), 4)
         fichiers = {v["fichier"] for v in resultat["variantes"]}
         self.assertEqual(len(fichiers), 4, "chaque couverture doit etre distincte")
-        contenus = {(dossier / f).read_text(encoding="utf-8") for f in fichiers}
-        self.assertEqual(len(contenus), 4,
+        octets = [(dossier / f).read_bytes() for f in fichiers]
+        self.assertEqual(len({o for o in octets}), 4,
                          "quatre fichiers identiques ne testeraient rien")
+        for contenu in octets:
+            self.assertTrue(contenu.startswith(b"\x89PNG"),
+                            "une couverture testee doit etre livrable telle "
+                            "quelle : les places de marche refusent le SVG")
 
     def test_la_planche_est_du_html_bien_forme(self):
         import html.parser

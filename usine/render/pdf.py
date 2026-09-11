@@ -83,7 +83,7 @@ class DocumentPDF:
 
         self._pages: List[Tuple[List[str], bool]] = []
         self._flux: List[str] = []
-        self._images: List[Tuple[str, bytes, int, int, int]] = []
+        self._images: List[Tuple[str, bytes, int, int, int, str]] = []
         self._y = self.hauteur - marge
         self._numeroter = True
         self._page_ouverte = False
@@ -575,10 +575,34 @@ class DocumentPDF:
         self._fermer_page()
 
     # -- images ----------------------------------------------------------
-    def _ajouter_image(self, brut: bytes, infos: Tuple[int, int, int]) -> str:
+    def _ajouter_image(self, brut: bytes, infos: Tuple[int, int, int],
+                       filtre: str = "DCTDecode") -> str:
         nom = "Im{}".format(len(self._images) + 1)
-        self._images.append((nom, brut, infos[0], infos[1], infos[2]))
+        self._images.append((nom, brut, infos[0], infos[1], infos[2], filtre))
         return nom
+
+    def page_couverture_image(self, rvb: bytes, largeur_px: int,
+                              hauteur_px: int) -> None:
+        """Couverture pleine page a partir de pixels bruts.
+
+        Le PDF accepte les pixels tels quels sous « /FlateDecode » — le meme
+        zlib que le PNG. Une couverture composee localement arrive donc
+        entiere dans le livre, titre et typographie compris, sans qu'il ait
+        fallu ecrire un encodeur JPEG pour la faire entrer.
+        """
+        if not rvb or largeur_px <= 0 or hauteur_px <= 0:
+            return
+        self.nouvelle_page(numeroter=False)
+        nom = self._ajouter_image(zlib.compress(rvb, 6),
+                                  (largeur_px, hauteur_px, 3), "FlateDecode")
+        # Recouvrement complet : on prend l'echelle la plus grande des deux,
+        # quitte a deborder d'un cote, plutot que de laisser une bande blanche.
+        echelle = max(self.largeur / largeur_px, self.hauteur / hauteur_px)
+        large, haut = largeur_px * echelle, hauteur_px * echelle
+        self._flux.append(
+            "q {w:.2f} 0 0 {h:.2f} {x:.2f} {y:.2f} cm /{n} Do Q".format(
+                w=large, h=haut, x=(self.largeur - large) / 2,
+                y=(self.hauteur - haut) / 2, n=nom))
 
     # -- ecriture du fichier --------------------------------------------
     def enregistrer(self, chemin: Path) -> Path:
@@ -608,12 +632,12 @@ class DocumentPDF:
             )
 
         images_num: List[Tuple[str, int]] = []
-        for nom, brut, larg, haut, comp in self._images:
+        for nom, brut, larg, haut, comp, filtre in self._images:
             espace = "/DeviceRGB" if comp == 3 else ("/DeviceGray" if comp == 1 else "/DeviceCMYK")
             entete = (
                 "<< /Type /XObject /Subtype /Image /Width {} /Height {} /ColorSpace {} "
-                "/BitsPerComponent 8 /Filter /DCTDecode /Length {} >>\nstream\n"
-            ).format(larg, haut, espace, len(brut)).encode("latin-1")
+                "/BitsPerComponent 8 /Filter /{} /Length {} >>\nstream\n"
+            ).format(larg, haut, espace, filtre, len(brut)).encode("latin-1")
             images_num.append((nom, ajouter(entete + brut + b"\nendstream")))
 
         refs_pages: List[int] = []
