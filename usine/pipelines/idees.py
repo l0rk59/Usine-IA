@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from ..core import config, llm
+from ..core import config, llm, marche
 from ..render import document as D
 from ..render.page import ecrire_page
 from .base import Contexte, nettoyer_titre
@@ -18,9 +18,14 @@ ROLE = (
 )
 
 
-def explorer(ctx: Contexte, nombre: int = 12) -> List[Dict[str, Any]]:
+def explorer(ctx: Contexte, nombre: int = 12,
+             donnees_marche: str = "") -> List[Dict[str, Any]]:
+    contexte_marche = (
+        "\n\n{}\n\nAppuie-toi sur ces mesures reelles plutot que sur des "
+        "impressions : cite-les quand elles soutiennent ou contredisent une "
+        "idee.\n".format(donnees_marche) if donnees_marche else "")
     invite = (
-        "NICHE : {niche}\nAUDIENCE VISEE : {audience}\n\n"
+        "NICHE : {niche}\nAUDIENCE VISEE : {audience}\n{marche}\n"
         "Propose {n} idees de produits digitaux realisables par une seule personne, "
         "sans stock ni equipe, livrables en fichiers telechargeables "
         "(ebook, pack de prompts, mini-formation, boite a outils, pack de contenu).\n\n"
@@ -34,7 +39,8 @@ def explorer(ctx: Contexte, nombre: int = 12) -> List[Dict[str, Any]]:
         '"concurrence": "faible|moyenne|forte", '
         '"angle_differenciant": "...", "premier_canal": "ou trouver les 10 premiers '
         'acheteurs"}}]}}'
-    ).format(niche=ctx.sujet, audience=ctx.audience, n=nombre)
+    ).format(niche=ctx.sujet, audience=ctx.audience, n=nombre,
+             marche=contexte_marche)
     donnees = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="costaud",
                                temperature=0.85, max_tokens=4096)
     idees = donnees.get("idees") if isinstance(donnees, dict) else donnees
@@ -64,9 +70,23 @@ def explorer(ctx: Contexte, nombre: int = 12) -> List[Dict[str, Any]]:
     return propres
 
 
-def produire(ctx: Contexte, nombre: int = 12) -> Dict[str, Any]:
+def produire(ctx: Contexte, nombre: int = 12,
+             avec_marche: bool = True) -> Dict[str, Any]:
+    rapport_marche: Dict[str, Any] = {}
+    resume_marche = ""
+    if avec_marche and not ctx.hors_ligne:
+        ctx.journal("Mesure du marche (sources publiques)...")
+        try:
+            rapport_marche = marche.sonder(ctx.sujet, journal=ctx.journal)
+            resume_marche = marche.resume_pour_ia(rapport_marche)
+            lecture = rapport_marche["lecture"]
+            ctx.journal("  {} — {}".format(lecture["fiabilite"],
+                                           lecture["verdict"][:90]))
+        except Exception as exc:
+            ctx.journal("  marche indisponible : {}".format(exc))
+
     ctx.journal("Exploration de la niche « {} »...".format(ctx.sujet))
-    idees = explorer(ctx, nombre)
+    idees = explorer(ctx, nombre, resume_marche)
 
     config.ensure_dirs()
     from .base import slug
@@ -75,7 +95,8 @@ def produire(ctx: Contexte, nombre: int = 12) -> Dict[str, Any]:
     dossier.mkdir(parents=True, exist_ok=True)
 
     (dossier / "idees.json").write_text(
-        json.dumps({"niche": ctx.sujet, "idees": idees}, ensure_ascii=False, indent=2),
+        json.dumps({"niche": ctx.sujet, "idees": idees, "marche": rapport_marche},
+                   ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     chemin_csv = dossier / "idees.csv"
@@ -85,6 +106,14 @@ def produire(ctx: Contexte, nombre: int = 12) -> Dict[str, Any]:
         auteur.writerows(idees)
 
     lignes = ["# Idees de produits — {}\n".format(ctx.sujet)]
+    if rapport_marche:
+        lecture = rapport_marche["lecture"]
+        lignes.append("\n## Ce que disent les donnees\n")
+        lignes.append("*Mesure du {} — {}*\n".format(
+            rapport_marche["date"], lecture["fiabilite"]))
+        for signal in lecture["signaux"]:
+            lignes.append("- " + signal)
+        lignes.append("\n> {}\n".format(lecture["verdict"]))
     for index, idee in enumerate(idees, 1):
         lignes.append("\n## {}. {}\n".format(index, idee["titre"]))
         lignes.append("- **Type :** {} | **Prix cible :** {} EUR | "
@@ -103,4 +132,5 @@ def produire(ctx: Contexte, nombre: int = 12) -> Dict[str, Any]:
                 D.vers_html(D.analyser(markdown), niveau_depart=1),
                 sous_titre="{} pistes evaluees".format(len(idees)), meta=ctx.auteur)
 
-    return {"niche": ctx.sujet, "idees": idees, "dossier": str(dossier)}
+    return {"niche": ctx.sujet, "idees": idees, "dossier": str(dossier),
+            "marche": rapport_marche.get("lecture", {})}

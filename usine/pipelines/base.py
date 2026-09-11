@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from ..core import config, store
+from ..core import apprentissage, config, store
 
 TONS = {
     "expert": "expert, precis, appuye sur des faits et des chiffres",
@@ -56,6 +56,7 @@ class Contexte:
     qualite: str = "standard"
     relectures: int = -1          # -1 : deduit du niveau de qualite
     produit_id: str = ""
+    demarre_le: float = field(default_factory=time.time)
     dossier: Path = field(default_factory=Path)
     journal: Callable[[str], None] = print
     meta: Dict[str, Any] = field(default_factory=dict)
@@ -123,11 +124,34 @@ def preparer(ctx: Contexte, type_produit: str, titre: str) -> Path:
     return dossier
 
 
-def terminer(ctx: Contexte, fichiers: List[Path], meta: Optional[Dict[str, Any]] = None) -> None:
+def terminer(ctx: Contexte, fichiers: List[Path], meta: Optional[Dict[str, Any]] = None,
+             type_produit: str = "") -> None:
+    infos = dict(meta or {})
     store.maj_produit(
         ctx.produit_id,
         statut="pret",
-        meta=dict(meta or {}, fichiers=[f.name for f in fichiers]),
+        meta=dict(infos, fichiers=[f.name for f in fichiers]),
+    )
+    # Trace mesuree : c'est elle qui alimente « usine bilan » et « usine conseils ».
+    produit = store.lire_produit(ctx.produit_id) or {}
+    appels = store.compteur_intervalle(ctx.demarre_le)
+    fournisseurs = store.fournisseurs_intervalle(ctx.demarre_le)
+    apprentissage.enregistrer(
+        produit_id=ctx.produit_id,
+        type_produit=type_produit or produit.get("type", "inconnu"),
+        sujet=ctx.sujet,
+        audience=ctx.audience,
+        ton=ctx.ton,
+        taille=ctx.taille,
+        qualite=ctx.qualite,
+        note=infos.get("note"),
+        note_avant=infos.get("note_avant"),
+        mots=int(infos.get("mots") or 0),
+        sections=int(infos.get("sections") or infos.get("chapitres") or 0),
+        duree=round(time.time() - ctx.demarre_le, 1),
+        appels=appels,
+        fournisseurs=infos.get("fournisseurs") or fournisseurs,
+        defauts=infos.get("defauts") or [],
     )
 
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..core import controle as ctrl
 from ..core import evenements, prompts
 from .base import Agent, Critique
 
@@ -154,6 +155,75 @@ def reviser(contexte: Any, texte: str, critique: Critique, intitule: str) -> str
                            detail="texte tronque par le reviseur")
         return texte
     return corrige
+
+
+def corriger_defauts(
+    contexte: Any,
+    texte: str,
+    rapport: "ctrl.Controle",
+    intitule: str,
+) -> str:
+    """Applique les corrections issues du controle local, en un seul appel.
+
+    Les defauts mesurables (tics, promesses, chiffres sans source, rythme)
+    n'ont pas besoin d'un relecteur IA pour etre DETECTES : ils sont trouves en
+    Python, gratuitement. Le modele ne sert qu'a reecrire, avec des consignes
+    deja precises — ce qui coute un appel au lieu de deux.
+    """
+    consignes = rapport.consignes()
+    if not consignes:
+        return texte
+    numerotees = "\n".join("{}. {}".format(i, c) for i, c in enumerate(consignes, 1))
+    extraits = [a.extrait for a in rapport.anomalies if a.extrait][:3]
+    citations = ("\nPassages concernes :\n"
+                 + "\n".join("- « {} »".format(e) for e in extraits)) if extraits else ""
+    invite = (
+        "Un controle automatique a releve des defauts precis dans ce texte.\n"
+        "INTITULE : {intitule}\n\n"
+        "--- TEXTE ---\n{texte}\n--- FIN ---\n\n"
+        "CORRECTIONS A APPLIQUER :\n{consignes}{citations}\n\n"
+        "Renvoie le texte COMPLET corrige, en markdown, sans titre de niveau 1, "
+        "sans commentaire. Conserve la structure et la longueur."
+    ).format(intitule=intitule, texte=texte[:14000], consignes=numerotees,
+             citations=citations)
+
+    reponse = REVISEUR.travailler(
+        contexte, invite, max_tokens=min(4096, len(texte) // 2 + 1200))
+    from ..pipelines.base import elaguer_markdown
+
+    corrige = elaguer_markdown(reponse.texte)
+    if len(corrige) < len(texte) * 0.55:
+        evenements.publier("qualite", etat="revision_rejetee",
+                           detail="texte tronque lors de la correction automatique")
+        return texte
+    return corrige
+
+
+def controler_et_corriger(
+    contexte: Any,
+    texte: str,
+    intitule: str,
+    mots_cibles: int = 0,
+    precedents: Optional[List[str]] = None,
+    tentatives: int = 2,
+) -> Tuple[str, List["ctrl.Controle"]]:
+    """Boucle locale : mesurer, corriger, remesurer. Un appel IA par tour.
+
+    Renvoie le texte et l'historique des controles, pour que le rapport montre
+    la progression reelle plutot qu'une affirmation.
+    """
+    historique: List[ctrl.Controle] = []
+    courant = texte
+    for tour in range(max(1, tentatives)):
+        rapport = ctrl.controler(courant, mots_cibles, precedents or [])
+        historique.append(rapport)
+        evenements.publier("controle", intitule=intitule, note=rapport.note,
+                           anomalies=len(rapport.anomalies),
+                           bloquantes=len(rapport.bloquantes), tour=tour + 1)
+        if rapport.acceptable or tour == tentatives - 1:
+            break
+        courant = corriger_defauts(contexte, courant, rapport, intitule)
+    return courant, historique
 
 
 def affiner(

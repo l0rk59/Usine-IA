@@ -14,7 +14,9 @@ from typing import Any, Dict, List, Optional
 
 from . import __version__
 from .core import cles as pool_cles
-from .core import config, llm, prompts as registre_prompts, reglages, securite, store
+from .core import apprentissage, config, llm, marche
+from .core import prompts as registre_prompts
+from .core import reglages, securite, store
 from .core.http import en_ligne
 from .marketing import vente
 from .packaging import livraison
@@ -274,6 +276,99 @@ def cmd_reglages(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_marche(args: argparse.Namespace) -> int:
+    """Mesurer un marche depuis des sources publiques, sans aucune cle API."""
+    titre_console("Signaux de marche — « {} »".format(args.sujet))
+    rapport = marche.sonder(args.sujet, journal=lambda m: print(m))
+    lecture = rapport["lecture"]
+
+    print()
+    for signal in lecture["signaux"]:
+        ok(signal)
+    for nom in rapport["sources_indisponibles"]:
+        alerte("{} : {}".format(nom, rapport["sources"][nom].get("erreur", "muette")))
+
+    print()
+    print("  " + _c("Demande", "1") + "      : {}".format(lecture["demande"] or "inconnue"))
+    print("  " + _c("Concurrence", "1") + "  : {}".format(lecture["concurrence"] or "inconnue"))
+    print("  " + _c("Tendance", "1") + "     : {}".format(lecture["tendance"] or "inconnue"))
+    print("  " + _c("Fiabilite", "1") + "    : {}".format(lecture["fiabilite"]))
+    print()
+    for ligne in _envelopper(lecture["verdict"], 70):
+        print("  " + ligne)
+
+    if args.json:
+        config.ensure_dirs()
+        from .pipelines.base import slug
+
+        chemin = config.PRODUITS_DIR / "marche-{}.json".format(slug(args.sujet, 40))
+        chemin.write_text(json.dumps(rapport, ensure_ascii=False, indent=2),
+                          encoding="utf-8")
+        print("\n  Rapport complet : " + str(chemin))
+    print("\n  Etape suivante : " + _c('usine idees "{}"'.format(args.sujet), "1"))
+    return 0
+
+
+def _envelopper(texte: str, largeur: int) -> List[str]:
+    lignes, courante = [], ""
+    for mot in texte.split():
+        if len(courante) + len(mot) + 1 > largeur:
+            lignes.append(courante)
+            courante = mot
+        else:
+            courante = (courante + " " + mot).strip()
+    if courante:
+        lignes.append(courante)
+    return lignes
+
+
+def cmd_bilan(args: argparse.Namespace) -> int:
+    """Ce que l'usine a appris de vos productions."""
+    donnees = apprentissage.bilan()
+    if donnees["productions"] == 0:
+        titre_console("Bilan")
+        print("  " + donnees["message"])
+        print("  Fabriquez un produit : " + _c('usine ebook "votre sujet"', "1"))
+        return 0
+
+    titre_console("Bilan de production")
+    print("  {} production(s), {} reussie(s), {} echec(s)".format(
+        donnees["productions"], donnees["reussites"], donnees["echecs"]))
+    if donnees["note_moyenne"] is not None:
+        print("  Note moyenne : {} /10   (meilleure {} — pire {})".format(
+            donnees["note_moyenne"], donnees["note_meilleure"], donnees["note_pire"]))
+    if donnees["gain_moyen_relecture"] is not None:
+        print("  Gain moyen de la relecture : {:+.2f} point".format(
+            donnees["gain_moyen_relecture"]))
+    print("  {} mots produits, {} appels IA".format(
+        donnees["mots_totaux"], donnees["appels_totaux"]))
+
+    for critere, libelle in (("par_type", "Par type de produit"),
+                             ("par_ton", "Par ton"),
+                             ("par_qualite", "Par niveau de qualite")):
+        groupes = donnees[critere]
+        if not groupes:
+            continue
+        print("\n  " + _c(libelle, "1"))
+        for groupe in groupes:
+            print("    {:<14} {:>5} /10   {:>3} production(s)   {:>5} appels".format(
+                groupe["valeur"][:14], groupe["note_moyenne"], groupe["productions"],
+                groupe["appels_moyens"]))
+
+    if donnees["defauts_frequents"]:
+        print("\n  " + _c("Defauts les plus frequents", "1"))
+        for defaut in donnees["defauts_frequents"][:5]:
+            print("    {:>3}x  {}".format(defaut["occurrences"], defaut["defaut"]))
+
+    titre_console("Conseils tires de vos donnees")
+    for conseil in apprentissage.conseils():
+        print("  " + _c("[{}]".format(conseil["sujet"]), "36"))
+        for ligne in _envelopper(conseil["conseil"], 68):
+            print("    " + ligne)
+        print("    " + _c("appui : " + conseil["appui"], "2"))
+    return 0
+
+
 def cmd_prompts_systeme(args: argparse.Namespace) -> int:
     """Exporter, inspecter ou reinitialiser les prompts de l'usine."""
     if args.exporter:
@@ -335,7 +430,12 @@ def cmd_idees(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Exploration de niche")
-    resultat = idees.produire(ctx, nombre=args.nombre)
+    resultat = idees.produire(ctx, nombre=args.nombre,
+                              avec_marche=not getattr(args, "sans_marche", False))
+    if resultat.get("marche", {}).get("signaux"):
+        print()
+        for signal in resultat["marche"]["signaux"]:
+            ok(signal)
     for index, idee in enumerate(resultat["idees"], 1):
         print("\n  {}. {}".format(_c(str(index), "1;36"), _c(idee["titre"], "1")))
         print("     type={} prix={} EUR difficulte={} concurrence={}".format(
@@ -732,6 +832,8 @@ def construire_parseur() -> argparse.ArgumentParser:
     p = sous_parseurs.add_parser("idees", help="trouver quoi vendre dans une niche")
     _options_communes(p)
     p.add_argument("-n", "--nombre", type=int, default=12, help="nombre d'idees")
+    p.add_argument("--sans-marche", dest="sans_marche", action="store_true",
+                   help="ne pas interroger les sources de marche")
     p.set_defaults(fonction=cmd_idees)
 
     p = sous_parseurs.add_parser("marketing", help="kit de vente d'un produit existant")
@@ -748,6 +850,16 @@ def construire_parseur() -> argparse.ArgumentParser:
     p = sous_parseurs.add_parser("liste", help="lister les produits fabriques")
     p.add_argument("-n", "--nombre", type=int, default=25)
     p.set_defaults(fonction=cmd_liste)
+
+    p = sous_parseurs.add_parser(
+        "marche", help="mesurer un marche depuis des sources publiques")
+    p.add_argument("sujet", help="le sujet ou la niche a mesurer")
+    p.add_argument("--json", action="store_true", help="enregistrer le rapport complet")
+    p.set_defaults(fonction=cmd_marche)
+
+    p = sous_parseurs.add_parser(
+        "bilan", help="ce que l'usine a appris de vos productions")
+    p.set_defaults(fonction=cmd_bilan)
 
     p = sous_parseurs.add_parser("menu", help="menu interactif (recommande sur mobile)")
     p.set_defaults(fonction=cmd_menu)

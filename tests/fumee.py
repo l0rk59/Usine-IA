@@ -27,7 +27,8 @@ from tests.simulateur import simulateur  # noqa: E402
 llm.definir_simulateur(simulateur)
 
 SCENARIOS = [
-    ("idees", ["idees", "le jardinage urbain", "-n", "6", "--sans-image"]),
+    ("idees", ["idees", "le jardinage urbain", "-n", "6", "--sans-image",
+               "--sans-marche"]),
     ("ebook", ["ebook", "la prospection pour freelances", "-T", "mini",
                "--sans-image", "--marketing", "--zip"]),
     ("prompts", ["prompts", "la gestion de projet", "-n", "8", "--sans-image"]),
@@ -41,6 +42,7 @@ SCENARIOS = [
     ("complet", ["complet", "la meditation au bureau", "-T", "mini", "--sans-image"]),
     ("qualite", ["ebook", "la negociation", "-T", "mini", "--sans-image",
                  "--qualite", "exigeant"]),
+    ("bilan", ["bilan"]),
     ("reglages", ["reglages"]),
     ("prompts-systeme", ["prompts-systeme"]),
     ("liste", ["liste"]),

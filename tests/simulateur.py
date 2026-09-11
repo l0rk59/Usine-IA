@@ -268,10 +268,19 @@ def simulateur(messages, role):
             "problemes": [], "verdict": "Publiable.",
         }, ensure_ascii=False)
 
-    # --- revision : le texte corrige ----------------------------------------
+    # --- revision : renvoyer le texte soumis, marque comme corrige ----------
     if "CORRECTIONS A APPLIQUER" in invite:
-        origine = invite.split("--- TEXTE ACTUEL ---")[1].split("--- FIN ---")[0]
-        return "deja corrige\n" + origine.strip()
+        for ouverture in ("--- TEXTE ACTUEL ---", "--- TEXTE ---"):
+            if ouverture in invite:
+                origine = invite.split(ouverture, 1)[1].split("--- FIN ---")[0]
+                # Le simulateur produit un texte varie : sans cela, le controle
+                # local signalerait a juste titre des phrases trop uniformes et
+                # la boucle ne convergerait jamais.
+                return ("deja corrige\n" + origine.strip()
+                        + "\n\nUn dernier point. Il tient en une ligne, et il "
+                          "change souvent tout le reste du raisonnement que vous "
+                          "venez de lire attentivement.")
+        return "deja corrige"
 
     # --- controle avant mise en vente ---------------------------------------
     if '"a_corriger_avant_vente"' in invite:

@@ -124,7 +124,9 @@ indisponibles. Pour l'utiliser en priorité : `USINE_LOCAL_FIRST=1` dans le `.en
 | `usine modeles` | **Modèles Notion / tableur** | Bases liées, CSV prêts à importer, vues |
 | `usine impression` | **Cahier imprimable** | Plannings et fiches à remplir, A4 **et** Lettre US |
 | `usine social` | Pack de publications | Calendrier CSV, posts, visuels optionnels |
-| `usine idees` | Étude de niche | 12 idées chiffrées : prix, difficulté, concurrence |
+| `usine idees` | Étude de niche | 12 idées appuyées sur des **mesures de marché réelles** |
+| `usine marche` | Signaux de marché | demande, concurrence, tendance — 4 sources sans clé |
+| `usine bilan` | Mémoire de l'usine | ce que vos productions révèlent sur vos réglages |
 | `usine complet` | **Offre complète** | Ebook + 2 bonus + kit de vente + archive ZIP |
 
 Les deux types marqués en gras sont, d'après les classements 2026 des places de
@@ -176,6 +178,62 @@ bord : enregistrés une fois dans `atelier/reglages.json` et repris par toutes
 les commandes. Une option passée en ligne de commande reste prioritaire.
 
 ---
+
+## Mesurer, plutôt que déclarer
+
+### Le contrôle local — sans appel IA
+
+Beaucoup de défauts se **comptent** : tics d'écriture, répétitions en
+n-grammes, phrases toutes de la même longueur, chiffres précis sans source,
+promesses de résultat, volume, structure. L'usine les mesure en Python —
+instantané, gratuit en quota, et reproductible au centième.
+
+Le relecteur IA n'intervient qu'**ensuite**, sur ce qui demande un jugement.
+Conséquence : un défaut mesurable coûte un appel (la correction) au lieu de
+deux (la détection puis la correction).
+
+```
+   rédaction
+      │
+   contrôle local  ──►  0 appel IA, consignes déjà précises
+      │
+   correction      ──►  1 appel
+      │
+   relecture IA    ──►  pertinence, progression, promesse tenue
+```
+
+Étalonnage : un texte rédigé avec exemples et rythme varié obtient **10/10** ;
+une sortie générique de modèle obtient **0 à 2/10**. Détails et seuils dans
+[docs/QUALITE.md](docs/QUALITE.md).
+
+### Les signaux de marché — sources réelles
+
+```bash
+usine marche "productivity"
+```
+
+Quatre sources publiques sans inscription : **Hacker News** (volume de
+discussions), **Wikipedia pageviews** (intérêt dans le temps — l'API Google
+Trends est fermée), **Stack Exchange** (questions non résolues), **Open
+Library** (concurrence éditoriale). Les mesures alimentent `usine idees`, qui
+raisonne dessus au lieu d'imaginer un marché.
+
+> Ces sources sont anglophones. Une requête en français y renvoie peu de
+> résultats — l'usine le détecte et le signale, au lieu de conclure « niche
+> trop étroite ». Voir [docs/MARCHE.md](docs/MARCHE.md).
+
+### La mémoire de production
+
+```bash
+usine bilan
+```
+
+Chaque produit laisse une trace mesurée : note, défauts restants, durée,
+appels consommés, réglages utilisés. Au bout de quelques produits, l'usine
+répond à des questions qu'aucun modèle ne peut trancher — quel ton donne vos
+meilleures notes, si la relecture vaut son coût chez vous, quel défaut revient
+assez souvent pour mériter une règle. Chaque conseil cite le nombre de
+productions sur lequel il s'appuie.
 
 ## L'équipe d'agents
 
@@ -282,8 +340,9 @@ Trois mécanismes rendent la production fiable sur un forfait mobile :
 
 ```
 usine/
-  core/        fournisseurs, routeur IA, pool de clés, prompts, réglages,
-               sécurité, bus d'événements, HTTP, images, SQLite
+  core/        fournisseurs, routeur IA, pool de clés, contrôle qualité
+               déterministe, signaux de marché, mémoire de production,
+               prompts, réglages, sécurité, bus d'événements, HTTP, SQLite
   agents/      les sept rôles et la boucle critique → révision
   render/      moteur PDF, EPUB, HTML, modèle de document, métriques polices
   pipelines/   ebook, prompts, formation, outils, modèles, imprimables,
@@ -293,7 +352,7 @@ usine/
   web/         serveur SSE + tableau de bord 3D (statique/scene.js, app.js)
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         78 tests + test de fumée, aucun appel réseau
+tests/         103 tests + test de fumée, aucun appel réseau
 install.sh     installation Termux
 ```
 
@@ -305,7 +364,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 78 tests
+python3 -m unittest discover -s tests -t .   # 103 tests
 python3 tests/fumee.py                       # les 8 chaînes via la vraie CLI
 ```
 
@@ -315,6 +374,11 @@ serveur, **rotation effective des clés sur un 429**, non-fuite des secrets dans
 les erreurs et les événements, authentification du tableau de bord, diffusion
 temps réel par SSE, évitement du fournisseur pour la relecture, refus d'une
 révision tronquée, et le fait que le kit de vente ne parte pas chez l'acheteur.
+
+Le contrôle qualité est testé sur sa **reproductibilité** (deux exécutions
+donnent la même note), sa calibration (bon texte 10/10, texte générique 2/10)
+et ses garde-fous. Les sources de marché sont testées avec des réponses figées,
+dont le cas « Freelance (2023 film) » qui ne doit jamais être retenu.
 
 La géométrie 3D est vérifiée séparément : les matrices de rotation, de caméra
 et la matrice normale inverse-transposée sont contrôlées numériquement, et le

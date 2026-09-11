@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Tuple
 
 from ..agents import equipe
 from ..agents.base import Critique
+from ..core import controle as ctrl
 from ..core import evenements, images, llm, securite
 from ..render import document as D
 from ..render.epub import construire_epub
@@ -163,6 +164,7 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
     total = len(plan["chapitres"])
     sections: List[Tuple[str, str]] = []
     qualite: Dict[str, List[Critique]] = {}
+    local: Dict[str, List[ctrl.Controle]] = {}
 
     alertes = securite.analyser_sujet(ctx.sujet)
     for domaine, avertissement in alertes:
@@ -194,6 +196,18 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
                 "\n".join("- " + p for p in chapitre.get("points", [])),
             ), ""
         else:
+            # 1. Controle local : gratuit, instantane, reproductible. Les defauts
+            #    mesurables sont corriges ici, sans consulter de relecteur IA.
+            corps, controles = equipe.controler_et_corriger(
+                ctx, corps, chapitre["titre"], ctx.mots_par_chapitre,
+                precedents=[c for _, c in sections],
+                tentatives=2 if passes else 1,
+            )
+            local[chapitre["titre"]] = controles
+            ctx.journal("     controle : " + controles[-1].resume())
+
+            # 2. Relecture IA : uniquement ce qui demande un jugement — la
+            #    pertinence, la progression, la tenue de la promesse.
             if passes:
                 corps, critiques = equipe.affiner(
                     ctx, corps, chapitre["titre"], plan.get("promesse", ""),
@@ -213,15 +227,34 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
     ctx.journal("Etape 5/5 — mise en forme et export...")
     fichiers = exporter(ctx, plan, sections)
 
-    if qualite:
-        rapport = equipe.rapport_qualite(qualite)
-        chemin_rapport = dossier / "rapport-qualite.json"
-        chemin_rapport.write_text(
-            json.dumps(rapport, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        if rapport["note_moyenne_finale"] is not None:
-            ctx.journal("  qualite : {} -> {} / 10".format(
+    rapport = equipe.rapport_qualite(qualite) if qualite else {}
+    if local:
+        rapport["controle_local"] = {
+            "sections": [
+                {"section": titre, "note_initiale": suite[0].note,
+                 "note_finale": suite[-1].note,
+                 "defauts_restants": [a.detail for a in suite[-1].anomalies]}
+                for titre, suite in local.items()
+            ],
+            "note_moyenne_initiale": round(
+                sum(s[0].note for s in local.values()) / len(local), 2),
+            "note_moyenne_finale": round(
+                sum(s[-1].note for s in local.values()) / len(local), 2),
+        }
+    # Mesure finale sur le texte reellement exporte, pas sur un etat intermediaire.
+    rapport["mesure_finale"] = ctrl.controler_ensemble(sections, ctx.mots_par_chapitre)
+    if rapport:
+        (dossier / "rapport-qualite.json").write_text(
+            json.dumps(rapport, ensure_ascii=False, indent=2), encoding="utf-8")
+        if rapport.get("note_moyenne_finale") is not None:
+            ctx.journal("  relecture IA : {} -> {} / 10".format(
                 rapport["note_moyenne_initiale"], rapport["note_moyenne_finale"]))
+        if rapport.get("controle_local"):
+            bloc = rapport["controle_local"]
+            ctx.journal("  controle local : {} -> {} / 10".format(
+                bloc["note_moyenne_initiale"], bloc["note_moyenne_finale"]))
+        ctx.journal("  note finale mesuree : {} / 10".format(
+            rapport["mesure_finale"]["note_moyenne"]))
     if alertes:
         (dossier / "AVERTISSEMENT.txt").write_text(
             securite.CLAUSE_RENFORCEE + "\n\nDomaines detectes : "
@@ -238,12 +271,23 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
         "chapitres": total,
         "mots": mots,
         "fichiers": [f.name for f in fichiers],
-        "qualite": equipe.rapport_qualite(qualite) if qualite else None,
+        "qualite": rapport or None,
+        "note": (rapport.get("mesure_finale") or {}).get("note_moyenne"),
         "alertes": [d for d, _ in alertes],
     }
     evenements.publier("produit", etat="termine", titre=titre, mots=mots,
                        dossier=str(dossier))
-    terminer(ctx, fichiers, {"mots": mots, "chapitres": total, "promesse": plan.get("promesse")})
+    mesure = rapport.get("mesure_finale") or {}
+    defauts = []
+    for section in mesure.get("sections", []):
+        defauts.extend(a["detail"] for a in section.get("anomalies", []))
+    terminer(ctx, fichiers, {
+        "mots": mots, "chapitres": total, "promesse": plan.get("promesse"),
+        "note": mesure.get("note_moyenne"),
+        "note_avant": (rapport.get("controle_local") or {}).get(
+            "note_moyenne_initiale"),
+        "defauts": defauts,
+    })
     (dossier / "produit.json").write_text(
         json.dumps(resume, ensure_ascii=False, indent=2), encoding="utf-8"
     )
