@@ -417,7 +417,7 @@ def _produits() -> List[Dict[str, Any]]:
     for produit in store.lister_produits(40):
         if produit["statut"] == "bonus_integre":
             continue
-        meta = json.loads(produit.get("meta") or "{}")
+        meta = produit.get("meta") or {}
         dossier = Path(produit["dossier"] or "")
         fichiers = []
         if dossier.exists():

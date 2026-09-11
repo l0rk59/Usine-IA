@@ -535,6 +535,48 @@ def menu_reglages() -> None:
         print(c("  Enregistre.", "32"))
 
 
+def menu_ventes(executer) -> None:
+    """Saisir ou importer des ventes, puis lire ce qu'elles disent."""
+    while True:
+        entete("Ventes")
+        index = choisir("Ventes", [
+            ("Voir le bilan", "chiffre d'affaires, par produit, par type"),
+            ("Importer un export", "fichier CSV d'une place de marche"),
+            ("Saisir une vente", "a la main, pour une vente unique"),
+            ("Rattacher automatiquement", "relier les references aux produits"),
+        ], defaut=1)
+        if index == 0:
+            return
+        if index == 1:
+            executer(["ventes"])
+        elif index == 2:
+            chemin = demander("Chemin du fichier CSV")
+            if not chemin:
+                continue
+            plateforme = demander("Plateforme", "gumroad")
+            executer(["ventes", "--importer", chemin, "--sur", plateforme])
+        elif index == 3:
+            produits = store.lister_produits(20)
+            if not produits:
+                print("\n  Aucun produit fabrique.")
+                demander("  Appuyez sur Entree")
+                continue
+            rang = choisir("Quel produit", [(p["titre"][:46], p["type"])
+                                            for p in produits], defaut=1)
+            if rang == 0:
+                continue
+            montant = demander("Montant encaisse (ex : 29)")
+            if not montant.replace(".", "").replace(",", "").isdigit():
+                continue
+            unites = demander("Combien d'unites", "1")
+            executer(["ventes", "--ajouter", produits[rang - 1]["id"],
+                      "--brut", montant.replace(",", "."),
+                      "--unites", unites if unites.isdigit() else "1"])
+        elif index == 4:
+            executer(["ventes", "--rattacher"])
+        demander("\n  Appuyez sur Entree")
+
+
 def menu_cles() -> None:
     entete("Cles et quotas")
     lignes = llm.diagnostic()
@@ -602,6 +644,8 @@ def menu_principal(executer: Callable[[List[str]], int]) -> int:
             ("Usine continue", "file de niches, budget, production en boucle"),
             ("Tests A/B", "titres et couvertures : comparer et decider"),
             ("Mes produits", "consulter, vendre, empaqueter"),
+            ("Ventes", "importer un export, voir ce qui rapporte vraiment"),
+            ("Doublons", "les produits qui se recouvrent"),
             ("Cles et quotas", "etat des fournisseurs et du pool de cles"),
             ("Reglages", "auteur, marque, ton et qualite par defaut"),
             ("Tableau de bord 3D", "interface visuelle dans le navigateur"),
@@ -620,11 +664,16 @@ def menu_principal(executer: Callable[[List[str]], int]) -> int:
         elif choix == 4:
             menu_produits(executer)
         elif choix == 5:
-            menu_cles()
+            menu_ventes(executer)
         elif choix == 6:
-            menu_reglages()
+            executer(["doublons"])
+            demander("\n  Appuyez sur Entree")
         elif choix == 7:
-            executer(["web"])
+            menu_cles()
         elif choix == 8:
+            menu_reglages()
+        elif choix == 9:
+            executer(["web"])
+        elif choix == 10:
             executer(["docteur"])
             demander("\n  Appuyez sur Entree")

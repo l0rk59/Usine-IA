@@ -587,7 +587,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         290 tests + test de fumée, aucun appel réseau
+tests/         292 tests + test de fumée, aucun appel réseau
 install.sh     installation Termux
 ```
 
@@ -599,7 +599,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 290 tests
+python3 -m unittest discover -s tests -t .   # 292 tests
 python3 tests/fumee.py                       # les 9 chaînes via la vraie CLI
 ```
 
@@ -657,7 +657,11 @@ tableau de bord est rendu dans un vrai Chromium.
   le bannissement.
 
 - **Elle ne publie pas à votre place.** Aucune intégration Gumroad ou Etsy :
-  vous téléversez l'archive vous-même.
+  vous téléversez l'archive vous-même. Elle lit en revanche vos exports de
+  ventes, et s'en sert pour choisir les niches suivantes.
+- **Elle ne vous dispense pas de publier lentement.** Produire quatre produits
+  par jour et les déposer au même rythme est le profil exact d'un compte qui
+  se fait fermer. L'usine le rappelle à la fin de chaque lot.
 - **Elle ne relit pas pour vous.** Le contenu est généré par IA : relisez et
   corrigez avant de vendre. La licence livrée le mentionne explicitement.
 - **Elle n'invente pas votre expertise.** Les meilleurs produits sortent d'un

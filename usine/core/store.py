@@ -438,17 +438,38 @@ def maj_produit(produit_id: str, **champs: Any) -> None:
         )
 
 
+def _produit(ligne: sqlite3.Row) -> Dict[str, Any]:
+    """Fiche produit avec son meta deja decode.
+
+    Il etait rendu en JSON brut, et les six appelants le decodaient chacun
+    de leur cote. Le septieme a oublie, s'est protege par un
+    « isinstance(meta, dict) » — et sa fonctionnalite est devenue un
+    no-op silencieux. Le decodage appartient a la couche qui lit.
+    """
+    fiche = dict(ligne)
+    brut = fiche.get("meta")
+    if isinstance(brut, str):
+        try:
+            charge = json.loads(brut or "{}")
+        except ValueError:
+            charge = {}
+        fiche["meta"] = charge if isinstance(charge, dict) else {}
+    elif brut is None:
+        fiche["meta"] = {}
+    return fiche
+
+
 def lire_produit(produit_id: str) -> Optional[Dict[str, Any]]:
     with cursor() as cur:
         cur.execute("SELECT * FROM produits WHERE id=?", (produit_id,))
         row = cur.fetchone()
-        return dict(row) if row else None
+        return _produit(row) if row else None
 
 
 def lister_produits(limite: int = 50) -> List[Dict[str, Any]]:
     with cursor() as cur:
         cur.execute("SELECT * FROM produits ORDER BY cree_le DESC LIMIT ?", (limite,))
-        return [dict(row) for row in cur.fetchall()]
+        return [_produit(row) for row in cur.fetchall()]
 
 
 def journal_etape(produit_id: str, nom: str, statut: str, detail: str = "") -> None:

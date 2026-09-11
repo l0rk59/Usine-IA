@@ -20,7 +20,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from .core import apprentissage, budget, config, evenements, file, llm, reglages
+from .core import apprentissage, budget, config, evenements, file, llm, reglages, store
 from .pipelines import catalogue, idees
 from .pipelines.base import Contexte
 
@@ -293,11 +293,17 @@ class UsineContinue:
             self.arret_demande = True
             self.journal("  budget epuise : produit exporte en l'etat, "
                          "l'usine s'arrete.")
+        # Le signalement de doublon est pose par la chaine de fabrication
+        # dans la fiche du produit : on le relit ici pour en tenir compte au
+        # bilan de session, la ou la decision de publier se prend.
+        fiche = store.lire_produit(resume.get("produit_id", "")) or {}
+        meta = fiche.get("meta") or {}
         self.faits.append({
             "sujet": entree["sujet"], "type": type_produit,
             "titre": resume.get("titre", ""), "note": resume.get("note"),
             "duree": round(time.time() - debut, 1),
             "dossier": resume.get("dossier", ""),
+            "doublon": meta.get("doublon"),
         })
         self.journal("  livre : « {} »{} en {:.0f} s".format(
             resume.get("titre", entree["sujet"]),
@@ -407,3 +413,27 @@ class UsineContinue:
         if restantes["en_attente"]:
             self.journal("{} niche(s) encore en file — relancez quand vous "
                          "voulez.".format(restantes["en_attente"]))
+        self._avant_de_publier()
+
+    def _avant_de_publier(self) -> None:
+        """Deux rappels a la fin d'un lot, parce que c'est la qu'on publie.
+
+        Fabriquer vite et publier au meme rythme est le profil exact d'un
+        compte qui se fait fermer : KDP plafonne a trois titres par jour et
+        ferme les comptes de contenu depose en volume. Un compte ferme
+        emporte l'historique de ventes et les avis ; ralentir les depots ne
+        coute rien.
+        """
+        if not self.faits:
+            return
+        doublons = [f for f in self.faits if f.get("doublon")]
+        self.journal("")
+        if doublons:
+            self.journal("[!] {} produit(s) de cette session ressemblent a "
+                         "des produits deja faits.".format(len(doublons)))
+            self.journal("    Verifiez avant de les mettre en vente : "
+                         "usine doublons")
+        if len(self.faits) > 1:
+            self.journal("Produire n'est pas publier : deposez un a deux "
+                         "produits par semaine")
+            self.journal("et par plateforme. Voir docs/VENDRE.md.")

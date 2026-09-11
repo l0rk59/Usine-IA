@@ -209,5 +209,35 @@ class TestChaine(unittest.TestCase):
         self.assertFalse(any("Deja fabrique" in ligne for ligne in journal))
 
 
+class TestFicheProduit(unittest.TestCase):
+    """Le meta d'un produit arrive decode, ou la fonctionnalite se tait.
+
+    Il etait rendu en JSON brut et chaque appelant le decodait de son cote.
+    Le bilan de session, lui, s'est protege par un « isinstance(meta, dict) »
+    toujours faux : le signalement des doublons en fin de lot n'a jamais
+    affiche une ligne, sans qu'aucun test ne s'en apercoive.
+    """
+
+    def test_le_meta_est_un_dictionnaire(self):
+        from usine.core import store
+
+        store.creer_produit("m1", "ebook", "Titre", sujet="s", dossier="/tmp")
+        store.maj_produit("m1", statut="pret",
+                          meta={"doublon": {"motif": "plan"}, "mots": 12})
+        fiche = store.lire_produit("m1")
+        self.assertIsInstance(fiche["meta"], dict)
+        self.assertEqual(fiche["meta"]["doublon"]["motif"], "plan")
+        self.assertEqual(store.lister_produits(1)[0]["meta"]["mots"], 12)
+
+    def test_un_meta_illisible_ne_fait_pas_tomber_la_lecture(self):
+        from usine.core import store
+
+        store.creer_produit("m2", "ebook", "Titre", sujet="s", dossier="/tmp")
+        with store.cursor() as cur:
+            cur.execute("UPDATE produits SET meta = ? WHERE id = ?",
+                        ("{ceci n est pas du json", "m2"))
+        self.assertEqual(store.lire_produit("m2")["meta"], {})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -694,7 +694,7 @@ def cmd_ab(args: argparse.Namespace) -> int:
                 return 1
             titre_actuel = produit["titre"]
             produit_id = produit["id"]
-            meta = json.loads(produit.get("meta") or "{}")
+            meta = produit.get("meta") or {}
             description = str(meta.get("promesse") or produit.get("sujet") or "")
         if not titre_actuel:
             erreur("Indiquez --titre \"...\" ou --produit <identifiant>.")
@@ -1148,7 +1148,7 @@ def cmd_marketing(args: argparse.Namespace) -> int:
         print("  Liste des produits : usine liste")
         return 1
     dossier = Path(produit["dossier"])
-    meta = json.loads(produit.get("meta") or "{}")
+    meta = produit.get("meta") or {}
     ctx = Contexte(
         sujet=produit["sujet"] or produit["titre"],
         audience=produit["audience"] or "un public francophone motive",
@@ -1179,7 +1179,7 @@ def cmd_livrer(args: argparse.Namespace) -> int:
     if not dossier.exists():
         erreur("Dossier introuvable : {}".format(dossier))
         return 1
-    meta = json.loads(produit.get("meta") or "{}")
+    meta = produit.get("meta") or {}
     from .pipelines.base import slug
 
     archive = livraison.empaqueter(
@@ -1200,7 +1200,7 @@ def cmd_liste(args: argparse.Namespace) -> int:
         return 0
     titre_console("Produits fabriques")
     for produit in produits:
-        meta = json.loads(produit.get("meta") or "{}")
+        meta = produit.get("meta") or {}
         marque = "pret" if produit["statut"] == "pret" else produit["statut"]
         print("  {}  {}".format(
             _c(time.strftime("%d/%m %H:%M", time.localtime(produit["cree_le"])), "2"),
