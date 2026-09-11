@@ -105,6 +105,14 @@ class Provider:
     signup: str = ""                # ou obtenir une cle gratuite
     notes: str = ""
     extra_headers: Dict[str, str] = field(default_factory=dict)
+    # Secondes avant d'abandonner un appel. Un service distant repond en
+    # quelques secondes ; un modele de 3 milliards de parametres sur le
+    # processeur d'un telephone produit entre trois et dix jetons par
+    # seconde. Quatre mille jetons demandent donc entre sept et vingt
+    # minutes. Avec la limite commune de 150 secondes, l'IA locale etait
+    # cablee, annoncee dans le diagnostic — et incapable de terminer un
+    # chapitre : chaque appel expirait avant la fin de la generation.
+    timeout: int = 150
 
     @property
     def api_key(self) -> str:
@@ -261,6 +269,7 @@ PROVIDERS: List[Provider] = [
         },
         rpm=600,
         rpd=100000,
+        timeout=1200,
         local=True,
         signup="pkg install ollama && ollama serve",
         notes="IA locale, 100%% hors ligne.",
@@ -276,6 +285,7 @@ PROVIDERS: List[Provider] = [
         },
         rpm=600,
         rpd=100000,
+        timeout=1200,
         local=True,
         signup="llama-server -m modele.gguf --port 8080",
         notes="IA locale via llama.cpp (serveur compatible OpenAI).",

@@ -1464,6 +1464,11 @@ def cmd_docteur(args: argparse.Namespace) -> int:
     elif locaux_actifs:
         ok("IA locale detectee : {}. Production hors ligne possible.".format(
             ", ".join(locaux_actifs)))
+        print("      Comptez plusieurs minutes par chapitre : un modele de 3")
+        print("      milliards de parametres produit 3 a 10 jetons par seconde")
+        print("      sur un telephone. Le delai d'attente est regle en")
+        print("      consequence ({} s par appel).".format(
+            config.PROVIDERS_BY_NAME["ollama"].timeout))
     else:
         alerte("Aucun fournisseur pret. Lancez : " + _c("usine cles", "1"))
 
@@ -1487,7 +1492,7 @@ def cmd_docteur(args: argparse.Namespace) -> int:
 
 
 def _tester_locaux() -> List[str]:
-    """Verifie si un serveur d'IA locale repond."""
+    """Verifie si un serveur d'IA locale repond, et ce qu'il propose."""
     from .core.http import HttpErreur, requete
 
     actifs: List[str] = []
@@ -1495,12 +1500,41 @@ def _tester_locaux() -> List[str]:
         fournisseur = config.PROVIDERS_BY_NAME[nom]
         url = fournisseur.base_url.rstrip("/") + "/models"
         try:
-            statut, _ = requete(url, timeout=3)
-            if statut < 500:
-                actifs.append(nom)
-        except HttpErreur:
+            statut, corps = requete(url, timeout=3)
+        except (HttpErreur, OSError):
             continue
+        if statut >= 500:
+            continue
+        actifs.append(nom)
+        _detailler_local(fournisseur, corps)
     return actifs
+
+
+def _detailler_local(fournisseur, corps: bytes) -> None:
+    """Dit si le modele attendu est REELLEMENT present sur le serveur.
+
+    Un serveur qui repond n'est pas un serveur pret : ollama demarre sans
+    aucun modele. « ollama serve » lance, « ollama pull » oublie, et la
+    production echouait au premier chapitre avec un 404 que rien
+    n'expliquait.
+    """
+    attendu = fournisseur.model_for("standard")
+    try:
+        charge = json.loads(corps.decode("utf-8", "replace"))
+        presents = [str(m.get("id") or "") for m in (charge.get("data") or [])]
+    except (ValueError, AttributeError):
+        presents = []
+    if not presents:
+        return
+    if any(attendu == m or m.startswith(attendu.split(":")[0])
+           for m in presents):
+        ok("  {} : modele « {} » present".format(fournisseur.name, attendu))
+    else:
+        alerte("  {} repond, mais « {} » n'y est pas.".format(
+            fournisseur.name, attendu))
+        print("      Presents : {}".format(", ".join(presents[:4]) or "aucun"))
+        if fournisseur.name == "ollama":
+            print("      " + _c("ollama pull " + attendu, "1"))
 
 
 def cmd_cles(args: argparse.Namespace) -> int:

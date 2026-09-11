@@ -58,6 +58,35 @@ def _cle_cache(messages: Sequence[Dict[str, str]], role: str, temperature: float
     return hashlib.sha256(brut.encode("utf-8")).hexdigest()
 
 
+def _expliquer(p: config.Provider, exc: Exception) -> str:
+    """Traduit l'echec d'un serveur local en geste a faire.
+
+    « HTTP 404 » ou « Connection refused » ne disent rien a qui vient
+    d'installer Ollama sur son telephone. Ces trois pannes sont les seules
+    qu'on rencontre vraiment, et chacune a une reponse d'une ligne.
+    """
+    texte = str(exc)
+    if not p.local:
+        return texte
+    minuscules = texte.lower()
+    if isinstance(exc, HttpErreur) and exc.statut == 404:
+        return ("modele absent du serveur. Telechargez-le : {}"
+                .format("ollama pull " + p.model_for("standard")
+                        if p.name == "ollama"
+                        else "verifiez le fichier .gguf passe a llama-server"))
+    if any(mot in minuscules for mot in
+           ("refused", "refusee", "unreachable", "timed out", "timeout",
+            "connexion", "urlerror", "no route")):
+        if "timed out" in minuscules or "timeout" in minuscules:
+            return ("pas de reponse en {} s. Un modele de cette taille est "
+                    "peut-etre trop lourd pour cet appareil : essayez un "
+                    "modele plus petit (OLLAMA_MODEL=qwen2.5:0.5b)."
+                    .format(p.timeout))
+        return ("serveur injoignable sur {}. Lancez-le : {}"
+                .format(p.base_url, p.signup))
+    return texte
+
+
 def _quota_ok(p: config.Provider) -> bool:
     if _REPOS.get(p.name, 0) > time.time():
         return False
@@ -202,8 +231,11 @@ def generer(
 
             for essai in range(tentatives_par_fournisseur):
                 try:
+                    # Le delai du fournisseur prime sur celui de l'appelant :
+                    # un modele local a besoin de minutes la ou un service
+                    # distant a besoin de secondes.
                     rep = _appel(p, messages, role, temperature, max_tokens,
-                                 json_mode, timeout, cle)
+                                 json_mode, max(timeout, p.timeout), cle)
                     if cache:
                         store.cache_set(cle_cache, rep.texte, rep.fournisseur,
                                         rep.modele)
@@ -212,7 +244,8 @@ def generer(
                     store.enregistrer_appel(p.name, p.model_for(role), False, 0, 0,
                                             str(exc), cle_id=cle.id if cle else "")
                     erreurs.append("{}{} : {}".format(
-                        p.name, "/" + cle.affichage if cle else "", exc))
+                        p.name, "/" + cle.affichage if cle else "",
+                        _expliquer(p, exc)))
 
                     if exc.statut in (401, 403):
                         # Cle refusee : on ecarte la cle, pas le fournisseur.
@@ -244,7 +277,7 @@ def generer(
                 except Exception as exc:
                     store.enregistrer_appel(p.name, p.model_for(role), False, 0, 0,
                                             repr(exc), cle_id=cle.id if cle else "")
-                    erreurs.append("{} : {}".format(p.name, exc))
+                    erreurs.append("{} : {}".format(p.name, _expliquer(p, exc)))
                     break
 
     raise PlusDeFournisseur(
