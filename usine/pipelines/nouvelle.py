@@ -41,6 +41,7 @@ from ..agents import equipe
 from ..core import budget
 from ..core import controle as ctrl
 from ..core import evenements, llm, securite
+from ..core import serie as module_serie
 from ..render import document as D
 from ..render import livraison
 from . import faits
@@ -100,13 +101,14 @@ def format_fiction(mots: int) -> str:
 # --------------------------------------------------------------------------
 
 
-def construire_bible(ctx: Contexte) -> Dict[str, Any]:
+def construire_bible(ctx: Contexte, rappel: str = "") -> Dict[str, Any]:
     """Tout ce qui ne changera plus : distribution, cadre, enjeu.
 
     Elle est ecrite en un seul appel, AVANT la premiere ligne de texte, parce
     qu'un personnage dont le desir se decide au fil de l'eau n'a pas de desir.
     """
     invite = (
+        "{rappel}"
         "Concois la bible d'une nouvelle (fiction courte) a partir de cette "
         "idee :\n"
         "IDEE : {sujet}\n"
@@ -128,7 +130,8 @@ def construire_bible(ctx: Contexte) -> Dict[str, Any]:
         '"personnages": [{{"nom": "...", "role": "protagoniste", '
         '"desir": "...", "defaut": "...", "voix": "..."}}], '
         '"enjeu": "...", "fin_visee": "..."}}'
-    ).format(sujet=ctx.sujet, audience=ctx.audience)
+    ).format(sujet=ctx.sujet, audience=ctx.audience,
+             rappel=(rappel + "\n\n") if rappel else "")
 
     bible = equipe.ARCHITECTE.travailler_json(ctx, invite, max_tokens=2200)
     if not isinstance(bible, dict) or not bible.get("personnages"):
@@ -835,7 +838,8 @@ def _proximite(a: str, b: str) -> float:
 def controler_continuite(bible: Dict[str, Any], grille: Dict[str, Any],
                          scenes: List[Tuple[str, str]],
                          memoires: List[str],
-                         redigees: Optional[List[bool]] = None) -> Dict[str, Any]:
+                         redigees: Optional[List[bool]] = None,
+                         serie: str = "") -> Dict[str, Any]:
     """Relit la bible contre le texte reellement ecrit.
 
     Ce sont les defauts propres a la fiction generee, et aucun ne demande un
@@ -1022,6 +1026,15 @@ def controler_continuite(bible: Dict[str, Any], grille: Dict[str, Any],
             "preuves": contradiction["preuves"],
         })
 
+    # -- 13 bis. ce que les tomes precedents avaient etabli -----------------
+    # Le registre ci-dessus compare le texte a lui-meme. Celui-ci le compare
+    # a la serie : une heroine aux yeux verts au tome 1 ne les a pas bleus au
+    # tome 3. C'est la contradiction la plus couteuse, parce qu'elle se voit
+    # chez le seul lecteur qui comptait vraiment — celui qui a achete le
+    # premier tome et qui revient.
+    if serie:
+        anomalies.extend(module_serie.contradictions(serie, registre["canon"]))
+
     # -- 14. qui prend la parole -------------------------------------------
     # La bible donne une voix a chaque personnage et cette voix part dans
     # l'invite de chaque scene. Rien ne verifiait qu'elle avait ete tenue —
@@ -1037,6 +1050,9 @@ def controler_continuite(bible: Dict[str, Any], grille: Dict[str, Any],
         "scenes": len(scenes),
         "personnages": len(bible["personnages"]),
         "faits_releves": registre["faits"],
+        # Le canon du tome : un fait par personnage et par attribut. C'est ce
+        # que la serie retient, et ce a quoi le tome suivant sera compare.
+        "canon": registre["canon"],
         "parole": {"repliques": parole["repliques"],
                    "profils": parole["profils"],
                    "comparables": parole["comparables"]},
@@ -1051,13 +1067,26 @@ def controler_continuite(bible: Dict[str, Any], grille: Dict[str, Any],
 # --------------------------------------------------------------------------
 
 
-def produire(ctx: Contexte) -> Dict[str, Any]:
-    """Produit la nouvelle complete et renvoie un resume des fichiers generes."""
+def produire(ctx: Contexte, serie: str = "") -> Dict[str, Any]:
+    """Produit la nouvelle complete et renvoie un resume des fichiers generes.
+
+    « serie » range le recit dans une suite. Le tome recoit alors ce que les
+    precedents ont etabli — le monde, la distribution, les faits — et le
+    controle de continuite compare le texte a ce canon en plus de le comparer
+    a lui-meme. Une serie inconnue se cree au premier tome : il n'y a rien a
+    declarer d'avance.
+    """
     vise = ctx.nb_chapitres * ctx.mots_par_chapitre
     ctx.journal("Format vise : {} — {} scenes, environ {} mots.".format(
         format_fiction(vise), ctx.nb_chapitres, vise))
+    rappel = module_serie.rappel(serie) if serie else ""
+    if serie:
+        rang_prevu = module_serie.prochain_rang(serie)
+        ctx.journal("Serie « {} » — tome {}{}".format(
+            serie, rang_prevu,
+            "" if rang_prevu == 1 else " (le monde et la distribution sont repris)"))
     ctx.journal("Etape 1/5 — la bible : distribution, cadre, enjeu...")
-    bible = construire_bible(ctx)
+    bible = construire_bible(ctx, rappel)
     titre = bible["titre"]
     dossier = preparer(ctx, "nouvelle", titre)
     ctx.etape("bible", "ok", "{} personnage(s)".format(len(bible["personnages"])))
@@ -1172,7 +1201,7 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
 
     ctx.journal("Etape 4/5 — controle de continuite...")
     continuite = controler_continuite(bible, grille, sections, memoires,
-                                      redigees)
+                                      redigees, serie=serie)
     ctx.journal("  " + continuite["resume"])
     for anomalie in continuite["anomalies"][:4]:
         ctx.journal("    [{}] {}".format(anomalie["gravite"], anomalie["detail"]))
@@ -1215,9 +1244,26 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
             + ", ".join(d for d, _ in alertes) + "\n", encoding="utf-8")
 
     mots = sum(D.compter_mots(corps) for _, corps in sections)
+
+    # Le tome entre dans sa serie une fois ecrit, et seulement alors : ranger
+    # un tome avant de savoir s'il aboutit laisserait dans la bible un monde
+    # que personne n'a jamais lu. Ce qui y entre vient du texte produit et de
+    # la bible du tome — aucun appel de modele, donc aucune derive de resume
+    # en resume.
+    rang = 0
+    if serie:
+        rang = module_serie.enregistrer_tome(
+            serie, bible, titre,
+            resume=memoires[-1] if memoires else bible.get("premisse", ""),
+            produit_id=ctx.produit_id,
+            faits=(continuite.get("canon") or {}))
+        ctx.journal("  range dans la serie « {} » au rang {}".format(serie, rang))
+
     resume = {
         "produit_id": ctx.produit_id,
         "titre": titre,
+        "serie": serie,
+        "rang": rang,
         "sous_titre": bible.get("genre", ""),
         "dossier": str(dossier),
         "scenes": total,

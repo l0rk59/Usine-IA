@@ -364,6 +364,20 @@ def contradictions(registre: Dict[str, Dict[str, List[Dict[str, Any]]]]
     return trouvees
 
 
+def canon(registre: Dict[str, Dict[str, List[Dict[str, Any]]]]
+          ) -> Dict[str, Dict[str, str]]:
+    """Un seul fait par personnage et par attribut : le PREMIER affirme.
+
+    C'est ce qui part dans la bible de serie. Le premier releve fait foi pour
+    la meme raison qu'entre deux tomes : ce que le lecteur a lu d'abord est ce
+    qu'il tient pour vrai. Prendre le dernier ferait du tome le plus recent
+    l'arbitre de tout ce qui precede.
+    """
+    return {personnage: {attribut: releves[0]["valeur"]
+                         for attribut, releves in attributs.items() if releves}
+            for personnage, attributs in registre.items()}
+
+
 def controler(sections: List[Tuple[str, str]],
               noms: Iterable[str]) -> Dict[str, Any]:
     """Registre et contradictions d'un texte, en une passe."""
@@ -371,6 +385,7 @@ def controler(sections: List[Tuple[str, str]],
     trouvees = contradictions(registre)
     return {
         "registre": registre,
+        "canon": canon(registre),
         "contradictions": trouvees,
         "faits": sum(len(v) for f in registre.values() for v in f.values()),
         "resume": ("aucune contradiction de fait" if not trouvees else

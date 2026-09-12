@@ -60,6 +60,19 @@ CREATE TABLE IF NOT EXISTS produits (
     statut TEXT NOT NULL DEFAULT 'en_cours',
     dossier TEXT,
     meta TEXT,
+    serie TEXT,
+    rang INTEGER,
+    cree_le REAL NOT NULL,
+    maj_le REAL NOT NULL
+);
+
+-- Une serie : le monde et la distribution qu'un tome transmet au suivant.
+-- La bible y est stockee en JSON parce que sa forme suit celle de la fiction
+-- et changera avec elle ; la normaliser en colonnes obligerait a une
+-- migration a chaque champ ajoute a une bible.
+CREATE TABLE IF NOT EXISTS series (
+    nom TEXT PRIMARY KEY,
+    bible TEXT NOT NULL,
     cree_le REAL NOT NULL,
     maj_le REAL NOT NULL
 );
@@ -110,7 +123,7 @@ CREATE INDEX IF NOT EXISTS idx_ventes_date ON ventes(date);
 # plus tard ne serait jamais creee chez qui a deja produit, et l'erreur SQL
 # tomberait des semaines apres, sur un telephone, avec tout l'historique
 # dedans. Chaque evolution s'inscrit donc ici.
-VERSION_SCHEMA = 4
+VERSION_SCHEMA = 5
 
 MIGRATIONS = {
     # v1 -> v2 : empreintes des produits, pour detecter les doublons.
@@ -136,7 +149,31 @@ MIGRATIONS = {
     # d'ou une fonction plutot qu'une suite d'ordres SQL.
     4: [lambda conn: _ajouter_colonnes(
         conn, "variantes", (("debut", "TEXT"), ("fin", "TEXT")))],
+    # v4 -> v5 : les series. Un tome doit savoir de quel monde il est le
+    # suivant, et « produits » doit pouvoir le dire sans jointure — c'est ce
+    # que listent la CLI, le menu et le tableau de bord.
+    5: ["""CREATE TABLE IF NOT EXISTS series (
+             nom TEXT PRIMARY KEY, bible TEXT NOT NULL,
+             cree_le REAL NOT NULL, maj_le REAL NOT NULL)""",
+        lambda conn: _ajouter_colonnes(
+            conn, "produits", (("serie", "TEXT"), ("rang", "INTEGER")))],
 }
+
+
+# Index portant sur des colonnes que l'echelle de migrations ajoute.
+#
+# Ils ne peuvent pas vivre dans SCHEMA, et la raison merite d'etre dite :
+# SCHEMA s'execute AVANT « _migrer », et « CREATE TABLE IF NOT EXISTS » ne
+# touche pas une table deja creee. Sur une base existante, l'index tombait
+# donc sur une colonne qui n'existait pas encore, et « connect() » levait
+# « no such column: serie » — avant meme d'avoir eu la chance de migrer.
+# Autrement dit : l'usine ne demarrait plus du tout chez quiconque avait deja
+# produit un seul fichier, tandis qu'elle marchait parfaitement chez qui
+# developpe. C'est le defaut de migration type, et il a ete attrape par le
+# test qui part d'une base au palier 1.
+INDEX_APRES_MIGRATION = """
+CREATE INDEX IF NOT EXISTS idx_produits_serie ON produits(serie, rang);
+"""
 
 
 def _ajouter_colonnes(conn: sqlite3.Connection, table: str,
@@ -240,6 +277,7 @@ def connect() -> sqlite3.Connection:
                 " AND name='produits'").fetchone()[0] == 0
             conn.executescript(SCHEMA)
             _migrer(conn, neuve)
+            conn.executescript(INDEX_APRES_MIGRATION)
             _schema_pret = True
     _local.conn = conn
     _local.generation = _generation

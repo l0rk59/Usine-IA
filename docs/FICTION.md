@@ -361,6 +361,84 @@ reconnaître demanderait de comprendre le récit — ce qu'un contrôle
 déterministe ne fait pas, et ce qu'un modèle relisant sa propre prose fait
 mal.
 
+## Les séries : ce qu'un tome transmet au suivant
+
+L'usine fabriquait des produits isolés. Une nouvelle écrite hier et une
+nouvelle écrite aujourd'hui ne se connaissaient pas, même si l'auteur voulait
+la même héroïne dans le même village.
+
+Deux conséquences, et **c'est la commerciale qui pèse le plus** : le tome 2 se
+vend au lecteur du tome 1. C'est le seul levier de vente qu'une fabrique de
+fiction possède vraiment, et rien ne l'exploitait. La seconde est littéraire :
+un tome qui contredit le précédent perd ce lecteur-là pour de bon.
+
+```bash
+usine nouvelle "la ligne qui ferme"   --serie "Les rails"
+usine nouvelle "dix ans plus tard"    --serie "Les rails"
+usine series "Les rails"
+```
+
+Une série inconnue **n'est pas une erreur** : c'est un premier tome. Rien à
+déclarer d'avance.
+
+### Ce que la série accumule
+
+| | |
+|---|---|
+| le cadre | lieu, époque, règles du monde |
+| la distribution | jusqu'à 12 personnages, dans l'ordre d'apparition |
+| les faits acquis | un par personnage et par attribut — yeux, cheveux, âge |
+| le résumé de chaque tome | l'état final de la mémoire roulante, abrégé à 220 mots |
+
+**Aucun appel de modèle.** Ce qui entre vient du texte produit ou de la bible
+du tome, jamais d'une interprétation : un résumé de résumé dérive à chaque
+génération, et au tome 4 le village aurait changé de nom sans que personne
+l'ait décidé.
+
+### Trois règles, et pourquoi
+
+**Le premier tome qui affirme a raison.** Si le tome 3 donne des yeux bleus à
+une héroïne que le tome 1 a faite aux yeux verts, ce n'est pas la série qui a
+changé d'avis — c'est le tome 3 qui se trompe. Un canon qui se réécrirait
+ferait du tome le plus récent l'arbitre de tout ce qui précède, et le tome 4
+serait alors comparé à l'erreur du tome 3.
+
+**Le cadre se complète, il ne se réécrit pas.** Réécrire le lieu au tome 2
+déplacerait rétroactivement une histoire que le lecteur a déjà lue. Une règle
+du monde que le tome 2 pose pour la première fois, elle, s'ajoute.
+
+**Une fiche de personnage déjà connu reste celle du tome où il est apparu.**
+C'est celle que le lecteur a lue.
+
+### Le contrôle de continuité entre tomes
+
+`pipelines/faits.py` savait déjà repérer une contradiction **dans** un texte.
+Il suffisait de lui donner deux textes : le canon de la série d'un côté, ce
+que le tome courant affirme de l'autre.
+
+```
+[majeur] « Camille Renard » : yeux vaut « vert » dans la serie, « bleu » ici
+```
+
+Rien n'est signalé quand la série est neuve — il n'y a pas de canon à
+contredire — ni pour un attribut que la série ne connaît pas : c'est le tome
+courant qui l'établit.
+
+### Ce que le tome suivant reçoit
+
+Le rappel entre dans l'invite de la bible, avant l'idée. Il nomme la série, le
+cadre établi, les règles déjà posées, les personnages **avec leurs faits
+acquis**, et les tomes précédents avec leur résumé. Il finit par la consigne
+qui compte :
+
+> Écris la SUITE : ne réexplique pas ce que le lecteur a déjà lu, ne contredis
+> aucun fait ci-dessus, et n'oublie pas qu'un tome doit se tenir seul pour qui
+> commence par lui.
+
+Le dernier membre de phrase n'est pas une politesse. Un tome qui suppose le
+précédent lu est invendable seul, et c'est pourtant ainsi que la moitié des
+lecteurs arrivent.
+
 ## Les longueurs
 
 Les paliers de l'usine (`mini`, `court`, `standard`, `long`) sont pensés pour

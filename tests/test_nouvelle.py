@@ -25,7 +25,7 @@ sys.path.insert(0, str(RACINE))
 
 from tests import atelier  # noqa: E402
 from tests.simulateur import simulateur  # noqa: E402
-from usine.core import llm, reglages  # noqa: E402
+from usine.core import llm, reglages, store  # noqa: E402
 from usine.agents import equipe  # noqa: E402
 from usine.pipelines import catalogue, nouvelle  # noqa: E402
 from usine.pipelines.base import Contexte  # noqa: E402
@@ -843,3 +843,122 @@ class TestBible(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestContinuiteContreLaSerie(unittest.TestCase):
+    """Le controle compare le texte a lui-meme ET au canon de la serie.
+
+    Le second est celui qui compte commercialement : une heroine aux yeux
+    verts au tome 1 qui les a bleus au tome 3 se fait reprendre par le seul
+    lecteur qui comptait — celui qui a achete le premier tome et qui revient.
+    """
+
+    def setUp(self):
+        from usine.core import serie as module_serie
+
+        self.module_serie = module_serie
+        with store.cursor() as cur:
+            cur.execute("DELETE FROM series")
+        module_serie.enregistrer_tome(
+            "Canon", BIBLE, "Le dernier train", resume="...",
+            faits={"Camille Renard": {"yeux": "vert"}})
+
+    def _controler(self, texte, serie=""):
+        scenes = [(s["titre"], texte) for s in GRILLE_COMPLETE["scenes"]]
+        return nouvelle.controler_continuite(
+            BIBLE, GRILLE_COMPLETE, scenes,
+            ["etat {}".format(i) for i in range(len(scenes))], serie=serie)
+
+    def test_un_texte_conforme_au_canon_ne_dit_rien(self):
+        rapport = self._controler(
+            "Camille Renard leva ses yeux verts. Hakim Oussaid se tut.",
+            serie="Canon")
+        self.assertEqual([a for a in rapport["anomalies"]
+                          if a["genre"] == "fait_contredit_la_serie"], [])
+
+    def test_un_texte_qui_contredit_la_serie_est_signale(self):
+        rapport = self._controler(
+            "Camille Renard baissa ses yeux bleus. Hakim Oussaid se tut.",
+            serie="Canon")
+        contre = [a for a in rapport["anomalies"]
+                  if a["genre"] == "fait_contredit_la_serie"]
+        self.assertEqual(len(contre), 1)
+        self.assertEqual(contre[0]["gravite"], "majeur")
+        self.assertIn("vert", contre[0]["detail"])
+
+    def test_sans_serie_le_meme_texte_ne_declenche_rien(self):
+        """Un recit isole n'a aucun canon a contredire : le controle doit
+        rester muet, sinon toute nouvelle hors serie serait accusee."""
+        rapport = self._controler(
+            "Camille Renard baissa ses yeux bleus. Hakim Oussaid se tut.")
+        self.assertEqual([a for a in rapport["anomalies"]
+                          if a["genre"] == "fait_contredit_la_serie"], [])
+
+    def test_le_canon_du_tome_est_rendu_pour_etre_enregistre(self):
+        rapport = self._controler(
+            "Camille Renard leva ses yeux verts. Hakim Oussaid se tut.")
+        self.assertEqual(rapport["canon"]["Camille Renard"]["yeux"], "vert")
+
+
+class TestSerieDansLaChaine(unittest.TestCase):
+    """Du code sans appelant ne protege personne : la serie doit traverser
+    toute la chaine, de l'invite de la bible jusqu'a la fiche produit."""
+
+    @classmethod
+    def setUpClass(cls):
+        from usine.core import serie as module_serie
+
+        cls.serie = module_serie
+        with store.cursor() as cur:
+            cur.execute("DELETE FROM series")
+        cls.t1 = nouvelle.produire(_contexte(sujet="la ligne qui ferme"),
+                                   serie="Les rails")
+
+    def test_le_premier_tome_est_range_au_rang_1(self):
+        self.assertEqual(self.t1["rang"], 1)
+        self.assertEqual(self.t1["serie"], "Les rails")
+
+    def test_la_serie_retient_le_monde_et_la_distribution(self):
+        bible = self.serie.lire("Les rails")
+        self.assertIsNotNone(bible)
+        self.assertEqual(len(bible["tomes"]), 1)
+        self.assertTrue(bible["personnages"])
+        self.assertTrue(bible["tomes"][0]["titre"])
+
+    def test_le_produit_porte_sa_serie(self):
+        fiche = store.lire_produit(self.t1["produit_id"])
+        self.assertEqual(fiche["serie"], "les-rails")
+        self.assertEqual(fiche["rang"], 1)
+
+    def test_le_tome_suivant_recoit_ce_qui_precede(self):
+        """Le rappel doit ENTRER dans l'invite de la bible, pas seulement
+        exister : c'est la seule chose qui fasse du tome 2 une suite."""
+        vus = []
+        vrai = nouvelle.equipe.ARCHITECTE.travailler_json
+
+        def espion(ctx, invite, **kwargs):
+            vus.append(invite)
+            return vrai(ctx, invite, **kwargs)
+
+        nouvelle.equipe.ARCHITECTE.travailler_json = espion
+        try:
+            tome2 = nouvelle.produire(_contexte(sujet="dix ans plus tard"),
+                                      serie="Les rails")
+        finally:
+            nouvelle.equipe.ARCHITECTE.travailler_json = vrai
+        self.assertEqual(tome2["rang"], 2)
+        self.assertTrue(vus)
+        self.assertIn("SERIE", vus[0])
+        self.assertIn("TOMES PRECEDENTS", vus[0])
+
+    def test_une_nouvelle_hors_serie_ne_cree_rien(self):
+        avant = len(self.serie.lister())
+        resume = nouvelle.produire(_contexte(sujet="un recit isole"))
+        self.assertEqual(resume["rang"], 0)
+        self.assertEqual(resume["serie"], "")
+        self.assertEqual(len(self.serie.lister()), avant)
+
+    def test_le_catalogue_transmet_l_option(self):
+        """La CLI, le menu et le tableau de bord passent par le catalogue :
+        une option qu'il ne transmet pas n'existe pour personne."""
+        self.assertIn("serie", catalogue.obtenir("nouvelle").options)

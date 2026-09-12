@@ -213,11 +213,60 @@ def cmd_nouvelle(args: argparse.Namespace) -> int:
     _avertir_sujet(args.sujet)
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'une nouvelle")
-    resume = nouvelle.produire(ctx)
+    resume = nouvelle.produire(ctx, serie=getattr(args, "serie", "") or "")
     description = "Nouvelle{}, {} scenes, {} mots.".format(
         " — " + resume["sous_titre"] if resume.get("sous_titre") else "",
         resume["scenes"], resume["mots"])
+    if resume.get("rang"):
+        description = "Tome {} de « {} ». ".format(
+            resume["rang"], args.serie) + description
     _resume_console(_apres_production(args, ctx, resume, description))
+    return 0
+
+
+def cmd_series(args: argparse.Namespace) -> int:
+    """Ce que l'usine a accumule pour chaque suite en cours."""
+    from .core import serie as module_serie
+
+    if args.nom:
+        bible = module_serie.lire(args.nom)
+        if not bible:
+            alerte("Aucune serie « {} ». Elle naitra au premier tome : "
+                   "usine nouvelle \"...\" --serie \"{}\"".format(
+                       args.nom, args.nom))
+            return 1
+        titre_console("Serie « {} »".format(bible.get("nom") or args.nom))
+        cadre = bible.get("cadre") or {}
+        if cadre.get("lieu") or cadre.get("epoque"):
+            print("  Cadre : {} — {}".format(cadre.get("lieu") or "?",
+                                             cadre.get("epoque") or "?"))
+        for regle in cadre.get("regles") or []:
+            print("  Regle : " + regle)
+        if bible.get("personnages"):
+            titre_console("Distribution")
+            for personnage in bible["personnages"]:
+                faits = (bible.get("faits") or {}).get(personnage.get("nom"), {})
+                print("  {:<24} {:<14} {}".format(
+                    personnage.get("nom", ""), personnage.get("role", ""),
+                    _c(", ".join("{} : {}".format(a, v)
+                                 for a, v in sorted(faits.items())), "90")))
+        titre_console("Tomes")
+        for tome in bible.get("tomes") or []:
+            print("  {}. {}".format(tome.get("rang"), tome.get("titre")))
+            if tome.get("resume"):
+                print("     " + _c(tome["resume"][:160], "90"))
+        return 0
+
+    series = module_serie.lister()
+    if not series:
+        print("Aucune serie. Une serie commence a son premier tome :")
+        print("  " + _c('usine nouvelle "votre idee" --serie "Nom de la serie"', "1"))
+        return 0
+    titre_console("Series")
+    for ligne in series:
+        print("  {:<28} {} tome(s), {} personnage(s)".format(
+            ligne["nom"], ligne["tomes"], ligne["personnages"]))
+    print("\n  Detail : " + _c("usine series \"<nom>\"", "1"))
     return 0
 
 
@@ -1837,7 +1886,17 @@ def construire_parseur() -> argparse.ArgumentParser:
     p = sous_parseurs.add_parser(
         "nouvelle", help="fabriquer une nouvelle (fiction courte)")
     _options_communes(p)
+    p.add_argument("--serie", default="",
+                   help="ranger ce recit dans une serie : le tome reprend le "
+                        "monde, la distribution et les faits des precedents, "
+                        "et la continuite est verifiee contre eux")
     p.set_defaults(fonction=cmd_nouvelle)
+
+    p = sous_parseurs.add_parser(
+        "series", help="lister les series et leurs tomes")
+    p.add_argument("nom", nargs="?", default="",
+                   help="detail d'une serie : sa distribution et ses faits")
+    p.set_defaults(fonction=cmd_series)
 
     p = sous_parseurs.add_parser("prompts", help="fabriquer un pack de prompts")
     _options_communes(p)

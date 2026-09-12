@@ -339,6 +339,24 @@ class TestEchelleDeMigrations(unittest.TestCase):
         self.assertEqual(ligne[0], "A")
         self.assertIsNone(ligne[1])
 
+    def test_un_index_sur_une_colonne_migree_est_pose_dans_les_deux_cas(self):
+        """L'index qui a du sortir de SCHEMA doit exister quand meme.
+
+        Il portait sur « produits(serie, rang) », des colonnes que l'echelle
+        ajoute. Dans SCHEMA, il s'executait AVANT la migration et levait
+        « no such column » : l'usine ne demarrait plus chez quiconque avait
+        deja produit. Le deplacer apres « _migrer » repare cela — a condition
+        qu'il soit encore pose, sur une base ancienne comme sur une neuve.
+        """
+        for preparer in (self._base_v1, self._base_v3_sans_les_colonnes):
+            preparer()
+            with self.subTest(depart=preparer.__name__):
+                with store.cursor() as cur:
+                    cur.execute("SELECT name FROM sqlite_master"
+                                " WHERE type='index' AND name=?",
+                                ("idx_produits_serie",))
+                    self.assertIsNotNone(cur.fetchone())
+
     def test_une_base_neuve_saute_les_paliers_sans_les_rejouer(self):
         """Une base creee ce matin a deja toutes ses tables : lui faire
         rejouer l'echelle n'ajouterait rien et masquerait une erreur de

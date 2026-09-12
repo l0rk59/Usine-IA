@@ -122,6 +122,8 @@ TYPES: List[TypeProduit] = [
         # aussi bien un recit qu'une nouvelle methode ou l'histoire d'un
         # marche. Un mot-cle trop large enverrait des guides a la fiction.
         mots_cles=("fiction", "recit", "roman", "conte", "intrigue"),
+        # Une serie fait du tome suivant une vente au lecteur du precedent.
+        options={"serie": None},
     ),
     TypeProduit(
         cle="prompts", nom="Pack de prompts",

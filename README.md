@@ -999,7 +999,10 @@ sait pas faire, et ce qu'on peut y ajouter — est dans
   été abandonnée en route. Un **registre des faits** lit en plus ce que les
   phrases affirment : une héroïne aux yeux verts scène 2 puis aux yeux bleus
   scène 9 ne casse aucune structure, et c'est l'erreur que les lecteurs
-  relèvent le plus. Chaque contradiction cite les deux passages. Ce qui manque
+  relèvent le plus. Chaque contradiction cite les deux passages. Et une
+  **série** (`--serie "Nom"`) fait qu'un tome reprend le monde, la
+  distribution et les faits des précédents : le tome 2 se vend au lecteur du
+  tome 1, à condition de ne pas le contredire. Ce qui manque
   est du jugement — savoir si l'histoire vaut la peine d'être lue — et aucun
   outil ne sait le faire.
 - **Sécurité : oui, du côté contenu — pas d'outillage.** Guides, checklists de

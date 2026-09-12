@@ -104,11 +104,10 @@ attributs. Il ne se trompe pas, et il en rate.
 
 Trois choses, honnêtement :
 
-1. **Bible de série** (AuthorAgent) — continuité entre plusieurs tomes. Nous
-   avons une bible par livre et des empreintes qui détectent les doublons
-   entre produits. Rien qui tienne un univers commun. C'est une vraie absence,
-   et une vraie opportunité commerciale : le tome 2 se vend au lecteur du
-   tome 1.
+1. ~~**Bible de série**~~ (AuthorAgent) — continuité entre plusieurs tomes.
+   **Comblée**, et de façon déterministe : là où AuthorAgent fait relire par
+   un modèle, la nôtre compare un canon de faits mesurés. `usine nouvelle
+   --serie`, `usine series`.
 2. **Préparation audiobook** avec attribution des voix (AuthorAgent). Nous
    avons le script de narration (`render/narration.py`) et sa durée mesurée,
    pas l'attribution par personnage ni la synthèse.
@@ -150,9 +149,12 @@ Trois choses, honnêtement :
 
 ## 5. Ce qui reste ouvert
 
-- **La bible de série.** L'absence la plus nette. Demande un modèle de données
-  partagé entre produits, et une décision sur ce qu'on fait des empreintes
-  existantes.
+- ~~**La bible de série.**~~ **Faite.** `core/serie.py` : une série accumule le
+  cadre, la distribution et les faits acquis ; le tome suivant les reçoit dans
+  son invite, et le contrôle de continuité compare son texte à ce canon. Le
+  premier tome qui affirme a raison — voir [FICTION.md](FICTION.md). Le modèle
+  de données est une table `series` plus deux colonnes sur `produits`, au
+  palier 5 du schéma.
 - **Le verdict sur la ressemblance des voix.** L'extraction des répliques est
   faite ; ce qui manque est un seuil mesuré sur de la fiction réelle, au-delà
   duquel deux profils sont « la même voix ». Sans cette mesure, le verdict
