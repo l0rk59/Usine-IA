@@ -236,6 +236,12 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
                     qualite[chapitre["titre"]] = critiques
                     if critiques:
                         ctx.journal("     relecture : " + critiques[-1].resume())
+                    # Passe de style finale, reservee au niveau exigeant : le
+                    # STYLISTE resserre ce que l'editeur a valide. C'est le
+                    # dernier agent de la chaine, et le plus discret.
+                    if passes >= 2:
+                        corps = equipe.polir(ctx, corps, auteur)
+                        ctx.journal("     style : resserre par le styliste")
                 except budget.BudgetEpuise as exc:
                     budget_epuise = True
                     ctx.journal("     {} — relecture interrompue".format(exc))

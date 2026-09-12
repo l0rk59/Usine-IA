@@ -28,6 +28,12 @@ juridique, ni un conseil fiscal, ni un conseil medical, ni un conseil en
 investissement. Aucun resultat n'est garanti : les resultats dependent de
 votre situation, de votre marche et de votre execution. L'auteur ne peut
 etre tenu responsable des decisions prises sur la base de ce document.
+{transparence}"""
+
+# Mention d'assistance IA, ajoutee selon le reglage « signature_ia ». Beaucoup
+# de places de marche et le reglement europeen sur l'IA attendent cette
+# transparence ; on la met donc par defaut, tout en la rendant desactivable.
+TRANSPARENCE = """
 
 TRANSPARENCE
 Ce produit a ete elabore avec l'assistance d'outils d'intelligence
@@ -101,9 +107,15 @@ def ecrire_notice(dossier: Path, titre: str, promesse: str, auteur: str,
 
 
 def ecrire_licence(dossier: Path, titre: str, auteur: str) -> Path:
+    from ..core import reglages
+
+    # La mention d'assistance IA est activee par defaut (transparence attendue
+    # par les places de marche), mais « signature_ia » permet de la retirer.
+    transparence = TRANSPARENCE if reglages.lire("signature_ia", True) else ""
     chemin = dossier / "LICENCE.txt"
     chemin.write_text(
-        LICENCE.format(titre=titre, auteur=auteur, annee=time.strftime("%Y")),
+        LICENCE.format(titre=titre, auteur=auteur, annee=time.strftime("%Y"),
+                       transparence=transparence),
         encoding="utf-8",
     )
     return chemin

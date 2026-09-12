@@ -212,6 +212,11 @@ def controler_et_corriger(
     Renvoie le texte et l'historique des controles, pour que le rapport montre
     la progression reelle plutot qu'une affirmation.
     """
+    # Le controle deterministe EST le travail du controleur : on allume
+    # sa pastille pour que l'interface le montre a l'oeuvre, meme si
+    # aucun appel IA n'est fait ici.
+    evenements.publier("agent", agent=CONTROLEUR.nom,
+                       etat="debut", emoji=CONTROLEUR.emoji)
     historique: List[ctrl.Controle] = []
     courant = texte
     for tour in range(max(1, tentatives)):
@@ -223,6 +228,8 @@ def controler_et_corriger(
         if rapport.acceptable or tour == tentatives - 1:
             break
         courant = corriger_defauts(contexte, courant, rapport, intitule)
+    evenements.publier("agent", agent=CONTROLEUR.nom, etat="fin",
+                       emoji=CONTROLEUR.emoji)
     return courant, historique
 
 
@@ -277,37 +284,6 @@ def polir(contexte: Any, texte: str, fournisseur_auteur: str = "") -> str:
 
     poli = elaguer_markdown(reponse.texte)
     return poli if len(poli) > len(texte) * 0.6 else texte
-
-
-def controler(contexte: Any, titre: str, promesse: str, extrait: str,
-              prix: str = "") -> Dict[str, Any]:
-    """Verdict final avant mise en vente."""
-    invite = (
-        "PRODUIT : {titre}\nPROMESSE : {promesse}\n"
-        "PRIX ENVISAGE : {prix}\nPUBLIC : {audience}\n\n"
-        "EXTRAIT DU CONTENU :\n{extrait}\n\n"
-        "Rends un verdict de mise en vente.\n\n"
-        "Schema JSON exact :\n"
-        '{{"pret": true, "note_globale": 8.0, '
-        '"coherence_promesse": "la promesse est-elle tenue ?", '
-        '"risques": [{{"type": "juridique|sanitaire|commercial", '
-        '"detail": "...", "action": "..."}}], '
-        '"prix_juste": "sous-evalue|correct|sur-evalue", '
-        '"a_corriger_avant_vente": ["..."], "verdict": "une phrase"}}'
-    ).format(titre=titre, promesse=promesse, prix=prix or "non defini",
-             audience=getattr(contexte, "audience", "un public francophone"),
-             extrait=extrait[:9000])
-    try:
-        rapport = CONTROLEUR.travailler_json(contexte, invite, max_tokens=2000)
-    except Exception as exc:
-        return {"pret": True, "note_globale": None, "verdict": "controle indisponible",
-                "erreur": str(exc), "risques": [], "a_corriger_avant_vente": []}
-    if not isinstance(rapport, dict):
-        return {"pret": True, "verdict": "controle illisible", "risques": [],
-                "a_corriger_avant_vente": []}
-    rapport.setdefault("risques", [])
-    rapport.setdefault("a_corriger_avant_vente", [])
-    return rapport
 
 
 def rapport_qualite(historiques: Dict[str, List[Critique]]) -> Dict[str, Any]:

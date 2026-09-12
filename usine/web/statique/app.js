@@ -2,8 +2,18 @@
 'use strict';
 
 const $ = (id) => document.getElementById(id);
-const scene = new SceneUsine($('toile'));
+function effets3dActifs() {
+  // Le reglage « effets_3d » (vieux telephone) coupe la 3D et le fond anime.
+  // localStorage est le canal synchrone : la scene et « cyber.js » demarrent
+  // avant que /api/etat reponde, donc on lit le choix deja persiste ici.
+  try { return localStorage.getItem('usine-effets') !== 'off'; }
+  catch (e) { return true; }
+}
+const SCENE_MUETTE = { actif: false, rendre() {}, pulser() {}, jeton() {},
+                       majEtat() {} };
+const scene = effets3dActifs() ? new SceneUsine($('toile')) : SCENE_MUETTE;
 if (!scene.actif) $('scene').classList.add('sans-3d');
+if (!effets3dActifs()) $('scene').hidden = true;
 
 const etat = {
   types: [],
@@ -87,6 +97,7 @@ async function chargerEtat() {
     ? `${donnees.avec_cle} fournisseur(s) avec cle — rotation automatique active.`
     : "Aucune cle API : quota tres limite. Lancez « usine cles » dans Termux.";
 
+  appliquerReglagesInterface(donnees.reglages);
   if (!$('ton').options.length) {
     etat.types = donnees.types;
     remplirListe($('type'), donnees.types.map((t) => [t.cle, t.nom]), 'ebook');
@@ -1151,6 +1162,27 @@ async function chargerBilan() {
     + groupe('Par niveau de qualite', b.par_qualite)
     + `<p class="aide">Un reglage n'apparait qu'a partir de deux productions
        notees : une seule ne mesure rien.</p>`;
+}
+
+/* --------------------------------------------- reglages -> interface */
+function appliquerReglagesInterface(reglages) {
+  if (!reglages) return;
+  // Theme : le choix local (bouton) prime ; sinon on suit le reglage.
+  try {
+    if (!localStorage.getItem('usine-theme') && reglages.theme) {
+      document.documentElement.dataset.theme = reglages.theme;
+      $('theme').textContent = reglages.theme === 'jour' ? 'Nuit' : 'Jour';
+    }
+  } catch (e) { /* navigation privee */ }
+  // Effets 3D : on persiste le choix pour les chargements suivants (pas de
+  // flash), et on coupe tout de suite si c'est desactive.
+  const veut = reglages.effets_3d !== false;
+  try { localStorage.setItem('usine-effets', veut ? 'on' : 'off'); } catch (e) {}
+  if (!veut) {
+    $('scene').hidden = true;
+    const fond = document.getElementById('fond-cyber');
+    if (fond) fond.hidden = true;
+  }
 }
 
 /* ---------------------------------------------------------------- demarrage */

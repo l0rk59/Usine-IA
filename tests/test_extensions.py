@@ -453,6 +453,19 @@ class TestTableauDeBord(unittest.TestCase):
         self.assertIn("impression", [t["cle"] for t in donnees["types"]])
         self.assertIn("exigeant", donnees["qualites"])
 
+    def test_l_etat_porte_le_theme_et_les_effets_3d(self):
+        """Ces deux reglages ne servaient a rien : le serveur ne les envoyait
+        pas, donc le tableau de bord ne pouvait pas les appliquer."""
+        from usine.core import reglages
+
+        avant = {n: reglages.lire(n) for n in ("theme", "effets_3d")}
+        reglages.ecrire({"theme": "jour", "effets_3d": False})
+        self.addCleanup(reglages.ecrire, avant)
+        _, corps = self._appeler("/api/etat")
+        donnees = json.loads(corps)
+        self.assertEqual(donnees["reglages"]["theme"], "jour")
+        self.assertIs(donnees["reglages"]["effets_3d"], False)
+
     def test_un_reglage_sur_mesure_arrive_entier_au_tableau_de_bord(self):
         """Le formulaire ne peut pas retrouver ce que l'etat n'envoie pas.
 

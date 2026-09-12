@@ -49,6 +49,17 @@ if [ "$TERMUX" = "1" ]; then
         || avertir "echec de l'installation de $paquet"
     fi
   done
+  # Node.js (optionnel) : sans lui, le JavaScript genere par la chaine
+  # « logiciel » n'est verifie qu'en mode degrade. L'usine produit sans.
+  if command -v node >/dev/null 2>&1; then
+    succes "Node.js present : verification complete du JavaScript genere"
+  else
+    avertir "Node.js absent (optionnel) : pkg install nodejs-lts"
+  fi
+  # termux-api (optionnel) : notifications de fin, ouverture des fichiers.
+  if ! command -v termux-notification >/dev/null 2>&1; then
+    avertir "termux-api absent (optionnel) : pkg install termux-api"
+  fi
   # Acces au stockage partage : permet de deposer les produits dans /sdcard
   if [ ! -d "$HOME/storage" ]; then
     avertir "Pour enregistrer vos produits dans la memoire du telephone, lancez ensuite :"
@@ -68,8 +79,8 @@ VERSION_PY="$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
 succes "Python $VERSION_PY"
 python3 - <<'PY'
 import sys
-if sys.version_info < (3, 8):
-    sys.exit("  Python 3.8 minimum est requis.")
+if sys.version_info < (3, 9):
+    sys.exit("  Python 3.9 minimum est requis.")
 PY
 # L'usine n'utilise que la bibliotheque standard : rien a installer via pip.
 python3 -c "import sqlite3, ssl, zlib, zipfile, urllib.request" \

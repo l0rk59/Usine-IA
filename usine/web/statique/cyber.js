@@ -10,6 +10,9 @@
   var reduit = window.matchMedia
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (reduit) return;
+  // Meme interrupteur que la scene 3D : le reglage « effets_3d », persiste
+  // en local, coupe le fond anime sur un telephone qui rame.
+  try { if (localStorage.getItem('usine-effets') === 'off') return; } catch (e) {}
 
   var ctx = toile.getContext('2d');
   var L = 0, H = 0, dpr = Math.min(window.devicePixelRatio || 1, 2);

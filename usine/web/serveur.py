@@ -1254,7 +1254,8 @@ def _etat() -> Dict[str, Any]:
         "qualites": ["rapide", "standard", "exigeant"],
         "reseaux": sorted(social.RESEAUX),
         "reglages": {k: profil[k] for k in
-                     ("auteur", "audience", "ton", "taille", "qualite", "images")},
+                     ("auteur", "audience", "ton", "taille", "qualite", "images",
+                      "theme", "effets_3d")},
         "file": file_prod.compter(),
         # Volontairement absent : _commerce() compare toutes les paires de
         # produits, ce qui coute pres d'une seconde a quatre cents produits.
