@@ -10,7 +10,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from ..core import images, llm
 from ..render import livraison, narration, quiz
 from ..render.pdf import DocumentPDF
-from .base import Contexte, elaguer_markdown, nettoyer_titre, preparer, slug, terminer
+from .base import (Contexte, elaguer_markdown, jetons_pour, nettoyer_titre,
+                   preparer, slug, terminer)
 
 ROLE = "un concepteur pedagogique qui cree des formations en ligne actionnables"
 
@@ -78,7 +79,8 @@ def _rediger_module(ctx: Contexte, programme: Dict[str, Any], index: int,
         exercice=module["exercice"] or "a definir",
     )
     reponse = llm.generer(invite, systeme=ctx.systeme(ROLE), role="standard",
-                          temperature=0.75, max_tokens=min(4096, ctx.mots_par_chapitre * 3))
+                          temperature=0.75,
+                          max_tokens=jetons_pour(ctx.mots_par_chapitre))
     texte = elaguer_markdown(reponse.texte)
     lignes = texte.split("\n")
     if lignes and lignes[0].startswith("# "):
@@ -199,7 +201,7 @@ def _narration(ctx: Contexte, programme: Dict[str, Any],
                  objectif=module.get("objectif", ""), corps=corps[:9000])
         reponse = llm.generer(invite, systeme=ctx.systeme(ROLE), role="standard",
                               temperature=0.7,
-                              max_tokens=min(4096, ctx.mots_par_chapitre * 3))
+                              max_tokens=jetons_pour(ctx.mots_par_chapitre))
         scripts.append((nom, elaguer_markdown(reponse.texte)))
         ctx.journal("  [{}/{}] {}".format(index + 1, len(contenus), nom))
     return scripts

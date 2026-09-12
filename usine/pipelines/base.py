@@ -35,6 +35,26 @@ TAILLES = {
 CHAPITRES_MIN, CHAPITRES_MAX = 2, 60
 MOTS_MIN, MOTS_MAX = 300, 4000
 
+# Jetons par mot en francais. Mesure haute plutot que moyenne : un texte qui
+# tient dans son plafond vaut mieux qu'un texte coupe au milieu d'une phrase,
+# et les jetons non consommes ne coutent rien.
+JETONS_PAR_MOT = 2.6
+# Plafond absolu d'une reponse. Le routeur le ramene ensuite a ce que le
+# fournisseur choisi sait reellement emettre (Provider.max_sortie).
+JETONS_MAX = 8192
+
+
+def jetons_pour(mots: int, marge: int = 400) -> int:
+    """Plafond de jetons a demander pour produire « mots » mots.
+
+    Ce calcul etait recopie en « min(4096, mots * 2.6) » a chaque appel. Le
+    resultat : au-dela de mille cinq cents mots par section, la demande etait
+    silencieusement ramenee a 4096 — soit moins de la moitie de ce qu'on
+    annoncait au modele — et rien ne lisait « finish_reason » pour s'en
+    apercevoir. Les quatre paliers y echappaient ; le sur-mesure, non.
+    """
+    return max(512, min(JETONS_MAX, int(mots * JETONS_PAR_MOT) + marge))
+
 
 def resoudre_ton(valeur: str) -> str:
     """Description du ton, qu'il vienne des raccourcis ou de l'utilisateur.

@@ -193,7 +193,8 @@ def cmd_ebook(args: argparse.Namespace) -> int:
     _avertir_sujet(args.sujet)
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un ebook")
-    resume = ebook.produire(ctx)
+    resume = ebook.produire(
+        ctx, relecture_ensemble=getattr(args, "relecture_ensemble", False))
     description = "Ebook de {} chapitres, {} mots. {}".format(
         resume["chapitres"], resume["mots"], resume.get("sous_titre", "")
     )
@@ -815,6 +816,9 @@ def cmd_usine(args: argparse.Namespace) -> int:
             if b["appels_jour_max"]:
                 print("    appels   : {} / {}   (reste {})".format(
                     b["appels_jour"], b["appels_jour_max"], b["reste_aujourdhui"]))
+            if b["jetons_jour_max"]:
+                print("    jetons   : {} / {}".format(
+                    b["jetons_jour"], b["jetons_jour_max"]))
             if b["produits_jour_max"]:
                 print("    produits : {} / {}".format(
                     b["produits_faits"], b["produits_jour_max"]))
@@ -841,7 +845,7 @@ def cmd_usine(args: argparse.Namespace) -> int:
         if cle not in reglages.DEFAUTS:
             erreur("Budget inconnu : {}".format(nom))
             print("  Disponibles : appels_jour, appels_produit, produits_jour, "
-                  "minutes_produit")
+                  "minutes_produit, jetons_jour")
             return 1
         reglages.ecrire({cle: valeur})
 
@@ -1787,6 +1791,9 @@ def construire_parseur() -> argparse.ArgumentParser:
 
     p = sous_parseurs.add_parser("ebook", help="fabriquer un ebook complet")
     _options_communes(p)
+    p.add_argument("--relecture-ensemble", action="store_true",
+                   help="une lecture du livre entier a la recherche des "
+                        "contradictions entre chapitres (1 appel IA de plus)")
     p.set_defaults(fonction=cmd_ebook)
 
     p = sous_parseurs.add_parser(

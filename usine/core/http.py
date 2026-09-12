@@ -15,10 +15,44 @@ USER_AGENT = "Usine-IA/1.0 (+termux; python-stdlib)"
 
 
 class HttpErreur(Exception):
-    def __init__(self, statut: int, message: str, corps: str = ""):
+    def __init__(self, statut: int, message: str, corps: str = "",
+                 entetes: Optional[Dict[str, str]] = None):
         super().__init__("HTTP {} : {}".format(statut, message))
         self.statut = statut
         self.corps = corps
+        # Les en-tetes de la reponse. « Retry-After » y dit combien de temps
+        # le service demande d'attendre : sans eux, le routeur ne pouvait que
+        # deviner, et il devinait toujours la meme chose.
+        self.entetes = dict(entetes or {})
+
+    def patienter(self) -> float:
+        """Secondes demandees par « Retry-After », ou 0 si le service se tait.
+
+        Deux formes existent : un nombre de secondes, ou une date HTTP. La
+        seconde est rare mais legale, et la lire evite d'attendre zero quand
+        le service demandait dix minutes.
+        """
+        brut = ""
+        for nom, valeur in self.entetes.items():
+            if nom.lower() == "retry-after":
+                brut = str(valeur).strip()
+                break
+        if not brut:
+            return 0.0
+        try:
+            return max(0.0, min(3600.0, float(brut)))
+        except ValueError:
+            pass
+        try:
+            from email.utils import parsedate_to_datetime
+
+            cible = parsedate_to_datetime(brut)
+        except (TypeError, ValueError):
+            return 0.0
+        if cible is None:
+            return 0.0
+        reste = cible.timestamp() - time.time()
+        return max(0.0, min(3600.0, reste))
 
     @property
     def temporaire(self) -> bool:
@@ -54,7 +88,9 @@ def requete(
                 corps = gzip.decompress(corps)
         except Exception:
             pass
-        raise HttpErreur(exc.code, exc.reason or "erreur", corps.decode("utf-8", "replace"))
+        raise HttpErreur(exc.code, exc.reason or "erreur",
+                         corps.decode("utf-8", "replace"),
+                         entetes=dict(exc.headers.items()) if exc.headers else None)
     except (urllib.error.URLError, socket.timeout, ssl.SSLError, ConnectionError, OSError) as exc:
         raise HttpErreur(0, "reseau indisponible : {}".format(exc))
 

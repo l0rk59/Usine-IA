@@ -191,6 +191,7 @@ usine logiciel "le calcul de tarif pour freelances" -c web
 -T, --taille     mini (6 ch.) | court (8) | standard (12) | long (18)
 -q, --qualite    rapide (0 relecture) | standard (1) | exigeant (2)
     --auteur     nom affiché comme auteur
+    --relecture-ensemble  cherche les contradictions entre chapitres (ebook)
     --narration  script à lire à voix haute (formation, 1 appel IA/module)
     --reliure MM marge intérieure pour l'impression à la demande (impression)
     --marketing  générer aussi le kit de vente (dont l'extrait offert)
@@ -798,6 +799,13 @@ document de navigation porteur de sa table des matières, XML bien formé
 partout. Un EPUB cassé ne se voit pas : l'archive s'ouvre, et c'est le
 distributeur qui le refuse trois semaines plus tard.
 
+**Le routeur dit quand il a été coupé.** `finish_reason` est lu : une réponse
+tranchée au plafond de jetons est signalée et n'entre pas au cache. Le plafond
+suit la longueur demandée au lieu d'être figé, chaque fournisseur déclare ce
+qu'il sait émettre, et `Retry-After` est honoré. Une panne réseau ne consomme
+plus le quota du fournisseur — seul un appel qu'il a réellement traité compte.
+Détails et mesures : [docs/ROUTEUR.md](docs/ROUTEUR.md).
+
 Trois mécanismes rendent la production fiable sur un forfait mobile :
 
 1. **Cache systématique.** Chaque réponse est stockée par empreinte du prompt.
@@ -832,7 +840,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         725 tests + test de fumée, aucun appel réseau
+tests/         773 tests + test de fumée, aucun appel réseau
                un atelier temporaire par module (tests/atelier.py)
 install.sh     installation Termux
 ```
@@ -845,7 +853,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 725 tests
+python3 -m unittest discover -s tests -t .   # 773 tests
 python3 scripts/dependances.py               # zéro dépendance
 python3 tests/fumee.py                       # les 10 chaînes via la vraie CLI
 ```

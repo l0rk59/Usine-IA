@@ -435,6 +435,7 @@ def _regler_budget() -> None:
         ("budget_appels_produit", "Appels IA maximum par produit"),
         ("budget_produits_jour", "Produits maximum par jour"),
         ("budget_minutes_produit", "Duree maximum d'un produit, en minutes"),
+        ("budget_jetons_jour", "Jetons IA maximum par jour (0 = illimite)"),
         ("pause_entre_produits", "Pause entre deux produits, en secondes"),
     ]
     entete("Budget de production")

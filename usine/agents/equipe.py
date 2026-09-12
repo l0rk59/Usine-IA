@@ -58,6 +58,20 @@ EQUIPE: Dict[str, Agent] = {
 # La boucle qualite
 # --------------------------------------------------------------------------
 
+
+def _plafond_reecriture(texte: str, marge: int) -> int:
+    """Jetons a demander pour RENDRE un texte de cette taille, corrige.
+
+    Une reecriture doit pouvoir rendre au moins autant que ce qu'elle recoit.
+    L'ancien plafond fige a 4096 coupait toute reecriture d'un texte de plus
+    de huit mille caracteres — soit un chapitre long — et le garde-fou
+    « texte tronque » d'en face rejetait alors la correction : une boucle qui
+    corrigeait sans jamais rien appliquer.
+    """
+    from ..pipelines.base import JETONS_MAX
+
+    return max(512, min(JETONS_MAX, len(texte) // 2 + marge))
+
 def grille() -> str:
     return prompts.modele("grille_qualite")
 
@@ -91,17 +105,21 @@ def critiquer(
         texte=texte[:14000],
         grille=grille(),
     )
+    relecteur = ""
     try:
-        donnees = EDITEUR.travailler_json(
+        donnees, relecteur = EDITEUR.travailler_json(
             contexte, invite, max_tokens=2600,
             eviter=[fournisseur_auteur] if fournisseur_auteur else None,
+            avec_fournisseur=True,
         )
     except Exception as exc:
         evenements.publier("qualite", etat="critique_indisponible", detail=str(exc))
         return Critique(note=7.5, verdict="relecture indisponible")
 
     if not isinstance(donnees, dict):
-        return Critique(note=7.5, verdict="relecture illisible")
+        return Critique(note=7.5, verdict="relecture illisible",
+                        fournisseur_auteur=fournisseur_auteur,
+                        fournisseur_relecteur=relecteur)
 
     try:
         note = float(donnees.get("note") or 7.0)
@@ -118,6 +136,8 @@ def critiquer(
         if isinstance(p, dict) and p.get("correction")
     ]
     return Critique(
+        fournisseur_auteur=fournisseur_auteur,
+        fournisseur_relecteur=relecteur,
         note=max(0.0, min(10.0, note)),
         problemes=problemes[:6],
         points_forts=[str(x) for x in (donnees.get("points_forts") or [])][:5],
@@ -143,8 +163,8 @@ def reviser(contexte: Any, texte: str, critique: Critique, intitule: str) -> str
         "Renvoie le texte COMPLET corrige, en markdown, sans titre de niveau 1, "
         "sans commentaire, sans preambule. Conserve la structure et la longueur."
     ).format(intitule=intitule, texte=texte[:14000], corrections=corrections)
-    reponse = REVISEUR.travailler(contexte, invite,
-                                  max_tokens=min(4096, len(texte) // 2 + 1200))
+    reponse = REVISEUR.travailler(
+        contexte, invite, max_tokens=_plafond_reecriture(texte, 1200))
     from ..pipelines.base import elaguer_markdown
 
     corrige = elaguer_markdown(reponse.texte)
@@ -188,7 +208,7 @@ def corriger_defauts(
              citations=citations)
 
     reponse = REVISEUR.travailler(
-        contexte, invite, max_tokens=min(4096, len(texte) // 2 + 1200))
+        contexte, invite, max_tokens=_plafond_reecriture(texte, 1200))
     from ..pipelines.base import elaguer_markdown
 
     corrige = elaguer_markdown(reponse.texte)
@@ -281,7 +301,7 @@ def polir(contexte: Any, texte: str, fournisseur_auteur: str = "") -> str:
     ).format(texte=texte[:12000])
     try:
         reponse = STYLISTE.travailler(
-            contexte, invite, max_tokens=min(4096, len(texte) // 2 + 900),
+            contexte, invite, max_tokens=_plafond_reecriture(texte, 900),
             eviter=[fournisseur_auteur] if fournisseur_auteur else None,
         )
     except Exception:
@@ -290,6 +310,83 @@ def polir(contexte: Any, texte: str, fournisseur_auteur: str = "") -> str:
 
     poli = elaguer_markdown(reponse.texte)
     return poli if len(poli) > len(texte) * 0.6 else texte
+
+
+def relire_l_ensemble(contexte: Any, sections: List[Tuple[str, str]],
+                      promesse: str = "",
+                      fournisseur_auteur: str = "") -> Dict[str, Any]:
+    """Une seule lecture du produit ENTIER, a la recherche des incoherences.
+
+    Ce n'est pas la resurrection de « equipe.controler() », retire lors d'un
+    audit precedent. Celle-la rendait un VERDICT — une note avant-vente, que
+    le controle deterministe donne gratuitement et mieux. Celle-ci cherche
+    ce qu'aucun outil local ne peut voir : ce qui se contredit d'une section
+    a l'autre.
+
+    Chaque agent travaille section par section ; personne ne lit le produit
+    en entier. Une promesse faite dans l'avant-propos et jamais tenue, deux
+    chapitres qui donnent des conseils opposes, un terme defini deux fois
+    differemment : aucun de ces defauts n'est visible depuis une section
+    seule, et aucun ne se mesure en Python.
+
+    C'est un appel de modele par produit, sur un long texte : la chaine le
+    demande, il ne s'impose pas.
+    """
+    if len(sections) < 2:
+        return {}
+    corps = "\n\n".join(
+        "### {}\n{}".format(titre, texte[:2500]) for titre, texte in sections)
+    invite = (
+        "Voici un produit complet, section par section. Tu le lis d'un bout a "
+        "l'autre pour trouver ce qui SE CONTREDIT — rien d'autre.\n\n"
+        "PROMESSE ANNONCEE : {promesse}\n\n"
+        "--- DEBUT ---\n{corps}\n--- FIN ---\n\n"
+        "Cherche uniquement :\n"
+        "- une promesse faite quelque part et jamais tenue ailleurs ;\n"
+        "- deux passages qui se contredisent ou donnent des conseils opposes ;\n"
+        "- un terme ou un chiffre defini deux fois differemment ;\n"
+        "- une section qui repete ce qu'une autre a deja dit.\n\n"
+        "Ne juge NI le style NI la qualite : d'autres s'en chargent. "
+        "S'il n'y a aucune incoherence, renvoie une liste vide — c'est une "
+        "reponse parfaitement acceptable.\n\n"
+        "Schema JSON exact :\n"
+        '{{"incoherences": [{{"sections": ["titre A", "titre B"], '
+        '"probleme": "ce qui se contredit", '
+        '"gravite": "bloquant|majeur|mineur"}}]}}'
+    ).format(promesse=promesse or "non precisee", corps=corps[:30000])
+
+    try:
+        donnees, relecteur = EDITEUR.travailler_json(
+            contexte, invite, max_tokens=1800,
+            eviter=[fournisseur_auteur] if fournisseur_auteur else None,
+            avec_fournisseur=True)
+    except Exception as exc:
+        evenements.publier("qualite", etat="ensemble_indisponible", detail=str(exc))
+        return {"disponible": False, "raison": str(exc)}
+
+    brutes = donnees.get("incoherences") if isinstance(donnees, dict) else None
+    incoherences = []
+    titres = {titre for titre, _ in sections}
+    for element in brutes or []:
+        if not isinstance(element, dict) or not element.get("probleme"):
+            continue
+        citees = [str(t) for t in (element.get("sections") or [])
+                  if str(t) in titres]
+        incoherences.append({
+            "sections": citees,
+            "probleme": str(element["probleme"])[:400],
+            "gravite": str(element.get("gravite") or "mineur").lower(),
+        })
+    graves = [i for i in incoherences if i["gravite"] in ("bloquant", "majeur")]
+    return {
+        "disponible": True,
+        "relecteur": relecteur,
+        "incoherences": incoherences,
+        "majeures": len(graves),
+        "resume": ("aucune incoherence d'ensemble" if not incoherences else
+                   "{} incoherence(s) entre sections, dont {} majeure(s)".format(
+                       len(incoherences), len(graves))),
+    }
 
 
 def rapport_qualite(historiques: Dict[str, List[Critique]]) -> Dict[str, Any]:
@@ -311,8 +408,18 @@ def rapport_qualite(historiques: Dict[str, List[Critique]]) -> Dict[str, Any]:
             "restants": [p["probleme"] for p in critiques[-1].problemes],
         })
     moyenne = lambda v: round(sum(v) / len(v), 2) if v else None  # noqa: E731
+    toutes = [c for suite in historiques.values() for c in suite]
+    croisees = [c for c in toutes if c.croisee]
     return {
         "sections": lignes,
         "note_moyenne_initiale": moyenne(notes_avant),
         "note_moyenne_finale": moyenne(notes_apres),
+        # Mesure, pas promesse : quand un seul fournisseur est configure, la
+        # relecture a lieu sur le modele qui a ecrit — c'est un repli assume,
+        # et le rapport doit le montrer plutot que de laisser croire.
+        "relecture_croisee": {
+            "relectures": len(toutes),
+            "sur_un_autre_modele": len(croisees),
+            "part": (round(len(croisees) / len(toutes), 2) if toutes else None),
+        },
     }

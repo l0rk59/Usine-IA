@@ -40,6 +40,7 @@ class Plafonds:
     appels_produit: int = 0
     produits_jour: int = 0
     minutes_produit: int = 0
+    jetons_jour: int = 0
 
     @classmethod
     def depuis_reglages(cls) -> "Plafonds":
@@ -48,11 +49,13 @@ class Plafonds:
             appels_produit=int(reglages.lire("budget_appels_produit", 0) or 0),
             produits_jour=int(reglages.lire("budget_produits_jour", 0) or 0),
             minutes_produit=int(reglages.lire("budget_minutes_produit", 0) or 0),
+            jetons_jour=int(reglages.lire("budget_jetons_jour", 0) or 0),
         )
 
     def actif(self) -> bool:
         return any((self.appels_jour, self.appels_produit,
-                    self.produits_jour, self.minutes_produit))
+                    self.produits_jour, self.minutes_produit,
+                    self.jetons_jour))
 
 
 class Compteur:
@@ -81,6 +84,11 @@ class Compteur:
             return 0
         return store.compteur_intervalle(self._debut_produit)
 
+    def jetons_aujourdhui(self) -> int:
+        debut = time.mktime(time.strptime(
+            time.strftime("%Y-%m-%d"), "%Y-%m-%d"))
+        return store.tokens_intervalle(debut)
+
     def minutes_produit(self) -> float:
         if not self._debut_produit:
             return 0.0
@@ -102,6 +110,8 @@ class Compteur:
         p = self.plafonds
         if p.produits_jour and self.produits_faits >= p.produits_jour:
             return "plafond de {} produit(s) par jour atteint".format(p.produits_jour)
+        if p.jetons_jour and self.jetons_aujourdhui() >= p.jetons_jour:
+            return "plafond de {} jetons par jour atteint".format(p.jetons_jour)
         if p.appels_jour:
             restants = p.appels_jour - self.appels_aujourdhui()
             if restants <= 0:
@@ -117,6 +127,10 @@ class Compteur:
     def verifier_appel(self) -> None:
         """Appele avant chaque requete IA. Leve BudgetEpuise si un plafond tombe."""
         p = self.plafonds
+        if p.jetons_jour:
+            consommes = self.jetons_aujourdhui()
+            if consommes >= p.jetons_jour:
+                raise BudgetEpuise("jetons par jour", consommes, p.jetons_jour)
         if p.appels_jour:
             consomme = self.appels_aujourdhui()
             if consomme >= p.appels_jour:
@@ -143,6 +157,8 @@ class Compteur:
             "produits_jour_max": p.produits_jour,
             "minutes_produit": round(self.minutes_produit(), 1),
             "minutes_produit_max": p.minutes_produit,
+            "jetons_jour": self.jetons_aujourdhui(),
+            "jetons_jour_max": p.jetons_jour,
             "reste_aujourdhui": (p.appels_jour - self.appels_aujourdhui()
                                  if p.appels_jour else None),
         }

@@ -353,11 +353,20 @@ def enregistrer_appel(
         )
 
 
+# Un appel compte dans le quota d'un fournisseur s'il l'a REELLEMENT traite :
+# une reponse servie, ou un refus pour cause de debit (429), que tous les
+# services decomptent. Une coupure reseau ou un 500 ne consomment rien chez
+# eux — les compter revenait a s'interdire un fournisseur pour des pannes dont
+# il n'est pas responsable, ce qui arrive sans cesse sur un reseau mobile.
+_TRAITE = "(ok=1 OR erreur LIKE 'HTTP 429%')"
+
+
 def compteur_jour_cle(fournisseur: str, cle_id: str) -> int:
     """Appels du jour imputes a une cle precise du pool."""
     with cursor() as cur:
         cur.execute(
-            "SELECT COUNT(*) FROM appels WHERE fournisseur=? AND cle_id=? AND jour=?",
+            "SELECT COUNT(*) FROM appels WHERE fournisseur=? AND cle_id=? "
+            "AND jour=? AND " + _TRAITE,
             (fournisseur, cle_id, _jour()),
         )
         return int(cur.fetchone()[0])
@@ -381,6 +390,44 @@ def journal_cle(fournisseur: str, cle_id: str, raison: str, repos: float) -> Non
         )
 
 
+def tokens_intervalle(depuis: float, jusqu_a: Optional[float] = None) -> int:
+    """Jetons consommes dans une fenetre, tous fournisseurs confondus.
+
+    Plusieurs paliers gratuits comptent en JETONS, pas en requetes : Cerebras
+    et Gemini l'annoncent dans leurs propres notes. Un budget qui ne compte
+    que les appels laisse donc passer le plafond qui compte vraiment.
+    """
+    fin = time.time() if jusqu_a is None else jusqu_a
+    with cursor() as cur:
+        cur.execute(
+            "SELECT COALESCE(SUM(tokens), 0) FROM appels"
+            " WHERE ts >= ? AND ts <= ? AND ok=1",
+            (depuis, fin),
+        )
+        return int(cur.fetchone()[0])
+
+
+def repos_actifs() -> Dict[Tuple[str, str], float]:
+    """Mises au repos encore valables, par (fournisseur, cle).
+
+    Android tue le processus sans preavis. Sans relecture, un fournisseur qui
+    venait de repondre 429 etait resollicite dans la seconde au redemarrage —
+    et repondait 429. La donnee etait deja la, dans « cles_journal » ; il ne
+    manquait que de la lire.
+    """
+    maintenant = time.time()
+    actifs: Dict[Tuple[str, str], float] = {}
+    with cursor() as cur:
+        cur.execute(
+            "SELECT fournisseur, cle_id, MAX(ts + repos) AS fin FROM cles_journal"
+            " WHERE ts + repos > ? GROUP BY fournisseur, cle_id",
+            (maintenant,),
+        )
+        for ligne in cur.fetchall():
+            actifs[(ligne["fournisseur"], ligne["cle_id"] or "")] = float(ligne["fin"])
+    return actifs
+
+
 def compteur_minute(fournisseur: str) -> int:
     with cursor() as cur:
         cur.execute(
@@ -393,7 +440,8 @@ def compteur_minute(fournisseur: str) -> int:
 def compteur_jour(fournisseur: str) -> int:
     with cursor() as cur:
         cur.execute(
-            "SELECT COUNT(*) FROM appels WHERE fournisseur=? AND jour=?",
+            "SELECT COUNT(*) FROM appels WHERE fournisseur=? AND jour=? AND "
+            + _TRAITE,
             (fournisseur, _jour()),
         )
         return int(cur.fetchone()[0])

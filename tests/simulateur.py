@@ -301,6 +301,21 @@ def simulateur(messages, role):
                          ["Societe B", "E-mail", "14/03", "Gagne"]],
             "conseils": ["Mettez a jour chaque vendredi."],
         }, ensure_ascii=False)
+    # --- relecture d'ensemble : contradictions entre sections ----------------
+    if '"incoherences"' in invite:
+        titres = re.findall(r"^### (.+)$", invite, re.MULTILINE)
+        if len(titres) < 2:
+            return json.dumps({"incoherences": []}, ensure_ascii=False)
+        return json.dumps({"incoherences": [
+            {"sections": titres[:2],
+             "probleme": "les deux sections donnent un tarif de depart different",
+             "gravite": "majeur"},
+            {"sections": ["Un chapitre qui n'existe pas"],
+             "probleme": "cite une section absente du produit",
+             "gravite": "mineur"},
+            {"sections": titres[:1], "probleme": "", "gravite": "mineur"},
+        ]}, ensure_ascii=False)
+
     if '"sections"' in invite:
         return json.dumps({
             "intro": "Modele a completer.",

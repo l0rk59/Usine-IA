@@ -52,12 +52,18 @@ class Agent:
         temperature: Optional[float] = None,
         eviter: Optional[Sequence[str]] = None,
         cache: bool = True,
+        role_modele: Optional[str] = None,
     ) -> llm.Reponse:
+        """« role_modele » surclasse le role habituel de l'agent pour un appel.
+
+        Un redacteur reste un redacteur ; mais condenser une partie entiere
+        demande un modele de long contexte, pas une autre personnalite.
+        """
         evenements.publier("agent", agent=self.nom, etat="debut", emoji=self.emoji)
         reponse = llm.generer(
             invite,
             systeme=self.systeme(contexte),
-            role=self.role_modele,
+            role=role_modele or self.role_modele,
             temperature=self.temperature if temperature is None else temperature,
             max_tokens=max_tokens,
             cache=cache,
@@ -74,18 +80,26 @@ class Agent:
         max_tokens: int = 4000,
         temperature: Optional[float] = None,
         eviter: Optional[Sequence[str]] = None,
+        avec_fournisseur: bool = False,
     ) -> Any:
+        """Rend l'objet decode, ou (objet, fournisseur) si on le demande.
+
+        Le fournisseur sert a PROUVER la relecture croisee : sans lui, la
+        chaine affirmait qu'un autre modele avait relu sans pouvoir le dire.
+        """
         evenements.publier("agent", agent=self.nom, etat="debut", emoji=self.emoji)
-        resultat = llm.generer_json(
+        resultat, fournisseur = llm.generer_json(
             invite,
             systeme=self.systeme(contexte),
             role=self.role_modele,
             temperature=0.45 if temperature is None else temperature,
             max_tokens=max_tokens,
             eviter=eviter,
+            avec_fournisseur=True,
         )
-        evenements.publier("agent", agent=self.nom, etat="fin", emoji=self.emoji)
-        return resultat
+        evenements.publier("agent", agent=self.nom, etat="fin", emoji=self.emoji,
+                           fournisseur=fournisseur)
+        return (resultat, fournisseur) if avec_fournisseur else resultat
 
 
 @dataclass
@@ -96,6 +110,18 @@ class Critique:
     problemes: List[Dict[str, str]] = field(default_factory=list)
     points_forts: List[str] = field(default_factory=list)
     verdict: str = ""
+    # Qui a ecrit, qui a relu. La chaine ANNONCE une relecture par un autre
+    # modele ; sans ces deux champs, elle ne pouvait pas le prouver — et
+    # l'ecart existe reellement : quand un seul fournisseur est configure,
+    # « eviter » se desactive pour ne pas perdre la relecture.
+    fournisseur_auteur: str = ""
+    fournisseur_relecteur: str = ""
+
+    @property
+    def croisee(self) -> bool:
+        """La relecture a-t-elle eu lieu sur un AUTRE modele que l'auteur ?"""
+        return bool(self.fournisseur_auteur and self.fournisseur_relecteur
+                    and self.fournisseur_auteur != self.fournisseur_relecteur)
 
     @property
     def acceptable(self) -> bool:

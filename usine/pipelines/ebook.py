@@ -18,7 +18,8 @@ from ..core import controle as ctrl
 from ..core import evenements, llm, securite
 from ..render import document as D
 from ..render import livraison
-from .base import Contexte, elaguer_markdown, nettoyer_titre, preparer, terminer
+from .base import (Contexte, elaguer_markdown, jetons_pour, nettoyer_titre,
+                   preparer, terminer)
 
 ROLE = "un auteur de guides pratiques qui se vendent, editeur exigeant"
 
@@ -105,7 +106,7 @@ def rediger_chapitre(
         mots=ctx.mots_par_chapitre,
     )
     reponse = equipe.REDACTEUR.travailler(
-        ctx, invite, max_tokens=min(4096, int(ctx.mots_par_chapitre * 2.6))
+        ctx, invite, max_tokens=jetons_pour(ctx.mots_par_chapitre)
     )
     texte = elaguer_markdown(reponse.texte)
     # Le modele reintroduit parfois un titre h1 : on le retire pour eviter le doublon.
@@ -148,8 +149,13 @@ def rediger_annexe(ctx: Contexte, plan: Dict[str, Any], genre: str) -> Tuple[str
     return titre, elaguer_markdown(reponse.texte)
 
 
-def produire(ctx: Contexte) -> Dict[str, Any]:
-    """Produit l'ebook complet et renvoie un resume des fichiers generes."""
+def produire(ctx: Contexte, relecture_ensemble: bool = False) -> Dict[str, Any]:
+    """Produit l'ebook complet et renvoie un resume des fichiers generes.
+
+    « relecture_ensemble » ajoute UNE lecture du livre entier a la recherche
+    des contradictions entre chapitres. Un appel de modele par produit, sur
+    un long texte : c'est pourquoi elle se demande.
+    """
     ctx.journal("Etape 1/5 — construction du plan...")
     plan = construire_plan(ctx)
     titre = plan["titre"]
@@ -262,10 +268,31 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
             ctx.journal("  {} — conclusion ignoree".format(exc))
             ctx.etape("conclusion", "echec", str(exc))
 
+    ensemble = {}
+    if relecture_ensemble and not budget_epuise:
+        ctx.journal("Relecture d'ensemble : contradictions entre chapitres...")
+        try:
+            ensemble = equipe.relire_l_ensemble(
+                ctx, sections, plan.get("promesse", ""))
+        except budget.BudgetEpuise as exc:
+            budget_epuise = True
+            ctx.journal("  {} — relecture d'ensemble ignoree".format(exc))
+        except Exception as exc:
+            ctx.journal("  relecture d'ensemble indisponible : {}".format(exc))
+        if ensemble.get("disponible"):
+            ctx.journal("  " + ensemble["resume"])
+            for souci in ensemble["incoherences"][:4]:
+                ctx.journal("    [{}] {}".format(souci["gravite"],
+                                                 souci["probleme"][:90]))
+        ctx.etape("ensemble", "ok" if ensemble.get("disponible") else "echec",
+                  ensemble.get("resume", ""))
+
     ctx.journal("Etape 5/5 — mise en forme et export...")
     fichiers = exporter(ctx, plan, sections)
 
     rapport = equipe.rapport_qualite(qualite) if qualite else {}
+    if ensemble:
+        rapport["ensemble"] = ensemble
     if local:
         rapport["controle_local"] = {
             "sections": [

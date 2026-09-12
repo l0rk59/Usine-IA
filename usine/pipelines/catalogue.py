@@ -108,6 +108,8 @@ TYPES: List[TypeProduit] = [
         detail="PDF + EPUB + HTML + Markdown + couverture",
         formats=("pdf", "epub", "html", "md", "txt"),
         minutes=(10, 25),
+        # Un appel de modele par produit, sur le livre entier : a la demande.
+        options={"relecture_ensemble": None},
         mots_cles=("guide", "methode", "livre", "manuel", "apprendre"),
     ),
     TypeProduit(

@@ -44,8 +44,8 @@ from ..core import evenements, llm, securite
 from ..render import document as D
 from ..render import livraison
 from . import memoire as M
-from .base import (Contexte, elaguer_markdown, nettoyer_titre, preparer,
-                   terminer)
+from .base import (Contexte, elaguer_markdown, jetons_pour, nettoyer_titre,
+                   preparer, terminer)
 
 ROLE = ("un auteur de fiction courte publie en revue, qui tient la continuite "
         "et montre plutot que de raconter")
@@ -537,7 +537,7 @@ def _reconnu(nom: str, connus: List[str]) -> bool:
 
 
 def mettre_a_jour_resume(ctx: Contexte, etat: str, intitule: str,
-                         texte: str) -> str:
+                         texte: str, long_contexte: bool = False) -> str:
     """Reecrit l'etat de l'histoire apres du texte. C'est LA memoire.
 
     Un appel court par scene. C'est le surcout de cette chaine par rapport a
@@ -562,10 +562,17 @@ def mettre_a_jour_resume(ctx: Contexte, etat: str, intitule: str,
         "suspens et qui devra etre paye plus tard. Pas de jugement, pas de "
         "style, pas de titre. Uniquement le texte de l'etat."
     ).format(etat=etat or "(rien encore : l'histoire commence)",
-             intitule=intitule or "la suite", texte=texte[:6000],
+             intitule=intitule or "la suite",
+             texte=texte[:24000 if long_contexte else 6000],
              mots=MOTS_RESUME)
 
-    reponse = equipe.REDACTEUR.travailler(ctx, invite, max_tokens=320)
+    # Fermer une partie condense plusieurs scenes d'un coup : c'est le seul
+    # appel de l'usine qui gagne vraiment a un modele de long contexte, et le
+    # seul ou tronquer la matiere a six mille caracteres perdait des scenes
+    # entieres. Les fournisseurs sans modele dedie retombent sur « standard ».
+    reponse = equipe.REDACTEUR.travailler(
+        ctx, invite, max_tokens=320,
+        role_modele="long" if long_contexte else None)
     propre = elaguer_markdown(reponse.texte).strip()
     return propre if len(propre) >= 40 else ""
 
@@ -578,7 +585,11 @@ def redacteur_pour(ctx: Contexte, scene: Dict[str, Any]) -> M.Redacteur:
     cette chaine existe pour corriger.
     """
     def redacteur(etat: str, texte: str, intitule: str = "") -> str:
-        propre = mettre_a_jour_resume(ctx, etat, intitule or scene["titre"], texte)
+        # Une fermeture de partie s'annonce par son intitule : c'est elle qui
+        # recoit tout le texte d'un bloc, et elle seule.
+        partie = intitule.startswith("Partie ")
+        propre = mettre_a_jour_resume(ctx, etat, intitule or scene["titre"],
+                                      texte, long_contexte=partie)
         return propre or _memoire_de_secours(etat, scene)
 
     return redacteur
@@ -754,7 +765,7 @@ def rediger_scene(ctx: Contexte, bible: Dict[str, Any], grille: Dict[str, Any],
     )
 
     reponse = equipe.REDACTEUR.travailler(
-        ctx, invite, max_tokens=min(4096, int(ctx.mots_par_chapitre * 2.6)))
+        ctx, invite, max_tokens=jetons_pour(ctx.mots_par_chapitre))
     texte = elaguer_markdown(reponse.texte)
     lignes = [l for l in texte.split("\n")]
     while lignes and lignes[0].startswith("#"):

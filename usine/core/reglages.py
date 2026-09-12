@@ -35,6 +35,9 @@ DEFAUTS: Dict[str, Any] = {
     "budget_appels_produit": 80,
     "budget_produits_jour": 3,
     "budget_minutes_produit": 45,
+    # 0 : pas de plafond en jetons. Plusieurs paliers gratuits comptent ainsi
+    # plutot qu'en requetes — Cerebras et Gemini, notamment.
+    "budget_jetons_jour": 0,
     "pause_entre_produits": 60,   # secondes, laisse les quotas par minute respirer
     # --- le telephone comme machine (termux-api, tout est facultatif) ---
     "notifications": True,        # notification Android quand un produit sort
@@ -64,6 +67,8 @@ DESCRIPTIONS: Dict[str, str] = {
     "budget_produits_jour": "Produits maximum fabriques par jour "
                             "(produire n'est pas publier : voir docs/VENDRE.md)",
     "budget_minutes_produit": "Duree maximum d'un produit, en minutes",
+    "budget_jetons_jour": "Jetons IA maximum par jour, tous fournisseurs "
+                          "confondus (0 = illimite)",
     "pause_entre_produits": "Pause entre deux produits, en secondes",
     "notifications": "Notification Android quand un produit est pret "
                      "(demande termux-api)",

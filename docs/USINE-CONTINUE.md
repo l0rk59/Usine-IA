@@ -169,6 +169,7 @@ Sans `termux-api`, aucune des deux ne se produit et rien ne casse.
 | `budget_appels_produit` | 80 | plafond par produit |
 | `budget_produits_jour` | 3 | nombre de produits par jour |
 | `budget_minutes_produit` | 45 | durée maximum d'un produit |
+| `budget_jetons_jour` | 0 | jetons IA par jour, tous fournisseurs confondus — plusieurs paliers gratuits comptent ainsi plutôt qu'en requêtes |
 | `pause_entre_produits` | 60 | secondes entre deux produits, pour laisser respirer les quotas par minute |
 | `batterie_minimum` | 20 | % de batterie sous lequel la session s'arrête (0 = jamais) |
 | `notifications` | oui | notification Android à chaque produit livré |

@@ -77,3 +77,22 @@ usine prompts-systeme --reinitialiser
 Un fichier `agents.json` mal formé est ignoré et les valeurs d'origine
 reprennent la main : une faute de frappe dans un prompt ne doit jamais empêcher
 de produire.
+
+
+## Ce que la chaîne mesure sur elle-même
+
+La relecture par un **autre** modèle que l'auteur est le mécanisme central de
+cette équipe. Elle a un repli : quand un seul fournisseur est disponible, la
+relecture a lieu sur le modèle qui a écrit — mieux vaut cela que pas de
+relecture du tout.
+
+Ce repli est le bon, mais il était invisible. Le rapport qualité porte
+désormais la part **réellement** croisée :
+
+```json
+"relecture_croisee": {"relectures": 12, "sur_un_autre_modele": 12, "part": 1.0}
+```
+
+Et `usine ebook --relecture-ensemble` ajoute une lecture du livre entier à la
+recherche des contradictions entre chapitres — ce qu'aucun agent ne voyait,
+chacun travaillant section par section. Voir [ROUTEUR.md](ROUTEUR.md).

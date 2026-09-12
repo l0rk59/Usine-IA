@@ -140,6 +140,17 @@ def charger(fournisseur: str, nom_variable: str) -> Pool:
     pool = Pool(fournisseur, [
         Cle(valeur=v, fournisseur=fournisseur, rang=i) for i, v in enumerate(valeurs)
     ])
+    # Le repos survit au processus : c'est la base qui le porte, pas la
+    # memoire. Un telephone qui redemarre ne doit pas resolliciter une cle
+    # que le service vient de refuser.
+    try:
+        persistes = store.repos_actifs()
+    except Exception:
+        persistes = {}
+    for cle in pool.cles:
+        fin = persistes.get((fournisseur, cle.id))
+        if fin:
+            cle.repos_jusqu_a = fin
     ancien = _pools.get(fournisseur)
     if ancien:
         # On conserve l'etat de repos des cles deja connues.
@@ -147,7 +158,8 @@ def charger(fournisseur: str, nom_variable: str) -> Pool:
         for cle in pool.cles:
             precedente = etat.get(cle.id)
             if precedente:
-                cle.repos_jusqu_a = precedente.repos_jusqu_a
+                cle.repos_jusqu_a = max(cle.repos_jusqu_a,
+                                        precedente.repos_jusqu_a)
                 cle.echecs = precedente.echecs
     _pools[fournisseur] = pool
     return pool

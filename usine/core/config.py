@@ -113,6 +113,10 @@ class Provider:
     # cablee, annoncee dans le diagnostic — et incapable de terminer un
     # chapitre : chaque appel expirait avant la fin de la generation.
     timeout: int = 150
+    # Jetons de SORTIE que le fournisseur accepte pour une seule reponse. Le
+    # routeur y ramene la demande de l'appelant : demander plus ne produit pas
+    # plus, cela produit une erreur chez certains et un silence chez d'autres.
+    max_sortie: int = 8192
 
     @property
     def api_key(self) -> str:
@@ -139,6 +143,11 @@ class Provider:
 #   rapide   -> brouillons, titres, variations (petit modele, gros quota)
 #   standard -> redaction courante
 #   costaud  -> plan detaille, revision finale (meilleur modele dispo)
+#   long     -> condenser beaucoup de texte d'un coup (fermeture d'une partie
+#               de roman, relecture d'ensemble). « model_for » retombe sur
+#               « standard » quand un fournisseur n'a rien de mieux a offrir,
+#               ce qui est le cas de la plupart : declarer le role ne coute
+#               donc rien la ou il n'apporte rien.
 
 PROVIDERS: List[Provider] = [
     Provider(
@@ -177,9 +186,11 @@ PROVIDERS: List[Provider] = [
             "rapide": "gemini-2.5-flash-lite",
             "standard": "gemini-2.5-flash",
             "costaud": "gemini-2.5-flash",
+            "long": "gemini-2.5-flash",
         },
         rpm=12,
         rpd=400,
+        max_sortie=8192,
         signup="https://aistudio.google.com/apikey",
         notes="Contexte 1M tokens. Ideal pour les longs manuscrits.",
     ),
@@ -252,6 +263,7 @@ PROVIDERS: List[Provider] = [
                 "costaud": "openai-fast"},
         rpm=3,
         rpd=60,
+        max_sortie=4096,
         keyless=True,
         signup="aucune inscription requise",
         notes="Filet de securite sans cle API. Quota anonyme etroit et partage par "
@@ -270,6 +282,8 @@ PROVIDERS: List[Provider] = [
         rpm=600,
         rpd=100000,
         timeout=1200,
+        # Un telephone n'a pas la memoire d'un long contexte de sortie.
+        max_sortie=4096,
         local=True,
         signup="pkg install ollama && ollama serve",
         notes="IA locale, 100%% hors ligne.",
@@ -286,6 +300,7 @@ PROVIDERS: List[Provider] = [
         rpm=600,
         rpd=100000,
         timeout=1200,
+        max_sortie=4096,
         local=True,
         signup="llama-server -m modele.gguf --port 8080",
         notes="IA locale via llama.cpp (serveur compatible OpenAI).",
