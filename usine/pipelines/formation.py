@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..core import images, llm
-from ..render import livraison, quiz
+from ..render import livraison, narration, quiz
 from ..render.pdf import DocumentPDF
 from .base import Contexte, elaguer_markdown, nettoyer_titre, preparer, slug, terminer
 
@@ -159,6 +159,52 @@ def _quiz(ctx: Contexte, programme: Dict[str, Any],
     return propres
 
 
+def _narration(ctx: Contexte, programme: Dict[str, Any],
+               contenus: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
+    """Reecrit chaque module pour qu'il se DISE, pas qu'il se lise.
+
+    Un appel par module, contrairement au quiz : convertir huit modules en
+    une fois depasserait le budget de jetons d'une reponse, et une narration
+    tronquee au module six ne vaut rien. C'est pourquoi elle est en option —
+    elle double le cout d'une formation, et l'utilisateur doit le decider.
+    """
+    scripts: List[Tuple[str, str]] = []
+    for index, (nom, corps) in enumerate(contenus):
+        module = programme["modules"][index] if index < len(
+            programme["modules"]) else {}
+        invite = (
+            "Reecris ce module de formation en SCRIPT DE NARRATION, destine a "
+            "etre lu a voix haute devant un micro.\n\n"
+            "FORMATION : {formation}\n"
+            "MODULE {num}/{total} : {titre}\n"
+            "OBJECTIF : {objectif}\n\n"
+            "--- TEXTE ECRIT ---\n{corps}\n--- FIN ---\n\n"
+            "Ce qui change a l'oral :\n"
+            "- Aucun sous-titre, aucune puce, aucune numerotation : ce qui "
+            "etait une liste devient une enumeration parlee "
+            "(« Premier point : ... Deuxieme : ... »).\n"
+            "- Des phrases COURTES. On ne relit pas une phrase entendue.\n"
+            "- Aucune reference visuelle : ni « ci-dessus », ni « le schema "
+            "suivant », ni « comme on l'a vu plus haut ».\n"
+            "- Commence par une accroche de deux phrases qui donne envie "
+            "d'ecouter la suite, et termine par une transition vers le "
+            "module suivant.\n"
+            "- Place « [PAUSE] » aux respirations, et « [INSISTER] » devant "
+            "ce qui doit etre appuye. Rien d'autre entre crochets.\n"
+            "- Garde les exemples chiffres : ce sont eux qui tiennent "
+            "l'attention.\n\n"
+            "Reponds uniquement par le texte a dire."
+        ).format(formation=programme["titre"], num=index + 1,
+                 total=len(contenus), titre=module.get("titre", nom),
+                 objectif=module.get("objectif", ""), corps=corps[:9000])
+        reponse = llm.generer(invite, systeme=ctx.systeme(ROLE), role="standard",
+                              temperature=0.7,
+                              max_tokens=min(4096, ctx.mots_par_chapitre * 3))
+        scripts.append((nom, elaguer_markdown(reponse.texte)))
+        ctx.journal("  [{}/{}] {}".format(index + 1, len(contenus), nom))
+    return scripts
+
+
 def _sequence_email(ctx: Contexte, programme: Dict[str, Any]) -> List[Dict[str, str]]:
     """Sequence de livraison : un e-mail par module + un e-mail de bienvenue."""
     invite = (
@@ -190,7 +236,8 @@ def _sequence_email(ctx: Contexte, programme: Dict[str, Any]) -> List[Dict[str, 
     ]
 
 
-def produire(ctx: Contexte, modules: int = 0) -> Dict[str, Any]:
+def produire(ctx: Contexte, modules: int = 0,
+             narration: bool = False) -> Dict[str, Any]:
     modules = modules or max(5, min(ctx.nb_chapitres, 10))
     ctx.journal("Etape 1/5 — programme pedagogique ({} modules)...".format(modules))
     programme = _programme(ctx, modules)
@@ -225,7 +272,19 @@ def produire(ctx: Contexte, modules: int = 0) -> Dict[str, Any]:
     ctx.etape("quiz", "ok" if questions else "echec",
               "{} question(s)".format(len(questions)))
 
-    ctx.journal("Etape 4/5 — sequence e-mail de livraison...")
+    scripts: List[Tuple[str, str]] = []
+    if narration:
+        ctx.journal("Etape 4/6 — script de narration (un appel par module)...")
+        try:
+            scripts = _narration(ctx, programme, contenus)
+        except Exception as exc:
+            ctx.journal("  narration indisponible : {}".format(exc))
+            scripts = []
+        ctx.etape("narration", "ok" if scripts else "echec",
+                  "{} script(s)".format(len(scripts)))
+
+    ctx.journal("Etape {} — sequence e-mail de livraison...".format(
+        "5/6" if narration else "4/5"))
     try:
         emails = _sequence_email(ctx, programme)
     except Exception as exc:
@@ -233,8 +292,8 @@ def produire(ctx: Contexte, modules: int = 0) -> Dict[str, Any]:
         emails = []
     ctx.etape("emails", "ok" if emails else "echec", "{} e-mails".format(len(emails)))
 
-    ctx.journal("Etape 5/5 — export...")
-    fichiers = _exporter(ctx, programme, contenus, emails, questions)
+    ctx.journal("Etape {} — export...".format("6/6" if narration else "5/5"))
+    fichiers = _exporter(ctx, programme, contenus, emails, questions, scripts)
     resume = {
         "produit_id": ctx.produit_id,
         "titre": titre,
@@ -242,6 +301,7 @@ def produire(ctx: Contexte, modules: int = 0) -> Dict[str, Any]:
         "modules": len(contenus),
         "emails": len(emails),
         "questions": len(questions),
+        "narration": ctx.meta.get("narration"),
         "fichiers": [f.name for f in fichiers],
     }
     terminer(ctx, fichiers, {"modules": len(contenus), "emails": len(emails),
@@ -254,7 +314,8 @@ def produire(ctx: Contexte, modules: int = 0) -> Dict[str, Any]:
 
 def _exporter(ctx: Contexte, programme: Dict[str, Any], contenus: List[Tuple[str, str]],
               emails: List[Dict[str, str]],
-              questions: Optional[List[Dict[str, Any]]] = None) -> List[Path]:
+              questions: Optional[List[Dict[str, Any]]] = None,
+              scripts: Optional[List[Tuple[str, str]]] = None) -> List[Path]:
     """Confie la formation a l'assemblage commun.
 
     Deux specificites : un cahier d'exercices qui est un second document PDF,
@@ -296,6 +357,15 @@ def _exporter(ctx: Contexte, programme: Dict[str, Any], contenus: List[Tuple[str
         fichiers.append(quiz.ecrire(
             ctx.dossier / "quiz.html", titre, questions,
             promesse=programme.get("promesse", ""), langue=ctx.langue_iso))
+
+    if scripts:
+        document, mesures = narration.assembler(titre, scripts)
+        chemin = ctx.dossier / "narration.md"
+        chemin.write_text(document, encoding="utf-8")
+        fichiers.append(chemin)
+        ctx.meta["narration"] = mesures
+        ctx.journal("  narration : {} mots — {}".format(
+            mesures["mots"], narration.minutes_lisibles(mesures)))
 
     if emails:
         lignes = ["# Sequence e-mail — {}\n".format(titre)]

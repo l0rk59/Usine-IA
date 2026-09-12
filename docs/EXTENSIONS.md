@@ -252,11 +252,31 @@ ses propres beats et sa résolution — et un contrôle qui sache dire qu'elle a
   questions par module, corrigées dans le navigateur, hors ligne, sans
   bibliothèque. Un seul appel de modèle pour toute la formation — il voit
   alors la progression entière et évite de poser deux fois la même question.
-- **Script de narration** par module, pour qui veut enregistrer une voix.
+- ~~**Script de narration** par module, pour qui veut enregistrer une voix.~~
+  **Fait**, en option : `usine formation "sujet" --narration` écrit
+  `narration.md` — chaque module réécrit pour être *dit*, avec ses indications
+  de jeu (`[PAUSE]`, `[INSISTER]`) et sa durée calculée au débit de 150 mots
+  par minute, encadrée d'une fourchette. En option parce qu'elle coûte **un
+  appel par module** : doubler le prix d'une formation sans le demander serait
+  une mauvaise surprise.
 
 ### `outils` — boîtes à outils
 - **Cadres de référence** : la valeur d'une checklist vient de ce sur quoi
   elle s'appuie. CIS et NIST CSF sont publics et faits pour ça.
+
+  **Volontairement pas fait, et la raison vaut d'être écrite.** L'usine
+  travaille hors ligne : elle ne peut pas aller lire les CIS Benchmarks ni le
+  NIST CSF. Le seul moyen de les embarquer serait de les écrire **de
+  mémoire** — celle d'un modèle, ou la mienne. Ce serait exactement le défaut
+  que le contrôle qualité refuse ailleurs sous le nom de *chiffre sans
+  source*, et il partirait cette fois dans un produit **vendu** : un numéro
+  de contrôle faux est pire qu'un contrôle absent, parce qu'il se présente
+  comme une référence.
+
+  Ce qui rendrait la chose faisable : que l'utilisateur **fournisse** le
+  fichier du référentiel qu'il a le droit d'utiliser, et que la chaîne
+  `outils` s'y adosse. C'est une autre fonction, et elle demande quelqu'un
+  qui ait le fichier.
 
 ### `modeles` — Notion / tableur
 - **Formules réellement calculées** plutôt que des colonnes vides.
@@ -265,7 +285,16 @@ ses propres beats et sa résolution — et un contrôle qui sache dire qu'elle a
 ### `impression` — cahiers
 - **Format A5 et Letter** en plus de A4 : le marché anglophone imprime en
   Letter.
-- **Marge de reliure** pour l'impression à la demande.
+- ~~**Marge de reliure** pour l'impression à la demande.~~ **Fait** :
+  `usine impression "sujet" --reliure 12` décale le contenu vers l'extérieur,
+  **alternativement à gauche et à droite**, puisque le côté intérieur change
+  de bord à chaque page. Zéro par défaut, et le PDF produit sans reliure est
+  identique **octet pour octet** à celui d'avant — c'est ce que garde le
+  premier test du fichier.
+
+  La valeur exacte n'est pas devinée : chaque service d'impression publie la
+  sienne, souvent fonction du nombre de pages. L'usine prend celle qu'on lui
+  donne et le dit.
 
 ### `social` — packs de publications
 - **Découpage par réseau** avec les limites réelles de caractères.
@@ -384,11 +413,21 @@ rapport entre ce que ça apporte et ce que ça coûte :
    suspens et l'arc de chaque personnage.~~ **Fait** (voir §2). Reste les
    **intrigues secondaires**, qui sont un objet différent d'un fil tendu :
    une ligne narrative parallèle, pas une promesse ponctuelle.
-2. **Script de narration** par module de formation, pour qui enregistre une
-   voix — la matière est déjà écrite, il lui manque une mise en forme.
-3. **Cadres de référence** pour les boîtes à outils : CIS et NIST CSF sont
-   publics et faits pour ça (voir §3).
-4. **Marge de reliure** pour les cahiers imprimables destinés à l'impression
-   à la demande (voir §4, `impression`).
+2. ~~**Script de narration** par module de formation.~~ **Fait** (§4,
+   `formation`).
+3. **Cadres de référence** pour les boîtes à outils — **écarté tant que le
+   référentiel doit être écrit de mémoire** (§4, `outils`). Rouvrable le jour
+   où l'utilisateur fournit le fichier.
+4. ~~**Marge de reliure** pour les cahiers imprimables.~~ **Fait** (§4,
+   `impression`).
+
+Cette troisième liste est close. Ce qui reste ouvert, en une phrase chacun :
+
+- les **intrigues secondaires** de la fiction, seul obstacle restant entre
+  l'usine et un roman tenable (§2) ;
+- les **cadres de référence** des boîtes à outils, qui attendent une source
+  plutôt qu'un développement (§4) ;
+- les **utilitaires sans appelant** hérités (`inventaire`, `env_int`,
+  `nb_abonnes`), laissés pour éviter du brassage.
 *(L'ancien item « profil audit local » est retiré : la direction outillage de
 sécurité a été abandonnée.)*

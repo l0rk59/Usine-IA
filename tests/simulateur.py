@@ -251,6 +251,19 @@ def simulateur(messages, role):
                 })
         return json.dumps({"quiz": questions}, ensure_ascii=False)
 
+    # --- formation : script de narration -------------------------------------
+    if "script de narration" in bas:
+        return (
+            "Vous avez deja perdu une matinee sur ce probleme. [PAUSE] "
+            "Aujourd'hui, on le regle en trois gestes.\n\n"
+            "Premier geste : vous posez l'objectif avant d'ouvrir quoi que ce "
+            "soit. [INSISTER] Avant. Pas pendant.\n\n"
+            "Deuxieme geste : vous notez le chiffre de depart. Julie facturait "
+            "trois cent vingt euros la journee. Elle ne le savait pas.\n\n"
+            "Troisieme geste : vous choisissez ce que vous arretez. [PAUSE]\n\n"
+            "Dans le module suivant, on regarde ce que cela change sur un "
+            "mois complet.\n")
+
     # --- sequences d'e-mails ---------------------------------------------
     if '"emails"' in invite:
         return json.dumps({

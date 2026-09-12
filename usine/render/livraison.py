@@ -68,6 +68,9 @@ class Produit:
     police_corps: str = "Times-Roman"
     format_page: Tuple[float, float] = A4
     marge: float = 62.0
+    # Marge de reliure, en points. Utile pour l'impression a la demande d'un
+    # document broche ; inutile — et genante — pour une impression a domicile.
+    reliure: float = 0.0
     style_couverture: str = ""
     nom_fichier: str = ""
     # Suffixe du PDF principal quand le produit en compte plusieurs : le
@@ -253,7 +256,7 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
 def _document(produit: Produit, ctx: Any,
               couverture: Optional[Tuple[str, Any]]) -> DocumentPDF:
     doc = DocumentPDF(format_page=produit.format_page, marge=produit.marge,
-                      titre_courant=produit.titre,
+                      reliure=produit.reliure, titre_courant=produit.titre,
                       police_corps=produit.police_corps,
                       titre_document=produit.titre, auteur=ctx.auteur,
                       sujet=produit.sous_titre or produit.promesse,
@@ -277,7 +280,7 @@ def poser_couverture(doc: DocumentPDF, titre: str, sous_titre: str,
 def document(ctx: Any, titre: str, sous_titre: str,
              couverture: Optional[Path] = None, format_page: Tuple[float, float] = A4,
              marge: float = 62.0, police_corps: str = "Times-Roman",
-             titre_courant: str = "") -> DocumentPDF:
+             titre_courant: str = "", reliure: float = 0.0) -> DocumentPDF:
     """Un PDF ouvert sur sa couverture, quelle qu'en soit la provenance.
 
     Les chaines qui gardent leur propre exportateur passaient toutes par les
@@ -286,7 +289,7 @@ def document(ctx: Any, titre: str, sous_titre: str,
     localement, ces trois lignes ont cesse d'en incorporer aucune — sans
     bruit, puisque le PDF restait valide. Elles vivent ici desormais.
     """
-    doc = DocumentPDF(format_page=format_page, marge=marge,
+    doc = DocumentPDF(format_page=format_page, marge=marge, reliure=reliure,
                       police_corps=police_corps,
                       titre_courant=titre_courant or titre,
                       titre_document=titre, auteur=ctx.auteur,

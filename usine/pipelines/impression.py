@@ -102,8 +102,24 @@ def _dessiner_fiche(doc: DocumentPDF, fiche: Dict[str, Any]) -> None:
         doc.points()
 
 
-def produire(ctx: Contexte, pages: int = 12) -> Dict[str, Any]:
+# Valeur de depart quand on demande une reliure sans preciser laquelle. Ce
+# n'est PAS une recommandation d'imprimeur : chaque service d'impression a la
+# demande publie la sienne, souvent fonction du nombre de pages, et c'est
+# celle-la qui fait foi. Dix millimetres tiennent pour un cahier mince.
+RELIURE_MM = 10.0
+
+# 1 mm = 72/25.4 points PostScript.
+POINTS_PAR_MM = 72.0 / 25.4
+
+
+def produire(ctx: Contexte, pages: int = 12,
+             reliure: float = 0.0) -> Dict[str, Any]:
+    """« reliure » est une marge interieure en MILLIMETRES, 0 pour aucune."""
+    reliure_mm = RELIURE_MM if reliure and reliure < 0 else float(reliure or 0)
+    reliure_points = round(reliure_mm * POINTS_PAR_MM, 2)
     ctx.journal("Etape 1/3 — conception du cahier ({} fiches)...".format(pages))
+    if reliure_points:
+        ctx.journal("  marge de reliure : {:.0f} mm, alternee".format(reliure_mm))
     cahier = _cahier(ctx, pages)
     titre = cahier["titre"]
     dossier = preparer(ctx, "impression", titre)
@@ -127,13 +143,21 @@ def produire(ctx: Contexte, pages: int = 12) -> Dict[str, Any]:
     for nom_format, format_page in (("A4", A4), ("Lettre-US", LETTRE)):
         doc = livraison.document(ctx, titre, cahier.get("sous_titre", ""),
                                  couverture, format_page=format_page,
-                                 marge=54, police_corps="Helvetica")
+                                 marge=54, police_corps="Helvetica",
+                                 reliure=reliure_points)
         doc.titre("Mode d'emploi", 1)
         doc.paragraphe(
             "Imprimez ce cahier en recto simple, sur papier ordinaire. Chaque fiche "
             "tient sur une page et se remplit a la main. Vous pouvez aussi le "
             "completer a l'ecran avec une application d'annotation PDF.",
             justifier=True)
+        if reliure_points:
+            doc.encadre(
+                "Impression a la demande",
+                "Ce cahier est mis en page pour une reliure : le contenu est "
+                "decale de {:.0f} mm vers l'exterieur, alternativement a "
+                "gauche et a droite, pour que rien ne disparaisse dans la "
+                "pliure. Imprimez-le en recto-verso.".format(reliure_mm))
         if cahier.get("promesse"):
             doc.encadre("Ce que ce cahier vous apporte", str(cahier["promesse"]))
         for fiche in cahier["fiches"]:

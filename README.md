@@ -124,10 +124,10 @@ indisponibles. Pour l'utiliser en priorité : `USINE_LOCAL_FIRST=1` dans le `.en
 | `usine ebook` | Ebook complet | PDF, EPUB, HTML, Markdown, TXT, couverture |
 | `usine nouvelle` | **Fiction courte** | Bible, **mémoire d'une scène à l'autre**, fils tendus, contrôle de continuité |
 | `usine prompts` | Pack de prompts | PDF, CSV (import Notion), JSON, HTML |
-| `usine formation` | Mini-formation | Manuel PDF, cahier d'exercices, **quiz auto-corrigé**, séquence e-mail |
+| `usine formation` | Mini-formation | Manuel PDF, cahier d'exercices, **quiz auto-corrigé**, script de narration, séquence e-mail |
 | `usine outils` | Boîte à outils | Checklists imprimables, modèles, tableaux CSV |
 | `usine modeles` | **Modèles Notion / tableur** | Bases liées, CSV prêts à importer, vues |
-| `usine impression` | **Cahier imprimable** | Plannings et fiches à remplir, A4 **et** Lettre US |
+| `usine impression` | **Cahier imprimable** | Plannings et fiches à remplir, A4 **et** Lettre US, marge de reliure |
 | `usine social` | Pack de publications | Calendrier CSV, posts, visuels optionnels |
 | `usine logiciel` | **Outil logiciel** | Code source **vérifié**, CLI, app web ou extension Chrome |
 | `usine idees` | Étude de niche | 12 idées appuyées sur des **mesures de marché réelles** |
@@ -191,6 +191,8 @@ usine logiciel "le calcul de tarif pour freelances" -c web
 -T, --taille     mini (6 ch.) | court (8) | standard (12) | long (18)
 -q, --qualite    rapide (0 relecture) | standard (1) | exigeant (2)
     --auteur     nom affiché comme auteur
+    --narration  script à lire à voix haute (formation, 1 appel IA/module)
+    --reliure MM marge intérieure pour l'impression à la demande (impression)
     --marketing  générer aussi le kit de vente (dont l'extrait offert)
     --extrait N  chapitres de l'édition courte offerte (défaut : un quart)
     --plateforme gumroad | etsy | payhip | site
@@ -830,7 +832,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         678 tests + test de fumée, aucun appel réseau
+tests/         710 tests + test de fumée, aucun appel réseau
                un atelier temporaire par module (tests/atelier.py)
 install.sh     installation Termux
 ```
@@ -843,7 +845,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 678 tests
+python3 -m unittest discover -s tests -t .   # 710 tests
 python3 scripts/dependances.py               # zéro dépendance
 python3 tests/fumee.py                       # les 10 chaînes via la vraie CLI
 ```

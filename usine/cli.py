@@ -232,7 +232,8 @@ def cmd_formation(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'une mini-formation")
-    resume = formation.produire(ctx, modules=args.modules)
+    resume = formation.produire(ctx, modules=args.modules,
+                                narration=getattr(args, "narration", False))
     _resume_console(_apres_production(
         args, ctx, resume,
         "Mini-formation en {} modules, cahier d'exercices inclus.".format(resume["modules"])
@@ -269,7 +270,8 @@ def cmd_impression(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un cahier imprimable")
-    resume = impression.produire(ctx, pages=args.nombre)
+    resume = impression.produire(ctx, pages=args.nombre,
+                                 reliure=getattr(args, "reliure", 0) or 0)
     _resume_console(_apres_production(
         args, ctx, resume,
         "Cahier de {} fiches a imprimer, formats A4 et Lettre US.".format(
@@ -1799,6 +1801,8 @@ def construire_parseur() -> argparse.ArgumentParser:
 
     p = sous_parseurs.add_parser("formation", help="fabriquer une mini-formation")
     _options_communes(p)
+    p.add_argument("--narration", action="store_true",
+                   help="script a lire a voix haute (un appel IA par module)")
     p.add_argument("-m", "--modules", type=int, default=0, help="nombre de modules")
     p.set_defaults(fonction=cmd_formation)
 
@@ -1817,6 +1821,9 @@ def construire_parseur() -> argparse.ArgumentParser:
                                  help="fabriquer un cahier imprimable")
     _options_communes(p)
     p.add_argument("-n", "--nombre", type=int, default=12, help="nombre de fiches")
+    p.add_argument("--reliure", type=float, default=0, metavar="MM",
+                   help="marge interieure en mm pour l'impression a la demande "
+                        "(0 = aucune ; votre imprimeur publie la sienne)")
     p.set_defaults(fonction=cmd_impression)
 
     p = sous_parseurs.add_parser("social", help="fabriquer un pack de publications")

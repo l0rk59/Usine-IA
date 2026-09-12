@@ -99,6 +99,7 @@ class DocumentPDF:
         self,
         format_page: Tuple[float, float] = A4,
         marge: float = 62.0,
+        reliure: float = 0.0,
         police_corps: str = "Times-Roman",
         police_titre: str = "Helvetica-Bold",
         titre_courant: str = "",
@@ -109,6 +110,12 @@ class DocumentPDF:
     ):
         self.largeur, self.hauteur = format_page
         self.marge = marge
+        # Marge de reliure : largeur avalee par la pliure d'un livre broche.
+        # Elle s'ajoute du cote INTERIEUR, qui change de bord a chaque page —
+        # a gauche sur une page impaire, a droite sur une paire. Zero par
+        # defaut : une impression a domicile n'en a pas besoin, et tout ce que
+        # l'usine produisait jusqu'ici doit sortir a l'identique.
+        self.reliure = max(0.0, reliure)
         self.police_corps = police_corps
         self.police_titre = police_titre
         self.titre_courant = titre_courant
@@ -127,8 +134,25 @@ class DocumentPDF:
 
     # -- geometrie -------------------------------------------------------
     @property
+    def marge_gauche(self) -> float:
+        """Origine horizontale du contenu de la page courante.
+
+        C'est elle, et non « marge », qui sert d'abscisse partout : sur une
+        page paire d'un document relie, le contenu part de la marge nue, la
+        reliure etant mangee a droite.
+        """
+        if not self.reliure:
+            return self.marge
+        return self.marge + (self.reliure if self.page_courante % 2 else 0.0)
+
+    @property
+    def bord_droit(self) -> float:
+        """Abscisse ou le contenu doit s'arreter."""
+        return self.marge_gauche + self.largeur_utile
+
+    @property
     def largeur_utile(self) -> float:
-        return self.largeur - 2 * self.marge
+        return self.largeur - 2 * self.marge - self.reliure
 
     @property
     def page_courante(self) -> int:
@@ -273,10 +297,10 @@ class DocumentPDF:
             self._place(pas)
             derniere = index == len(lignes) - 1
             if justifier and not derniere and len(ligne.split()) > 1:
-                self._ligne_justifiee(ligne, self.marge + retrait, self._y, police,
+                self._ligne_justifiee(ligne, self.marge_gauche + retrait, self._y, police,
                                       taille, largeur, couleur)
             else:
-                self._texte(ligne, self.marge + retrait, self._y, police, taille, couleur)
+                self._texte(ligne, self.marge_gauche + retrait, self._y, police, taille, couleur)
             self._y -= pas
         self._y -= espace_apres
 
@@ -317,12 +341,12 @@ class DocumentPDF:
         lignes = self.couper(texte, self.police_titre, taille, self.largeur_utile)
         for ligne in lignes:
             self._place(taille * 1.35)
-            self._texte(ligne, self.marge, self._y, self.police_titre, taille,
+            self._texte(ligne, self.marge_gauche, self._y, self.police_titre, taille,
                         (0.06, 0.09, 0.16))
             self._y -= taille * 1.3
         if niveau == 1:
             self._y -= 4
-            self.rectangle(self.marge, self._y, 78, 3, (0.15, 0.5, 0.85))
+            self.rectangle(self.marge_gauche, self._y, 78, 3, (0.15, 0.5, 0.85))
             self._y -= 22
         else:
             self._y -= 8
@@ -337,9 +361,9 @@ class DocumentPDF:
             for index, ligne in enumerate(lignes):
                 self._place(pas)
                 if index == 0:
-                    self._texte(puce, self.marge + 2, self._y, self.police_titre, taille,
+                    self._texte(puce, self.marge_gauche + 2, self._y, self.police_titre, taille,
                                 (0.15, 0.5, 0.85))
-                self._texte(ligne, self.marge + 20, self._y, police, taille, (0.12, 0.12, 0.14))
+                self._texte(ligne, self.marge_gauche + 20, self._y, police, taille, (0.12, 0.12, 0.14))
                 self._y -= pas
             self._y -= 3
         self._y -= 7
@@ -352,9 +376,9 @@ class DocumentPDF:
         haut = self._y + taille
         for ligne in lignes:
             self._place(pas)
-            self._texte(ligne, self.marge + 26, self._y, police, taille, (0.25, 0.25, 0.3))
+            self._texte(ligne, self.marge_gauche + 26, self._y, police, taille, (0.25, 0.25, 0.3))
             self._y -= pas
-        self.rectangle(self.marge + 6, self._y + pas - 4, 3, haut - self._y - pas + 4,
+        self.rectangle(self.marge_gauche + 6, self._y + pas - 4, 3, haut - self._y - pas + 4,
                        (0.15, 0.5, 0.85))
         self._y -= 10
 
@@ -363,15 +387,15 @@ class DocumentPDF:
         hauteur = 34 + len(lignes) * taille * 1.42
         self._place(hauteur + 10)
         haut = self._y + 8
-        self.rectangle(self.marge, haut - hauteur, self.largeur_utile, hauteur,
+        self.rectangle(self.marge_gauche, haut - hauteur, self.largeur_utile, hauteur,
                        (0.95, 0.965, 1.0))
-        self.rectangle(self.marge, haut - hauteur, 4, hauteur, (0.15, 0.5, 0.85))
+        self.rectangle(self.marge_gauche, haut - hauteur, 4, hauteur, (0.15, 0.5, 0.85))
         self._y = haut - 22
-        self._texte(titre_bloc, self.marge + 18, self._y, self.police_titre, taille + 0.5,
+        self._texte(titre_bloc, self.marge_gauche + 18, self._y, self.police_titre, taille + 0.5,
                     (0.08, 0.32, 0.6))
         self._y -= taille * 1.7
         for ligne in lignes:
-            self._texte(ligne, self.marge + 18, self._y, self.police_corps, taille,
+            self._texte(ligne, self.marge_gauche + 18, self._y, self.police_corps, taille,
                         (0.15, 0.17, 0.2))
             self._y -= taille * 1.42
         self._y -= 16
@@ -379,7 +403,7 @@ class DocumentPDF:
     def separateur(self) -> None:
         self._place(24)
         self._y -= 8
-        self.rectangle(self.marge + self.largeur_utile / 2 - 28, self._y, 56, 1,
+        self.rectangle(self.marge_gauche + self.largeur_utile / 2 - 28, self._y, 56, 1,
                        (0.75, 0.78, 0.82))
         self._y -= 16
 
@@ -391,7 +415,7 @@ class DocumentPDF:
         for _ in range(nombre):
             self._place(ecart)
             self._y -= ecart * 0.72
-            self.rectangle(self.marge, self._y, self.largeur_utile, 0.6,
+            self.rectangle(self.marge_gauche, self._y, self.largeur_utile, 0.6,
                            (0.82, 0.85, 0.9))
             self._y -= ecart * 0.28
 
@@ -404,11 +428,11 @@ class DocumentPDF:
             lignes = self.couper(texte, self.police_corps, taille, self.largeur_utile - 30)
             pas = taille * 1.45
             self._place(pas * len(lignes) + 6)
-            self.rectangle(self.marge + 1, self._y - 1, 10.5, 10.5,
+            self.rectangle(self.marge_gauche + 1, self._y - 1, 10.5, 10.5,
                            (0.35, 0.42, 0.55), plein=False, epaisseur=0.9)
             for index, ligne in enumerate(lignes):
                 self._place(pas)
-                self._texte(ligne, self.marge + 22, self._y, self.police_corps, taille,
+                self._texte(ligne, self.marge_gauche + 22, self._y, self.police_corps, taille,
                             (0.12, 0.12, 0.14))
                 self._y -= pas
             self._y -= 4
@@ -428,12 +452,12 @@ class DocumentPDF:
 
         def dessiner_entete() -> None:
             self._place(hauteur_ligne * 2)
-            self.rectangle(self.marge, self._y - hauteur_ligne + taille,
+            self.rectangle(self.marge_gauche, self._y - hauteur_ligne + taille,
                            self.largeur_utile, hauteur_ligne, (0.09, 0.36, 0.72))
             for index, entete in enumerate(entetes):
                 libelle = self._tronquer(str(entete), self.police_titre, taille,
                                          largeur_col - 10)
-                self._texte(libelle, self.marge + index * largeur_col + 5, self._y,
+                self._texte(libelle, self.marge_gauche + index * largeur_col + 5, self._y,
                             self.police_titre, taille, (1, 1, 1))
             self._y -= hauteur_ligne
 
@@ -445,7 +469,7 @@ class DocumentPDF:
                 self.nouvelle_page()
                 dessiner_entete()
             if numero % 2 == 1:
-                self.rectangle(self.marge, self._y - hauteur_ligne + taille,
+                self.rectangle(self.marge_gauche, self._y - hauteur_ligne + taille,
                                self.largeur_utile, hauteur_ligne, (0.96, 0.97, 0.99))
             for index in range(colonnes):
                 cellule = ligne[index] if index < len(ligne) else ""
@@ -453,16 +477,16 @@ class DocumentPDF:
                     self._texte(
                         self._tronquer(cellule, self.police_corps, taille,
                                        largeur_col - 10),
-                        self.marge + index * largeur_col + 5, self._y,
+                        self.marge_gauche + index * largeur_col + 5, self._y,
                         self.police_corps, taille, (0.12, 0.12, 0.14),
                     )
-                self.rectangle(self.marge + index * largeur_col,
+                self.rectangle(self.marge_gauche + index * largeur_col,
                                self._y - hauteur_ligne + taille, 0.5, hauteur_ligne,
                                (0.85, 0.88, 0.92))
-            self.rectangle(self.marge, self._y - hauteur_ligne + taille,
+            self.rectangle(self.marge_gauche, self._y - hauteur_ligne + taille,
                            self.largeur_utile, 0.5, (0.85, 0.88, 0.92))
             self._y -= hauteur_ligne
-        self.rectangle(self.marge + self.largeur_utile - 0.5,
+        self.rectangle(self.marge_gauche + self.largeur_utile - 0.5,
                        self._y + taille, 0.5, 0, (0.85, 0.88, 0.92))
         self._y -= 14
 
@@ -489,17 +513,17 @@ class DocumentPDF:
                 if libelle:
                     largeur = largeur_texte(libelle, self.police_titre, 9)
                     self._texte(libelle,
-                                self.marge + index * largeur_col
+                                self.marge_gauche + index * largeur_col
                                 + (largeur_col - largeur) / 2,
                                 self._y, self.police_titre, 9, (0.25, 0.3, 0.4))
             self._y -= 16
         haut = self._y + 8
         bas = haut - hauteur * rangees
         for index in range(colonnes + 1):
-            self.rectangle(self.marge + index * largeur_col, bas, 0.6,
+            self.rectangle(self.marge_gauche + index * largeur_col, bas, 0.6,
                            hauteur * rangees, (0.8, 0.84, 0.9))
         for rangee in range(rangees + 1):
-            self.rectangle(self.marge, bas + rangee * hauteur, self.largeur_utile,
+            self.rectangle(self.marge_gauche, bas + rangee * hauteur, self.largeur_utile,
                            0.6, (0.8, 0.84, 0.9))
         self._y = bas - 16
 
@@ -511,8 +535,8 @@ class DocumentPDF:
         haut = self._y
         y = haut
         while y > haut - hauteur:
-            x = self.marge
-            while x < self.marge + self.largeur_utile:
+            x = self.marge_gauche
+            while x < self.marge_gauche + self.largeur_utile:
                 self.rectangle(x, y, 1.1, 1.1, (0.74, 0.78, 0.84))
                 x += espacement
             y -= espacement
@@ -589,9 +613,9 @@ class DocumentPDF:
     def _rendre_sommaire(self, intitule: str, decalage: int) -> None:
         self.nouvelle_page()
         self._y -= 26
-        self._texte(intitule, self.marge, self._y, self.police_titre, 24, (0.06, 0.09, 0.16))
+        self._texte(intitule, self.marge_gauche, self._y, self.police_titre, 24, (0.06, 0.09, 0.16))
         self._y -= 12
-        self.rectangle(self.marge, self._y, 78, 3, (0.15, 0.5, 0.85))
+        self.rectangle(self.marge_gauche, self._y, 78, 3, (0.15, 0.5, 0.85))
         self._y -= 34
         for texte, niveau, page in self.sommaire:
             if niveau > 2:
@@ -601,11 +625,14 @@ class DocumentPDF:
             taille = 11.5 if niveau == 1 else 10.5
             retrait = 0 if niveau == 1 else 18
             libelle = texte if len(texte) < 66 else texte[:63] + "..."
-            self._texte(libelle, self.marge + retrait, self._y, police, taille,
+            self._texte(libelle, self.marge_gauche + retrait, self._y, police, taille,
                         (0.12, 0.12, 0.14))
             numero = str(page + decalage)
+            # Le numero se cale sur le BORD DROIT du contenu, pas sur la
+            # largeur moins la marge gauche : sur une page impaire reliee, les
+            # deux ne sont plus le meme point.
             self._texte(numero,
-                        self.largeur - self.marge - largeur_texte(numero, police, taille),
+                        self.bord_droit - largeur_texte(numero, police, taille),
                         self._y, police, taille, (0.35, 0.38, 0.45))
             self._y -= 19 if niveau == 1 else 17
         self._fermer_page()

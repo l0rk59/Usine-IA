@@ -137,6 +137,8 @@ TYPES: List[TypeProduit] = [
         formats=("pdf", "html", "md"),
         minutes=(12, 25),
         quantite=("modules", "Combien de modules", "6"),
+        # Un appel de modele par module : c'est a l'utilisateur de decider.
+        options={"narration": None},
         mots_cles=("formation", "cours", "apprendre", "module", "atelier"),
     ),
     TypeProduit(
@@ -165,6 +167,7 @@ TYPES: List[TypeProduit] = [
         formats=("pdf", "html"),
         minutes=(5, 12),
         quantite=("pages", "Combien de fiches", "12"),
+        options={"reliure": None},
         mots_cles=("planner", "imprimable", "cahier", "agenda", "fiche",
                    "planning", "journal"),
     ),
