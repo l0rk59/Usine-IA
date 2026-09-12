@@ -212,15 +212,23 @@ class TestMemoire(unittest.TestCase):
 
     def test_un_resume_vide_ne_detruit_pas_la_memoire(self):
         """Un modele qui repond trois mots ferait perdre tout le passe."""
+        scene = {"titre": "Le quai", "pivot": "Hakim signe"}
         llm.definir_simulateur(lambda messages, role: "ok")
         try:
-            memoire = nouvelle.mettre_a_jour_resume(
-                _contexte(), "Camille est au depot depuis l'aube.",
-                {"titre": "Le quai", "pivot": "Hakim signe"}, "du texte")
+            redacteur = nouvelle.redacteur_pour(_contexte(), scene)
+            memoire = redacteur("Camille est au depot depuis l'aube.",
+                                "du texte", "Le quai")
         finally:
             llm.definir_simulateur(simulateur)
         self.assertIn("Camille est au depot", memoire)
         self.assertIn("Hakim signe", memoire)
+
+    def test_un_resume_exploitable_est_garde_tel_quel(self):
+        redacteur = nouvelle.redacteur_pour(
+            _contexte(), {"titre": "Le quai", "pivot": "Hakim signe"})
+        etat = redacteur("", "du texte de scene", "Scene modele 1")
+        self.assertNotIn("Hakim signe", etat, "le repli n'avait pas lieu d'etre")
+        self.assertGreater(len(etat), 40)
 
 
 # --------------------------------------------------------------------------
@@ -273,6 +281,47 @@ class TestChaine(unittest.TestCase):
             self.assertIn(attendu, extensions)
 
 
+class TestMemoireSurUnLongTexte(unittest.TestCase):
+    """Au-dela d'une douzaine de scenes, un resume plat ne suffit plus.
+
+    La mesure est dans tests/test_memoire.py ; ce qui est verifie ici est le
+    BRANCHEMENT : la chaine choisit bien la memoire hierarchique, et ce que
+    recoit la vingtieme scene contient reellement le debut du livre.
+    """
+
+    def setUp(self):
+        self.recues = []
+        self.origine = nouvelle.rediger_scene
+
+        def espion(ctx, bible, grille, index, scene, memoire, fin_precedente=""):
+            self.recues.append(memoire)
+            return self.origine(ctx, bible, grille, index, scene, memoire,
+                                fin_precedente)
+
+        nouvelle.rediger_scene = espion
+
+    def tearDown(self):
+        nouvelle.rediger_scene = self.origine
+
+    def test_la_vingtieme_scene_sait_ce_qui_s_est_passe_au_debut(self):
+        nouvelle.produire(_contexte(chapitres=20, mots_section=1200))
+        derniere = self.recues[-1]
+        self.assertIn("Partie 1 :", derniere,
+                      "le debut du livre doit encore etre la")
+        self.assertIn("Partie en cours :", derniere)
+        # Les parties closes doivent porter des contenus DIFFERENTS : trois
+        # resumes identiques ne diraient rien de plus qu'un seul.
+        parties = [ligne for ligne in derniere.splitlines()
+                   if ligne.startswith("Partie ") and "en cours" not in ligne]
+        self.assertEqual(len(parties), 3)
+        self.assertEqual(len(set(parties)), 3)
+
+    def test_une_nouvelle_courte_garde_la_memoire_plate(self):
+        """Pas de frais de structure quand un seul etat suffit."""
+        nouvelle.produire(_contexte(taille="mini"))
+        self.assertNotIn("Partie 1 :", "".join(self.recues))
+
+
 class TestBudgetEpuise(unittest.TestCase):
     """Un plafond atteint ne detruit pas le travail fait — comme pour l'ebook."""
 
@@ -307,6 +356,25 @@ class TestBudgetEpuise(unittest.TestCase):
         genres = [a["genre"] for a in donnees["continuite"]["anomalies"]]
         self.assertIn("scene_non_redigee", genres)
         # La memoire de secours ne doit pas etre prise pour une histoire figee.
+        self.assertNotIn("scene_sans_pivot", genres)
+
+    def test_un_texte_long_degrade_aussi_proprement(self):
+        """Memoire hierarchique ET repli : la combinaison la plus risquee.
+
+        Les parties doivent continuer de se fermer aux bons endroits meme
+        quand plus aucune scene n'est redigee, sinon la structure de la
+        memoire dependrait de la reussite des appels.
+        """
+        resume = nouvelle.produire(_contexte(chapitres=20, mots_section=1200))
+        self.assertTrue(resume["budget_epuise"])
+        self.assertEqual(resume["scenes"], 20)
+        dossier = Path(resume["dossier"])
+        for extension in (".pdf", ".epub", ".md"):
+            self.assertTrue(any(f.suffix == extension for f in dossier.iterdir()))
+        donnees = json.loads((dossier / "continuite.json").read_text(
+            encoding="utf-8"))
+        genres = [a["genre"] for a in donnees["continuite"]["anomalies"]]
+        self.assertIn("scene_non_redigee", genres)
         self.assertNotIn("scene_sans_pivot", genres)
 
 

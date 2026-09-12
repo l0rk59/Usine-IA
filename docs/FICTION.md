@@ -5,6 +5,8 @@
 La question revient souvent : puisque la chaîne `ebook` sait écrire un livre
 de douze chapitres, pourquoi ne saurait-elle pas écrire un roman ? La réponse
 n'est pas une affaire de consigne, et elle mérite d'être dite précisément.
+(Sur le roman en particulier, voir [Et le roman ?](#et-le-roman) plus bas :
+la mémoire tient désormais à cette échelle, ce qui reste est la structure.)
 
 ## Le défaut qui rend l'ebook inapte
 
@@ -41,15 +43,70 @@ Un personnage dont le désir se décide au fil de l'eau n'a pas de désir. La
 bible est passée **entière à chaque scène**, et elle est la source de vérité :
 un personnage que la grille inventerait sans qu'il y figure est écarté.
 
-### 2. Le résumé roulant
+### 2. La mémoire
 
-C'est la mémoire, et c'est ce que la chaîne `ebook` n'a pas. Chaque scène
-reçoit l'état de l'histoire jusque-là ; en sortant, elle le met à jour.
+C'est ce que la chaîne `ebook` n'a pas. Chaque scène reçoit l'état de
+l'histoire jusque-là ; en sortant, elle le met à jour.
 
 Cela coûte **un appel court par scène** — environ quatre-vingt-dix mots, au
 présent, purement factuel : qui est où, ce qui a changé, ce qui reste en
 suspens. C'est le surcoût de cette chaîne par rapport à un ebook de même
 longueur, et c'est exactement ce qu'on achète.
+
+#### Où un résumé plat lâche, mesuré
+
+Un résumé de taille **fixe** réécrit à chaque scène est un tampon : il ne
+grandit pas, et ce qu'on y ajoute chasse ce qui y était. La limite est
+arithmétique avant d'être littéraire — énoncer un événement demande environ
+sept mots (« Camille cache la convocation dans sa poche »), donc
+quatre-vingt-dix mots portent **une douzaine d'événements**, pas davantage.
+
+`tests/test_memoire.py` le mesure sur la vraie boucle, avec un résumeur
+**idéal** : il ne paraphrase pas, ne se trompe pas, garde autant de faits que
+la place le permet. Ce qui est mesuré est donc la limite de *capacité*, pas le
+talent d'un modèle. Un vrai modèle fera moins bien ; il ne fera jamais mieux.
+
+| Scènes | Faits retenus — résumé plat | Faits retenus — hiérarchique |
+|---:|---:|---:|
+| 6 | 6 | 6 |
+| 12 | 12 | 12 |
+| **13** | **12** *(la scène 1 disparaît)* | 13 |
+| 18 | 12 | 18 |
+| 24 | 12 | 24 |
+| 40 | 12 | 40 |
+
+La bascule est nette et tombe à la **treizième scène**. À l'échelle d'un
+roman, un résumé plat a perdu la première moitié du livre.
+
+S'y ajoute un second effet, invisible dans l'arithmétique : un fait posé à la
+scène 1 traverse N-1 réécritures avant la scène N, et chaque réécriture est un
+réencodage avec perte. Le tampon ne se contente pas de se remplir — il déforme
+ce qu'il garde.
+
+#### La mémoire hiérarchique
+
+Agrandir le résumé ne résout rien : il faudrait sept mots de plus par scène,
+donc un résumé proportionnel à la longueur du livre, qu'il faudrait relire
+entièrement à chaque scène. C'est le coût qu'on voulait éviter.
+
+La réponse repose sur **une seule propriété** : le résumé d'une partie close
+est écrit **une fois** et n'est plus jamais réécrit. Il ne subit donc ni
+troncature ni réencodage.
+
+```
+Partie 1 : …figée…          ┐
+Partie 2 : …figée…          ├─ écrites une fois, jamais retouchées
+Partie 3 : …figée…          ┘
+Partie en cours : …roulante…   ← seule celle-ci est réécrite
+```
+
+La capacité devient « nombre de parties × taille d'un résumé » et croît avec
+le livre, tandis que le coût par scène reste celui d'un seul résumé roulant.
+Pour vingt-quatre scènes : 24 appels de scène + **3** fermetures de partie.
+
+Elle s'active **seule**, au-delà de la capacité mesurée. En dessous, la
+mémoire plate suffit et coûte moins : la hiérarchie n'apporterait que des
+appels de fermeture pour rien.
 
 Quand le budget tombe ou que le modèle répond n'importe quoi, la mémoire ne
 disparaît pas : elle continue par les **pivots** annoncés dans la grille. Un
@@ -127,14 +184,41 @@ fiction correspond ce qu'on lui demande.
 | Nouvelle | 1 000 – 10 000 | `-T mini` (≈ 4 200) ou `-T court` (≈ 7 600) |
 | Novelette | 7 500 – 17 000 | `-T standard` (≈ 13 200) |
 | Novella | 17 500 – 40 000 | `--chapitres 20 --mots 1200` |
-| Roman | 40 000 et plus | hors de portée d'une session : voir ci-dessous |
+| Roman | 40 000 et plus | `--chapitres 24 --mots 3500` (≈ 84 000) |
 
-Le sur-mesure fonctionne (`--chapitres 24 --mots 3500` vise 84 000 mots), mais
-un roman n'est pas qu'une nouvelle plus longue : à cette échelle, un résumé
-roulant de quatre-vingt-dix mots ne suffit plus à porter vingt-quatre scènes,
-et il faudrait une mémoire hiérarchique — un résumé par partie, plus un état
-courant. C'est le chantier suivant, et il commence par mesurer où la mémoire
-actuelle lâche.
+### Et le roman ?
+
+**Il n'y a pas de type `roman`, et c'est délibéré.** Le catalogue pose une
+règle : « un type qui produirait le même fichier qu'un autre sous un nom
+différent n'a pas sa place ici ». Un roman sort de la même chaîne, avec les
+mêmes fichiers ; seule la longueur change, et elle est déjà un réglage.
+
+La mémoire, elle, tient désormais à cette échelle : la hiérarchie s'active
+seule dès la treizième scène, et une production de vingt-quatre scènes garde
+la partie 1 sous les yeux de la scène 24. C'est mesuré, pas espéré.
+
+Ce qui reste à faire est de deux ordres, et aucun n'est la mémoire.
+
+**Le coût, qui est réel.** Vingt-quatre scènes en qualité `standard`
+demandent une **centaine d'appels**. Deux plafonds par défaut s'y opposent :
+
+```bash
+usine reglages --definir budget_appels_produit=150 budget_minutes_produit=0
+```
+
+Sans cela, le livre sort tronqué — proprement, les scènes restantes réduites à
+leur fiche, mais tronqué. Comptez plusieurs heures sur un téléphone : lancez-le
+via l'usine continue, écran verrouillé, téléphone en charge. Le cache rend une
+interruption sans conséquence : relancer reprend où l'on s'était arrêté.
+
+**La structure, qui est le vrai chantier.** Un roman n'est pas une nouvelle
+longue. Sept beats et une distribution de quatre personnages tiennent une
+nouvelle ; un roman demande des **intrigues secondaires**, un **arc par
+personnage** et des **retournements qui se préparent sur plusieurs parties**.
+La grille actuelle est une liste plate de tournants — elle ne sait pas
+représenter une promesse posée en partie 1 et payée en partie 4. C'est le
+chantier suivant, et il ne commence pas par écrire plus : il commence par
+donner à la grille de quoi noter ce qui est en suspens.
 
 ## Ce qui change pour le fichier livré
 

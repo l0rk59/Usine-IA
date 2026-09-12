@@ -812,7 +812,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         592 tests + test de fumée, aucun appel réseau
+tests/         616 tests + test de fumée, aucun appel réseau
                un atelier temporaire par module (tests/atelier.py)
 install.sh     installation Termux
 ```
@@ -825,7 +825,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 592 tests
+python3 -m unittest discover -s tests -t .   # 616 tests
 python3 scripts/dependances.py               # zéro dépendance
 python3 tests/fumee.py                       # les 10 chaînes via la vraie CLI
 ```
@@ -928,8 +928,12 @@ sait pas faire, et ce qu'on peut y ajouter — est dans
   la première ligne, un **résumé roulant** que chaque scène reçoit et met à
   jour, et une **grille de beats** au lieu d'un plan de chapitres. Un contrôle
   de continuité déterministe relit ensuite la bible contre le texte produit.
-  Voir [docs/FICTION.md](docs/FICTION.md). **Le roman reste hors de portée** :
-  à 80 000 mots, un résumé roulant de quatre-vingt-dix mots ne suffit plus.
+  Voir [docs/FICTION.md](docs/FICTION.md). **La longueur d'un roman est
+  atteignable** (`--chapitres 24 --mots 3500`) : la mémoire passe en mode
+  hiérarchique dès la treizième scène — des parties closes, figées une fois
+  pour toutes, plus l'état de la partie en cours. Ce qui manque encore à un
+  roman n'est pas la mémoire mais la **structure** : intrigues secondaires,
+  arc par personnage, promesses payées plusieurs parties plus loin.
 - **Sécurité : oui, du côté contenu — pas d'outillage.** Guides, checklists de
   durcissement, politiques types, sensibilisation : ce sont des produits que
   les chaînes existantes savent déjà fabriquer. L'usine ne fournit aucun outil

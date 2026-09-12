@@ -43,7 +43,9 @@ from ..core import controle as ctrl
 from ..core import evenements, llm, securite
 from ..render import document as D
 from ..render import livraison
-from .base import Contexte, elaguer_markdown, nettoyer_titre, preparer, terminer
+from . import memoire as M
+from .base import (Contexte, elaguer_markdown, nettoyer_titre, preparer,
+                   terminer)
 
 ROLE = ("un auteur de fiction courte publie en revue, qui tient la continuite "
         "et montre plutot que de raconter")
@@ -297,33 +299,52 @@ def _reconnu(nom: str, connus: List[str]) -> bool:
 # --------------------------------------------------------------------------
 
 
-def mettre_a_jour_resume(ctx: Contexte, memoire: str, scene: Dict[str, Any],
+def mettre_a_jour_resume(ctx: Contexte, etat: str, intitule: str,
                          texte: str) -> str:
-    """Reecrit l'etat de l'histoire apres une scene. C'est LA memoire.
+    """Reecrit l'etat de l'histoire apres du texte. C'est LA memoire.
 
     Un appel court par scene. C'est le surcout de cette chaine par rapport a
     l'ebook, et c'est ce qu'on achete : sans lui, la scene 9 ne sait pas que
     le personnage a quitte la ville a la scene 4.
+
+    La meme fonction ferme une partie : on lui passe alors tout le texte de
+    la partie et son intitule. Ce qu'on demande au modele est identique —
+    condenser du recit en un etat — et l'ecrire deux fois donnerait deux
+    consignes qui finiraient par diverger.
+
+    Rend une chaine vide si le modele n'a rien dit d'exploitable : c'est
+    l'appelant qui sait par quoi remplacer un etat perdu.
     """
     invite = (
-        "Voici l'etat d'une nouvelle en cours, puis la scene qui vient d'etre "
-        "ecrite.\n\n"
-        "ETAT JUSQU'ICI :\n{memoire}\n\n"
-        "SCENE « {titre} » :\n{texte}\n\n"
+        "Voici l'etat d'une fiction en cours, puis le texte qui vient d'etre "
+        "ecrit.\n\n"
+        "ETAT JUSQU'ICI :\n{etat}\n\n"
+        "TEXTE A INTEGRER — {intitule} :\n{texte}\n\n"
         "Reecris l'ETAT COMPLET a jour, en {mots} mots maximum, au present, "
         "purement factuel : qui est ou, ce qui a change, ce qui reste en "
         "suspens et qui devra etre paye plus tard. Pas de jugement, pas de "
         "style, pas de titre. Uniquement le texte de l'etat."
-    ).format(memoire=memoire or "(rien encore : l'histoire commence)",
-             titre=scene["titre"], texte=texte[:6000], mots=MOTS_RESUME)
+    ).format(etat=etat or "(rien encore : l'histoire commence)",
+             intitule=intitule or "la suite", texte=texte[:6000],
+             mots=MOTS_RESUME)
 
     reponse = equipe.REDACTEUR.travailler(ctx, invite, max_tokens=320)
     propre = elaguer_markdown(reponse.texte).strip()
-    # Un resume vide ou aberrant ferait perdre la memoire pour toutes les
-    # scenes suivantes : mieux vaut garder le precedent, augmente du pivot.
-    if len(propre) < 40:
-        return _memoire_de_secours(memoire, scene)
-    return propre
+    return propre if len(propre) >= 40 else ""
+
+
+def redacteur_pour(ctx: Contexte, scene: Dict[str, Any]) -> M.Redacteur:
+    """La fonction que la memoire appelle pour rediger un etat.
+
+    Elle porte le repli : un etat vide ou aberrant ferait perdre la memoire
+    pour toutes les scenes suivantes, ce qui est exactement le defaut que
+    cette chaine existe pour corriger.
+    """
+    def redacteur(etat: str, texte: str, intitule: str = "") -> str:
+        propre = mettre_a_jour_resume(ctx, etat, intitule or scene["titre"], texte)
+        return propre or _memoire_de_secours(etat, scene)
+
+    return redacteur
 
 
 def _memoire_de_secours(memoire: str, scene: Dict[str, Any]) -> str:
@@ -349,7 +370,12 @@ def _memoire_de_secours(memoire: str, scene: Dict[str, Any]) -> str:
 def rediger_scene(ctx: Contexte, bible: Dict[str, Any], grille: Dict[str, Any],
                   index: int, scene: Dict[str, Any], memoire: str,
                   fin_precedente: str = "") -> Tuple[str, str]:
-    """Redige une scene. Renvoie (markdown, fournisseur utilise)."""
+    """Redige une scene. Renvoie (markdown, fournisseur utilise).
+
+    « memoire » est le texte deja mis en forme par l'objet memoire : un etat
+    unique pour une nouvelle, des parties closes plus l'etat courant pour un
+    texte long. La scene n'a pas a savoir laquelle des deux la nourrit.
+    """
     total = len(grille["scenes"])
     beat = next((b for b in grille.get("beats", [])
                  if b["nom"] == scene["beat"]), None)
@@ -590,7 +616,14 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
     memoires: List[str] = []
     redigees: List[bool] = []
     local: Dict[str, List[ctrl.Controle]] = {}
-    memoire = ""
+    # Un resume de taille fixe est un tampon : au-dela d'une douzaine de
+    # scenes, les plus anciennes en sortent, quelle que soit la qualite du
+    # modele. Mesure dans tests/test_memoire.py, expliquee dans docs/FICTION.md.
+    memoire = M.choisir(total, MOTS_RESUME)
+    if isinstance(memoire, M.MemoireHierarchique):
+        ctx.journal("  memoire hierarchique : parties de {} scenes "
+                    "(un resume plat n'en porte que {})".format(
+                        memoire.scenes_par_partie, M.capacite(MOTS_RESUME)))
     budget_epuise = False
 
     for index, scene in enumerate(scenes_prevues):
@@ -599,8 +632,8 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
                            total=total, titre=scene["titre"])
         if budget_epuise:
             sections.append((scene["titre"], _repli(scene)))
-            memoire = _memoire_de_secours(memoire, scene)
-            memoires.append(memoire)
+            _replier_memoire(memoire, scene, index, total)
+            memoires.append(memoire.etat_courant())
             redigees.append(False)
             ctx.etape("scene-{}".format(index + 1), "echec", "budget epuise")
             continue
@@ -608,7 +641,7 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
         fin_precedente = sections[-1][1][-320:] if sections else ""
         try:
             corps, auteur = rediger_scene(ctx, bible, grille, index, scene,
-                                          memoire, fin_precedente)
+                                          memoire.pour_invite(), fin_precedente)
         except budget.BudgetEpuise as exc:
             budget_epuise = True
             ctx.journal("     {} — scenes restantes reduites a leur fiche".format(exc))
@@ -654,17 +687,18 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
         # La memoire se met a jour meme quand tout le reste a echoue : c'est
         # elle qui porte la continuite des scenes suivantes.
         if budget_epuise:
-            memoire = _memoire_de_secours(memoire, scene)
+            _replier_memoire(memoire, scene, index, total)
         else:
             try:
-                memoire = mettre_a_jour_resume(ctx, memoire, scene, corps)
+                memoire.apres_scene(redacteur_pour(ctx, scene), corps,
+                                    scene["titre"], index, total)
             except budget.BudgetEpuise as exc:
                 budget_epuise = True
                 ctx.journal("     {} — memoire figee sur les pivots".format(exc))
-                memoire = _memoire_de_secours(memoire, scene)
+                _replier_memoire(memoire, scene, index, total)
             except Exception:
-                memoire = _memoire_de_secours(memoire, scene)
-        memoires.append(memoire)
+                _replier_memoire(memoire, scene, index, total)
+        memoires.append(memoire.etat_courant())
         ctx.etape("scene-{}".format(index + 1), "ok", scene["titre"])
 
     ctx.journal("Etape 4/5 — controle de continuite...")
@@ -732,6 +766,20 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
     (dossier / "produit.json").write_text(
         json.dumps(resume, ensure_ascii=False, indent=2), encoding="utf-8")
     return resume
+
+
+def _replier_memoire(memoire, scene: Dict[str, Any], index: int,
+                     total: int) -> None:
+    """Fait avancer la memoire sans appeler le modele.
+
+    Elle passe par le meme chemin qu'une scene redigee — donc une partie se
+    ferme au bon endroit meme quand plus rien n'est ecrit. Une memoire dont
+    la structure depend de la reussite des appels serait une memoire dont on
+    ne peut rien dire.
+    """
+    memoire.apres_scene(
+        lambda etat, texte, intitule="": _memoire_de_secours(etat, scene),
+        _repli(scene), scene["titre"], index, total)
 
 
 def _repli(scene: Dict[str, Any]) -> str:

@@ -219,12 +219,18 @@ Classé par rapport entre ce que ça apporte et ce que ça coûte.
 §2 — bible, résumé roulant, grille de beats — plus un contrôle de continuité
 déterministe. Voir [FICTION.md](FICTION.md).
 
-**Le roman reste ouvert**, et pour une raison mesurable : le résumé roulant
-fait quatre-vingt-dix mots. Il porte une nouvelle de huit scènes ; il ne
-portera pas vingt-quatre scènes et 80 000 mots. Il faudrait une mémoire
-hiérarchique — un résumé par partie, plus un état courant — et le chantier
-commence par mesurer où la mémoire actuelle lâche, pas par l'agrandir au
-jugé.
+**La mémoire du roman est faite.** Elle a commencé par la mesure annoncée :
+un résumé de taille fixe porte douze scènes, la treizième chasse la première,
+et c'est de l'arithmétique — sept mots par événement, quatre-vingt-dix mots
+de résumé. La mémoire hiérarchique (parties closes figées + état courant)
+s'active seule au-delà, et retient 24 faits sur 24 là où la plate en retenait
+12. Chiffres et méthode dans [FICTION.md](FICTION.md) ; la mesure tourne dans
+`tests/test_memoire.py`.
+
+**Ce qui reste au roman n'est plus la mémoire, c'est la structure** :
+intrigues secondaires, arc par personnage, promesse posée en partie 1 et payée
+en partie 4. La grille est une liste plate de tournants ; elle ne sait pas
+noter ce qui est en suspens.
 
 ### `prompts` — packs de prompts
 - **Variantes par modèle** : ce qui marche sur un modèle échoue sur un autre.
@@ -341,8 +347,10 @@ certains moteurs). Ce qui reste ouvert et utile :
 Le backlog n'est pas vide pour autant. Par ordre de rapport entre ce que ça
 apporte et ce que ça coûte :
 
-1. **La mémoire hiérarchique**, sans laquelle le roman reste hors de portée
-   (voir §4, `roman` / `nouvelle`).
+1. ~~**La mémoire hiérarchique**, sans laquelle le roman reste hors de portée.~~
+   **Fait**, et mesuré avant d'être écrite (voir §4). La suite pour le roman
+   est la **structure** : une grille qui sache noter une promesse en suspens
+   et l'arc de chaque personnage.
 2. **`termux-share`** : envoyer une archive livrable vers Drive ou un courriel
    depuis l'écran « Mes produits » du menu (voir §5).
 3. **Éditions déclinées** d'un ebook : version courte offerte pour capter des

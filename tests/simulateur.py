@@ -503,7 +503,19 @@ def simulateur(messages, role):
             "Les rails du quai trois sont demontes.",
             "Un ancien collegue revient de Lille.",
         ]
-        trouve = re.search(r"SCENE « Scene modele (\d+) »", invite)
+        # Fermeture d'une partie : la memoire hierarchique demande le resume
+        # d'un bloc entier, pas l'etat apres une scene. Il doit differer d'une
+        # partie a l'autre, sinon rien ne distinguerait les trois quarts d'un
+        # livre dans l'invite de la derniere scene.
+        partie = re.search(r"TEXTE A INTEGRER — Partie (\d+)", invite)
+        if partie:
+            numero = int(partie.group(1))
+            # Sans prefixe « Partie N » : la mise en forme est le travail de
+            # la memoire, et le modele ne repond que le texte de l'etat.
+            return ("les evenements de ce bloc ont mene Camille Renard du "
+                    "depot {} jusqu'au quai {}, et Hakim Oussaid y a tenu la "
+                    "position {}.".format(numero, numero + 1, numero))
+        trouve = re.search(r"Scene modele (\d+)", invite)
         rang = int(trouve.group(1)) - 1 if trouve else invite.count("Apres ")
         rang = max(rang, 0)
         etat = etapes[min(rang, len(etapes) - 1)]
