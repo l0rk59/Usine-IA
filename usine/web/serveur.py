@@ -48,6 +48,9 @@ TELEVERSEMENT_MAX = 200 * 1024 * 1024
 # Le sondage de marche interroge quatre services publics l'un apres l'autre.
 # Comme la veille, il est trop long pour une requete qui attend.
 MARCHES: Dict[str, Dict[str, Any]] = {}
+# La recon interroge des registres publics puis, sur autorisation, le
+# domaine lui-meme. Comme la veille, en tache de fond.
+RECONS: Dict[str, Dict[str, Any]] = {}
 _VERROU = threading.Lock()
 
 
@@ -278,6 +281,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 sondage = MARCHES.get(marche_id)
             self._json(sondage if sondage else {"erreur": "sondage inconnu"},
                        200 if sondage else 404)
+        elif chemin.startswith("/api/recon/"):
+            recon_id = chemin.rsplit("/", 1)[-1]
+            with _VERROU:
+                audit = RECONS.get(recon_id)
+            self._json(audit if audit else {"erreur": "audit inconnu"},
+                       200 if audit else 404)
         elif chemin.startswith("/archive/"):
             self._servir_archive(unquote(chemin[len("/archive/"):]))
         elif chemin.startswith("/fichier/"):
@@ -323,6 +332,11 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if options is None:
                 return
             self._json(*self._lancer_marche(options))
+        elif chemin == "/api/recon":
+            options = self._corps_json()
+            if options is None:
+                return
+            self._json(*self._lancer_recon(options))
         elif chemin == "/api/doublons":
             options = self._corps_json()
             if options is None:
@@ -541,6 +555,32 @@ class Gestionnaire(BaseHTTPRequestHandler):
                          args=(veille_id, sujet, periode, combien),
                          daemon=True).start()
         return ({"veille": veille_id}, 200)
+
+    def _lancer_recon(self, options: Dict[str, Any]):
+        """Audit de securite d'un domaine, en tache de fond.
+
+        « autorise » n'est jamais deduit : il faut que la requete le porte
+        explicitement. Affirmer l'autorisation est un acte de l'operateur,
+        pas un defaut que le serveur choisit pour lui.
+        """
+        from ..core import recon
+
+        domaine = recon.normaliser_domaine(str(options.get("domaine") or ""))
+        if not domaine:
+            return ({"erreur": "domaine manquant"}, 400)
+        autorise = options.get("autorise") is True
+        with _VERROU:
+            if any(a["statut"] == "en_cours" for a in RECONS.values()):
+                return ({"erreur": "un audit est deja en cours"}, 429)
+            recon_id = uuid.uuid4().hex[:12]
+            RECONS[recon_id] = {"id": recon_id, "domaine": domaine,
+                                "autorise": autorise, "statut": "en_cours",
+                                "debut": time.time(), "resultat": None,
+                                "erreur": ""}
+        threading.Thread(target=_auditer_domaine,
+                         args=(recon_id, domaine, autorise),
+                         daemon=True).start()
+        return ({"recon": recon_id}, 200)
 
     def _lancer_marche(self, options: Dict[str, Any]):
         """Mesure une niche depuis quatre sources publiques, en tache de fond."""
@@ -1042,6 +1082,21 @@ def _lancer_marketing(travail_id: str, produit_id: str, prix: str) -> None:
         with _VERROU:
             TRAVAUX[travail_id].update(statut="echec", erreur=message)
         journal("Echec : " + message)
+
+
+def _auditer_domaine(recon_id: str, domaine: str, autorise: bool) -> None:
+    from ..core import recon
+
+    try:
+        rapport = recon.auditer(domaine, autorise=autorise)
+        charge = rapport.dict()
+        charge["rapport"] = recon.rapport_divulgation(rapport)
+        with _VERROU:
+            RECONS[recon_id].update(statut="termine", resultat=charge)
+    except Exception as exc:
+        with _VERROU:
+            RECONS[recon_id].update(statut="echec",
+                                    erreur=securite.expurger(str(exc)))
 
 
 def _sonder_marche(marche_id: str, sujet: str) -> None:

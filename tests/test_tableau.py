@@ -871,6 +871,107 @@ class TestDocteur(BaseServeur):
         self.assertIn("module_diagnostic.etat_installation()", source)
 
 
+class TestReconRoute(BaseServeur):
+    """L'audit de securite depuis le tableau de bord.
+
+    Ce qui compte le plus : la ligne passif/surface, cote serveur. « autorise »
+    ne doit jamais etre deduit — il faut que la requete le porte.
+    """
+
+    def _auditer(self, corps, resultat):
+        from usine.core import recon as module_recon
+
+        with mock.patch.object(module_recon, "auditer",
+                               lambda *a, **k: resultat) as _:
+            statut, lance = self.json("/api/recon", corps)
+            if statut != 200:
+                return statut, lance
+            for _essai in range(200):
+                _, etat = self.json("/api/recon/" + lance["recon"])
+                if etat["statut"] != "en_cours":
+                    return statut, etat
+                threading.Event().wait(0.05)
+            self.fail("l'audit ne s'est jamais termine")
+
+    def _rapport(self, passif_seul=True):
+        from usine.core import recon as module_recon
+
+        r = module_recon.Rapport(cible="exemple.com", passif_seul=passif_seul)
+        r.constats = [module_recon.Constat("grave", "courriel", "Aucun DMARC",
+                                           "usurpable")]
+        return r
+
+    def test_un_domaine_manquant_est_refuse(self):
+        statut, refus = self.json("/api/recon", {"domaine": "  "})
+        self.assertEqual(statut, 400)
+
+    def test_par_defaut_l_audit_est_passif(self):
+        """Sans « autorise » dans la requete, le rapport reste passif."""
+        vus = {}
+        from usine.core import recon as module_recon
+
+        def espion(cible, autorise=False):
+            vus["autorise"] = autorise
+            return self._rapport(passif_seul=not autorise)
+
+        with mock.patch.object(module_recon, "auditer", espion):
+            _, lance = self.json("/api/recon", {"domaine": "exemple.com"})
+            for _ in range(200):
+                _, etat = self.json("/api/recon/" + lance["recon"])
+                if etat["statut"] != "en_cours":
+                    break
+                threading.Event().wait(0.05)
+        self.assertFalse(vus["autorise"], "surface activee sans demande")
+        self.assertTrue(etat["resultat"]["passif_seul"])
+
+    def test_l_autorisation_doit_etre_affirmee_explicitement(self):
+        vus = {}
+        from usine.core import recon as module_recon
+
+        def espion(cible, autorise=False):
+            vus["autorise"] = autorise
+            return self._rapport(passif_seul=not autorise)
+
+        with mock.patch.object(module_recon, "auditer", espion):
+            _, lance = self.json("/api/recon",
+                                 {"domaine": "exemple.com", "autorise": True})
+            for _ in range(200):
+                _, etat = self.json("/api/recon/" + lance["recon"])
+                if etat["statut"] != "en_cours":
+                    break
+                threading.Event().wait(0.05)
+        self.assertTrue(vus["autorise"])
+
+    def test_une_valeur_autorise_non_booleenne_reste_passive(self):
+        """« autorise »: « oui » ne doit pas ouvrir la surface (comme la
+        restauration : la confirmation est stricte)."""
+        vus = {}
+        from usine.core import recon as module_recon
+
+        def espion(cible, autorise=False):
+            vus["autorise"] = autorise
+            return self._rapport()
+
+        with mock.patch.object(module_recon, "auditer", espion):
+            _, lance = self.json("/api/recon",
+                                 {"domaine": "exemple.com", "autorise": "oui"})
+            for _ in range(200):
+                _, etat = self.json("/api/recon/" + lance["recon"])
+                if etat["statut"] != "en_cours":
+                    break
+                threading.Event().wait(0.05)
+        self.assertFalse(vus["autorise"])
+
+    def test_le_resultat_porte_un_signalement_pret(self):
+        _, etat = self._auditer({"domaine": "exemple.com"}, self._rapport())
+        self.assertEqual(etat["statut"], "termine")
+        self.assertIn("rapport", etat["resultat"])
+        self.assertIn("divulgation responsable", etat["resultat"]["rapport"])
+
+    def test_un_audit_inconnu_repond_404(self):
+        self.assertEqual(self.json("/api/recon/nexistepas")[0], 404)
+
+
 class TestPageServie(BaseServeur):
     """Garde-fou sur ce que la page declare.
 
@@ -885,7 +986,8 @@ class TestPageServie(BaseServeur):
         for marqueur in ("veille-lancer", "doublons-reconstruire",
                          "sauvegarde-creer", "veille-douleurs", "sauvegardes",
                          "archive-fichier", "ab-creer", "ab-liste", "bilan",
-                         "marche-lancer", "docteur-lancer", "docteur"):
+                         "marche-lancer", "docteur-lancer", "docteur",
+                         "recon-lancer", "recon-autorise", "fond-cyber"):
             self.assertIn('id="{}"'.format(marqueur), page, marqueur)
 
     def test_chaque_champ_de_saisie_porte_une_etiquette(self):

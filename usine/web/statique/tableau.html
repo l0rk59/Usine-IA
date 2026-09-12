@@ -8,12 +8,13 @@
 <link rel="stylesheet" href="/statique/tableau.css"/>
 </head>
 <body>
+<canvas id="fond-cyber" aria-hidden="true"></canvas>
 <div class="enveloppe">
 
 <header class="barre">
   <div class="logo"></div>
   <div>
-    <h1>Usine-IA</h1>
+    <h1 data-glitch="USINE-IA">USINE-IA</h1>
     <span class="version" id="version">chargement...</span>
   </div>
   <div class="droite">
@@ -128,6 +129,34 @@
     <p class="aide">Reddit est anglophone et technophile : une niche
       francaise peut n'y laisser aucune trace sans que cela dise rien de son
       marche.</p>
+  </div>
+</div>
+
+<div class="carte">
+  <h2>Recon &amp; securite</h2>
+  <p class="aide">Reconnaissance passive et audit de surface pour la
+    <strong>divulgation responsable</strong>. Lit des registres publics ;
+    l'audit de surface, lui, contacte le domaine et n'est pour vous que si
+    vous en avez la charge ou l'autorisation (bug bounty).</p>
+  <label for="recon-domaine">Domaine</label>
+  <input id="recon-domaine" placeholder="ex : mon-site.fr"/>
+  <label class="case"><input type="checkbox" id="recon-autorise"/>
+    J'ai la charge de ce domaine, ou l'autorisation de le tester</label>
+  <div class="rangee">
+    <button class="discret" id="recon-lancer">Auditer</button>
+    <span class="aide" id="recon-etat" role="status"></span>
+  </div>
+  <div id="recon-resultat" hidden>
+    <div class="rangee">
+      <span class="sceau" id="recon-mode"></span>
+      <span class="aide" id="recon-score"></span>
+    </div>
+    <div class="jauge-score"><span id="recon-jauge"></span></div>
+    <div id="recon-constats"></div>
+    <details id="recon-rapport-bloc">
+      <summary class="aide">Signalement pret a envoyer</summary>
+      <pre class="journal" id="recon-rapport"></pre>
+    </details>
   </div>
 </div>
 
@@ -271,6 +300,7 @@
 </main>
 
 </div>
+<script src="/statique/cyber.js"></script>
 <script src="/statique/scene.js"></script>
 <script src="/statique/app.js"></script>
 </body>
