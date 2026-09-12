@@ -450,14 +450,22 @@ def _proximite(a: str, b: str) -> float:
 
 def controler_continuite(bible: Dict[str, Any], grille: Dict[str, Any],
                          scenes: List[Tuple[str, str]],
-                         memoires: List[str]) -> Dict[str, Any]:
+                         memoires: List[str],
+                         redigees: Optional[List[bool]] = None) -> Dict[str, Any]:
     """Relit la bible contre le texte reellement ecrit.
 
     Ce sont les defauts propres a la fiction generee, et aucun ne demande un
     appel de modele pour etre vu : un personnage annonce puis oublie, une
     scene ou la distribution n'est pas la, un resume qui n'avance plus, un
     beat que la grille promet et qu'aucune scene ne livre.
+
+    « redigees » dit quelles scenes ont vraiment ete ecrites. Quand un plafond
+    de budget tombe, les suivantes sont reduites a leur fiche et la memoire
+    passe en secours : leur reprocher de ne pas faire avancer l'histoire
+    reviendrait a blamer le recit pour notre propre degradation. Le rapport le
+    dit autrement, et une fois.
     """
+    ecrites = redigees if redigees is not None else [True] * len(scenes)
     anomalies: List[Dict[str, str]] = []
     texte_entier = "\n".join(corps for _, corps in scenes)
     heros = protagoniste(bible)
@@ -499,6 +507,8 @@ def controler_continuite(bible: Dict[str, Any], grille: Dict[str, Any],
 
     # -- 4. un resume qui n'avance plus -------------------------------------
     for index in range(1, len(memoires)):
+        if index < len(ecrites) and not ecrites[index]:
+            continue
         if _proximite(memoires[index - 1], memoires[index]) > 0.92:
             titre = scenes[index][0] if index < len(scenes) else "?"
             anomalies.append({
@@ -517,6 +527,17 @@ def controler_continuite(bible: Dict[str, Any], grille: Dict[str, Any],
                 "gravite": "majeur",
                 "detail": "aucune scene ne livre le beat « {} »".format(nom),
             })
+
+    # -- 6. ce que l'usine n'a pas ecrit, dit une fois et sans detour -------
+    manquantes = [titre for (titre, _), ecrite in zip(scenes, ecrites)
+                  if not ecrite]
+    if manquantes:
+        anomalies.append({
+            "genre": "scene_non_redigee",
+            "gravite": "majeur",
+            "detail": "{} scene(s) reduites a leur fiche faute de budget : "
+                      "{}".format(len(manquantes), ", ".join(manquantes[:3])),
+        })
 
     graves = [a for a in anomalies if a["gravite"] == "majeur"]
     return {
@@ -567,6 +588,7 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
     passes = ctx.nb_passes
     sections: List[Tuple[str, str]] = []
     memoires: List[str] = []
+    redigees: List[bool] = []
     local: Dict[str, List[ctrl.Controle]] = {}
     memoire = ""
     budget_epuise = False
@@ -579,6 +601,7 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
             sections.append((scene["titre"], _repli(scene)))
             memoire = _memoire_de_secours(memoire, scene)
             memoires.append(memoire)
+            redigees.append(False)
             ctx.etape("scene-{}".format(index + 1), "echec", "budget epuise")
             continue
 
@@ -590,12 +613,13 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
             budget_epuise = True
             ctx.journal("     {} — scenes restantes reduites a leur fiche".format(exc))
             ctx.etape("scene-{}".format(index + 1), "echec", str(exc))
-            corps, auteur = _repli(scene), ""
+            corps, auteur, ecrite = _repli(scene), "", False
         except Exception as exc:
             ctx.journal("     echec : {} — scene conservee en resume".format(exc))
             ctx.etape("scene-{}".format(index + 1), "echec", str(exc))
-            corps, auteur = _repli(scene), ""
+            corps, auteur, ecrite = _repli(scene), "", False
         else:
+            ecrite = True
             # Controle local. « exiger_structure=False » : une scene n'a ni
             # sous-titre ni liste numerotee, et le lui reprocher la ferait
             # reecrire dans le sens contraire de ce qu'elle doit etre.
@@ -625,6 +649,7 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
                     ctx.journal("     {} — relecture interrompue".format(exc))
 
         sections.append((scene["titre"], corps))
+        redigees.append(ecrite)
 
         # La memoire se met a jour meme quand tout le reste a echoue : c'est
         # elle qui porte la continuite des scenes suivantes.
@@ -643,7 +668,8 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
         ctx.etape("scene-{}".format(index + 1), "ok", scene["titre"])
 
     ctx.journal("Etape 4/5 — controle de continuite...")
-    continuite = controler_continuite(bible, grille, sections, memoires)
+    continuite = controler_continuite(bible, grille, sections, memoires,
+                                      redigees)
     ctx.journal("  " + continuite["resume"])
     for anomalie in continuite["anomalies"][:4]:
         ctx.journal("    [{}] {}".format(anomalie["gravite"], anomalie["detail"]))

@@ -100,6 +100,14 @@ Le rapport est écrit dans `continuite.json`, à côté de `bible.json`. Les
 anomalies majeures apparaissent dans le journal de fabrication et dans la
 fiche du produit.
 
+**Ce que le contrôle ne reproche pas au récit.** Quand un plafond de budget
+tombe, les scènes restantes sont réduites à leur fiche et la mémoire passe en
+secours — elle accumule les pivots au lieu d'être réécrite. Leur vocabulaire
+se recouvre alors d'une scène à l'autre, ce que le contrôle du pivot
+signalerait comme « l'histoire n'avance plus ». Ce serait blâmer le récit pour
+notre propre dégradation : ces scènes sont exclues de ce contrôle-là, et le
+rapport dit à la place, une fois, combien de scènes n'ont pas été rédigées.
+
 ### Ce qu'il ne sait pas faire
 
 Il compte les noms propres. Deux personnages qui partagent un nom de famille

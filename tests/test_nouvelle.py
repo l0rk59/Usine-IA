@@ -88,7 +88,7 @@ class TestControleContinuite(unittest.TestCase):
         return nouvelle.controler_continuite(
             bible or BIBLE, grille or GRILLE_COMPLETE, scenes,
             memoires if memoires is not None
-            else ["etat {}".format(i) for i in range(len(scenes))])
+            else ["etat numero {} distinct".format(i) for i in range(len(scenes))])
 
     def test_une_histoire_saine_ne_declenche_rien(self):
         rapport = self._controler(_histoire(
@@ -140,6 +140,28 @@ class TestControleContinuite(unittest.TestCase):
             memoires=[fige, fige])
         self.assertTrue(any(a["genre"] == "scene_sans_pivot"
                             for a in rapport["anomalies"]), rapport["anomalies"])
+
+    def test_une_scene_non_redigee_est_dite_telle_quelle(self):
+        """Un plafond de budget n'est pas un defaut du recit.
+
+        Les scenes reduites a leur fiche gardent une memoire de secours qui
+        accumule les pivots : leur vocabulaire se recouvre, et le controle du
+        pivot les signalerait toutes comme « l'histoire n'avance plus ». Ce
+        serait blamer le recit pour notre propre degradation.
+        """
+        fige = "Camille attend au depot, le sursis reste incertain."
+        rapport = nouvelle.controler_continuite(
+            BIBLE, GRILLE_COMPLETE,
+            _histoire("Camille Renard et Hakim Oussaid au depot.",
+                      "Camille Renard, Hakim Oussaid : fiche de scene.",
+                      "Camille Renard, Hakim Oussaid : fiche de scene."),
+            memoires=[fige, fige, fige],
+            redigees=[True, False, False])
+        genres = [a["genre"] for a in rapport["anomalies"]]
+        self.assertNotIn("scene_sans_pivot", genres)
+        self.assertIn("scene_non_redigee", genres)
+        detail = " ".join(a["detail"] for a in rapport["anomalies"])
+        self.assertIn("2 scene(s)", detail)
 
     def test_un_tournant_indispensable_que_rien_ne_livre(self):
         grille = {"beats": GRILLE_COMPLETE["beats"],
@@ -249,6 +271,43 @@ class TestChaine(unittest.TestCase):
         extensions = {f.suffix.lstrip(".") for f in self.dossier.iterdir()}
         for attendu in catalogue.obtenir("nouvelle").formats:
             self.assertIn(attendu, extensions)
+
+
+class TestBudgetEpuise(unittest.TestCase):
+    """Un plafond atteint ne detruit pas le travail fait — comme pour l'ebook."""
+
+    def setUp(self):
+        from usine.core import budget
+
+        reglages.ecrire({"images": False, "qualite": "rapide",
+                         "budget_appels_produit": 6, "budget_appels_jour": 0,
+                         "budget_produits_jour": 0, "budget_minutes_produit": 0})
+        self.compteur = budget.Compteur()
+        self.compteur.demarrer_produit()
+        budget.brancher(self.compteur)
+
+    def tearDown(self):
+        from usine.core import budget
+
+        budget.brancher(None)
+        reglages.ecrire({"budget_appels_produit": 0, "qualite": "rapide",
+                         "images": False})
+
+    def test_l_histoire_sort_quand_meme_et_le_dit(self):
+        resume = nouvelle.produire(_contexte())
+        self.assertTrue(resume["budget_epuise"])
+        dossier = Path(resume["dossier"])
+        # Toutes les scenes sont la, les dernieres reduites a leur fiche.
+        self.assertEqual(resume["scenes"], 6)
+        for extension in (".pdf", ".epub", ".md"):
+            self.assertTrue(any(f.suffix == extension for f in dossier.iterdir()),
+                            "aucun fichier {}".format(extension))
+        donnees = json.loads((dossier / "continuite.json").read_text(
+            encoding="utf-8"))
+        genres = [a["genre"] for a in donnees["continuite"]["anomalies"]]
+        self.assertIn("scene_non_redigee", genres)
+        # La memoire de secours ne doit pas etre prise pour une histoire figee.
+        self.assertNotIn("scene_sans_pivot", genres)
 
 
 class TestFormatsDeFiction(unittest.TestCase):
