@@ -24,7 +24,7 @@ sys.path.insert(0, str(RACINE))
 
 from tests import atelier  # noqa: E402
 from usine.pipelines.base import code_langue
-from usine.render import epub, lisibilite, page
+from usine.render import epub, lisibilite, page, quiz
 from usine.render.couverture import contraste
 from usine.render.pdf import DocumentPDF
 from usine.render.raster import couleur_hex
@@ -199,7 +199,8 @@ class TestContrasteDesDocuments(unittest.TestCase):
         conformite qu'elle n'avait plus.
         """
         declarees = lisibilite.couleurs_declarees()
-        for nom, feuille in (("epub", epub.STYLE), ("html", page.GABARIT)):
+        for nom, feuille in (("epub", epub.STYLE), ("html", page.GABARIT),
+                             ("quiz", quiz.STYLE)):
             trouvees = {c.lower() for c in re.findall(r"#[0-9a-fA-F]{6}", feuille)}
             inconnues = trouvees - declarees
             self.assertFalse(

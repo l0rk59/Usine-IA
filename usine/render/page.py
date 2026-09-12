@@ -58,6 +58,7 @@ th,td {{ border:1px solid var(--bordure); padding:.55em .7em; text-align:left; }
   h2 {{ page-break-after:avoid; }}
   aside.encadre, blockquote {{ page-break-inside:avoid; }}
 }}
+{style}
 </style>
 </head>
 <body>
@@ -70,6 +71,7 @@ th,td {{ border:1px solid var(--bordure); padding:.55em .7em; text-align:left; }
 {couverture}
 {corps}
 </div>
+{script}
 </body>
 </html>
 """
@@ -83,7 +85,16 @@ def ecrire_page(
     meta: str = "",
     langue: str = "fr",
     couverture: Optional[str] = None,
+    style: str = "",
+    script: str = "",
 ) -> Path:
+    """Page autonome. « style » entre dans l'en-tete, « script » en fin de corps.
+
+    Les deux existent pour le quiz auto-corrige : une page qui se corrige
+    seule a besoin de ses propres regles et de son script. Les placer ici
+    plutot que dans le corps garde le HTML conforme — une balise « style »
+    dans le corps ne l'est pas.
+    """
     chemin.parent.mkdir(parents=True, exist_ok=True)
     chemin.write_text(
         GABARIT.format(
@@ -95,6 +106,8 @@ def ecrire_page(
             couverture='<p><img src="{}" alt="Couverture"/></p>'.format(html.escape(couverture))
             if couverture else "",
             corps=corps_html,
+            style=style,
+            script="<script>{}</script>".format(script) if script else "",
         ),
         encoding="utf-8",
     )

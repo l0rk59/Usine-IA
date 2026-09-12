@@ -232,6 +232,25 @@ def simulateur(messages, role):
             ],
         }, ensure_ascii=False)
 
+    # --- formation : quiz d'auto-evaluation ---------------------------------
+    if '"quiz"' in invite and '"propositions"' in invite:
+        modules = re.findall(r"^- (.+?) — objectif", invite, re.MULTILINE)
+        questions = []
+        for titre in modules or ["Module modele 1"]:
+            for rang in range(2):
+                questions.append({
+                    "module": titre,
+                    "question": "Que faire en premier dans « {} » ({}) ?".format(
+                        titre, rang + 1),
+                    "propositions": ["Ouvrir un tableur et tout lister",
+                                     "Poser l'objectif avant d'agir",
+                                     "Demander a un collegue"],
+                    "reponse": 1,
+                    "explication": "L'objectif decide de tout le reste : sans "
+                                   "lui, la liste ne sert a rien.",
+                })
+        return json.dumps({"quiz": questions}, ensure_ascii=False)
+
     # --- sequences d'e-mails ---------------------------------------------
     if '"emails"' in invite:
         return json.dumps({

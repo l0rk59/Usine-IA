@@ -124,7 +124,7 @@ indisponibles. Pour l'utiliser en priorité : `USINE_LOCAL_FIRST=1` dans le `.en
 | `usine ebook` | Ebook complet | PDF, EPUB, HTML, Markdown, TXT, couverture |
 | `usine nouvelle` | **Fiction courte** | Bible, **mémoire d'une scène à l'autre**, contrôle de continuité |
 | `usine prompts` | Pack de prompts | PDF, CSV (import Notion), JSON, HTML |
-| `usine formation` | Mini-formation | Manuel PDF, cahier d'exercices, séquence e-mail |
+| `usine formation` | Mini-formation | Manuel PDF, cahier d'exercices, **quiz auto-corrigé**, séquence e-mail |
 | `usine outils` | Boîte à outils | Checklists imprimables, modèles, tableaux CSV |
 | `usine modeles` | **Modèles Notion / tableur** | Bases liées, CSV prêts à importer, vues |
 | `usine impression` | **Cahier imprimable** | Plannings et fiches à remplir, A4 **et** Lettre US |
@@ -238,6 +238,23 @@ deux (la détection puis la correction).
 Étalonnage : un texte rédigé avec exemples et rythme varié obtient **10/10** ;
 une sortie générique de modèle obtient **0 à 2/10**. Détails et seuils dans
 [docs/QUALITE.md](docs/QUALITE.md).
+
+### Le quiz d'une formation se corrige tout seul
+
+Une mini-formation sort avec `quiz.html` : deux questions à choix unique par
+module, corrigées **dans le navigateur, hors ligne, sans bibliothèque**. La
+page dit ce qui est faux, donne la bonne réponse et explique pourquoi.
+
+Un seul appel de modèle pour toute la formation — il voit alors la
+progression entière et évite de poser deux fois la même question sous deux
+formes. Les réponses hors bornes ou les questions à une seule proposition
+sont écartées : une page qui annonce « la bonne réponse était *undefined* »
+part chez un acheteur.
+
+Chaque question est un `fieldset` avec sa `legend`, chaque proposition une
+vraie case radio étiquetée, et les verdicts sont annoncés au lecteur d'écran.
+Les deux teintes de verdict sont déclarées dans la table de contraste et
+vérifiées comme les autres.
 
 ### Le code généré est vérifié, pas supposé correct
 
@@ -813,7 +830,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         638 tests + test de fumée, aucun appel réseau
+tests/         658 tests + test de fumée, aucun appel réseau
                un atelier temporaire par module (tests/atelier.py)
 install.sh     installation Termux
 ```
@@ -826,7 +843,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 638 tests
+python3 -m unittest discover -s tests -t .   # 658 tests
 python3 scripts/dependances.py               # zéro dépendance
 python3 tests/fumee.py                       # les 10 chaînes via la vraie CLI
 ```

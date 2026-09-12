@@ -241,7 +241,10 @@ noter ce qui est en suspens.
 - **Fichier importable** dans les outils qui acceptent des bibliothèques.
 
 ### `formation` — mini-formations
-- **Quiz auto-corrigés** en HTML autonome (la chaîne produit déjà du HTML).
+- ~~**Quiz auto-corrigés** en HTML autonome.~~ **Fait.** `quiz.html` : deux
+  questions par module, corrigées dans le navigateur, hors ligne, sans
+  bibliothèque. Un seul appel de modèle pour toute la formation — il voit
+  alors la progression entière et évite de poser deux fois la même question.
 - **Script de narration** par module, pour qui veut enregistrer une voix.
 
 ### `outils` — boîtes à outils
@@ -364,7 +367,20 @@ apporte et ce que ça coûte :
    courriel depuis l'écran « Mes produits » du menu.~~ **Fait**, avec
    *Ouvrir sur le téléphone* dans le même écran (voir §5).
 3. ~~**Éditions déclinées** d'un ebook.~~ **Fait** (voir §4, `ebook`).
-4. **Quiz auto-corrigés** en HTML autonome pour les mini-formations : la
-   chaîne produit déjà du HTML.
+4. ~~**Quiz auto-corrigés** en HTML autonome pour les mini-formations.~~
+   **Fait** (voir §4, `formation`).
+
+Cette liste-ci est donc close à son tour. La suite naturelle, par ordre de
+rapport entre ce que ça apporte et ce que ça coûte :
+
+1. **La structure du roman** : une grille qui sache noter une promesse en
+   suspens et l'arc de chaque personnage (voir §2). C'est le seul chantier
+   qui reste entre l'usine et un roman tenable.
+2. **Script de narration** par module de formation, pour qui enregistre une
+   voix — la matière est déjà écrite, il lui manque une mise en forme.
+3. **Cadres de référence** pour les boîtes à outils : CIS et NIST CSF sont
+   publics et faits pour ça (voir §3).
+4. **Marge de reliure** pour les cahiers imprimables destinés à l'impression
+   à la demande (voir §4, `impression`).
 *(L'ancien item « profil audit local » est retiré : la direction outillage de
 sécurité a été abandonnée.)*
