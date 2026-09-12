@@ -279,8 +279,8 @@ est maintenant branchée, dans `core/telephone.py`.
 | `termux-notification` | savoir qu'un produit est prêt sans regarder le terminal | ✅ |
 | `termux-battery-status` | l'usine continue s'arrête sous X % au lieu de vider le téléphone | ✅ |
 | `termux-wake-lock` | pris automatiquement pendant une fabrication, relâché après | ✅ |
-| `termux-open` | ouvrir le PDF produit, au lieu d'afficher son chemin | ✅ *(en tapant la notification)* |
-| `termux-share` | envoyer le ZIP vers Drive, un courriel ou Telegram | ❌ |
+| `termux-open` | ouvrir le PDF produit, au lieu d'afficher son chemin | ✅ *(notification, et menu)* |
+| `termux-share` | envoyer le ZIP vers Drive, un courriel ou Telegram | ✅ *(menu)* |
 
 Tous se comportent pareil quand `termux-api` n'est pas installé : le binaire
 est absent, on l'ignore. Aucune dépendance ajoutée — ce qui est la contrainte
@@ -297,11 +297,16 @@ Deux choix méritent d'être notés, parce qu'ils ne se devinent pas :
   la main : sans délai, l'usine se figerait avant son premier produit, sans
   rien dire. C'est le pire mode de panne, et il coûtait une ligne à éviter.
 
-Reste ouvert : `termux-share`, pour envoyer une archive livrable vers Drive ou
-un courriel sans chercher le fichier. Il lui faut un point d'entrée — une
-action de plus dans l'écran **Mes produits** du menu — et pas seulement une
-fonction : `core/telephone.py` ne contient que ce qui a un appelant, pour ne
-pas rouvrir le tiroir de code mort que l'audit vient de refermer.
+L'écran **Mes produits** du menu porte les deux derniers : *Ouvrir sur le
+téléphone* (le PDF principal — celui qui pèse le plus lourd, car l'annexe
+`guide-annexe.pdf` trie *avant* `guide.pdf`) et *Partager l'archive*. Sans
+archive, le menu propose de la créer plutôt que de renvoyer l'utilisateur vers
+`usine livrer`.
+
+Les deux entrées existent **partout**, y compris là où `termux-api` est
+absent : une numérotation qui change selon la machine est un piège pour les
+tests comme pour l'utilisateur. Quand l'outil manque, le menu le dit, donne la
+commande d'installation et affiche le chemin du fichier.
 
 ### Côté navigateur
 
@@ -351,8 +356,9 @@ apporte et ce que ça coûte :
    **Fait**, et mesuré avant d'être écrite (voir §4). La suite pour le roman
    est la **structure** : une grille qui sache noter une promesse en suspens
    et l'arc de chaque personnage.
-2. **`termux-share`** : envoyer une archive livrable vers Drive ou un courriel
-   depuis l'écran « Mes produits » du menu (voir §5).
+2. ~~**`termux-share`** : envoyer une archive livrable vers Drive ou un
+   courriel depuis l'écran « Mes produits » du menu.~~ **Fait**, avec
+   *Ouvrir sur le téléphone* dans le même écran (voir §5).
 3. **Éditions déclinées** d'un ebook : version courte offerte pour capter des
    adresses, version complète payante.
 4. **Quiz auto-corrigés** en HTML autonome pour les mini-formations : la

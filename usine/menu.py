@@ -11,7 +11,9 @@ clavier virtuel utilise. Ici, tout passe par input() et des numeros.
 from __future__ import annotations
 
 import sys
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import (Any, Callable, Dict, List, Optional,
+                    Tuple)
 
 from . import __version__
 from .core import cles as pool_cles
@@ -614,11 +616,11 @@ def menu_produits(executer: Callable[[List[str]], int]) -> None:
         ("Voir le detail", "fichiers et etapes de fabrication"),
         ("Generer le kit de vente", "fiche, page de vente, sequence"),
         ("Creer l'archive ZIP", "fichier livrable pour la boutique"),
+        ("Ouvrir sur le telephone", "le PDF, dans votre lecteur habituel"),
+        ("Partager l'archive", "vers Drive, un courriel, Telegram..."),
     ])
     if action == 1:
         entete(produit["titre"][:44])
-        from pathlib import Path
-
         dossier = Path(produit["dossier"])
         if dossier.exists():
             for fichier in sorted(dossier.rglob("*")):
@@ -637,6 +639,75 @@ def menu_produits(executer: Callable[[List[str]], int]) -> None:
     elif action == 3:
         executer(["livrer", produit["id"]])
         demander("\n  Appuyez sur Entree")
+    elif action == 4:
+        _ouvrir_produit(produit)
+        demander("\n  Appuyez sur Entree")
+    elif action == 5:
+        _partager_produit(produit, executer)
+        demander("\n  Appuyez sur Entree")
+
+
+def _fichier_a_ouvrir(dossier: Path) -> Optional[Path]:
+    """Le PDF principal du produit, ou a defaut ce qui se lit le mieux.
+
+    Les annexes portent le meme nom de base suivi d'un tiret
+    (« guide-annexe.pdf ») : trier les noms mettrait l'annexe en tete, le
+    tiret triant avant le point. On prend donc le plus GROS, qui est le
+    document principal dans tous les cas observes.
+    """
+    for motif in ("*.pdf", "*.epub", "*.html"):
+        trouves = [f for f in dossier.glob(motif) if f.is_file()]
+        if trouves:
+            return max(trouves, key=lambda f: f.stat().st_size)
+    return None
+
+
+def _sans_termux_api(outil: str) -> None:
+    print(c("     {} n'est pas disponible ici.".format(outil), "33"))
+    print("     Sur Termux : " + c("pkg install termux-api", "1")
+          + " (et l'application Termux:API)")
+
+
+def _ouvrir_produit(produit: Dict[str, Any]) -> None:
+    from .core import telephone
+
+    dossier = Path(produit["dossier"])
+    cible = _fichier_a_ouvrir(dossier) if dossier.exists() else None
+    if cible is None:
+        print(c("     Aucun fichier lisible dans ce produit.", "33"))
+        return
+    print("  Ouverture de {}...".format(cible.name))
+    if not telephone.ouvrir(cible):
+        _sans_termux_api("termux-open")
+        print("     Chemin du fichier : " + str(cible))
+
+
+def _partager_produit(produit: Dict[str, Any],
+                      executer: Callable[[List[str]], int]) -> None:
+    """Pousse l'archive vers une application Android.
+
+    Sans archive, on propose de la creer : c'est le geste que l'utilisateur
+    voulait faire, et l'envoyer chercher la commande « livrer » pour revenir
+    ici serait un detour inutile.
+    """
+    from .core import telephone
+
+    dossier = Path(produit["dossier"])
+    archives = sorted(dossier.glob("*.zip"), key=lambda f: f.stat().st_mtime)
+    if not archives:
+        print(c("     Ce produit n'a pas encore d'archive.", "33"))
+        if not demander_oui("     La creer maintenant ?"):
+            return
+        executer(["livrer", produit["id"]])
+        archives = sorted(dossier.glob("*.zip"), key=lambda f: f.stat().st_mtime)
+        if not archives:
+            return
+    archive = archives[-1]
+    print("  Partage de {} ({} Ko)...".format(
+        archive.name, archive.stat().st_size // 1024))
+    if not telephone.partager(archive, produit["titre"][:60]):
+        _sans_termux_api("termux-share")
+        print("     Chemin de l'archive : " + str(archive))
 
 
 def _choisir_ton(actuelle: str) -> Optional[str]:

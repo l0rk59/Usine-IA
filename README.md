@@ -812,7 +812,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         616 tests + test de fumée, aucun appel réseau
+tests/         621 tests + test de fumée, aucun appel réseau
                un atelier temporaire par module (tests/atelier.py)
 install.sh     installation Termux
 ```
@@ -825,7 +825,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 616 tests
+python3 -m unittest discover -s tests -t .   # 621 tests
 python3 scripts/dependances.py               # zéro dépendance
 python3 tests/fumee.py                       # les 10 chaînes via la vraie CLI
 ```

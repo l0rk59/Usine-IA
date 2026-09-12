@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import io
 import itertools
+import os
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -110,6 +112,77 @@ def piloter(fonction, frappes: List[str]):
         with mock.patch("builtins.input", faux_input):
             fonction(executer)
     return lancees
+
+
+class TestEcranProduits(unittest.TestCase):
+    """Les deux gestes qu'on fait sur un telephone : ouvrir, et envoyer.
+
+    Ils passent par termux-api, absent de toute machine d'integration
+    continue. Les entrees doivent donc exister PARTOUT et se comporter
+    proprement quand l'outil manque : pas d'exception, un message qui dit
+    quoi installer, et le chemin du fichier a defaut.
+    """
+
+    def setUp(self):
+        self.dossier = Path(tempfile.mkdtemp(prefix="usine-menu-produit-"))
+        (self.dossier / "guide.pdf").write_bytes(b"%PDF-1.4" + b"0" * 900)
+        (self.dossier / "guide-annexe.pdf").write_bytes(b"%PDF-1.4" + b"0" * 20)
+        store.creer_produit("menu-tel", "ebook", "Le systeme du freelance",
+                            sujet="freelance", dossier=str(self.dossier))
+
+    def _sortie(self, frappes, **faux):
+        """Deroule l'ecran et rend ce qui a ete affiche."""
+        sortie = io.StringIO()
+        entrees = iter(frappes)
+        with mock.patch.multiple("usine.core.telephone", **faux):
+            with redirect_stdout(sortie):
+                with mock.patch("builtins.input", lambda invite="": next(entrees)):
+                    menu.menu_produits(lambda arguments: 0)
+        return sortie.getvalue()
+
+    def test_ouvrir_vise_le_document_principal(self):
+        """« guide-annexe.pdf » trie avant « guide.pdf » : c'est la taille qui
+        distingue le document principal de son annexe."""
+        vus = []
+        texte = self._sortie(["1", "4", ""],
+                             ouvrir=lambda chemin: vus.append(chemin) or True)
+        self.assertEqual(len(vus), 1)
+        self.assertEqual(vus[0].name, "guide.pdf")
+        self.assertIn("Ouverture", texte)
+
+    def test_sans_termux_api_l_entree_explique_et_donne_le_chemin(self):
+        texte = self._sortie(["1", "4", ""], ouvrir=lambda chemin: False)
+        self.assertIn("termux-open", texte)
+        self.assertIn("pkg install termux-api", texte)
+        self.assertIn("guide.pdf", texte)
+
+    def test_partager_sans_archive_propose_de_la_creer(self):
+        lancees = []
+        entrees = iter(["1", "5", "o", ""])
+        with redirect_stdout(io.StringIO()):
+            with mock.patch("builtins.input", lambda invite="": next(entrees)):
+                menu.menu_produits(
+                    lambda arguments: lancees.append(list(arguments)) or 0)
+        self.assertIn(["livrer", "menu-tel"], lancees,
+                      "repondre oui doit lancer la creation de l'archive")
+
+    def test_partager_envoie_l_archive_la_plus_recente(self):
+        (self.dossier / "ancienne.zip").write_bytes(b"PK" + b"0" * 10)
+        recente = self.dossier / "recente.zip"
+        recente.write_bytes(b"PK" + b"0" * 10)
+        os.utime(recente, (2 ** 31, 2 ** 31))
+        envoyees = []
+        self._sortie(["1", "5", ""],
+                     partager=lambda chemin, titre="": envoyees.append(chemin) or True)
+        self.assertEqual(len(envoyees), 1)
+        self.assertEqual(envoyees[0].name, "recente.zip")
+
+    def test_partage_impossible_donne_le_chemin(self):
+        (self.dossier / "livrable.zip").write_bytes(b"PK" + b"0" * 10)
+        texte = self._sortie(["1", "5", ""],
+                             partager=lambda chemin, titre="": False)
+        self.assertIn("termux-share", texte)
+        self.assertIn("livrable.zip", texte)
 
 
 class TestSousMenuAB(unittest.TestCase):

@@ -52,6 +52,9 @@ usine ebook "votre sujet" --marketing --zip
 
 ## 6. Récupérer les fichiers
 
+Le plus simple est le menu : `usine` → **Mes produits** → choisir le produit →
+*Ouvrir sur le téléphone* ou *Partager l'archive*. À la main :
+
 ```bash
 # Ouvrir un PDF avec l'application du téléphone
 termux-open ~/usine-ia/atelier/produits/<dossier>/<fichier>.pdf
@@ -95,6 +98,7 @@ Ce que l'usine en fait, sans rien demander :
 | Quand un produit sort | **Notification** Android — la taper ouvre le PDF |
 | Batterie sous 20 % | L'usine continue **s'arrête** entre deux produits, la file intacte, et le dit dans une notification prioritaire |
 | Téléphone en charge | Rien ne s'arrête : le niveau monte |
+| Écran **Mes produits** du menu | *Ouvrir sur le téléphone* lance le PDF dans votre lecteur ; *Partager l'archive* l'envoie vers Drive, un courriel ou Telegram |
 
 Trois réglages commandent tout cela :
 

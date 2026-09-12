@@ -191,6 +191,39 @@ def veille_maintenue(actif: bool = True) -> Iterator[bool]:
 
 
 # --------------------------------------------------------------------------
+# Fichiers
+# --------------------------------------------------------------------------
+
+
+def ouvrir(chemin: Path) -> bool:
+    """Ouvre un fichier avec l'application Android qui sait le lire.
+
+    « termux-open » vient de termux-tools, present dans tout Termux : ouvrir
+    un PDF ne demande donc pas l'application Termux:API.
+    """
+    if not Path(chemin).exists():
+        return False
+    return _executer(["termux-open", str(chemin)]) is not None
+
+
+def partager(chemin: Path, titre: str = "") -> bool:
+    """Envoie un fichier au partage Android : Drive, courriel, Telegram.
+
+    C'est la reponse a « ou est passe mon ZIP » : sur un telephone, chercher
+    un fichier dans une arborescence Termux depuis une application Android
+    est un chemin de croix. Le partage le pousse la ou on veut le lire.
+    """
+    if not Path(chemin).exists():
+        return False
+    commande = ["termux-share", "--action", "send"]
+    if titre:
+        commande += ["--title", titre]
+    # Delai plus large : le selecteur de partage attend que l'utilisateur
+    # choisisse une application, ce qui n'a rien d'instantane.
+    return _executer(commande + [str(chemin)], delai=120) is not None
+
+
+# --------------------------------------------------------------------------
 # Vue d'ensemble, pour « usine docteur » et le tableau de bord
 # --------------------------------------------------------------------------
 
