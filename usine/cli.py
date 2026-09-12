@@ -37,6 +37,11 @@ def _c(texte: str, code: str) -> str:
     return "\033[{}m{}\033[0m".format(code, texte) if _COULEUR else texte
 
 
+def _milliers(nombre: int) -> str:
+    """Nombre lisible a l'oeil : 200000 devient « 200 000 »."""
+    return "{:,}".format(int(nombre)).replace(",", "\u202f")
+
+
 def titre_console(texte: str) -> None:
     print("\n" + _c("== " + texte, "1;36"))
 
@@ -1542,7 +1547,8 @@ def cmd_docteur(args: argparse.Namespace) -> int:
     """
     from .core import diagnostic as module_diagnostic
 
-    etat = module_diagnostic.etat_installation()
+    etat = module_diagnostic.etat_installation(
+        avec_modeles=getattr(args, "modeles", False))
     print(BANNIERE.format(version=__version__))
     titre_console("Environnement")
     ok("Python {}".format(etat["python"]))
@@ -1589,12 +1595,33 @@ def cmd_docteur(args: argparse.Namespace) -> int:
         if ligne["disponible"]:
             nb = ligne.get("nb_cles", 0)
             suffixe = " [{} cles]".format(nb) if nb > 1 else ""
-            print("  {} {:<13} {:<9} {:<28} {}/{} aujourd'hui{}".format(
+            # Le plafond en jetons est souvent celui qui s'epuise le premier :
+            # Groq accorde mille requetes par jour mais deux cent mille
+            # jetons, soit un livre. L'afficher evite de chercher ailleurs.
+            budget = ""
+            if ligne.get("tpd"):
+                budget = " · {}/{} jetons".format(
+                    ligne.get("jetons_aujourdhui", 0), _milliers(ligne["tpd"]))
+            print("  {} {:<13} {:<9} {:<28} {}/{} aujourd'hui{}{}".format(
                 _c("v", "32"), ligne["nom"], genre, ligne["modele"],
-                ligne["aujourdhui"], ligne["rpd"], _c(suffixe, "36")))
+                ligne["aujourdhui"], ligne["rpd"], _c(budget, "90"),
+                _c(suffixe, "36")))
         else:
             print("  {} {:<13} {:<9} definir {} — {}".format(
                 _c("-", "90"), ligne["nom"], genre, ligne["cle_env"], ligne["inscription"]))
+
+    ecarts = etat.get("modeles_disparus") or []
+    if ecarts:
+        titre_console("Modeles disparus des catalogues")
+        for ecart in ecarts:
+            alerte("{} ne sert plus : {}".format(
+                ecart["fournisseur"], ", ".join(ecart["manquants"])))
+            if ecart["proposes"]:
+                print("      propose a la place : " +
+                      ", ".join(ecart["proposes"][:6]))
+        print("      Corrigez les identifiants dans usine/core/config.py.")
+    elif getattr(args, "modeles", False):
+        ok("Tous les modeles configures existent encore chez leur fournisseur")
 
     titre_console("Verdict")
     verdict = etat["verdict"]
@@ -2056,6 +2083,9 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.set_defaults(fonction=cmd_prompts_systeme)
 
     p = sous_parseurs.add_parser("docteur", help="diagnostiquer l'installation")
+    p.add_argument("--modeles", action="store_true",
+                   help="verifier que les modeles configures existent encore "
+                        "chez leur fournisseur (une requete par fournisseur)")
     p.set_defaults(fonction=cmd_docteur)
 
     p = sous_parseurs.add_parser("cles", help="obtenir des cles API gratuites")

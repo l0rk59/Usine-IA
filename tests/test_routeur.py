@@ -292,3 +292,177 @@ class TestRoleLongContexte(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ==========================================================================
+# Ce que les fournisseurs autorisent vraiment
+# ==========================================================================
+
+# Retires du palier gratuit de leur fournisseur. L'usine les a demandes
+# pendant des semaines apres leur retrait : chaque appel repondait 404, le
+# routeur mettait le fournisseur au repos et passait au suivant — le
+# comportement prevu pour une panne passagere, appliquee a une panne
+# definitive. Les noms restent ici pour que la regression soit impossible.
+MODELES_RETIRES = {
+    "groq": ("llama-3.1-8b-instant", "llama-3.3-70b-versatile"),
+    "cerebras": ("llama3.1-8b", "llama-3.3-70b"),
+}
+
+
+class TestCatalogueDesModeles(unittest.TestCase):
+    def test_aucun_modele_retire_n_est_encore_configure(self):
+        for nom, retires in MODELES_RETIRES.items():
+            configures = set(config.PROVIDERS_BY_NAME[nom].models.values())
+            for mort in retires:
+                self.assertNotIn(mort, configures,
+                                 "{} demande encore {}".format(nom, mort))
+
+    def test_chaque_fournisseur_declare_les_trois_roles(self):
+        for p in config.PROVIDERS:
+            for role in ("rapide", "standard", "costaud"):
+                self.assertTrue(p.model_for(role), "{}/{}".format(p.name, role))
+
+
+class TestQuotaParModele(unittest.TestCase):
+    """Google compte par modele. Un seul couple rpm/rpd pour tout le
+    fournisseur interdisait flash-lite — mille requetes par jour — des que
+    flash avait epuise ses deux cent cinquante."""
+
+    def setUp(self):
+        _vider_appels()
+        self.gemini = config.PROVIDERS_BY_NAME["gemini"]
+
+    def _saturer(self, modele, nombre):
+        maintenant = time.time()
+        with store.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO appels(fournisseur, modele, ts, jour, ok, tokens)"
+                " VALUES ('gemini',?,?,?,1,10)",
+                [(modele, maintenant, store._jour())] * nombre)
+
+    def test_les_deux_modeles_ont_des_plafonds_differents(self):
+        self.assertNotEqual(self.gemini.quota("standard").rpd,
+                            self.gemini.quota("rapide").rpd)
+
+    def test_epuiser_flash_ferme_flash(self):
+        self._saturer("gemini-2.5-flash", self.gemini.quota("standard").rpd)
+        self.assertFalse(llm._quota_ok(self.gemini, "standard"))
+
+    def test_epuiser_le_modele_le_plus_genereux_n_en_ferme_pas_un_autre(self):
+        """Le cas qui distingue vraiment les deux comptages.
+
+        flash-lite a droit a mille requetes par jour, flash a deux cent
+        cinquante. En comptant pour tout le fournisseur, les mille requetes de
+        flash-lite fermaient flash quatre fois plus tot que son propre quota —
+        et le role « costaud », qui passe par flash, devenait indisponible
+        pour une raison qui ne le concernait pas.
+        """
+        self._saturer("gemini-2.5-flash-lite", self.gemini.quota("rapide").rpd)
+        self.assertFalse(llm._quota_ok(self.gemini, "rapide"))
+        self.assertTrue(llm._quota_ok(self.gemini, "standard"))
+
+    def test_un_quota_de_fournisseur_compte_tous_les_modeles(self):
+        mistral = config.PROVIDERS_BY_NAME["mistral"]
+        self.assertEqual(mistral.quota("rapide").portee, "fournisseur")
+        for _ in range(mistral.quota("standard").rpd):
+            store.enregistrer_appel("mistral", "mistral-small-latest", True, 10)
+        # Le quota vaut pour le service entier : changer de role n'en ouvre pas
+        # un second.
+        self.assertFalse(llm._quota_ok(mistral, "costaud"))
+
+
+class TestBudgetEnJetonsParFournisseur(unittest.TestCase):
+    """Groq annonce trente requetes par minute et huit mille jetons. C'est le
+    second chiffre qui decide : une demande de chapitre ne tient pas dedans."""
+
+    def setUp(self):
+        _vider_appels()
+        self.groq = config.PROVIDERS_BY_NAME["groq"]
+
+    def test_le_cout_estime_compte_l_entree_et_la_sortie(self):
+        messages = [{"role": "user", "content": "a" * 3500}]
+        cout = llm._cout_estime(messages, 2000, self.groq)
+        self.assertGreater(cout, 2000 + 900)
+        self.assertLess(cout, 2000 + 1200)
+
+    def test_une_demande_plus_grosse_que_la_minute_ecarte_le_fournisseur(self):
+        messages = [{"role": "user", "content": "a" * 12000}]
+        cout = llm._cout_estime(messages, 8192, self.groq)
+        self.assertGreater(cout, self.groq.quota("standard").tpm)
+        self.assertIsNone(llm._attente(self.groq, "standard", cout))
+
+    def test_une_demande_courte_passe(self):
+        self.assertEqual(llm._attente(self.groq, "standard", 1200), 0.0)
+
+    def test_le_routeur_passe_au_suivant_sans_appeler(self):
+        """Le point de la mesure : ne pas aller chercher un 429 a la main."""
+        mistral = config.PROVIDERS_BY_NAME["mistral"]
+        appels = []
+
+        def espion(url, charge, entetes, timeout=0):
+            appels.append(url)
+            return _reponse()
+
+        with mock.patch.object(llm, "post_json", side_effect=espion):
+            with mock.patch.object(config, "active_providers",
+                                   return_value=[self.groq, mistral]):
+                rep = llm.generer("z" * 12000, max_tokens=8192, cache=False)
+        self.assertEqual(rep.fournisseur, "mistral")
+        self.assertEqual(len(appels), 1)
+        self.assertNotIn("groq", appels[0])
+
+    def test_le_plafond_journalier_en_jetons_ferme_le_fournisseur(self):
+        self.assertTrue(llm._quota_ok(self.groq, "standard"))
+        store.enregistrer_appel("groq", "openai/gpt-oss-120b", True,
+                                self.groq.quota("standard").tpd, 1.0)
+        self.assertFalse(llm._quota_ok(self.groq, "standard"))
+
+    def test_l_attente_suit_la_fenetre_glissante(self):
+        """La place se libere quand le plus vieil appel sort de la minute,
+        pas a la minute ronde."""
+        q = self.groq.quota("standard")
+        with store.cursor() as cur:
+            cur.execute(
+                "INSERT INTO appels(fournisseur, modele, ts, jour, ok, tokens)"
+                " VALUES (?,?,?,?,1,?)",
+                ("groq", "openai/gpt-oss-120b", time.time() - 45,
+                 store._jour(), q.tpm - 100))
+        attente = llm._attente(self.groq, "standard", 1000)
+        self.assertIsNotNone(attente)
+        self.assertGreater(attente, 10.0)
+        self.assertLess(attente, 20.0)
+
+    def test_un_fournisseur_sans_plafond_publie_n_est_jamais_freine(self):
+        mistral = config.PROVIDERS_BY_NAME["mistral"]
+        self.assertEqual(mistral.quota("standard").tpm, 0)
+        self.assertEqual(llm._attente(mistral, "standard", 500000), 0.0)
+
+
+class TestModeleDisparu(unittest.TestCase):
+    """Un 404 distant a une seule cause, et le message brut ne la disait pas."""
+
+    def setUp(self):
+        _vider_appels()
+
+    def test_le_message_nomme_le_modele_et_le_remede(self):
+        groq = config.PROVIDERS_BY_NAME["groq"]
+        texte = llm._expliquer(groq, HttpErreur(404, "Not Found"),
+                               "openai/gpt-oss-120b")
+        self.assertIn("openai/gpt-oss-120b", texte)
+        self.assertIn("n'existe plus", texte)
+        self.assertIn("usine docteur --modeles", texte)
+
+    def test_le_routeur_remonte_cette_explication(self):
+        groq = config.PROVIDERS_BY_NAME["groq"]
+        with mock.patch.object(llm, "post_json",
+                               side_effect=HttpErreur(404, "Not Found")):
+            with mock.patch.object(config, "active_providers",
+                                   return_value=[groq]):
+                with self.assertRaises(llm.PlusDeFournisseur) as capture:
+                    llm.generer("court", cache=False)
+        self.assertIn("n'existe plus", str(capture.exception))
+
+    def test_un_404_local_garde_son_message_d_installation(self):
+        ollama = config.PROVIDERS_BY_NAME["ollama"]
+        texte = llm._expliquer(ollama, HttpErreur(404, "Not Found"))
+        self.assertIn("ollama pull", texte)

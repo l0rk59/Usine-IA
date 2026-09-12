@@ -361,13 +361,18 @@ def enregistrer_appel(
 _TRAITE = "(ok=1 OR erreur LIKE 'HTTP 429%')"
 
 
-def compteur_jour_cle(fournisseur: str, cle_id: str) -> int:
-    """Appels du jour imputes a une cle precise du pool."""
+def compteur_jour_cle(fournisseur: str, cle_id: str, modele: str = "") -> int:
+    """Appels du jour imputes a une cle precise du pool.
+
+    « modele » sert aux fournisseurs dont le quota se compte par modele : une
+    cle qui a epuise les requetes de gemini-2.5-flash garde entieres celles de
+    gemini-2.5-flash-lite, et ne doit pas etre ecartee pour autant.
+    """
     with cursor() as cur:
         cur.execute(
             "SELECT COUNT(*) FROM appels WHERE fournisseur=? AND cle_id=? "
-            "AND jour=? AND " + _TRAITE,
-            (fournisseur, cle_id, _jour()),
+            "AND jour=? AND " + _TRAITE + _et_modele(modele),
+            (fournisseur, cle_id, _jour()) + ((modele,) if modele else ()),
         )
         return int(cur.fetchone()[0])
 
@@ -428,21 +433,60 @@ def repos_actifs() -> Dict[Tuple[str, str], float]:
     return actifs
 
 
-def compteur_minute(fournisseur: str) -> int:
+# Certains fournisseurs comptent leur quota par modele plutot que pour tout le
+# service (c'est le cas de Google). Passer « modele » restreint le decompte a
+# ce modele ; le laisser vide compte tout le fournisseur, comme avant.
+def _et_modele(modele: str) -> str:
+    return " AND modele=?" if modele else ""
+
+
+def compteur_minute(fournisseur: str, modele: str = "") -> int:
     with cursor() as cur:
         cur.execute(
-            "SELECT COUNT(*) FROM appels WHERE fournisseur=? AND ts > ?",
-            (fournisseur, time.time() - 60),
+            "SELECT COUNT(*) FROM appels WHERE fournisseur=? AND ts > ?"
+            + _et_modele(modele),
+            (fournisseur, time.time() - 60) + ((modele,) if modele else ()),
         )
         return int(cur.fetchone()[0])
 
 
-def compteur_jour(fournisseur: str) -> int:
+def compteur_jour(fournisseur: str, modele: str = "") -> int:
     with cursor() as cur:
         cur.execute(
             "SELECT COUNT(*) FROM appels WHERE fournisseur=? AND jour=? AND "
-            + _TRAITE,
-            (fournisseur, _jour()),
+            + _TRAITE + _et_modele(modele),
+            (fournisseur, _jour()) + ((modele,) if modele else ()),
+        )
+        return int(cur.fetchone()[0])
+
+
+def jetons_minute(fournisseur: str, modele: str = "") -> Tuple[int, float]:
+    """Jetons consommes dans la derniere minute, et date du plus ancien.
+
+    Le plafond par minute est une fenetre GLISSANTE : la place ne se libere
+    pas a la minute ronde, elle se libere quand le plus vieil appel de la
+    fenetre en sort. Rendre cette date permet d'attendre exactement ce qu'il
+    faut au lieu d'attendre une minute entiere a chaque fois.
+    """
+    debut = time.time() - 60
+    with cursor() as cur:
+        cur.execute(
+            "SELECT COALESCE(SUM(tokens), 0), COALESCE(MIN(ts), 0) FROM appels"
+            " WHERE fournisseur=? AND ts > ? AND ok=1 AND tokens > 0"
+            + _et_modele(modele),
+            (fournisseur, debut) + ((modele,) if modele else ()),
+        )
+        ligne = cur.fetchone()
+        return int(ligne[0]), float(ligne[1])
+
+
+def jetons_jour(fournisseur: str, modele: str = "") -> int:
+    """Jetons consommes aujourd'hui chez un fournisseur."""
+    with cursor() as cur:
+        cur.execute(
+            "SELECT COALESCE(SUM(tokens), 0) FROM appels"
+            " WHERE fournisseur=? AND jour=? AND ok=1" + _et_modele(modele),
+            (fournisseur, _jour()) + ((modele,) if modele else ()),
         )
         return int(cur.fetchone()[0])
 

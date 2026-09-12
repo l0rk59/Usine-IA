@@ -896,7 +896,75 @@ class TestDocteur(BaseServeur):
         """Recopier les controles cote web en aurait fait deux jeux qui
         divergent : « docteur » lit desormais le meme module."""
         source = (RACINE / "usine" / "cli.py").read_text(encoding="utf-8")
-        self.assertIn("module_diagnostic.etat_installation()", source)
+        self.assertIn("module_diagnostic.etat_installation(", source)
+        # Ce que le garde-fou surveille vraiment : que « docteur » n'aille pas
+        # refaire lui-meme un controle que le module porte deja.
+        for refait in ("shutil.disk_usage", "def _reseau", "locaux_actifs()"):
+            self.assertNotIn(refait, source)
+
+    def _faux_catalogue(self, servis, statut=200):
+        """Remplace la reponse de /models par un catalogue choisi."""
+        from unittest import mock
+
+        charge = json.dumps({"data": [{"id": m} for m in servis]}).encode()
+        return mock.patch("usine.core.http.requete",
+                          return_value=(statut, charge))
+
+    def _fournisseur(self, modeles):
+        from usine.core import config
+
+        return config.Provider(
+            name="essai", base_url="https://exemple.invalide/v1",
+            api_key_env="", models=modeles, keyless=True)
+
+    def test_un_modele_retire_du_catalogue_est_signale(self):
+        """La panne reelle : Groq a retire ses modeles Llama du palier
+        gratuit, chaque appel a repondu 404, et rien ne l'a jamais dit."""
+        from unittest import mock
+        from usine.core import config, diagnostic
+
+        faux = self._fournisseur({"rapide": "vivant", "standard": "mort"})
+        with mock.patch.object(config, "active_providers", return_value=[faux]):
+            with self._faux_catalogue(["vivant", "autre"]):
+                ecarts = diagnostic.modeles_disparus()
+        self.assertEqual(len(ecarts), 1)
+        self.assertEqual(ecarts[0]["manquants"], ["mort"])
+        self.assertIn("autre", ecarts[0]["proposes"])
+
+    def test_un_catalogue_complet_ne_signale_rien(self):
+        from unittest import mock
+        from usine.core import config, diagnostic
+
+        faux = self._fournisseur({"rapide": "a", "standard": "b"})
+        with mock.patch.object(config, "active_providers", return_value=[faux]):
+            with self._faux_catalogue(["a", "b", "c"]):
+                self.assertEqual(diagnostic.modeles_disparus(), [])
+
+    def test_un_service_injoignable_n_accuse_personne(self):
+        """« Je ne sais pas » ne doit pas se lire « aucun modele » : un reseau
+        coupe declarerait toute la configuration morte."""
+        from unittest import mock
+        from usine.core import config, diagnostic
+
+        faux = self._fournisseur({"standard": "mort"})
+        with mock.patch.object(config, "active_providers", return_value=[faux]):
+            with mock.patch("usine.core.http.requete", side_effect=OSError("hs")):
+                self.assertEqual(diagnostic.modeles_disparus(), [])
+            with self._faux_catalogue([], statut=403):
+                self.assertEqual(diagnostic.modeles_disparus(), [])
+
+    def test_le_controle_des_modeles_ne_sort_que_si_on_le_demande(self):
+        """Une requete par fournisseur : trop lent pour un rafraichissement.
+
+        Mais le defaut inverse est pire — un modele retire du catalogue tue
+        un fournisseur en silence — donc le controle existe, sous un drapeau.
+        """
+        from usine.core import diagnostic
+
+        etat = diagnostic.etat_installation(avec_reseau=False, avec_locaux=False)
+        self.assertEqual(etat["modeles_disparus"], [])
+        source = (RACINE / "usine" / "cli.py").read_text(encoding="utf-8")
+        self.assertIn("--modeles", source)
 
 
 class TestPageServie(BaseServeur):

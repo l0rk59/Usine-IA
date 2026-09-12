@@ -72,15 +72,27 @@ def _cle_cache(messages: Sequence[Dict[str, str]], role: str,
     return hashlib.sha256(brut.encode("utf-8")).hexdigest()
 
 
-def _expliquer(p: config.Provider, exc: Exception) -> str:
-    """Traduit l'echec d'un serveur local en geste a faire.
+def _expliquer(p: config.Provider, exc: Exception, modele: str = "") -> str:
+    """Traduit un echec technique en geste a faire.
 
     « HTTP 404 » ou « Connection refused » ne disent rien a qui vient
     d'installer Ollama sur son telephone. Ces trois pannes sont les seules
     qu'on rencontre vraiment, et chacune a une reponse d'une ligne.
+
+    Chez un fournisseur distant, un 404 a une seule cause : le modele demande
+    n'existe plus. C'est arrive pour de bon — Groq a retire ses modeles Llama
+    du palier gratuit le 16 aout 2026 — et le message brut « HTTP 404 » ne
+    laissait aucune chance de comprendre pourquoi le fournisseur le plus
+    rapide de la liste avait cesse de servir.
     """
     texte = str(exc)
     if not p.local:
+        if isinstance(exc, HttpErreur) and exc.statut == 404:
+            return ("le modele « {} » n'existe plus chez {}. Les fournisseurs "
+                    "retirent leurs modeles sans prevenir : verifiez avec "
+                    "« usine docteur --modeles », puis corrigez "
+                    "usine/core/config.py.".format(modele or p.model_for("standard"),
+                                                   p.name))
         return texte
     minuscules = texte.lower()
     if isinstance(exc, HttpErreur) and exc.statut == 404:
@@ -128,25 +140,95 @@ def _reposer(nom: str, secondes: float, raison: str) -> None:
         pass
 
 
-def _quota_ok(p: config.Provider) -> bool:
+def _compte_pour(p: config.Provider, role: str) -> str:
+    """Modele sur lequel imputer le quota, ou "" si le quota vaut pour tout.
+
+    Google compte par modele : flash-lite garde ses mille requetes du jour
+    meme quand flash a epuise ses deux cent cinquante.
+    """
+    return p.model_for(role) if p.quota(role).portee == "modele" else ""
+
+
+# Caracteres francais par jeton. Les tokeniseurs BPE des modeles courants
+# decoupent l'anglais autour de quatre caracteres par jeton, le francais un
+# peu plus finement : accents, elisions et terminaisons y produisent plus de
+# fragments. Trois caracteres et demi surestiment donc legerement le cout,
+# et c'est le bon sens de l'erreur : sous-estimer fait tenter un appel que le
+# fournisseur refusera, surestimer fait seulement choisir un autre.
+CARACTERES_PAR_JETON = 3.5
+
+
+def _cout_estime(messages: Sequence[Dict[str, str]], max_tokens: int,
+                 p: config.Provider) -> int:
+    """Jetons qu'un appel va peser, entree ET sortie comprises.
+
+    Les plafonds par minute se comptent sur la somme des deux, et les
+    fournisseurs reservent la sortie DEMANDEE, pas celle qui sera produite :
+    Groq comme Cerebras demandent explicitement d'ajuster max_tokens pour
+    cette raison.
+    """
+    caracteres = sum(len(m.get("content") or "") for m in messages)
+    entree = int(caracteres / CARACTERES_PAR_JETON) + 8 * len(messages)
+    sortie = min(max_tokens, p.max_sortie) if max_tokens else p.max_sortie
+    return entree + sortie
+
+
+def _quota_ok(p: config.Provider, role: str = "standard") -> bool:
     _charger_repos()
     if _REPOS.get(p.name, 0) > time.time():
         return False
     if p.local:
         return True
-    if store.compteur_jour(p.name) >= p.rpd:
+    q = p.quota(role)
+    modele = _compte_pour(p, role)
+    if store.compteur_jour(p.name, modele) >= q.rpd:
+        return False
+    # Plusieurs paliers gratuits s'epuisent en JETONS bien avant de s'epuiser
+    # en requetes : Groq n'en accorde que deux cent mille par jour, de quoi
+    # ecrire un livre et pas deux. Ne compter que les requetes revenait a
+    # decouvrir la limite sous forme de 429 en pleine fabrication.
+    if q.tpd and store.jetons_jour(p.name, modele) >= q.tpd:
         return False
     return True
 
 
-def _attente_rpm(p: config.Provider) -> float:
-    """Secondes a patienter pour rester sous la limite par minute."""
+def _attente(p: config.Provider, role: str, cout: int) -> Optional[float]:
+    """Secondes a patienter pour rester sous les plafonds par minute.
+
+    Rend None quand aucune attente ne suffira : la demande pese a elle seule
+    plus que le budget d'une minute entiere chez ce fournisseur. Attendre
+    serait alors une facon lente d'aller chercher un 429 — le routeur passe
+    au suivant, qui lui saura la servir. C'est exactement le cas d'un
+    chapitre confie a Groq : huit mille jetons de budget par minute, et une
+    demande qui en pese onze mille.
+    """
     if p.local:
         return 0.0
-    utilises = store.compteur_minute(p.name)
-    if utilises < p.rpm:
-        return 0.0
-    return min(62.0, 60.0 / max(p.rpm, 1) + 1.0)
+    q = p.quota(role)
+    modele = _compte_pour(p, role)
+    attente = 0.0
+    if store.compteur_minute(p.name, modele) >= q.rpm:
+        attente = min(62.0, 60.0 / max(q.rpm, 1) + 1.0)
+    if q.tpm:
+        if cout > q.tpm:
+            return None
+        utilises, plus_ancien = store.jetons_minute(p.name, modele)
+        if utilises + cout > q.tpm and plus_ancien:
+            # La fenetre glisse : la place se libere quand le plus vieil
+            # appel en sort, pas a la minute ronde.
+            attente = max(attente, min(62.0, 61.0 - (time.time() - plus_ancien)))
+    return attente
+
+
+def _laisser_passer(p: config.Provider, role: str, cout: int) -> bool:
+    """Attend si besoin, et dit si ce fournisseur peut servir la demande."""
+    pause = _attente(p, role, cout)
+    if pause is None:
+        return False
+    if pause > 0:
+        time.sleep(pause)
+        pause = _attente(p, role, cout)
+    return bool(pause == 0.0)
 
 
 def _appel(
@@ -255,16 +337,18 @@ def generer(
 
     erreurs: List[str] = []
     for p in fournisseurs:
-        if not _quota_ok(p):
+        if not _quota_ok(p, role):
             erreurs.append("{} : quota journalier atteint ou en repos".format(p.name))
             continue
+        cout = _cout_estime(messages, max_tokens, p)
 
         # Un fournisseur peut detenir plusieurs cles : on les essaie toutes avant
         # de le declarer indisponible. C'est la rotation de cles.
         lot = pool_cles.pool(p.name, p.api_key_env)
         candidates: List[Optional[pool_cles.Cle]] = []
         if p.api_key_env and len(lot):
-            candidates = list(lot.ordonnees(p.rpd))
+            candidates = list(lot.ordonnees(p.quota(role).rpd,
+                                            _compte_pour(p, role)))
             if not candidates:
                 erreurs.append("{} : toutes les cles sont saturees".format(p.name))
                 continue
@@ -275,9 +359,11 @@ def generer(
         for cle in candidates:
             if fournisseur_hors_jeu:
                 break
-            pause = _attente_rpm(p)
-            if pause:
-                time.sleep(pause)
+            if not _laisser_passer(p, role, cout):
+                erreurs.append(
+                    "{} : {} jetons demandes, budget par minute insuffisant"
+                    .format(p.name, cout))
+                break
 
             for essai in range(tentatives_par_fournisseur):
                 try:
@@ -300,7 +386,7 @@ def generer(
                                             str(exc), cle_id=cle.id if cle else "")
                     erreurs.append("{}{} : {}".format(
                         p.name, "/" + cle.affichage if cle else "",
-                        _expliquer(p, exc)))
+                        _expliquer(p, exc, p.model_for(role))))
 
                     if exc.statut in (401, 403):
                         # Cle refusee : on ecarte la cle, pas le fournisseur.
@@ -338,7 +424,8 @@ def generer(
                 except Exception as exc:
                     store.enregistrer_appel(p.name, p.model_for(role), False, 0, 0,
                                             repr(exc), cle_id=cle.id if cle else "")
-                    erreurs.append("{} : {}".format(p.name, _expliquer(p, exc)))
+                    erreurs.append("{} : {}".format(
+                        p.name, _expliquer(p, exc, p.model_for(role))))
                     break
 
     raise PlusDeFournisseur(
@@ -423,6 +510,8 @@ def diagnostic() -> List[Dict[str, Any]]:
     """Etat de chaque fournisseur (pour 'usine docteur')."""
     lignes: List[Dict[str, Any]] = []
     for p in config.PROVIDERS:
+        q = p.quota("standard")
+        modele = _compte_pour(p, "standard")
         lignes.append(
             {
                 "nom": p.name,
@@ -432,8 +521,15 @@ def diagnostic() -> List[Dict[str, Any]]:
                 "cle_env": p.api_key_env,
                 "nb_cles": len(pool_cles.pool(p.name, p.api_key_env)),
                 "modele": p.model_for("standard"),
-                "aujourdhui": store.compteur_jour(p.name),
-                "rpd": p.rpd,
+                "aujourdhui": store.compteur_jour(p.name, modele),
+                "rpd": q.rpd,
+                "rpm": q.rpm,
+                # Les plafonds en jetons sont ceux qui arretent vraiment une
+                # fabrication : les afficher evite de chercher la cause
+                # ailleurs quand le fournisseur le plus rapide se tait.
+                "tpm": q.tpm,
+                "tpd": q.tpd,
+                "jetons_aujourdhui": store.jetons_jour(p.name, modele),
                 "inscription": p.signup,
                 "notes": p.notes,
             }

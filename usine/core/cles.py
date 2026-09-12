@@ -77,7 +77,7 @@ class Pool:
         maintenant = time.time()
         return [c for c in self.cles if c.disponible(maintenant)]
 
-    def ordonnees(self, plafond_journalier: int) -> List[Cle]:
+    def ordonnees(self, plafond_journalier: int, modele: str = "") -> List[Cle]:
         """Toutes les cles utilisables, de la moins sollicitee a la plus sollicitee.
 
         Le routeur a besoin de la LISTE, pas seulement du meilleur candidat :
@@ -87,16 +87,16 @@ class Pool:
         """
         candidates = []
         for cle in self.disponibles():
-            utilisation = store.compteur_jour_cle(self.fournisseur, cle.id)
+            utilisation = store.compteur_jour_cle(self.fournisseur, cle.id, modele)
             if plafond_journalier and utilisation >= plafond_journalier:
                 continue
             candidates.append((utilisation, cle.rang, cle))
         candidates.sort(key=lambda t: (t[0], t[1]))
         return [c for _, _, c in candidates]
 
-    def choisir(self, plafond_journalier: int) -> Optional[Cle]:
+    def choisir(self, plafond_journalier: int, modele: str = "") -> Optional[Cle]:
         """La cle la moins sollicitee, ou None si toutes sont saturees."""
-        ordre = self.ordonnees(plafond_journalier)
+        ordre = self.ordonnees(plafond_journalier, modele)
         return ordre[0] if ordre else None
 
     def mettre_au_repos(self, cle: Cle, secondes: float, raison: str = "") -> None:

@@ -90,6 +90,35 @@ def env_bool(key: str, default: bool = False) -> bool:
 # --------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class Quota:
+    """Ce qu'un palier gratuit autorise vraiment.
+
+    Compter les requetes ne suffit pas. Groq annonce 30 requetes par minute
+    sur son palier gratuit, mais 8 000 JETONS par minute : une seule demande
+    de chapitre (une invite de trois mille jetons et huit mille de sortie)
+    depasse a elle seule le budget de la minute. Le routeur qui ne compte que
+    les requetes croit avoir droit a trente appels, en tente un, recolte un
+    429, met le fournisseur au repos — et recommence la minute suivante.
+    Meme ecart chez Cerebras : 5 requetes par minute annoncees, la ou l'usine
+    en supposait 25.
+
+    Un plafond a zero signifie « non publie par le fournisseur », donc non
+    modelise : on ne l'invente pas.
+
+    « portee » dit a quoi le quota s'applique. Chez Google il est compte PAR
+    MODELE (flash et flash-lite ont chacun le sien) ; ailleurs il vaut pour
+    tout le fournisseur. Le distinguer evite de s'interdire flash-lite parce
+    que flash a consomme sa journee.
+    """
+
+    rpm: int = 20                   # requetes / minute
+    rpd: int = 500                  # requetes / jour
+    tpm: int = 0                    # jetons / minute (0 = non publie)
+    tpd: int = 0                    # jetons / jour   (0 = non publie)
+    portee: str = "fournisseur"     # ou "modele"
+
+
 @dataclass
 class Provider:
     """Un fournisseur de texte compatible OpenAI."""
@@ -117,6 +146,16 @@ class Provider:
     # routeur y ramene la demande de l'appelant : demander plus ne produit pas
     # plus, cela produit une erreur chez certains et un silence chez d'autres.
     max_sortie: int = 8192
+    # Plafonds detailles, par identifiant de modele. Ce qui n'y figure pas
+    # retombe sur rpm/rpd ci-dessus, valables pour le fournisseur entier.
+    quotas: Dict[str, Quota] = field(default_factory=dict)
+
+    def quota(self, role: str = "standard") -> Quota:
+        """Plafonds applicables au modele qui servira ce role."""
+        precis = self.quotas.get(self.model_for(role))
+        if precis is not None:
+            return precis
+        return Quota(rpm=self.rpm, rpd=self.rpd)
 
     @property
     def api_key(self) -> str:
@@ -154,29 +193,54 @@ PROVIDERS: List[Provider] = [
         name="groq",
         base_url="https://api.groq.com/openai/v1",
         api_key_env="GROQ_API_KEY",
+        # Les deux modeles Llama configures ici jusqu'au 16 aout 2026 ont ete
+        # retires du palier gratuit ce jour-la (console.groq.com/docs/
+        # deprecations). L'usine a donc appele pendant des semaines un modele
+        # inexistant : chaque tentative renvoyait 404, le routeur mettait Groq
+        # au repos une demi-heure et passait au suivant, sans que rien ne le
+        # dise. « usine docteur --modeles » existe pour que cela ne puisse
+        # plus arriver en silence.
         models={
-            "rapide": "llama-3.1-8b-instant",
-            "standard": "llama-3.3-70b-versatile",
-            "costaud": "llama-3.3-70b-versatile",
+            "rapide": "openai/gpt-oss-20b",
+            "standard": "openai/gpt-oss-120b",
+            "costaud": "openai/gpt-oss-120b",
         },
-        rpm=28,
-        rpd=900,
+        rpm=30,
+        rpd=1000,
+        quotas={
+            # 8 000 jetons par minute : c'est LA contrainte, pas les 30
+            # requetes. Une demande de chapitre n'y entre pas — le routeur
+            # confiera donc les gros travaux a un autre fournisseur et
+            # gardera Groq pour ce qui est court, ce qu'il fait tres vite.
+            "openai/gpt-oss-20b": Quota(rpm=30, rpd=1000, tpm=8000, tpd=200000),
+            "openai/gpt-oss-120b": Quota(rpm=30, rpd=1000, tpm=8000, tpd=200000),
+        },
         signup="https://console.groq.com/keys",
-        notes="Le plus rapide. Gratuit, sans carte bancaire.",
+        notes="Le plus rapide. Gratuit, sans carte bancaire. Budget serre en "
+              "jetons (8 000/min, 200 000/jour) : ideal pour les appels courts.",
     ),
     Provider(
         name="cerebras",
         base_url="https://api.cerebras.ai/v1",
         api_key_env="CEREBRAS_API_KEY",
+        # Le catalogue gratuit s'est reduit a deux modeles ; les Llama
+        # configures ici n'y figurent plus (inference-docs.cerebras.ai).
         models={
-            "rapide": "llama3.1-8b",
-            "standard": "llama-3.3-70b",
-            "costaud": "llama-3.3-70b",
+            "rapide": "qwen-3.8-27b",
+            "standard": "gpt-oss-120b",
+            "costaud": "gpt-oss-120b",
         },
-        rpm=25,
-        rpd=800,
+        # 5 requetes par minute, pas 25 : l'usine en supposait cinq fois trop
+        # et s'attirait des 429 a chaque enchainement de chapitres.
+        rpm=5,
+        rpd=200,
+        quotas={
+            "gpt-oss-120b": Quota(rpm=5, rpd=200, tpm=30000, tpd=1000000),
+            "qwen-3.8-27b": Quota(rpm=5, rpd=200, tpm=30000, tpd=1000000),
+        },
         signup="https://cloud.cerebras.ai/",
-        notes="Tres rapide, quota journalier genereux en tokens.",
+        notes="Tres rapide. 1 million de jetons par jour, mais seulement "
+              "5 requetes par minute : le routeur espace les appels.",
     ),
     Provider(
         name="gemini",
@@ -188,11 +252,25 @@ PROVIDERS: List[Provider] = [
             "costaud": "gemini-2.5-flash",
             "long": "gemini-2.5-flash",
         },
-        rpm=12,
-        rpd=400,
+        rpm=10,
+        rpd=250,
         max_sortie=8192,
+        # Google compte PAR MODELE. Un seul couple rpm/rpd pour tout le
+        # fournisseur interdisait flash-lite — mille requetes par jour — des
+        # que flash avait epuise les siennes, quatre fois moins nombreuses.
+        # Google ne publie plus ces chiffres dans sa documentation (ils sont
+        # renvoyes vers AI Studio, derriere une authentification) : les
+        # valeurs ci-dessous sont les plus basses rapportees, parce qu'une
+        # sous-estimation coute une attente et une surestimation coute un 429.
+        quotas={
+            "gemini-2.5-flash": Quota(rpm=10, rpd=250, tpm=250000,
+                                      portee="modele"),
+            "gemini-2.5-flash-lite": Quota(rpm=15, rpd=1000, tpm=250000,
+                                           portee="modele"),
+        },
         signup="https://aistudio.google.com/apikey",
-        notes="Contexte 1M tokens. Ideal pour les longs manuscrits.",
+        notes="Contexte 1M tokens. Ideal pour les longs manuscrits. "
+              "Quotas comptes par modele : flash-lite est le plus genereux.",
     ),
     Provider(
         name="mistral",

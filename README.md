@@ -806,14 +806,29 @@ qu'il sait émettre, et `Retry-After` est honoré. Une panne réseau ne consomme
 plus le quota du fournisseur — seul un appel qu'il a réellement traité compte.
 Détails et mesures : [docs/ROUTEUR.md](docs/ROUTEUR.md).
 
+**Le routeur compte les jetons, pas seulement les appels.** Les paliers
+gratuits s'épuisent en jetons bien avant de s'épuiser en requêtes : Groq en
+accorde 8 000 par minute et 200 000 par jour, là où l'usine croyait disposer
+de 900 requêtes. Une demande trop grosse pour le budget d'une minute n'est pas
+tentée — elle part chez un fournisseur qui peut la servir. Et les quotas de
+Google se comptant par modèle, épuiser `flash` ne ferme plus `flash-lite`.
+
+**`usine docteur --modeles` vérifie que les modèles configurés existent
+encore.** Ce contrôle existe à cause d'une panne réelle et entièrement
+silencieuse : Groq a retiré ses modèles Llama du palier gratuit le 16 août
+2026, chaque appel a répondu 404, et le routeur s'est contenté de passer au
+suivant — pendant des semaines. Mesures et chiffres :
+[docs/QUOTAS.md](docs/QUOTAS.md).
+
 Trois mécanismes rendent la production fiable sur un forfait mobile :
 
 1. **Cache systématique.** Chaque réponse est stockée par empreinte du prompt.
    Relancer une génération interrompue ne reconsomme aucun quota.
 2. **Dégradation progressive.** Un chapitre qui échoue n'arrête pas le livre :
    il est remplacé par son plan détaillé, et l'échec est journalisé.
-3. **Quotas comptés localement.** RPM et RPD sont suivis en base, le routeur
-   attend ou bascule avant que le fournisseur ne réponde 429.
+3. **Quotas comptés localement.** Requêtes *et* jetons, par minute et par
+   jour, suivis en base — par modèle chez les fournisseurs qui comptent ainsi.
+   Le routeur attend ou bascule avant que le fournisseur ne réponde 429.
 
 ---
 
