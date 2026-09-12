@@ -239,9 +239,15 @@ résoudre — et sont vérifiés *contre la prose*, pas seulement contre le JSON
 un fil déclaré payé à la scène 11 est cherché dans le texte de la scène 11.
 Le tout dans le même appel que la grille, donc sans surcoût.
 
-Reste les **intrigues secondaires** : un second fil narratif entrelacé, avec
-ses propres beats et sa résolution — et un contrôle qui sache dire qu'elle a
-été abandonnée en route, ce qui est le défaut le plus fréquent.
+**Les intrigues secondaires suivent.** La grille porte des lignes parallèles
+— une ligne appartient à un personnage autre que le protagoniste, tient sur
+trois scènes au moins et doit se résoudre — et le contrôle sait dire qu'une a
+été **abandonnée en route**, ce qui est le défaut le plus fréquent d'un récit
+long. Une nouvelle n'en reçoit aucune : sa force est de n'avoir qu'une ligne.
+
+Il ne reste donc au roman rien de structurel. Ce qui manque est du **jugement**
+— savoir si l'histoire vaut la peine d'être lue — et aucun outil ne sait le
+faire.
 
 ### `prompts` — packs de prompts
 - **Variantes par modèle** : ce qui marche sur un modèle échoue sur un autre.
@@ -423,8 +429,8 @@ rapport entre ce que ça apporte et ce que ça coûte :
 
 Cette troisième liste est close. Ce qui reste ouvert, en une phrase chacun :
 
-- les **intrigues secondaires** de la fiction, seul obstacle restant entre
-  l'usine et un roman tenable (§2) ;
+- ~~les **intrigues secondaires** de la fiction~~ **faites** (§2, §5 de
+  [FICTION.md](FICTION.md)) ;
 - les **cadres de référence** des boîtes à outils, qui attendent une source
   plutôt qu'un développement (§4) ;
 - les **utilitaires sans appelant** hérités (`inventaire`, `env_int`,

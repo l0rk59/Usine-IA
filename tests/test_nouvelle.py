@@ -315,6 +315,185 @@ class TestFilsTendus(unittest.TestCase):
                          [a["genre"] for a in rapport["anomalies"]])
 
 
+def _invite_de_scene(grille: Dict[str, Any], index: int) -> str:
+    """L'invite reellement passee au redacteur pour cette scene.
+
+    C'est le point ou tout ce chantier peut echouer en silence : la grille
+    serait parfaite, le controle passerait, et le modele n'aurait jamais rien
+    su des promesses qu'il devait tenir.
+    """
+    recues = []
+    origine = equipe.REDACTEUR.travailler
+
+    def espion(contexte, invite, **kwargs):
+        recues.append(invite)
+        return origine(contexte, invite, **kwargs)
+
+    equipe.REDACTEUR.travailler = espion
+    try:
+        nouvelle.rediger_scene(_contexte(), BIBLE, grille, index,
+                               grille["scenes"][index], "memoire")
+    finally:
+        equipe.REDACTEUR.travailler = origine
+    return recues[0]
+
+
+class TestIntriguesSecondaires(unittest.TestCase):
+    """Une ligne narrative parallele, pas une promesse ponctuelle.
+
+    Un fil tendu est un POINT : pose ici, paye la. Une intrigue est une
+    LIGNE : un debut, une complication, une fin. Le defaut qu'elle apporte
+    est propre a elle, et c'est le plus frequent d'un recit long : etre
+    ouverte, suivie quelques scenes, puis laissee tomber.
+    """
+
+    def test_une_nouvelle_n_en_recoit_pas(self):
+        """Sa force est de n'avoir qu'une ligne ; ce n'est pas un manque."""
+        self.assertEqual(nouvelle._intrigues_a_demander(6), 0)
+        self.assertEqual(nouvelle._intrigues_a_demander(9), 0)
+        self.assertEqual(nouvelle._consigne_intrigues(6), "")
+
+    def test_un_recit_long_en_recoit(self):
+        self.assertEqual(nouvelle._intrigues_a_demander(10), 1)
+        self.assertEqual(nouvelle._intrigues_a_demander(24), 2)
+        self.assertIn("INTRIGUES SECONDAIRES", nouvelle._consigne_intrigues(24))
+
+    def test_moins_de_trois_scenes_n_est_pas_une_intrigue(self):
+        """En dessous, c'est une digression — et l'appeler intrigue ferait
+        croire au controle qu'il en surveille une."""
+        gardees = nouvelle._normaliser_intrigues([
+            {"nom": "trop courte", "personnage": "Hakim Oussaid", "enjeu": "e",
+             "scenes": [2, 5], "resolution": "r"},
+            {"nom": "bonne", "personnage": "Hakim Oussaid", "enjeu": "e",
+             "scenes": [2, 5, 9], "resolution": "r"},
+        ], BIBLE, total=12)
+        self.assertEqual([i["nom"] for i in gardees], ["bonne"])
+
+    def test_une_intrigue_du_protagoniste_n_est_pas_secondaire(self):
+        """C'est l'histoire, pas une ligne a cote."""
+        gardees = nouvelle._normaliser_intrigues([
+            {"nom": "l'histoire", "personnage": "Camille Renard", "enjeu": "e",
+             "scenes": [1, 4, 8], "resolution": "r"}], BIBLE, total=12)
+        self.assertEqual(gardees, [])
+
+    def test_une_intrigue_sans_resolution_est_refusee_a_l_entree(self):
+        """La laisser entrer la declarerait surveillee alors qu'elle est
+        deja perdue."""
+        gardees = nouvelle._normaliser_intrigues([
+            {"nom": "ouverte", "personnage": "Hakim Oussaid", "enjeu": "e",
+             "scenes": [1, 4, 8], "resolution": "  "}], BIBLE, total=12)
+        self.assertEqual(gardees, [])
+
+    def test_les_scenes_sont_triees_et_dedoublonnees(self):
+        gardees = nouvelle._normaliser_intrigues([
+            {"nom": "x", "personnage": "Hakim Oussaid", "enjeu": "e",
+             "scenes": [9, 4, 9, 1, 99], "resolution": "r"}], BIBLE, total=12)
+        self.assertEqual(gardees[0]["scenes"], [1, 4, 9])
+
+    def test_une_intrigue_abandonnee_est_signalee(self):
+        """Le defaut le plus frequent d'un recit long."""
+        scenes = [("S1", "Camille Renard regarde la voiture de Hakim Oussaid."),
+                  ("S2", "Camille Renard seule avec Hakim Oussaid."),
+                  ("S3", "La voiture ne demarre pas, dit Camille Renard."),
+                  ("S4", "Camille Renard et Hakim Oussaid rentrent, c'est tout.")]
+        grille = dict(GRILLE_COMPLETE, intrigues=[
+            {"nom": "la voiture", "personnage": "Hakim Oussaid", "enjeu": "e",
+             "scenes": [1, 3, 4], "resolution": "elle part"}])
+        rapport = nouvelle.controler_continuite(
+            BIBLE, grille, scenes, ["un", "deux x", "trois y", "quatre z"])
+        majeures = [a for a in rapport["anomalies"]
+                    if a["genre"] == "intrigue_abandonnee"]
+        self.assertEqual(len(majeures), 1)
+        self.assertEqual(majeures[0]["gravite"], "majeur")
+        self.assertIn("la voiture", majeures[0]["detail"])
+
+    def test_une_intrigue_tenue_ne_declenche_rien(self):
+        scenes = [("S1", "Camille Renard regarde la voiture de Hakim Oussaid."),
+                  ("S2", "Camille Renard seule avec Hakim Oussaid."),
+                  ("S3", "La voiture ne demarre pas, dit Camille Renard."),
+                  ("S4", "La voiture de Hakim Oussaid s'en va pour de bon.")]
+        grille = dict(GRILLE_COMPLETE, intrigues=[
+            {"nom": "la voiture", "personnage": "Hakim Oussaid", "enjeu": "e",
+             "scenes": [1, 3, 4], "resolution": "elle part"}])
+        rapport = nouvelle.controler_continuite(
+            BIBLE, grille, scenes, ["un", "deux x", "trois y", "quatre z"])
+        self.assertEqual([a for a in rapport["anomalies"]
+                          if a["genre"].startswith("intrigue")], [])
+
+    def test_une_scene_annoncee_mais_muette_est_un_defaut_mineur(self):
+        """Elle n'a pas tue l'intrigue : elle ne l'a pas fait avancer."""
+        scenes = [("S1", "Camille Renard regarde la voiture de Hakim Oussaid."),
+                  ("S2", "Camille Renard et Hakim Oussaid parlent d'autre chose."),
+                  ("S3", "Camille Renard attend avec Hakim Oussaid."),
+                  ("S4", "La voiture de Hakim Oussaid s'en va pour de bon.")]
+        grille = dict(GRILLE_COMPLETE, intrigues=[
+            {"nom": "la voiture", "personnage": "Hakim Oussaid", "enjeu": "e",
+             "scenes": [1, 3, 4], "resolution": "elle part"}])
+        rapport = nouvelle.controler_continuite(
+            BIBLE, grille, scenes, ["un", "deux x", "trois y", "quatre z"])
+        genres = [a["genre"] for a in rapport["anomalies"]]
+        self.assertIn("intrigue_muette", genres)
+        self.assertNotIn("intrigue_abandonnee", genres)
+
+    def test_la_scene_sait_qu_elle_porte_une_intrigue_et_si_elle_la_ferme(self):
+        grille = dict(GRILLE_COMPLETE, intrigues=[
+            {"nom": "la voiture", "personnage": "Hakim Oussaid",
+             "enjeu": "il doit partir avant la nuit", "scenes": [1, 2, 4],
+             "resolution": "il part sans prevenir"}])
+        milieu = _invite_de_scene(grille, 1)
+        self.assertIn("INTRIGUE SECONDAIRE", milieu)
+        self.assertIn("il doit partir avant la nuit", milieu)
+        self.assertIn("sans la resoudre", milieu)
+
+        fin = _invite_de_scene(grille, 3)
+        self.assertIn("SE RESOUT ici", fin)
+        self.assertIn("il part sans prevenir", fin)
+
+    def test_une_scene_hors_intrigue_n_en_entend_pas_parler(self):
+        grille = dict(GRILLE_COMPLETE, intrigues=[
+            {"nom": "la voiture", "personnage": "Hakim Oussaid", "enjeu": "e",
+             "scenes": [1, 2, 4], "resolution": "r"}])
+        self.assertNotIn("INTRIGUE SECONDAIRE",
+                         _invite_de_scene(grille, 2))
+
+
+class TestNomsDePersonnages(unittest.TestCase):
+    """Deux personnages d'une meme famille ne sont pas le meme personnage.
+
+    Prendre le premier nom qui partage un mot faisait passer « Lucie Renard »
+    pour « Camille Renard ». Une intrigue secondaire portee par la fille
+    etait donc silencieusement rejetee comme etant celle du protagoniste.
+    """
+
+    CONNUS = ["Camille Renard", "Hakim Oussaid", "Lucie Renard"]
+
+    def test_le_nom_complet_gagne_sur_l_homonyme_partiel(self):
+        self.assertEqual(
+            nouvelle.personnage_officiel("Lucie Renard", self.CONNUS),
+            "Lucie Renard")
+
+    def test_un_prenom_seul_designe_la_bonne_personne(self):
+        self.assertEqual(nouvelle.personnage_officiel("Lucie", self.CONNUS),
+                         "Lucie Renard")
+        self.assertEqual(nouvelle.personnage_officiel("Hakim", self.CONNUS),
+                         "Hakim Oussaid")
+
+    def test_un_inconnu_ne_designe_personne(self):
+        self.assertEqual(nouvelle.personnage_officiel("Vasseur", self.CONNUS), "")
+        self.assertEqual(nouvelle.personnage_officiel("", self.CONNUS), "")
+
+    def test_une_intrigue_de_la_fille_n_est_pas_celle_de_la_mere(self):
+        bible = dict(BIBLE, personnages=BIBLE["personnages"] + [
+            {"nom": "Lucie Renard", "role": "secondaire", "desir": "d",
+             "defaut": "f", "voix": "v"}])
+        gardees = nouvelle._normaliser_intrigues([
+            {"nom": "le depart de Lucie", "personnage": "Lucie Renard",
+             "enjeu": "e", "scenes": [1, 4, 8], "resolution": "r"}],
+            bible, total=12)
+        self.assertEqual(len(gardees), 1)
+        self.assertEqual(gardees[0]["personnage"], "Lucie Renard")
+
+
 class TestFilsDansLInvite(unittest.TestCase):
     """Un fil qui n'atteint pas la scene n'est qu'un JSON de plus.
 
@@ -324,20 +503,7 @@ class TestFilsDansLInvite(unittest.TestCase):
     """
 
     def _invite(self, grille, index):
-        recues = []
-        origine = equipe.REDACTEUR.travailler
-
-        def espion(contexte, invite, **kwargs):
-            recues.append(invite)
-            return origine(contexte, invite, **kwargs)
-
-        equipe.REDACTEUR.travailler = espion
-        try:
-            nouvelle.rediger_scene(_contexte(), BIBLE, grille, index,
-                                   grille["scenes"][index], "memoire")
-        finally:
-            equipe.REDACTEUR.travailler = origine
-        return recues[0]
+        return _invite_de_scene(grille, index)
 
     def test_la_scene_sait_ce_qu_elle_pose_et_ce_qu_elle_paie(self):
         grille = dict(GRILLE_COMPLETE, fils=[

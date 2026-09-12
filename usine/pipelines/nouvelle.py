@@ -215,6 +215,19 @@ def _fils_a_demander(nombre_scenes: int) -> int:
     return max(1, min(10, round(nombre_scenes / 4)))
 
 
+def _intrigues_a_demander(nombre_scenes: int) -> int:
+    """Combien d'intrigues secondaires demander, selon la longueur.
+
+    Une nouvelle n'en a pas, et ce n'est pas un manque : sa force est de
+    n'avoir qu'une ligne. Une intrigue secondaire demande de la place — au
+    moins trois scenes pour exister, sans quoi elle n'est qu'une digression —
+    et chaque scene qu'elle prend, elle la prend a la principale.
+    """
+    if nombre_scenes < 10:
+        return 0
+    return 1 if nombre_scenes < 18 else 2
+
+
 def construire_grille(ctx: Contexte, bible: Dict[str, Any]) -> Dict[str, Any]:
     """Les tournants, les scenes qui les livrent, et ce qui les relie.
 
@@ -250,7 +263,8 @@ def construire_grille(ctx: Contexte, bible: Dict[str, Any]) -> Dict[str, Any]:
         "4. Les ARCS : pour chaque personnage nomme dans la bible, d'ou il "
         "part, dans quelle scene il BASCULE, et ou il arrive. Un personnage "
         "qui finit comme il a commence n'a pas d'arc — et le protagoniste "
-        "doit en avoir un.\n\n"
+        "doit en avoir un.\n"
+        "{intrigues}\n"
         "Schema JSON exact attendu :\n"
         '{{"beats": [{{"nom": "situation", "evenement": "..."}}], '
         '"scenes": [{{"titre": "...", "beat": "situation", "lieu": "...", '
@@ -260,9 +274,15 @@ def construire_grille(ctx: Contexte, bible: Dict[str, Any]) -> Dict[str, Any]:
         '"quoi": "ce que le lecteur voit sans comprendre", '
         '"paiement": "ce que cela revele"}}], '
         '"arcs": [{{"personnage": "...", "depart": "...", "bascule": 14, '
-        '"arrivee": "..."}}]}}'
+        '"arrivee": "..."}}]{schema_intrigues}}}'
     ).format(bible=resumer_bible(bible), fin=bible.get("fin_visee") or "libre",
-             armature=armature, n=total, fils=_fils_a_demander(total))
+             armature=armature, n=total, fils=_fils_a_demander(total),
+             intrigues=_consigne_intrigues(total),
+             schema_intrigues=(
+                 ', "intrigues": [{"nom": "...", "personnage": "...", '
+                 '"enjeu": "...", "scenes": [3, 7, 12, 18], '
+                 '"resolution": "comment elle se termine"}]'
+                 if _intrigues_a_demander(total) else ""))
 
     # Le budget suit la longueur : une grille de vingt-quatre scenes tronquee
     # a mi-chemin est une grille perdue, et l'appel avec elle.
@@ -308,7 +328,27 @@ def construire_grille(ctx: Contexte, bible: Dict[str, Any]) -> Dict[str, Any]:
     grille["fils"] = _normaliser_fils(grille.get("fils"), len(grille["scenes"]))
     grille["arcs"] = _normaliser_arcs(grille.get("arcs"), bible,
                                       len(grille["scenes"]))
+    grille["intrigues"] = _normaliser_intrigues(
+        grille.get("intrigues"), bible, len(grille["scenes"]))
     return grille
+
+
+def _consigne_intrigues(total: int) -> str:
+    """La cinquieme consigne, quand le recit a la place de la porter."""
+    combien = _intrigues_a_demander(total)
+    if not combien:
+        return ""
+    return (
+        "5. Les INTRIGUES SECONDAIRES : {combien}. Une intrigue secondaire "
+        "n'est pas un fil tendu — un fil est une promesse ponctuelle, une "
+        "intrigue est une LIGNE, avec son propre debut, sa complication et "
+        "sa fin. Elle appartient a un personnage autre que le protagoniste, "
+        "et elle doit SE RESOUDRE : une intrigue abandonnee en route est le "
+        "defaut le plus frequent d'un recit long.\n"
+        "   Donne les numeros des scenes qui la portent — au moins trois, "
+        "ETALEES sur le recit et non groupees — et comment elle se termine. "
+        "La derniere scene que tu cites est celle de sa resolution.\n"
+    ).format(combien=("une" if combien == 1 else "{}".format(combien)))
 
 
 def _numero_de_scene(valeur: Any, total: int) -> int:
@@ -358,6 +398,58 @@ def _normaliser_fils(brut: Any, total: int) -> List[Dict[str, Any]]:
     return fils
 
 
+# Une ligne narrative tient sur trois scenes au moins : un debut, une
+# complication, une fin. En dessous, c'est une digression — et l'appeler
+# « intrigue secondaire » ferait croire au controle qu'il en surveille une.
+SCENES_MINIMUM_INTRIGUE = 3
+
+
+def _normaliser_intrigues(brut: Any, bible: Dict[str, Any],
+                          total: int) -> List[Dict[str, Any]]:
+    """Ne garde que les intrigues qui en sont vraiment.
+
+    Trois refus. Une intrigue de moins de trois scenes n'a pas de forme. Une
+    intrigue qui appartient au protagoniste n'est pas secondaire — c'est
+    l'histoire. Une intrigue sans resolution est precisement ce que le
+    controle doit reprocher plus tard : la laisser entrer serait la declarer
+    surveillee alors qu'elle est deja perdue.
+    """
+    heros = protagoniste(bible)
+    noms_connus = [p["nom"] for p in bible["personnages"]]
+    intrigues: List[Dict[str, Any]] = []
+    deja = set()
+    for element in brut or []:
+        if not isinstance(element, dict):
+            continue
+        nom = str(element.get("nom") or "").strip()
+        if not nom or nom.lower() in deja:
+            continue
+        scenes = []
+        for valeur in element.get("scenes") or []:
+            numero = _numero_de_scene(valeur, total)
+            if numero and numero not in scenes:
+                scenes.append(numero)
+        scenes.sort()
+        if len(scenes) < SCENES_MINIMUM_INTRIGUE:
+            continue
+        personnage = str(element.get("personnage") or "").strip()
+        officiel = personnage_officiel(personnage, noms_connus)
+        if officiel == heros:
+            continue
+        resolution = str(element.get("resolution") or "").strip()
+        if not resolution:
+            continue
+        deja.add(nom.lower())
+        intrigues.append({
+            "nom": nom,
+            "personnage": officiel,
+            "enjeu": str(element.get("enjeu") or "").strip(),
+            "scenes": scenes,
+            "resolution": resolution,
+        })
+    return intrigues
+
+
 def _normaliser_arcs(brut: Any, bible: Dict[str, Any],
                      total: int) -> List[Dict[str, Any]]:
     """Un arc par personnage de la bible, au plus. La bible fait foi."""
@@ -368,7 +460,7 @@ def _normaliser_arcs(brut: Any, bible: Dict[str, Any],
         if not isinstance(element, dict):
             continue
         personnage = str(element.get("personnage") or "").strip()
-        officiel = next((n for n in noms if _reconnu(personnage, [n])), "")
+        officiel = personnage_officiel(personnage, noms)
         if not officiel or officiel in deja:
             continue
         depart = str(element.get("depart") or "").strip()
@@ -399,6 +491,28 @@ def _bloc(texte: str) -> str:
 def _normaliser(texte: str) -> str:
     sans_accent = unicodedata.normalize("NFKD", texte)
     return sans_accent.encode("ascii", "ignore").decode("ascii").lower()
+
+
+def personnage_officiel(nom: str, connus: List[str]) -> str:
+    """Le nom de la bible que designe « nom », ou une chaine vide.
+
+    Prendre le PREMIER nom qui partage un mot ne suffit pas : « Lucie
+    Renard » partage « Renard » avec « Camille Renard », et serait donc prise
+    pour sa mere. On retient donc le candidat qui partage le PLUS de mots,
+    ce qui fait gagner le nom complet sur l'homonyme partiel.
+
+    Le defaut se voyait mal : une intrigue secondaire portee par la fille
+    etait silencieusement rejetee comme etant celle du protagoniste.
+    """
+    mots_cible = set(_normaliser(nom).split())
+    if not mots_cible:
+        return ""
+    meilleur, score = "", 0
+    for connu in connus:
+        commun = len(mots_cible & set(_normaliser(connu).split()))
+        if commun > score:
+            meilleur, score = connu, commun
+    return meilleur
 
 
 def _reconnu(nom: str, connus: List[str]) -> bool:
@@ -526,6 +640,39 @@ def _consignes_de_fils(fils: Dict[str, List[Dict]]) -> str:
     return "\n".join(lignes)
 
 
+def intrigue_de_la_scene(grille: Dict[str, Any],
+                         index: int) -> List[Dict[str, Any]]:
+    """Les intrigues secondaires que cette scene fait avancer."""
+    numero = index + 1
+    return [i for i in grille.get("intrigues", []) if numero in i["scenes"]]
+
+
+def _consignes_d_intrigue(grille: Dict[str, Any], index: int) -> str:
+    """L'intrigue secondaire, telle qu'elle entre dans l'invite.
+
+    La scene doit savoir deux choses : qu'elle porte cette ligne, et si c'est
+    ICI qu'elle se termine. Une resolution qui arrive sans que la scene le
+    sache est une resolution qui n'arrive pas.
+    """
+    numero = index + 1
+    lignes = []
+    for intrigue in intrigue_de_la_scene(grille, index):
+        derniere = intrigue["scenes"][-1] == numero
+        role = ("Elle SE RESOUT ici : {}".format(intrigue["resolution"])
+                if derniere else
+                "Fais-la avancer d'un cran, sans la resoudre : elle se "
+                "termine a la scene {}.".format(intrigue["scenes"][-1]))
+        lignes.append(
+            "INTRIGUE SECONDAIRE portee par cette scene — « {nom} »"
+            "{qui} : {enjeu}. {role}".format(
+                nom=intrigue["nom"],
+                qui=" ({})".format(intrigue["personnage"])
+                    if intrigue["personnage"] else "",
+                enjeu=intrigue["enjeu"] or "a toi de la tenir",
+                role=role))
+    return "\n".join(lignes)
+
+
 def _consigne_d_arc(grille: Dict[str, Any], index: int) -> str:
     """La bascule d'un personnage, quand elle tombe dans cette scene."""
     numero = index + 1
@@ -565,6 +712,7 @@ def rediger_scene(ctx: Contexte, bible: Dict[str, Any], grille: Dict[str, Any],
         "OBSTACLE : {obstacle}\n"
         "PIVOT (vrai a la fin, faux au debut) : {pivot}\n"
         "{fils}"
+        "{intrigue}"
         "{arc}"
         "{fin_precedente}"
         "SCENES SUIVANTES (ne les ecris pas, laisse-leur la place) : {reste}\n\n"
@@ -596,6 +744,7 @@ def rediger_scene(ctx: Contexte, bible: Dict[str, Any], grille: Dict[str, Any],
         obstacle=scene["obstacle"] or "libre",
         pivot=scene["pivot"] or "libre",
         fils=_bloc(_consignes_de_fils(fils_de_la_scene(grille, index))),
+        intrigue=_bloc(_consignes_d_intrigue(grille, index)),
         arc=_bloc(_consigne_d_arc(grille, index)),
         fin_precedente=("FIN DE LA SCENE PRECEDENTE (enchaine dessus, ne la "
                         "repete pas) : « ...{} »\n".format(fin_precedente)
@@ -804,7 +953,36 @@ def controler_continuite(bible: Dict[str, Any], grille: Dict[str, Any],
                           "pas".format(arc["personnage"], scenes[rang][0]),
             })
 
-    # -- 8. ce que l'usine n'a pas ecrit, dit une fois et sans detour -------
+    # -- 8. les intrigues secondaires : tenues, ou abandonnees en route -----
+    for intrigue in grille.get("intrigues", []):
+        portantes = [n for n in intrigue["scenes"] if n - 1 < len(scenes)]
+        muettes = [n for n in portantes
+                   if (n - 1 >= len(ecrites) or ecrites[n - 1])
+                   and not _evoque(intrigue["nom"], scenes[n - 1][1])]
+        if not portantes:
+            continue
+        derniere = portantes[-1]
+        redigee = derniere - 1 >= len(ecrites) or ecrites[derniere - 1]
+        if redigee and derniere in muettes:
+            # C'est LE defaut d'un recit long : une ligne ouverte, suivie
+            # quelques scenes, puis laissee tomber sans que rien ne la ferme.
+            anomalies.append({
+                "genre": "intrigue_abandonnee",
+                "gravite": "majeur",
+                "detail": "l'intrigue « {} » devait se resoudre dans « {} », "
+                          "qui n'en dit rien".format(intrigue["nom"],
+                                                     scenes[derniere - 1][0]),
+            })
+        autres = [n for n in muettes if n != derniere]
+        if autres:
+            anomalies.append({
+                "genre": "intrigue_muette",
+                "gravite": "mineur",
+                "detail": "l'intrigue « {} » est annoncee dans {} scene(s) qui "
+                          "n'en parlent pas".format(intrigue["nom"], len(autres)),
+            })
+
+    # -- 9. ce que l'usine n'a pas ecrit, dit une fois et sans detour -------
     manquantes = [titre for (titre, _), ecrite in zip(scenes, ecrites)
                   if not ecrite]
     if manquantes:

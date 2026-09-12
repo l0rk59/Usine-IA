@@ -507,11 +507,29 @@ def simulateur(messages, role):
             {"personnage": "Hakim Oussaid", "depart": "applique le reglement",
              "bascule": max(1, n // 2), "arrivee": "assume une decision"},
         ]
+        # Intrigues secondaires : seulement quand le recit a la place. Leur
+        # nom reprend des mots que « _texte_scene » emploie, comme les fils :
+        # le controle verifie que la scene de resolution en PARLE.
+        intrigues = []
+        if n >= 10:
+            combien = 1 if n < 18 else 2
+            for rang in range(combien):
+                debut = 2 + rang
+                pas = max(2, (n - debut) // 3)
+                portantes = [min(n, debut + pas * etape) for etape in range(3)]
+                intrigues.append({
+                    "nom": ["la voiture de Lucie", "la porte du hangar"][rang],
+                    "personnage": ["Lucie Renard", "Hakim Oussaid"][rang],
+                    "enjeu": "ce qui se joue a cote de l'histoire {}".format(rang),
+                    "scenes": sorted(set(portantes)),
+                    "resolution": "elle se termine par un depart {}".format(rang),
+                })
         return json.dumps({
             "beats": [{"nom": nom, "evenement": "Evenement du beat {}".format(nom)}
                       for nom in beats],
             "fils": fils,
             "arcs": arcs,
+            "intrigues": intrigues,
             "scenes": [
                 {"titre": "Scene modele {}".format(i + 1),
                  # Les trois tournants indispensables sont places aux bons

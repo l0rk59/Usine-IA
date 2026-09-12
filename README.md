@@ -832,7 +832,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         710 tests + test de fumée, aucun appel réseau
+tests/         725 tests + test de fumée, aucun appel réseau
                un atelier temporaire par module (tests/atelier.py)
 install.sh     installation Termux
 ```
@@ -845,7 +845,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 710 tests
+python3 -m unittest discover -s tests -t .   # 725 tests
 python3 scripts/dependances.py               # zéro dépendance
 python3 tests/fumee.py                       # les 10 chaînes via la vraie CLI
 ```
@@ -955,9 +955,10 @@ sait pas faire, et ce qu'on peut y ajouter — est dans
   atteignable** (`--chapitres 24 --mots 3500`) : la mémoire passe en mode
   hiérarchique dès la treizième scène — des parties closes, figées une fois
   pour toutes, plus l'état de la partie en cours. Ce qui manque encore à un
-  roman n'est plus la mémoire ni la trame, mais les **intrigues
-  secondaires** : une ligne narrative parallèle qui s'entrelace avec la
-  principale.
+  roman n'est plus structurel : mémoire hiérarchique, fils tendus, arcs et
+  **intrigues secondaires** sont là, et le contrôle sait dire qu'une ligne a
+  été abandonnée en route. Ce qui manque est du jugement — savoir si
+  l'histoire vaut la peine d'être lue — et aucun outil ne sait le faire.
 - **Sécurité : oui, du côté contenu — pas d'outillage.** Guides, checklists de
   durcissement, politiques types, sensibilisation : ce sont des produits que
   les chaînes existantes savent déjà fabriquer. L'usine ne fournit aucun outil

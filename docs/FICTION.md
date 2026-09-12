@@ -166,6 +166,35 @@ tel « arc » est écarté plutôt que noté — le noter ferait mentir le contr
 Tout cela vient dans **le même appel** que la grille : la structure ne coûte
 pas un appel de plus.
 
+### 5. Les intrigues secondaires
+
+Un fil tendu est un **point** : posé ici, payé là. Une intrigue secondaire est
+une **ligne** — un début, une complication, une fin — portée par un
+personnage *autre que le protagoniste*, entrelacée avec l'histoire principale.
+
+```json
+{"nom": "le départ de Lucie", "personnage": "Lucie Renard",
+ "enjeu": "elle a un train à prendre et personne ne le sait",
+ "scenes": [3, 9, 16, 21], "resolution": "elle part sans prévenir"}
+```
+
+Une nouvelle n'en reçoit **aucune**, et ce n'est pas un manque : sa force est
+de n'avoir qu'une ligne. Le seuil est à dix scènes — une intrigue demande au
+moins trois scènes pour exister, et chaque scène qu'elle prend, elle la prend
+à l'histoire principale.
+
+Trois refus à l'entrée, et chacun dit ce qu'une intrigue *est* :
+
+| Refusé | Pourquoi |
+|---|---|
+| moins de trois scènes | c'est une digression, pas une ligne |
+| portée par le protagoniste | c'est l'histoire, pas une ligne à côté |
+| sans résolution déclarée | la laisser entrer la déclarerait surveillée alors qu'elle est déjà perdue |
+
+Chaque scène concernée sait deux choses : qu'elle porte cette ligne, et si
+c'est **ici** qu'elle se termine. Une résolution qui arrive sans que la scène
+le sache est une résolution qui n'arrive pas.
+
 ## Le contrôle de continuité
 
 Déterministe, gratuit, instantané — comme le contrôle qualité des guides, et
@@ -183,6 +212,8 @@ jugement d'un modèle.
 | un fil que la scène où il est posé ne mentionne pas | le lecteur ne peut pas remarquer ce qui n'est pas là |
 | un protagoniste sans arc | il traverse l'histoire sans changer |
 | une bascule dans une scène où le personnage n'apparaît pas | il change hors champ |
+| une intrigue secondaire dont la scène de résolution ne parle pas | **ouverte, suivie, puis laissée tomber** — le défaut le plus fréquent d'un récit long |
+| une scène annoncée comme portant une intrigue et qui n'en dit rien | elle ne l'a pas tuée, elle ne l'a pas fait avancer *(mineur)* |
 
 Le contrôle des fils mérite d'être décrit, parce qu'il va plus loin que les
 autres : il ne se contente pas de relire la grille, il **relit la prose**. Un
@@ -262,12 +293,16 @@ tendus**), et un **arc par personnage** avec sa scène de bascule — voir §4.
 Les deux entrent dans l'invite de chaque scène et sont vérifiés contre la
 prose produite.
 
-Reste les **intrigues secondaires** : un second fil narratif qui s'entrelace
-avec le principal, avec ses propres beats et sa propre résolution. C'est
-différent d'un fil tendu, qui est une promesse ponctuelle. Il faudrait que la
-grille sache porter plusieurs lignes parallèles et que les scènes alternent
-entre elles — et surtout un contrôle qui sache dire qu'une intrigue
-secondaire a été abandonnée en route, ce qui est le défaut le plus fréquent.
+Les **intrigues secondaires** suivent (§5) : la grille porte des lignes
+parallèles, les scènes savent laquelle elles avancent, et le contrôle sait
+dire qu'une a été abandonnée en route.
+
+Reste donc, pour un roman, ce qui n'est plus un problème de structure mais de
+**jugement** : savoir si l'histoire vaut la peine d'être lue. Le contrôle
+vérifie qu'un récit se tient, jamais qu'il touche — et aucun outil ne sait
+faire la seconde chose. Un roman qui sort d'ici est un premier jet structuré,
+avec sa continuité tenue et ses promesses payées. Il demande la même
+relecture humaine qu'un manuscrit.
 
 ## Ce qui change pour le fichier livré
 
