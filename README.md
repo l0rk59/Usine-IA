@@ -29,6 +29,7 @@ python3 -m usine      # sans le raccourci dans le PATH
 | Coupure réseau totale | Repli sur **IA locale** (ollama / llama.cpp) |
 | Pas de CDN hors ligne | Moteur **3D WebGL écrit à la main**, zéro bibliothèque |
 | Clavier virtuel pénible | **Menu interactif** : tout se fait avec des numéros |
+| Android endort Termux, la batterie se vide | **Verrou de veille** pendant la fabrication, **notification** quand c'est prêt, arrêt sous 20 % |
 
 ---
 
@@ -578,11 +579,18 @@ aucun sens.
 verrou PID empêche deux usines simultanées, et un verrou laissé par un
 processus tué est détecté comme orphelin puis nettoyé.
 
+**Le téléphone reste un téléphone.** L'usine prend le verrou de veille pour
+qu'Android ne l'endorme pas, previent par **notification** quand un produit
+sort — la taper ouvre le PDF — et **s'arrête au-dessus de 20 % de batterie**
+plutôt que de vider l'appareil. Le seuil se règle, et rien de tout cela n'est
+obligatoire : hors de Termux, ou sans `termux-api`, l'usine se comporte
+exactement comme avant.
+
 En `--auto`, quand la file se vide, l'usine explore de nouvelles niches à
 partir des sujets qui ont donné vos meilleures notes. Sans historique, elle le
 dit et s'arrête plutôt que d'inventer.
 
-Détails et recette Termux (`termux-wake-lock`, `nohup`) :
+Détails et recette Termux (`nohup`, batterie, notifications) :
 [docs/USINE-CONTINUE.md](docs/USINE-CONTINUE.md).
 
 ## L'équipe d'agents

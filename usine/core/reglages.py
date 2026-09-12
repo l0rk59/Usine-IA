@@ -26,7 +26,6 @@ DEFAUTS: Dict[str, Any] = {
     "images": True,
     "couverture": "atelier",       # atelier (composee localement) | ia
     "qualite": "standard",        # rapide | standard | exigeant
-    "relectures": 1,              # passages de revision par l'agent editeur
     "theme": "nuit",              # nuit | jour
     "effets_3d": True,
     "jeton_web": "",              # protege le tableau de bord si renseigne
@@ -37,6 +36,10 @@ DEFAUTS: Dict[str, Any] = {
     "budget_produits_jour": 3,
     "budget_minutes_produit": 45,
     "pause_entre_produits": 60,   # secondes, laisse les quotas par minute respirer
+    # --- le telephone comme machine (termux-api, tout est facultatif) ---
+    "notifications": True,        # notification Android quand un produit sort
+    "batterie_minimum": 20,       # % sous lequel l'usine continue s'arrete (0 = jamais)
+    "verrou_veille": True,        # empeche Android d'endormir une fabrication
 }
 
 DESCRIPTIONS: Dict[str, str] = {
@@ -52,7 +55,6 @@ DESCRIPTIONS: Dict[str, str] = {
     "devise": "Devise des prix conseilles",
     "images": "Generer les couvertures et visuels (oui/non)",
     "qualite": "rapide (1 passe) | standard (relecture) | exigeant (2 relectures)",
-    "relectures": "Nombre de passages de revision par l'agent editeur",
     "theme": "Theme du tableau de bord : nuit ou jour",
     "effets_3d": "Animations 3D du tableau de bord (desactivez sur vieux telephone)",
     "jeton_web": "Mot de passe du tableau de bord (vide = acces local libre)",
@@ -63,6 +65,12 @@ DESCRIPTIONS: Dict[str, str] = {
                             "(produire n'est pas publier : voir docs/VENDRE.md)",
     "budget_minutes_produit": "Duree maximum d'un produit, en minutes",
     "pause_entre_produits": "Pause entre deux produits, en secondes",
+    "notifications": "Notification Android quand un produit est pret "
+                     "(demande termux-api)",
+    "batterie_minimum": "Niveau de batterie sous lequel l'usine continue "
+                        "s'arrete, en % (0 = jamais)",
+    "verrou_veille": "Empecher Android d'endormir le telephone pendant une "
+                     "fabrication",
 }
 
 QUALITES = {

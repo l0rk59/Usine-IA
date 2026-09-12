@@ -264,6 +264,19 @@ $('docteur-lancer').addEventListener('click', async () => {
   const espace = d.espace.connu
     ? ligne(d.espace.libre_mo > 200, `Espace libre : ${d.espace.libre_mo} Mo`)
     : '';
+  /* Le telephone : muet sur un PC, ou ces lignes n'apprendraient rien. */
+  const tel = d.telephone || {};
+  let telephone = '';
+  if (tel.termux) {
+    telephone = ligne(tel.api, tel.api
+      ? 'termux-api present : notifications et garde batterie actives'
+      : 'termux-api absent : ni notification, ni arret sur batterie faible');
+    if (tel.batterie) {
+      telephone += ligne(tel.batterie.niveau > 20 || tel.batterie.en_charge,
+        `Batterie : ${tel.batterie.niveau} %`
+        + (tel.batterie.en_charge ? ' (en charge)' : ''));
+    }
+  }
   $('docteur').innerHTML =
     `<div class="verdict-bloc ${d.verdict.etat === 'bloque' ? '' : 'gagnant'}">
        <strong>${echapper(d.verdict.etat)}</strong>
@@ -273,6 +286,7 @@ $('docteur-lancer').addEventListener('click', async () => {
     + ligne(d.env_present, d.env_present ? 'Fichier .env present'
         : 'Aucun fichier .env — lancez « usine cles »')
     + espace
+    + telephone
     + ligne(d.reseau, d.reseau ? 'Reseau disponible'
         : 'Reseau indisponible — seule l\'IA locale fonctionnera')
     + ligne(d.node, d.node ? 'Node.js present : verification complete du JavaScript'

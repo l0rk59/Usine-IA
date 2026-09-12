@@ -8,7 +8,11 @@ Trois contraintes ont dicte la conception, toutes liees a Android :
   2. les quotas gratuits sont limites — donc le budget est verifie avant
      chaque produit et avant chaque appel ;
   3. l'utilisateur veut pouvoir interrompre proprement — donc Ctrl+C termine
-     le produit en cours au lieu de l'abandonner a moitie ecrit.
+     le produit en cours au lieu de l'abandonner a moitie ecrit ;
+  4. le telephone sert aussi a autre chose — donc l'usine prend le verrou de
+     veille pour ne pas etre endormie, previent par notification quand un
+     produit sort, et s'arrete avant de vider la batterie. Tout cela passe
+     par « core.telephone », et ne fait rien du tout hors de Termux.
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from .core import (apprentissage, budget, config, empreinte, evenements,
-                   file, llm, reglages, store)
+                   file, llm, reglages, store, telephone)
 from .pipelines import catalogue, idees
 from .pipelines.base import Contexte
 
@@ -225,6 +229,11 @@ class UsineContinue:
         self.compteur = budget.Compteur()
         self.pause = (reglages.lire("pause_entre_produits", 60)
                       if pause is None else pause)
+        self.batterie_minimum = int(reglages.lire("batterie_minimum", 0) or 0)
+        self.notifications = bool(reglages.lire("notifications", True))
+        self.veille = bool(reglages.lire("verrou_veille", True))
+        self._veille_prise = False
+        self.arret_batterie = False
         self.arret_demande = False
         self.arret_immediat = False
         self.debut = time.time()
@@ -275,6 +284,34 @@ class UsineContinue:
         evenements.publier("usine", **{k: v for k, v in etat.items()
                                        if k in ("courant", "nombre_faits",
                                                 "budget", "file", "motif_fin")})
+
+    # -- notifications Android ----------------------------------------------
+    def _fichier_a_montrer(self, resume: Dict[str, Any]) -> Optional[Path]:
+        """Ce que la notification ouvre quand on la tape.
+
+        Le PDF d'abord : c'est le fichier qu'on regarde pour juger un produit.
+        A defaut l'EPUB, puis le dossier lui-meme.
+
+        La liste vient du resume de fabrication, dans l'ordre ou les fichiers
+        ont ete ecrits — le document principal d'abord, ses annexes ensuite.
+        Un simple glob trie ne donne pas cet ordre : « guide-annexe.pdf »
+        passe AVANT « guide.pdf », le tiret triant avant le point.
+        """
+        dossier = resume.get("dossier") or ""
+        if not dossier:
+            return None
+        noms = resume.get("fichiers") or []
+        for extension in (".pdf", ".epub", ".html"):
+            nom = next((n for n in noms if n.endswith(extension)), "")
+            if nom and (Path(dossier) / nom).exists():
+                return Path(dossier) / nom
+        return Path(dossier) if Path(dossier).exists() else None
+
+    def _notifier(self, titre: str, contenu: str = "",
+                  ouvrir: Optional[Path] = None, urgente: bool = False) -> None:
+        """Previent le telephone. Sans termux-api, ne fait rien et ne coute rien."""
+        if self.notifications:
+            telephone.notifier(titre, contenu, ouvrir=ouvrir, urgente=urgente)
 
     # -- remplissage automatique -------------------------------------------
     def _remplir(self) -> int:
@@ -350,6 +387,12 @@ class UsineContinue:
             resume.get("titre", entree["sujet"]),
             " — note {}/10".format(resume["note"]) if resume.get("note") else "",
             time.time() - debut))
+        self._notifier(
+            "Produit {} pret".format(len(self.faits)),
+            "{}{}".format(
+                resume.get("titre", entree["sujet"])[:70],
+                " — note {}/10".format(resume["note"]) if resume.get("note") else ""),
+            ouvrir=self._fichier_a_montrer(resume))
         return True
 
     # -- boucle principale ---------------------------------------------------
@@ -364,6 +407,13 @@ class UsineContinue:
         (config.WORKDIR / "usine.stop").unlink(missing_ok=True)
         _poser_verrou()
         self._installer_signaux()
+
+        # Sans ce verrou, Android suspend Termux quelques minutes apres
+        # l'extinction de l'ecran : la fabrication s'arrete en plein chapitre.
+        self._veille_prise = telephone.verrou_veille(True) if self.veille else False
+        if self._veille_prise:
+            self.journal("Veille bloquee pendant la session "
+                         "(relachee a la fin).")
 
         orphelines = file.liberer_orphelins()
         if orphelines:
@@ -391,6 +441,13 @@ class UsineContinue:
                 if self.maximum and len(self.faits) >= self.maximum:
                     self.motif_fin = "{} produit(s) demandes, tous livres".format(
                         self.maximum)
+                    break
+
+                faible = telephone.batterie_trop_faible(self.batterie_minimum)
+                if faible:
+                    self.motif_fin = faible
+                    self.arret_batterie = True
+                    self.journal(faible)
                     break
 
                 refus = self.compteur.peut_demarrer_produit()
@@ -429,6 +486,8 @@ class UsineContinue:
             budget.brancher(None)
             self._publier()
             _lever_verrou()
+            if self._veille_prise:
+                telephone.verrou_veille(False)
 
         self._bilan()
         return code
@@ -444,6 +503,11 @@ class UsineContinue:
 
     def _bilan(self) -> None:
         duree = (time.time() - self.debut) / 60
+        self._notifier(
+            "Usine arretee — {} produit(s)".format(len(self.faits)),
+            self.motif_fin or "fin de session",
+            # Une batterie a plat demande un geste ; « file vide » non.
+            urgente=self.arret_batterie)
         self.journal("")
         self.journal("Session terminee : {} produit(s) en {:.0f} min — {}".format(
             len(self.faits), duree, self.motif_fin or "fin"))

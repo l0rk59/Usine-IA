@@ -34,6 +34,25 @@ relecture par un **autre modèle** que l'auteur.
 | `effets_3d` | jamais lu : la 3D tournait toujours | coupe la scène 3D **et** le fond animé (vieux téléphone) |
 | `signature_ia` | la mention IA de la licence était figée | active/retire le bloc TRANSPARENCE de la licence livrée |
 
+## Un quatrième réglage orphelin, trouvé par un test
+
+L'audit avait débranché trois réglages à la main. La leçon a été transformée
+en **test** (`tests/test_connexions.py`) : il relit le code source et échoue
+si le nom d'un réglage n'apparaît nulle part ailleurs que dans sa propre
+déclaration.
+
+Il en a immédiatement trouvé un quatrième, que la revue manuelle avait
+manqué : **`relectures`**. Affiché dans le menu et dans `usine reglages`,
+converti, enregistré sur disque — et jamais lu. `Contexte.nb_passes` déduit
+tout de `qualite` (rapide 0, standard 1, exigeant 2).
+
+Il a été **retiré**, pas branché, et la raison mérite d'être écrite : le
+brancher aurait appliqué la valeur déjà enregistrée chez les utilisateurs
+existants — `1` — y compris en qualité *exigeant*, dont les deux relectures
+seraient silencieusement tombées à une. Un réglage redondant retiré ne coûte
+rien ; une dégradation invisible de la qualité, si. Les clés inconnues étant
+ignorées au chargement, les fichiers existants ne bronchent pas.
+
 ## Installation & dépendances
 
 - **Plancher Python** : `install.sh` exigeait 3.8, l'intégration continue
@@ -51,6 +70,9 @@ relecture par un **autre modèle** que l'auteur.
   throttling à l'aveugle.
 - **Quelques utilitaires sans appelant** (`inventaire`, `env_int`,
   `nb_abonnes`…) : du code mort inoffensif, laissé pour éviter du brassage.
+  La règle vaut pour ce qui existait ; le code **ajouté** depuis n'en profite
+  pas — `core/telephone.py` a été écrit avec `termux-open` et `termux-share`,
+  puis réduit à ce qui a un appelant avant d'être livré.
 - **Types de produits manquants** : la fiction (roman, nouvelle) reste le
   grand chantier documenté dans [EXTENSIONS.md](EXTENSIONS.md) — une chaîne
   distincte, pas une variante d'ebook.

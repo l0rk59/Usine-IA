@@ -130,14 +130,14 @@ s'arrête plutôt que d'inventer.
 
 ## Sur Termux
 
-Android suspend les applications en arrière-plan. Pour une session longue :
+Android suspend les applications en arrière-plan. L'usine prend donc
+elle-même le **verrou de veille** au démarrage de la session et le relâche à
+la fin — y compris après un `Ctrl+C`. Il n'y a plus rien à taper autour :
 
 ```bash
-termux-wake-lock
 nohup usine usine demarrer --max 5 > ~/usine.log 2>&1 &
 usine usine statut          # suivre depuis un autre onglet
 tail -f ~/usine.log
-termux-wake-unlock          # une fois terminé
 ```
 
 Ajoutez aussi Termux aux applications non optimisées :
@@ -146,15 +146,33 @@ Ajoutez aussi Termux aux applications non optimisées :
 Si l'usine est tuée malgré tout, relancez la même commande : la file reprend,
 et le cache restitue ce qui avait déjà été généré sans reconsommer un appel.
 
+### La batterie, et savoir que c'est prêt
+
+Avec `termux-api` installé (paquet **et** application Termux:API — voir
+[TERMUX.md](TERMUX.md)), deux choses changent pour une session qui dure :
+
+- **l'usine s'arrête sous 20 % de batterie**, entre deux produits, la file
+  intacte. Une usine qui tourne jusqu'à l'extinction laisse un produit à
+  moitié écrit et un téléphone mort. Un téléphone **en charge** ne déclenche
+  rien : son niveau monte ;
+- **une notification** annonce chaque produit livré, puis la fin de session.
+  La taper ouvre le PDF. Les notifications se remplacent l'une l'autre :
+  dix produits laissent une ligne dans le volet, pas dix.
+
+Sans `termux-api`, aucune des deux ne se produit et rien ne casse.
+
 ## Réglages utiles
 
 | Réglage | Défaut | Effet |
 |---|---|---|
 | `budget_appels_jour` | 250 | plafond global sur 24 h |
 | `budget_appels_produit` | 80 | plafond par produit |
-| `budget_produits_jour` | 4 | nombre de produits par jour |
+| `budget_produits_jour` | 3 | nombre de produits par jour |
 | `budget_minutes_produit` | 45 | durée maximum d'un produit |
 | `pause_entre_produits` | 60 | secondes entre deux produits, pour laisser respirer les quotas par minute |
+| `batterie_minimum` | 20 | % de batterie sous lequel la session s'arrête (0 = jamais) |
+| `notifications` | oui | notification Android à chaque produit livré |
+| `verrou_veille` | oui | empêche Android d'endormir la fabrication |
 
 ## Depuis le téléphone
 

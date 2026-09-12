@@ -226,9 +226,10 @@ class TestReglages(unittest.TestCase):
         reglages.reinitialiser()
 
     def test_conversion_des_types(self):
-        reglages.ecrire({"images": "non", "relectures": "3", "auteur": "  Zoe  "})
+        reglages.ecrire({"images": "non", "batterie_minimum": "35",
+                         "auteur": "  Zoe  "})
         self.assertIs(reglages.lire("images"), False)
-        self.assertEqual(reglages.lire("relectures"), 3)
+        self.assertEqual(reglages.lire("batterie_minimum"), 35)
         self.assertEqual(reglages.lire("auteur"), "Zoe")
 
     def test_les_cles_inconnues_sont_ignorees(self):

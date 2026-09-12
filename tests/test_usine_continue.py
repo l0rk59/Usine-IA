@@ -10,6 +10,7 @@ import sys
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
@@ -21,7 +22,10 @@ from tests.simulateur import simulateur  # noqa: E402
 
 BASE = dict(images=False, qualite="rapide", pause_entre_produits=0,
             budget_appels_jour=0, budget_appels_produit=0,
-            budget_produits_jour=0, budget_minutes_produit=0)
+            budget_produits_jour=0, budget_minutes_produit=0,
+            # Le pont telephone est simule test par test : par defaut, la
+            # suite tourne comme sur une machine sans Termux.
+            notifications=False, verrou_veille=False, batterie_minimum=0)
 
 
 def setUpModule():
@@ -276,6 +280,191 @@ class TestUsineContinue(unittest.TestCase):
     def test_etat_illisible_ne_casse_rien(self):
         production.chemin_etat().write_text("{ pas du json", encoding="utf-8")
         self.assertEqual(production.lire_etat(), {})
+
+
+class FauxTelephone:
+    """Un telephone qui note ce qu'on lui demande, sans Termux sous la main."""
+
+    def __init__(self, motifs=None):
+        self.motifs = list(motifs or [])
+        self.planchers = []
+        self.notifications = []
+        self.verrous = []
+
+    def batterie_trop_faible(self, plancher):
+        self.planchers.append(plancher)
+        return self.motifs.pop(0) if self.motifs else ""
+
+    def notifier(self, titre, contenu="", ouvrir=None, urgente=False):
+        self.notifications.append({"titre": titre, "contenu": contenu,
+                                   "ouvrir": ouvrir, "urgente": urgente})
+        return True
+
+    def verrou_veille(self, actif):
+        self.verrous.append(actif)
+        return True
+
+
+class TestTelephonePendantLaProduction(unittest.TestCase):
+    """L'usine tourne des heures sur un telephone : elle doit le menager.
+
+    Ces trois comportements ne se voient que dans la boucle : le module
+    « core.telephone » se teste a part, ici on verifie qu'il est APPELE, au
+    bon moment, et avec les reglages de l'utilisateur.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        llm.definir_simulateur(simulateur)
+
+    @classmethod
+    def tearDownClass(cls):
+        llm.definir_simulateur(None)
+
+    def setUp(self):
+        _remettre_a_zero()
+
+    def _tourner(self, faux, **profil):
+        if profil:
+            reglages.ecrire(dict(BASE, **profil))
+        moteur = production.UsineContinue(journal=lambda m: None, pause=0)
+        with mock.patch.object(production, "telephone", faux):
+            moteur.tourner()
+        return moteur
+
+    # -- batterie ---------------------------------------------------------
+    def test_batterie_faible_arrete_avant_le_premier_produit(self):
+        for i in range(2):
+            file.ajouter("sujet {}".format(i), "ebook", options={"taille": "mini"})
+        faux = FauxTelephone(motifs=["batterie a 9 % (plancher 20 %)"])
+        moteur = self._tourner(faux, batterie_minimum=20)
+        self.assertEqual(len(moteur.faits), 0)
+        self.assertIn("batterie", moteur.motif_fin)
+        self.assertEqual(file.compter()["en_attente"], 2,
+                         "les niches doivent rester en file, intactes")
+
+    def test_batterie_relue_entre_chaque_produit(self):
+        """Elle se vide PENDANT la session : une seule lecture ne suffit pas."""
+        for i in range(3):
+            file.ajouter("sujet {}".format(i), "ebook", options={"taille": "mini"})
+        faux = FauxTelephone(motifs=["", "batterie a 11 % (plancher 20 %)"])
+        moteur = self._tourner(faux, batterie_minimum=20)
+        self.assertEqual(len(moteur.faits), 1,
+                         "le produit en cours va au bout, le suivant ne demarre pas")
+        self.assertEqual(file.compter()["en_attente"], 2)
+
+    def test_le_plancher_regle_est_celui_transmis(self):
+        file.ajouter("sujet", "ebook", options={"taille": "mini"})
+        faux = FauxTelephone()
+        self._tourner(faux, batterie_minimum=35)
+        self.assertEqual(faux.planchers[0], 35)
+
+    def test_plancher_zero_laisse_tourner(self):
+        file.ajouter("sujet", "ebook", options={"taille": "mini"})
+        faux = FauxTelephone(motifs=["batterie a 2 %"])
+        # Le garde-fou coupe est transmis tel quel : c'est « core.telephone »
+        # qui refuse alors de lire la batterie, pas la boucle.
+        moteur = self._tourner(faux, batterie_minimum=0)
+        self.assertEqual(faux.planchers[0], 0)
+        self.assertEqual(len(moteur.faits), 0)  # le faux repond quand meme
+
+    # -- notifications -----------------------------------------------------
+    def test_une_notification_par_produit_et_une_en_fin_de_session(self):
+        for i in range(2):
+            file.ajouter("sujet {}".format(i), "ebook", options={"taille": "mini"})
+        faux = FauxTelephone()
+        moteur = self._tourner(faux, notifications=True)
+        self.assertEqual(len(moteur.faits), 2)
+        self.assertEqual(len(faux.notifications), 3)
+        self.assertIn("Produit 1", faux.notifications[0]["titre"])
+        self.assertIn("Produit 2", faux.notifications[1]["titre"])
+        self.assertIn("2 produit(s)", faux.notifications[-1]["titre"])
+
+    def test_la_notification_ouvre_le_pdf_du_produit(self):
+        file.ajouter("sujet", "ebook", options={"taille": "mini"})
+        faux = FauxTelephone()
+        self._tourner(faux, notifications=True)
+        ouvrir = faux.notifications[0]["ouvrir"]
+        self.assertIsNotNone(ouvrir)
+        self.assertEqual(ouvrir.suffix, ".pdf")
+        self.assertTrue(ouvrir.exists())
+
+    def test_la_notification_vise_le_document_principal(self):
+        """Une annexe ne doit pas passer devant le livre.
+
+        « guide-annexe.pdf » trie AVANT « guide.pdf » — le tiret trie avant
+        le point. Lister le dossier designerait donc l'annexe. L'ordre du
+        resume de fabrication, lui, met le document principal en tete.
+        """
+        dossier = config.WORKDIR / "produit-annexe"
+        dossier.mkdir(exist_ok=True)
+        for nom in ("guide.pdf", "guide-annexe.pdf", "guide.epub"):
+            (dossier / nom).write_bytes(b"%PDF-1.4")
+        moteur = production.UsineContinue(journal=lambda m: None, pause=0)
+        vise = moteur._fichier_a_montrer(
+            {"dossier": str(dossier),
+             "fichiers": ["guide.pdf", "guide-annexe.pdf", "guide.epub"]})
+        self.assertEqual(vise.name, "guide.pdf")
+
+    def test_sans_pdf_la_notification_se_rabat_proprement(self):
+        dossier = config.WORKDIR / "produit-sans-pdf"
+        dossier.mkdir(exist_ok=True)
+        (dossier / "livre.epub").write_bytes(b"PK")
+        moteur = production.UsineContinue(journal=lambda m: None, pause=0)
+        self.assertEqual(
+            moteur._fichier_a_montrer({"dossier": str(dossier),
+                                       "fichiers": ["livre.epub"]}).name,
+            "livre.epub")
+        # Un nom annonce mais absent du disque ne doit pas donner un chemin
+        # mort a la notification : on retombe sur le dossier.
+        self.assertEqual(
+            moteur._fichier_a_montrer({"dossier": str(dossier),
+                                       "fichiers": ["disparu.pdf"]}), dossier)
+        self.assertIsNone(moteur._fichier_a_montrer({"fichiers": ["x.pdf"]}))
+
+    def test_seule_la_batterie_donne_une_notification_prioritaire(self):
+        """« file vide » n'est pas une urgence ; un telephone a plat, si."""
+        file.ajouter("sujet", "ebook", options={"taille": "mini"})
+        faux = FauxTelephone()
+        self._tourner(faux, notifications=True)
+        self.assertFalse(faux.notifications[-1]["urgente"])
+
+        _remettre_a_zero()
+        file.ajouter("sujet", "ebook", options={"taille": "mini"})
+        faux = FauxTelephone(motifs=["batterie a 5 %"])
+        self._tourner(faux, notifications=True, batterie_minimum=20)
+        self.assertTrue(faux.notifications[-1]["urgente"])
+
+    def test_reglage_a_non_coupe_toutes_les_notifications(self):
+        file.ajouter("sujet", "ebook", options={"taille": "mini"})
+        faux = FauxTelephone()
+        self._tourner(faux, notifications=False)
+        self.assertEqual(faux.notifications, [])
+
+    # -- verrou de veille --------------------------------------------------
+    def test_verrou_de_veille_pris_puis_relache(self):
+        file.ajouter("sujet", "ebook", options={"taille": "mini"})
+        faux = FauxTelephone()
+        self._tourner(faux, verrou_veille=True)
+        self.assertEqual(faux.verrous, [True, False],
+                         "pris au demarrage, relache a la fin — jamais oublie")
+
+    def test_verrou_relache_meme_apres_une_interruption(self):
+        file.ajouter("sujet", "ebook", options={"taille": "mini"})
+        reglages.ecrire(dict(BASE, verrou_veille=True))
+        faux = FauxTelephone()
+        moteur = production.UsineContinue(journal=lambda m: None, pause=0)
+        moteur._fabriquer = mock.Mock(side_effect=KeyboardInterrupt)
+        with mock.patch.object(production, "telephone", faux):
+            self.assertEqual(moteur.tourner(), 130)
+        self.assertEqual(faux.verrous, [True, False],
+                         "un Ctrl+C ne doit pas laisser le telephone eveille")
+
+    def test_verrou_non_demande_n_est_pas_pris(self):
+        file.ajouter("sujet", "ebook", options={"taille": "mini"})
+        faux = FauxTelephone()
+        self._tourner(faux, verrou_veille=False)
+        self.assertEqual(faux.verrous, [])
 
 
 if __name__ == "__main__":

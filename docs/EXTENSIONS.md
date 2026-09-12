@@ -251,22 +251,38 @@ pour qu'un résumé roulant suffise, assez longue pour prouver la continuité.
 
 ## 5. Termux et le navigateur local
 
-L'intégration Termux est aujourd'hui **documentaire** : `termux-open` et
-`termux-wake-lock` sont *conseillés dans le texte*, jamais appelés. Or
-`termux-api` expose exactement ce qui manque à une usine qui tourne des
-heures sur un téléphone verrouillé.
+L'intégration Termux était **documentaire** : `termux-open` et
+`termux-wake-lock` étaient *conseillés dans le texte*, jamais appelés. Elle
+est maintenant branchée, dans `core/telephone.py`.
 
-| Appel | Ce que ça change |
-|---|---|
-| `termux-notification` | savoir qu'un produit est prêt sans regarder le terminal. **Le plus utile de la liste.** |
-| `termux-battery-status` | l'usine continue s'arrête sous X % au lieu de vider le téléphone |
-| `termux-wake-lock` | pris automatiquement pendant une longue fabrication, relâché après |
-| `termux-share` | envoyer le ZIP vers Drive, un courriel ou Telegram sans chercher le fichier |
-| `termux-open` | ouvrir le PDF produit, au lieu d'afficher son chemin |
+| Appel | Ce que ça change | État |
+|---|---|:-:|
+| `termux-notification` | savoir qu'un produit est prêt sans regarder le terminal | ✅ |
+| `termux-battery-status` | l'usine continue s'arrête sous X % au lieu de vider le téléphone | ✅ |
+| `termux-wake-lock` | pris automatiquement pendant une fabrication, relâché après | ✅ |
+| `termux-open` | ouvrir le PDF produit, au lieu d'afficher son chemin | ✅ *(en tapant la notification)* |
+| `termux-share` | envoyer le ZIP vers Drive, un courriel ou Telegram | ❌ |
 
 Tous se comportent pareil quand `termux-api` n'est pas installé : le binaire
 est absent, on l'ignore. Aucune dépendance ajoutée — ce qui est la contrainte
 fondatrice.
+
+Deux choix méritent d'être notés, parce qu'ils ne se devinent pas :
+
+- **la batterie se lit entre deux produits**, jamais pendant. C'est le seul
+  point d'arrêt propre : couper au milieu d'un chapitre laisserait un dossier
+  à moitié écrit, ce que le reste de la conception s'acharne à éviter ;
+- **un délai d'attente sur chaque appel**. Le paquet `termux-api` installe les
+  commandes, mais elles dialoguent avec l'application Termux:API, à installer
+  séparément. Paquet sans application, `termux-battery-status` ne rend jamais
+  la main : sans délai, l'usine se figerait avant son premier produit, sans
+  rien dire. C'est le pire mode de panne, et il coûtait une ligne à éviter.
+
+Reste ouvert : `termux-share`, pour envoyer une archive livrable vers Drive ou
+un courriel sans chercher le fichier. Il lui faut un point d'entrée — une
+action de plus dans l'écran **Mes produits** du menu — et pas seulement une
+fonction : `core/telephone.py` ne contient que ce qui a un appelant, pour ne
+pas rouvrir le tiroir de code mort que l'audit vient de refermer.
 
 ### Côté navigateur
 
@@ -291,7 +307,10 @@ certains moteurs). Ce qui reste ouvert et utile :
    diagnostic gagne l'**espace disque libre** : un téléphone se remplit, et
    une fabrication qui s'arrête faute de place ne dit pas pourquoi.
 2. ~~**Le domaine `securite`** dans le garde-fou des sujets.~~ **Fait.**
-3. **Les notifications Termux**, plus la coupure sur batterie faible.
+3. ~~**Les notifications Termux**, plus la coupure sur batterie faible.~~
+   **Fait.** Voir §5 : `core/telephone.py`, trois réglages (`notifications`,
+   `batterie_minimum`, `verrou_veille`), et l'état de `termux-api` remonté
+   dans `usine docteur` comme au tableau de bord.
 4. **L'appareil liminaire des ebooks** et la validation EPUBCheck.
 5. **La chaîne `nouvelle`** — la fiction par le format le plus court, pour
    éprouver la continuité avant d'attaquer le roman.

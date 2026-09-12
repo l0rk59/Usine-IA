@@ -73,19 +73,46 @@ USINE_HOME=/sdcard/Usine-IA
 
 ---
 
-## Empêcher Android de tuer la fabrication
+## Le téléphone comme machine
 
-Un ebook long prend 10 à 20 minutes. Android peut suspendre Termux pendant ce
-temps s'il est en arrière-plan.
+Installez `termux-api` — le paquet **et** l'application :
 
 ```bash
-termux-wake-lock       # avant de lancer une longue fabrication
-usine ebook "..." -T long
-termux-wake-unlock     # après
+pkg install termux-api
 ```
+
+L'application **Termux:API** s'installe à part, depuis
+[F-Droid](https://f-droid.org/packages/com.termux.api/), comme Termux. Le
+paquet seul ne suffit pas : les commandes attendraient une application qui
+n'existe pas. L'usine s'en protège par un délai d'attente, mais vous n'auriez
+ni notification ni garde batterie.
+
+Ce que l'usine en fait, sans rien demander :
+
+| Quand | Ce qui se passe |
+|---|---|
+| Pendant une fabrication | **Verrou de veille** pris, relâché à la fin : Android n'endort plus Termux en plein chapitre |
+| Quand un produit sort | **Notification** Android — la taper ouvre le PDF |
+| Batterie sous 20 % | L'usine continue **s'arrête** entre deux produits, la file intacte, et le dit dans une notification prioritaire |
+| Téléphone en charge | Rien ne s'arrête : le niveau monte |
+
+Trois réglages commandent tout cela :
+
+```bash
+usine reglages --definir notifications=non        # silence complet
+usine reglages --definir batterie_minimum=35      # arrêt plus tôt
+usine reglages --definir batterie_minimum=0       # jamais d'arrêt batterie
+usine reglages --definir verrou_veille=non        # laisser Android décider
+```
+
+`usine docteur` affiche l'état de `termux-api` et le niveau de batterie.
 
 Ajoutez aussi Termux à la liste des applications non optimisées :
 *Paramètres → Applications → Termux → Batterie → Sans restriction*.
+
+**Sans `termux-api`**, rien de tout cela n'existe et rien ne casse : l'usine
+produit exactement comme avant. C'est la contrainte fondatrice du projet —
+zéro dépendance, rien d'obligatoire.
 
 Si la fabrication est quand même interrompue, relancez exactement la même
 commande : le cache restitue tout ce qui avait déjà été généré, sans

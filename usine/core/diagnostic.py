@@ -13,7 +13,7 @@ import shutil
 import sys
 from typing import Any, Dict, List
 
-from . import config, llm, store
+from . import config, llm, store, telephone
 from . import cles as pool_cles
 from . import verification
 
@@ -66,6 +66,7 @@ def etat_installation(avec_reseau: bool = True,
         "env_present": config.ENV_PATH.exists(),
         "node": verification.node_disponible(),
         "espace": _espace_libre(),
+        "telephone": telephone.etat(),
         "fournisseurs": fournisseurs,
         "distants_prets": len(distants),
         "pool": pool_cles.resume(),

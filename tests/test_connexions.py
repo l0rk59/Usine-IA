@@ -91,6 +91,48 @@ class TestAgentsRelies(unittest.TestCase):
                     "l'agent {} n'est presque jamais reference".format(nom))
 
 
+class TestReglagesTousBranches(unittest.TestCase):
+    """Un reglage propose a l'utilisateur doit piloter quelque chose.
+
+    L'audit en avait trouve trois qui ne pilotaient rien — theme, effets_3d,
+    signature_ia : affiches dans les trois interfaces, modifiables,
+    enregistres sur disque, et lus par personne. Le defaut ne se voit pas,
+    il s'accumule, et il trahit l'utilisateur en silence : il croit avoir
+    regle quelque chose.
+
+    Ce test relit le code source. Un reglage dont le nom n'apparait nulle
+    part ailleurs que dans sa propre declaration n'est branche a rien. Il a
+    immediatement trouve un quatrieme orphelin, « relectures », que l'audit
+    avait manque : « qualite » decide seule du nombre de passes, et le
+    reglage a donc ete retire plutot que branche — le brancher aurait
+    silencieusement ramene a 1 les deux relectures du mode exigeant chez
+    tous ceux qui avaient deja enregistre leurs reglages.
+    """
+
+    # Ce que le nom d'un reglage peut traverser avant d'agir.
+    EXTENSIONS = (".py", ".js", ".html")
+
+    def test_aucun_reglage_orphelin(self):
+        from usine.core import reglages as module_reglages
+
+        sources = [chemin for chemin in (RACINE / "usine").rglob("*")
+                   if chemin.suffix in self.EXTENSIONS
+                   and chemin.name != "reglages.py"]
+        textes = [chemin.read_text(encoding="utf-8") for chemin in sources]
+        orphelins = [
+            nom for nom in module_reglages.DEFAUTS
+            # Un reglage se lit par son nom, entre guillemets : « lire("x") »,
+            # « profil["x"] », « d.x » cote navigateur. Chercher le mot nu
+            # ferait passer « marque » pour branche des qu'un commentaire
+            # parle de marque.
+            if not any('"{}"'.format(nom) in texte or "'{}'".format(nom) in texte
+                       for texte in textes)
+        ]
+        self.assertEqual(orphelins, [],
+                         "reglage(s) affiche(s) mais lu(s) par personne : "
+                         "les brancher, ou les retirer")
+
+
 class TestSignatureIA(unittest.TestCase):
     """Le réglage « signature_ia » doit décider de la mention dans la licence."""
 

@@ -18,7 +18,8 @@ from .core import apprentissage, budget, config, experience, images
 from .core import file as file_prod
 from .core import llm, marche
 from .core import prompts as registre_prompts
-from .core import empreinte, reglages, securite, store, ventes, verification
+from .core import empreinte, reglages, securite, store, telephone, ventes
+from .core import verification
 from .core.http import en_ligne
 from .marketing import vente
 from .packaging import livraison
@@ -167,11 +168,15 @@ def _resume_console(resume: Dict[str, Any]) -> None:
         print("    - " + nom)
     if resume.get("archive"):
         print("  Archive : " + resume["archive"])
+    a_ouvrir = next(
+        (Path(resume["dossier"]) / n for n in resume.get("fichiers", [])
+         if n.endswith(".pdf")), Path(resume["dossier"]))
     print("\n  Ouvrir sur Termux : " + _c(
-        "termux-open '{}'".format(
-            next((str(Path(resume["dossier"]) / n) for n in resume.get("fichiers", [])
-                  if n.endswith(".pdf")), resume["dossier"])
-        ), "2"))
+        "termux-open '{}'".format(a_ouvrir), "2"))
+    # Une fabrication dure 10 a 20 minutes : personne ne regarde le terminal
+    # pendant ce temps. La notification est ce qui rappelle le telephone.
+    if reglages.lire("notifications", True):
+        telephone.notifier("Produit pret", resume["titre"][:70], ouvrir=a_ouvrir)
 
 
 def cmd_ebook(args: argparse.Namespace) -> int:
@@ -1518,6 +1523,21 @@ def cmd_docteur(args: argparse.Namespace) -> int:
                              "indisponible — seule l'IA locale fonctionnera")
     )
 
+    # Le telephone n'est un sujet que sur un telephone : sur un PC, ces
+    # lignes n'apprendraient rien a personne.
+    tel = etat["telephone"]
+    if tel["termux"]:
+        if tel["api"]:
+            ok("termux-api present : notifications et garde batterie actives")
+        else:
+            alerte("termux-api absent : ni notification de fin, ni arret sur "
+                   "batterie faible (pkg install termux-api)")
+        if tel["batterie"]:
+            niveau = tel["batterie"]["niveau"]
+            (ok if niveau > 20 or tel["batterie"]["en_charge"] else alerte)(
+                "Batterie : {} %{}".format(
+                    niveau, " (en charge)" if tel["batterie"]["en_charge"] else ""))
+
     # Node n'est pas requis pour produire, mais son absence affaiblit la
     # verification du JavaScript genere : le repli structurel ne voit pas une
     # erreur de syntaxe fine.
@@ -1998,6 +2018,17 @@ def construire_parseur() -> argparse.ArgumentParser:
     return parseur
 
 
+def _fabrication(commande: str) -> bool:
+    """Cette commande fabrique-t-elle un produit (donc : longue) ?
+
+    Lu du catalogue plutot que recopie : un type ajoute demain prendra le
+    verrou de veille sans qu'on y pense.
+    """
+    if not reglages.lire("verrou_veille", True):
+        return False
+    return commande in set(catalogue.cles()) | {"complet"}
+
+
 def principal(argv: Optional[List[str]] = None) -> int:
     config.load_env()
     config.ensure_dirs()
@@ -2014,7 +2045,11 @@ def principal(argv: Optional[List[str]] = None) -> int:
         parseur.print_help()
         return 0
     try:
-        return args.fonction(args)
+        # Android suspend Termux quelques minutes apres l'extinction de
+        # l'ecran. Une fabrication de 15 minutes n'y survit pas : le verrou
+        # de veille est pris pour elle seule, et relache a la sortie.
+        with telephone.veille_maintenue(_fabrication(args.commande)):
+            return args.fonction(args)
     except KeyboardInterrupt:
         print()
         alerte("Interrompu. Le travail deja produit est conserve dans " +
