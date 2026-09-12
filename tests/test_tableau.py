@@ -505,6 +505,34 @@ class TestTeleversement(BaseServeur):
         self.assertEqual(statut, 400)
         self.assertIn("vide", refus["erreur"])
 
+    @staticmethod
+    def _lire_reponse(prise) -> str:
+        """Lit la reponse ENTIERE, corps compris.
+
+        Un seul recv() rend ce que la pile TCP a sous la main : souvent les
+        en-tetes seuls, le corps arrivant dans le segment suivant. Le test
+        qui affirmait sur le corps passait donc la plupart du temps et
+        echouait au hasard — le pire des tests, parce qu'on finit par le
+        croire casse alors qu'il dit vrai.
+        """
+        prise.settimeout(5)
+        donnees = b""
+        while True:
+            try:
+                morceau = prise.recv(4096)
+            except socket.timeout:
+                break
+            if not morceau:
+                break
+            donnees += morceau
+            entetes, separateur, corps = donnees.partition(b"\r\n\r\n")
+            if not separateur:
+                continue
+            annonce = re.search(rb"[Cc]ontent-[Ll]ength:\s*(\d+)", entetes)
+            if annonce is None or len(corps) >= int(annonce.group(1)):
+                break
+        return donnees.decode("utf-8", "replace")
+
     def test_une_taille_annoncee_hors_limite_est_refusee_sans_rien_lire(self):
         """Le plafond est verifie AVANT de lire le corps.
 
@@ -520,7 +548,7 @@ class TestTeleversement(BaseServeur):
                 "Content-Type: application/zip\r\n"
                 "Content-Length: {}\r\n\r\n".format(annonce)).encode())
             # Pas un seul octet de corps : la reponse doit venir quand meme.
-            reponse = prise.recv(4096).decode("utf-8", "replace")
+            reponse = self._lire_reponse(prise)
         finally:
             prise.close()
         self.assertIn("413", reponse.splitlines()[0])
@@ -538,7 +566,7 @@ class TestTeleversement(BaseServeur):
                 "Content-Length: {}\r\n\r\n".format(len(octets)).encode()))
             prise.sendall(octets[:len(octets) // 3])
             prise.shutdown(socket.SHUT_WR)
-            reponse = prise.recv(4096).decode("utf-8", "replace")
+            reponse = self._lire_reponse(prise)
         finally:
             prise.close()
         self.assertIn("400", reponse.splitlines()[0])

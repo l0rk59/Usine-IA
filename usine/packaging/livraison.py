@@ -41,6 +41,11 @@ artificielle, puis structure et mis en forme par Usine-IA. Relisez et
 adaptez le contenu a votre contexte avant toute diffusion commerciale.
 """
 
+# Version d'une ligne de la mention ci-dessus, pour la page de copyright de
+# l'EPUB : une page de droits est un bloc dense et court, pas un paragraphe.
+MENTION_IA_COURTE = ("Ouvrage elabore avec l'assistance d'outils "
+                     "d'intelligence artificielle.")
+
 NOTICE = """# {titre}
 
 {promesse}

@@ -133,6 +133,7 @@ class Contexte:
     auteur: str = "Usine-IA"
     prix: str = ""
     marque: str = ""
+    dedicace: str = ""            # page liminaire de l'EPUB, omise si vide
     hors_ligne: bool = False
     sans_image: bool = False
     qualite: str = "standard"

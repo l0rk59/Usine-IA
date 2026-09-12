@@ -81,6 +81,7 @@ def contexte_depuis(args: argparse.Namespace) -> Contexte:
         mots_section=int(getattr(args, "mots", 0) or 0),
         prix=getattr(args, "prix", "") or "",
         marque=getattr(args, "marque", "") or profil.get("marque", ""),
+        dedicace=getattr(args, "dedicace", "") or "",
         hors_ligne=args.hors_ligne,
         sans_image=args.sans_image or args.hors_ligne or not profil.get("images", True),
         journal=lambda message: print("  " + message),
@@ -1724,6 +1725,8 @@ def _options_communes(sous: argparse.ArgumentParser, avec_sujet: bool = True) ->
     sous.add_argument("--langue", default="", help="langue de redaction")
     sous.add_argument("--marque", default="", help="nom de votre marque")
     sous.add_argument("--prix", default="", help="prix affiche, ex: 29 EUR")
+    sous.add_argument("--dedicace", default="",
+                      help="page de dedicace de l'EPUB, ex: \"Pour Julie\"")
     sous.add_argument("--contact", default="", help="e-mail de support dans la notice")
     sous.add_argument("-q", "--qualite", default="",
                       choices=["", "rapide", "standard", "exigeant"],

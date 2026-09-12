@@ -760,12 +760,21 @@ refait quand la base a changé.
 └──────────────────────────────────────────────┘
      │
      ├──► PDF    (moteur maison, sommaire, images)
-     ├──► EPUB 3 (+ toc.ncx pour les vieilles liseuses)
+     ├──► EPUB 3 (page de titre, copyright, dédicace, sommaire — puis contrôlé)
      ├──► HTML   (responsive, thème clair/sombre, imprimable)
      ├──► CSV / JSON / Markdown / TXT
      ├──► couverture PNG + SVG (composée localement, sans filigrane)
      └──► kit de vente + archive ZIP
 ```
+
+**L'EPUB est contrôlé avant d'être livré.** EPUBCheck est l'outil de
+référence et ne tournera jamais ici — c'est un programme Java. Les contrôles
+structurels qu'il applique sont donc refaits en Python : `mimetype` en
+première entrée non compressée, conteneur qui désigne un OPF présent, chaque
+fichier du manifeste présent dans l'archive, chaque entrée du dos déclarée,
+document de navigation porteur de sa table des matières, XML bien formé
+partout. Un EPUB cassé ne se voit pas : l'archive s'ouvre, et c'est le
+distributeur qui le refuse trois semaines plus tard.
 
 Trois mécanismes rendent la production fiable sur un forfait mobile :
 
@@ -801,7 +810,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         496 tests + test de fumée, aucun appel réseau
+tests/         569 tests + test de fumée, aucun appel réseau
                un atelier temporaire par module (tests/atelier.py)
 install.sh     installation Termux
 ```
@@ -814,7 +823,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 496 tests
+python3 -m unittest discover -s tests -t .   # 569 tests
 python3 scripts/dependances.py               # zéro dépendance
 python3 tests/fumee.py                       # les 9 chaînes via la vraie CLI
 ```

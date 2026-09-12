@@ -45,6 +45,13 @@ code { font-family: 'Courier New', monospace; font-size: .9em; }
 .page-titre .sous-titre { font-size: 1.15em; color: #475569; font-style: italic; }
 .page-titre .auteur { margin-top: 3.2em; color: #64748b; letter-spacing: .06em; }
 img.couverture { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+.droits { font-size: .88em; color: #3f4653; text-align: left; margin-top: 12%;
+          page-break-after: always; }
+.droits p { margin: 0 0 .7em; }
+.droits .oeuvre { font-weight: bold; color: #16181d; }
+.droits .identifiant { font-size: .82em; color: #64748b; word-wrap: break-word; }
+.dedicace { text-align: center; margin-top: 32%; font-style: italic;
+            color: #3f4653; page-break-after: always; }
 """
 
 GABARIT_XHTML = """<?xml version="1.0" encoding="utf-8"?>
@@ -114,6 +121,45 @@ def metadonnees_accessibilite(avec_image: bool) -> str:
     return "".join(morceaux)
 
 
+MOIS = ("janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet",
+        "aout", "septembre", "octobre", "novembre", "decembre")
+
+
+def page_droits(titre: str, auteur: str, editeur: str, identifiant: str,
+                horodatage: str, mentions: Sequence[str] = ()) -> str:
+    """Page de copyright — ce qui manque le plus visiblement a un livre fait maison.
+
+    Amazon KDP attend un appareil liminaire dans cet ordre : page de titre,
+    page de copyright, dedicace eventuelle, table des matieres. Un livre sans
+    page de copyright se repere au premier coup d'oeil, et c'est la premiere
+    chose qu'un lecteur habitue regarde apres le titre.
+
+    Le texte est en francais, comme « Sommaire » et le reste du mobilier de
+    l'EPUB : l'usine n'a pas de couche de traduction, et en inventer une pour
+    six lignes serait promettre un multilingue qu'elle ne tient pas ailleurs.
+    """
+    annee = horodatage[:4]
+    try:
+        mois = MOIS[int(horodatage[5:7]) - 1]
+    except (ValueError, IndexError):
+        mois = ""
+    lignes = ['<p class="oeuvre">{}</p>'.format(_xml(titre))]
+    lignes.append("<p>&#169; {} {}</p>".format(annee, _xml(auteur or "Usine-IA")))
+    lignes.append("<p>Tous droits reserves. Aucune partie de cet ouvrage ne "
+                  "peut etre reproduite ou diffusee sans l'autorisation "
+                  "ecrite de l'auteur.</p>")
+    if editeur and editeur != auteur:
+        lignes.append("<p>Edite par {}</p>".format(_xml(editeur)))
+    lignes.append("<p>Premiere edition : {}</p>".format(
+        "{} {}".format(mois, annee) if mois else annee))
+    for mention in mentions:
+        if mention:
+            lignes.append("<p>{}</p>".format(_xml(mention)))
+    lignes.append('<p class="identifiant">Identifiant de la publication : '
+                  "{}</p>".format(_xml(identifiant)))
+    return '<div class="droits">{}</div>'.format("".join(lignes))
+
+
 def construire_epub(
     chemin: Path,
     titre: str,
@@ -124,11 +170,21 @@ def construire_epub(
     description: str = "",
     couverture: Optional[Tuple[str, bytes]] = None,
     editeur: str = "",
+    mentions: Sequence[str] = (),
+    dedicace: str = "",
 ) -> Path:
     """Assemble un EPUB.
 
     chapitres : suite de (titre, fragment HTML deja rendu).
     couverture : (nom de fichier, octets) — JPEG ou PNG.
+    mentions   : lignes ajoutees a la page de copyright (mention d'assistance
+                 IA, contact, numero d'edition...).
+    dedicace   : texte de la page de dedicace, omise si vide.
+
+    L'ordre des pages liminaires est celui qu'attend Amazon KDP : couverture,
+    page de titre, page de copyright, dedicace, table des matieres, puis le
+    texte. Ce n'est pas un detail de presentation — c'est a cet ordre qu'un
+    lecteur reconnait un livre edite d'un fichier bricole.
     """
     identifiant = "urn:uuid:{}".format(uuid.uuid4())
     # Horodatage reel. Il etait fige a « 2026-01-01T00:00:00Z » pour tous les
@@ -186,6 +242,29 @@ def construire_epub(
             GABARIT_XHTML.format(langue=langue, titre=_xml(titre), corps="".join(page_titre)),
         )
         fichiers.append(("titre", "titre.xhtml", "application/xhtml+xml"))
+
+        # Page de copyright : attendue par les plateformes, et absente de
+        # tout livre fait maison. Elle porte l'identifiant unique de la
+        # publication, qui n'apparaissait jusqu'ici que dans les metadonnees.
+        z.writestr(
+            "OEBPS/droits.xhtml",
+            GABARIT_XHTML.format(
+                langue=langue, titre=_xml(titre),
+                corps=page_droits(titre, auteur, editeur, identifiant,
+                                  horodatage, mentions)),
+        )
+        fichiers.append(("droits", "droits.xhtml", "application/xhtml+xml"))
+
+        if dedicace:
+            z.writestr(
+                "OEBPS/dedicace.xhtml",
+                GABARIT_XHTML.format(
+                    langue=langue, titre=_xml(titre),
+                    corps='<div class="dedicace">{}</div>'.format(
+                        _xml(dedicace))),
+            )
+            fichiers.append(("dedicace", "dedicace.xhtml",
+                             "application/xhtml+xml"))
 
         entrees_nav: List[Tuple[str, str]] = []
         for index, (titre_chapitre, corps_html) in enumerate(chapitres, 1):
@@ -246,6 +325,9 @@ def construire_epub(
         if nom_couverture:
             colonne.append('<itemref idref="couverture"/>')
         colonne.append('<itemref idref="titre"/>')
+        colonne.append('<itemref idref="droits"/>')
+        if dedicace:
+            colonne.append('<itemref idref="dedicace"/>')
         colonne.append('<itemref idref="nav"/>')
         colonne.extend(
             '<itemref idref="{}"/>'.format(ident)

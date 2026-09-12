@@ -113,11 +113,19 @@ titres de chapitres doivent être de **vrais styles de titre** — c'est ce qui
 engendre la table des matières de l'ebook — et chaque chapitre commence par
 un saut de page, jamais par des paragraphes vides.
 
-L'usine produit déjà des titres structurés et une table des matières. Il
-manque la **page de copyright**, la dédicace, et la validation
-[EPUBCheck](https://reedsy.com/studio/resources/how-many-words-in-a-novel/)
-avant livraison. Un roman sans page de copyright se repère au premier coup
-d'œil.
+**Fait.** L'EPUB porte maintenant l'appareil liminaire complet, dans l'ordre
+attendu : couverture, page de titre, **page de copyright**, dédicace
+(`--dedicace`), table des matières, puis le texte. La page de copyright porte
+l'année, l'auteur, l'éditeur quand il diffère, la date d'édition,
+l'identifiant unique de la publication et la mention d'assistance IA quand le
+réglage `signature_ia` est actif.
+
+La validation avant livraison est faite, mais **pas par EPUBCheck** : c'est un
+programme Java, qui ne tournera jamais sur Termux. Les contrôles structurels
+qu'il applique sont refaits en Python dans `render/epub_conformite.py`, et le
+rapport dit lui-même ce qu'il ne couvre pas (schémas XSD, vocabulaire complet
+des propriétés, liens internes) plutôt que de laisser croire à une validation
+complète.
 
 ---
 
@@ -201,10 +209,8 @@ marché retire ce qu'elle juge être de l'outillage offensif.
 Classé par rapport entre ce que ça apporte et ce que ça coûte.
 
 ### `ebook` — guides
-- **Page de copyright et appareil liminaire** (attendu par KDP, absent
-  aujourd'hui). Petit, visible.
-- **Validation EPUBCheck** avant livraison — l'usine vérifie déjà la
-  structure de l'archive, pas sa conformité.
+- ~~**Page de copyright et appareil liminaire**~~ **Fait.** Voir §2.
+- ~~**Validation EPUBCheck** avant livraison~~ **Fait**, en Python : voir §2.
 - **Éditions déclinées** : le même livre en « version courte » offerte pour
   capter des adresses, et en version complète payante.
 
@@ -311,7 +317,11 @@ certains moteurs). Ce qui reste ouvert et utile :
    **Fait.** Voir §5 : `core/telephone.py`, trois réglages (`notifications`,
    `batterie_minimum`, `verrou_veille`), et l'état de `termux-api` remonté
    dans `usine docteur` comme au tableau de bord.
-4. **L'appareil liminaire des ebooks** et la validation EPUBCheck.
+4. ~~**L'appareil liminaire des ebooks** et la validation EPUBCheck.~~
+   **Fait.** Page de copyright et dédicace dans l'EPUB ; contrôle structurel
+   en Python plutôt qu'EPUBCheck, qui demanderait Java. 16 des tests du
+   contrôle cassent volontairement un EPUB valide — un contrôle qui ne sait
+   rien refuser ne prouve rien.
 5. **La chaîne `nouvelle`** — la fiction par le format le plus court, pour
    éprouver la continuité avant d'attaquer le roman.
 *(L'ancien item « profil audit local » est retiré : la direction outillage de

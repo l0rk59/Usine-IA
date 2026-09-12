@@ -23,6 +23,7 @@ from ..core import images
 from . import tableur
 from . import document as D
 from .epub import construire_epub
+from .epub_conformite import verifier_epub
 from .page import ecrire_page
 from .pdf import A4, DocumentPDF
 
@@ -89,6 +90,19 @@ class Produit:
         from ..pipelines.base import slug
 
         return self.nom_fichier or slug(self.titre, 46)
+
+
+def _mentions_droits() -> List[str]:
+    """Lignes ajoutees a la page de copyright de l'EPUB.
+
+    La mention d'assistance IA suit le meme reglage que celle de la licence
+    livree : deux endroits ou l'utilisateur l'attendrait ne doivent pas
+    repondre differemment a la meme case a cocher.
+    """
+    from ..core import reglages
+    from ..packaging.livraison import MENTION_IA_COURTE
+
+    return [MENTION_IA_COURTE] if reglages.lire("signature_ia", True) else []
 
 
 def livrer(ctx: Any, produit: Produit) -> List[Path]:
@@ -176,7 +190,16 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
              for bloc, blocs_md in blocs_texte],
             langue=langue, sous_titre=produit.sous_titre,
             description=produit.promesse, couverture=image,
-            editeur=getattr(ctx, "marque", "") or "")
+            editeur=getattr(ctx, "marque", "") or "",
+            mentions=_mentions_droits(),
+            dedicace=getattr(ctx, "dedicace", "") or "")
+        # Un EPUB casse ne se voit pas : l'archive s'ouvre, le fichier part
+        # chez le distributeur, et c'est lui qui le refuse. Le controle est
+        # instantane et sans reseau — il n'y a aucune raison de le sauter.
+        rapport = verifier_epub(chemin)
+        ctx.meta["epub"] = rapport.en_donnees()
+        if not rapport.conforme:
+            ctx.journal("EPUB : {}".format(rapport.resume()))
         fichiers.append(chemin)
 
     # --- HTML ---------------------------------------------------------------
