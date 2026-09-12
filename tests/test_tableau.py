@@ -975,6 +975,23 @@ class TestDocteur(BaseServeur):
         self.assertIn("series", etat)
         self.assertIn("Les rails", etat["series"])
 
+    def test_les_reglages_peuvent_etre_enregistres_depuis_la_page(self):
+        """La route existait et personne ne l'appelait : le tableau de bord
+        affichait les reglages sans pouvoir les changer, et il fallait
+        ressortir vers la ligne de commande pour retaper un nom d'auteur."""
+        _, corps = self.appeler(
+            "/api/reglages",
+            corps={"auteur": "Une autrice", "qualite": "exigeant"})
+        retour = json.loads(corps)
+        self.assertEqual(retour["reglages"]["auteur"], "Une autrice")
+        self.assertEqual(retour["reglages"]["qualite"], "exigeant")
+
+        page = self.appeler("/")[1].decode("utf-8")
+        self.assertIn('id="retenir"', page)
+        script = (RACINE / "usine" / "web" / "statique" / "app.js").read_text(
+            encoding="utf-8")
+        self.assertIn("'/api/reglages'", script)
+
     def test_le_formulaire_porte_le_champ_serie(self):
         """Une option qui n'est pas dans la page n'existe pas pour qui
         produit depuis un navigateur."""

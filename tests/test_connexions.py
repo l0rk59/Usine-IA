@@ -92,6 +92,74 @@ class TestAgentsRelies(unittest.TestCase):
                     "l'agent {} n'est presque jamais reference".format(nom))
 
 
+class TestEvenementsEtRoutesConsommes(unittest.TestCase):
+    """Publier sans destinataire, servir sans appelant : deux orphelins.
+
+    Les deux se ressemblent et coutent la meme chose. L'evenement
+    « tronquee » etait publie a chaque reponse coupee au plafond de jetons —
+    « le defaut le plus couteux du routeur », disait le commentaire qui
+    l'avait introduit — et aucune interface ne l'affichait. La route
+    « /api/reglages » etait servie et appelee par personne : le tableau de
+    bord montrait les reglages sans pouvoir les changer.
+    """
+
+    @staticmethod
+    def _page():
+        return ((RACINE / "usine" / "web" / "statique" / "app.js").read_text(
+            encoding="utf-8")
+            + (RACINE / "usine" / "web" / "statique" / "tableau.html").read_text(
+                encoding="utf-8"))
+
+    def test_chaque_evenement_publie_a_une_branche_dans_la_page(self):
+        import re
+
+        code = "\n".join(f.read_text(encoding="utf-8")
+                         for f in (RACINE / "usine").rglob("*.py"))
+        publies = sorted(set(re.findall(r'evenements\.publier\(\s*"(\w+)"', code)))
+        self.assertTrue(publies)
+        page = self._page()
+        for genre in publies:
+            with self.subTest(evenement=genre):
+                self.assertIn(
+                    "'{}'".format(genre), page,
+                    "l'evenement « {} » est publie et affiche nulle part"
+                    .format(genre))
+
+    @classmethod
+    def _routes_appelees(cls):
+        """URLs que la page DEMANDE vraiment, pas celles qu'elle mentionne.
+
+        Une premiere version cherchait la route n'importe ou dans le fichier,
+        et se satisfaisait du commentaire qui expliquait justement qu'elle
+        n'etait appelee par personne. Seuls comptent les appels : « fetch »
+        et « EventSource ».
+        """
+        import re
+
+        return set(re.findall(
+            r"(?:fetch|EventSource)\(\s*[`'\"]([^`'\"?]+)", cls._page()))
+
+    def test_chaque_route_servie_est_appelee_par_la_page(self):
+        import re
+
+        serveur = (RACINE / "usine" / "web" / "serveur.py").read_text(
+            encoding="utf-8")
+        routes = sorted(set(re.findall(
+            r'chemin (?:==|\.startswith\()\s*"(/api/[\w/-]*)"', serveur)))
+        self.assertTrue(routes)
+        appelees = self._routes_appelees()
+        self.assertTrue(appelees)
+        for route in routes:
+            # Une route a segment variable — « /api/ab/<numero> » — est
+            # appelee par son prefixe, concatene au numero cote page.
+            trouvee = any(appelee.startswith(route) or route.startswith(appelee)
+                          for appelee in appelees)
+            with self.subTest(route=route):
+                self.assertTrue(
+                    trouvee,
+                    "« {} » est servie et appelee par personne".format(route))
+
+
 class TestDocumentationAtteignable(unittest.TestCase):
     """Une note que rien ne reference est une note que personne ne lit.
 

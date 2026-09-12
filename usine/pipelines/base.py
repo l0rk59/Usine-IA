@@ -342,6 +342,19 @@ def _verifier_doublon(ctx: Contexte, type_produit: str, fichiers: List[Path],
 def terminer(ctx: Contexte, fichiers: List[Path], meta: Optional[Dict[str, Any]] = None,
              type_produit: str = "") -> None:
     infos = dict(meta or {})
+    # Une reponse coupee au plafond de jetons traverse toute la fabrication
+    # sans rien casser : le texte est la, il s'arrete juste avant sa fin. Le
+    # routeur le detecte et refuse de la mettre en cache ; c'est ici qu'on le
+    # DIT, sur la fiche du produit livre, pour les dix chaines a la fois.
+    tronquees = (ctx.meta or {}).get("tronquees") or []
+    if tronquees:
+        infos["tronquees"] = len(tronquees)
+        infos["tronquees_detail"] = tronquees[:8]
+        ctx.journal(
+            "[!] {} reponse(s) coupees au plafond de jetons : le texte "
+            "correspondant s'arrete avant sa fin. Reduisez --mots, ou "
+            "relancez : le passage coupe n'a pas ete mis en cache."
+            .format(len(tronquees)))
     produit_avant = store.lire_produit(ctx.produit_id) or {}
     genre = type_produit or produit_avant.get("type", "inconnu")
     doublon = _verifier_doublon(ctx, genre, fichiers,

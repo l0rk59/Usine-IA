@@ -515,6 +515,17 @@ function traiter(evenement) {
       $('qualite-resume').textContent =
         `Derniere relecture : ${evenement.note}/10 (passe ${evenement.passe})`;
     }
+  } else if (evenement.type === 'tronquee') {
+    // Publie depuis toujours, affiche par personne : une reponse coupee au
+    // plafond passait pour une reponse complete jusque chez l'acheteur.
+    ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
+      `reponse coupee au plafond (${echapper(evenement.fournisseur)}, ` +
+      `${evenement.plafond} jetons) : le texte s'arrete avant sa fin`, 'souci');
+  } else if (evenement.type === 'controle') {
+    ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
+      `controle « ${echapper(evenement.intitule)} » : ${evenement.note}/10, ` +
+      `${evenement.anomalies} anomalie(s)`,
+      evenement.bloquantes ? 'souci' : '');
   } else if (evenement.type === 'alerte') {
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
       `domaine sensible : ${echapper(evenement.domaine)}`, 'souci');
@@ -557,6 +568,29 @@ async function sonder() {
 }
 
 /* ------------------------------------------------------------- interactions */
+// « /api/reglages » etait servi et appele par personne : le tableau de bord
+// affichait les reglages sans pouvoir les changer, et il fallait ressortir
+// vers la ligne de commande pour retaper un nom d'auteur. Retenir ce qu'on
+// vient de saisir est le geste qui manquait, et le seul qui manquait.
+$('retenir').addEventListener('click', async () => {
+  const choix = {
+    auteur: $('auteur').value.trim(),
+    audience: $('audience').value.trim(),
+    ton: $('ton').value === '__libre__' ? $('ton-libre').value.trim() : $('ton').value,
+    qualite: $('qualite').value,
+  };
+  if ($('taille').value !== '__libre__') choix.taille = $('taille').value;
+  const reponse = await fetch('/api/reglages', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(choix),
+  });
+  const donnees = await reponse.json();
+  const temoin = $('retenu');
+  temoin.textContent = donnees.reglages ? 'enregistre' : 'echec';
+  temoin.hidden = false;
+  setTimeout(() => { temoin.hidden = true; }, 2500);
+});
+
 function remplirSeries(noms) {
   const liste = $('series-connues');
   if (!liste) return;

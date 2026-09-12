@@ -18,9 +18,12 @@ sys.path.insert(0, str(RACINE))
 
 from tests import atelier  # noqa: E402
 from tests.simulateur import simulateur  # noqa: E402
+from unittest import mock  # noqa: E402
+
+from usine.agents import base as base_agents  # noqa: E402
 from usine.agents import equipe  # noqa: E402
 from usine.agents.base import Critique  # noqa: E402
-from usine.core import llm, reglages  # noqa: E402
+from usine.core import llm, reglages, store  # noqa: E402
 from usine.pipelines.base import Contexte  # noqa: E402
 
 
@@ -215,3 +218,84 @@ class TestPlafondDeJetons(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTroncatureRemontee(unittest.TestCase):
+    """Une reponse coupee au plafond de jetons doit se VOIR.
+
+    Le routeur la detecte depuis longtemps et refuse de la mettre en cache,
+    pour ne pas figer la coupure. Mais il le savait tout seul : ni le journal,
+    ni la fiche du produit, ni le tableau de bord n'en portaient trace. Un
+    chapitre tranche au milieu d'une phrase traversait donc toute la
+    fabrication en passant pour termine — exactement le defaut que la
+    detection etait censee rendre visible.
+    """
+
+    def _contexte(self):
+        dits = []
+        ctx = Contexte(sujet="un sujet", journal=dits.append)
+        return ctx, dits
+
+    def _reponse(self, tronquee):
+        return llm.Reponse(texte="du texte", fournisseur="groq",
+                           modele="openai/gpt-oss-120b", tronquee=tronquee)
+
+    def test_le_journal_le_dit_tout_de_suite(self):
+        """Pendant qu'il est encore temps de reduire la longueur demandee."""
+        ctx, dits = self._contexte()
+        base_agents.signaler_troncature(ctx, "redacteur", self._reponse(True))
+        self.assertTrue(any("coupee au plafond" in d for d in dits))
+        self.assertTrue(any("redacteur" in d for d in dits))
+
+    def test_le_contexte_accumule_pour_le_rapport(self):
+        ctx, _ = self._contexte()
+        base_agents.signaler_troncature(ctx, "redacteur", self._reponse(True))
+        base_agents.signaler_troncature(ctx, "reviseur", self._reponse(True))
+        self.assertEqual(len(ctx.meta["tronquees"]), 2)
+        self.assertEqual(ctx.meta["tronquees"][0]["fournisseur"], "groq")
+
+    def test_un_agent_signale_quand_la_reponse_est_coupee(self):
+        """Le cablage : c'est « travailler » qui doit appeler le signalement,
+        sinon la fonction ne protege personne."""
+        ctx, dits = self._contexte()
+        with mock.patch.object(llm, "generer", return_value=self._reponse(True)):
+            equipe.REDACTEUR.travailler(ctx, "ecris")
+        self.assertTrue(any("coupee au plafond" in d for d in dits))
+        self.assertEqual(len(ctx.meta.get("tronquees") or []), 1)
+
+    def test_une_reponse_complete_ne_dit_rien(self):
+        ctx, dits = self._contexte()
+        with mock.patch.object(llm, "generer", return_value=self._reponse(False)):
+            equipe.REDACTEUR.travailler(ctx, "ecris")
+        self.assertEqual(dits, [])
+        self.assertEqual(ctx.meta.get("tronquees"), None)
+
+    def test_un_contexte_sans_journal_ne_fait_pas_echouer(self):
+        """Toutes les chaines ne passent pas un Contexte complet."""
+        class Minimal:
+            pass
+
+        base_agents.signaler_troncature(Minimal(), "agent", self._reponse(True))
+
+    def test_la_fiche_du_produit_porte_le_compte(self):
+        """Le rapport du produit livre doit dire combien de sections sont
+        concernees : c'est ce qu'on lit apres coup, pas le journal."""
+        from usine.pipelines.base import preparer, terminer
+
+        ctx = Contexte(sujet="un sujet coupe", journal=lambda _m: None)
+        preparer(ctx, "ebook", "Un titre coupe")
+        base_agents.signaler_troncature(ctx, "redacteur", self._reponse(True))
+        terminer(ctx, [], {"mots": 100})
+        fiche = store.lire_produit(ctx.produit_id)
+        self.assertEqual(fiche["meta"]["tronquees"], 1)
+        self.assertEqual(fiche["meta"]["tronquees_detail"][0]["agent"],
+                         "redacteur")
+
+    def test_sans_troncature_la_fiche_n_en_parle_pas(self):
+        from usine.pipelines.base import preparer, terminer
+
+        ctx = Contexte(sujet="un sujet entier", journal=lambda _m: None)
+        preparer(ctx, "ebook", "Un titre entier")
+        terminer(ctx, [], {"mots": 100})
+        fiche = store.lire_produit(ctx.produit_id)
+        self.assertNotIn("tronquees", fiche["meta"])

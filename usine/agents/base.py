@@ -13,6 +13,35 @@ from typing import Any, Dict, List, Optional, Sequence
 from ..core import evenements, llm, prompts
 
 
+def signaler_troncature(contexte: Any, agent: str,
+                        reponse: llm.Reponse) -> None:
+    """Dit qu'une reponse a ete coupee au plafond de jetons.
+
+    Le routeur sait depuis longtemps reconnaitre une reponse tronquee — il
+    refuse meme de la mettre en cache, pour ne pas figer la coupure. Mais il
+    le savait tout seul : ni le journal, ni le rapport qualite, ni le tableau
+    de bord n'en portaient trace. Un chapitre tranche au milieu d'une phrase
+    traversait donc toute la fabrication en passant pour termine, ce qui est
+    exactement le defaut que la detection etait censee rendre visible.
+
+    Deux destinations, parce qu'elles repondent a deux questions
+    differentes : le journal le dit TOUT DE SUITE, pendant qu'il est encore
+    temps de reduire la longueur demandee ; le contexte l'accumule pour que
+    le rapport du produit livre puisse dire combien de sections sont
+    concernees.
+    """
+    detail = {"agent": agent, "fournisseur": reponse.fournisseur,
+              "modele": reponse.modele}
+    meta = getattr(contexte, "meta", None)
+    if isinstance(meta, dict):
+        meta.setdefault("tronquees", []).append(detail)
+    journal = getattr(contexte, "journal", None)
+    if callable(journal):
+        journal("  [!] reponse coupee au plafond de jetons ({} via {}) : "
+                "le texte s'arrete avant sa fin".format(agent,
+                                                        reponse.fournisseur))
+
+
 @dataclass
 class Agent:
     """Un role de metier dote de sa propre voix et de son propre modele."""
@@ -71,6 +100,8 @@ class Agent:
         )
         evenements.publier("agent", agent=self.nom, etat="fin", emoji=self.emoji,
                            fournisseur=reponse.fournisseur, tokens=reponse.tokens)
+        if reponse.tronquee:
+            signaler_troncature(contexte, self.nom, reponse)
         return reponse
 
     def travailler_json(
