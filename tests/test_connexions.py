@@ -91,6 +91,127 @@ class TestAgentsRelies(unittest.TestCase):
                     "l'agent {} n'est presque jamais reference".format(nom))
 
 
+class TestOptionsDuCatalogueAtteignables(unittest.TestCase):
+    """Une option declaree doit etre proposee quelque part.
+
+    Le catalogue declare des leviers par type de produit : relire le livre
+    entier, produire le script de narration, poser une marge de reliure,
+    choisir un reseau, ranger un recit dans une serie. Ils n'existaient que
+    dans la ligne de commande — c'est-a-dire, en pratique, pour personne : la
+    vraie porte d'entree de cette usine est le menu, sur un telephone.
+
+    C'est le defaut du reglage orphelin deplace d'un cran. Le reglage
+    orphelin etait affiche et jamais lu ; l'option inaccessible est lue et
+    jamais proposee. Dans les deux cas l'utilisateur croit disposer d'un
+    levier qu'il n'a pas.
+
+    Exemption possible, mais nommee : « executer » desactive la verification
+    du programme genere. C'est un levier de mise au point, pas un choix de
+    fabrication, et le proposer dans un menu n'aiderait personne.
+    """
+
+    CLI_SEULEMENT = set()
+    NON_PROPOSEES = {"executer"}
+
+    def _options_declarees(self):
+        from usine.pipelines import catalogue
+
+        return {(t.cle, nom) for t in catalogue.TYPES for nom in t.options}
+
+    def _repondre(self, fonction, reponses):
+        """Pilote le menu par son entree standard, comme un doigt sur un
+        ecran : c'est le seul moyen de verifier qu'une question est POSEE."""
+        import io
+        from contextlib import redirect_stdout
+        from unittest import mock
+
+        entrees = iter(list(reponses))
+        with redirect_stdout(io.StringIO()):
+            with mock.patch("builtins.input",
+                            lambda invite="": next(entrees, "")):
+                return fonction()
+
+    def test_chaque_option_declaree_est_demandee_a_l_utilisateur(self):
+        """Lire le source ne suffit pas : le nom peut y figurer sans qu'aucune
+        question ne soit posee. On fait donc repondre le menu."""
+        from usine import menu
+
+        # Une reponse qui accepte le defaut partout, sauf la ou il faut une
+        # valeur non nulle pour que l'option existe.
+        attendus = {
+            "ebook": (["o"], "relecture_ensemble"),
+            "formation": (["o"], "narration"),
+            "impression": (["5"], "reliure"),
+            "social": (["1"], "reseau"),
+            "logiciel": (["1"], "cible"),
+            "idees": (["n"], "avec_marche"),
+            "nouvelle": (["Les rails"], "serie"),
+        }
+        for cle, (reponses, option) in sorted(attendus.items()):
+            with self.subTest(type=cle):
+                valeurs = self._repondre(
+                    lambda: menu._options_du_type(cle), reponses)
+                self.assertIn(option, valeurs,
+                              "le menu ne demande pas « {} » pour « {} »"
+                              .format(option, cle))
+
+    def test_aucune_option_du_catalogue_n_est_oubliee(self):
+        """Le garde-fou structurel : une option ajoutee au catalogue demain
+        doit apparaitre ici, sinon elle n'existera que dans la CLI."""
+        from usine import menu
+
+        couvertes = set()
+        for cle in ("ebook", "formation", "impression", "social", "logiciel",
+                    "idees", "nouvelle"):
+            for reponses in (["o"], ["n"], ["1"], ["5"], ["x"]):
+                couvertes |= set(self._repondre(
+                    lambda: menu._options_du_type(cle), reponses))
+        for cle, nom in sorted(self._options_declarees()):
+            if nom in self.NON_PROPOSEES:
+                continue
+            with self.subTest(type=cle, option=nom):
+                self.assertIn(nom, couvertes)
+
+    def test_la_file_de_production_recoit_les_memes_options(self):
+        """La file rejoue plus tard, sans personne devant l'ecran. Si elle ne
+        stocke pas ce que le menu a demande, l'utilisateur a repondu pour
+        rien — et la difference ne se voit qu'au produit livre."""
+        source = (RACINE / "usine" / "menu.py").read_text(encoding="utf-8")
+        avant_file = source.split("file_prod.ajouter")[0]
+        self.assertIn("options.update(_options_du_type(", avant_file)
+
+    def test_la_fabrication_directe_passe_les_options_a_la_commande(self):
+        source = (RACINE / "usine" / "menu.py").read_text(encoding="utf-8")
+        self.assertIn("arguments += _arguments_du_type(", source)
+
+    def test_la_traduction_en_arguments_respecte_les_inversions(self):
+        """La CLI expose « --sans-marche », le catalogue declare
+        « avec_marche ». Une correspondance recopiee finit par diverger."""
+        from usine import menu
+
+        self.assertEqual(menu._ARGUMENTS["avec_marche"](False), ["--sans-marche"])
+        self.assertEqual(menu._ARGUMENTS["avec_marche"](True), [])
+        self.assertEqual(menu._ARGUMENTS["serie"]("Les rails"),
+                         ["--serie", "Les rails"])
+        self.assertEqual(menu._ARGUMENTS["narration"](True), ["--narration"])
+
+    def test_les_arguments_traduits_sont_acceptes_par_la_cli(self):
+        """Un argument invente serait refuse au lancement, apres avoir fait
+        repondre l'utilisateur a toutes les questions."""
+        from usine import cli, menu
+
+        parseur = cli.construire_parseur()
+        connus = set()
+        for action in parseur._subparsers._group_actions[0].choices.values():
+            connus.update(o for a in action._actions for o in a.option_strings)
+        for nom, traduire in menu._ARGUMENTS.items():
+            produits = traduire("x") + traduire(True) + traduire(False)
+            for argument in produits:
+                if argument.startswith("--"):
+                    with self.subTest(option=nom, argument=argument):
+                        self.assertIn(argument, connus)
+
+
 class TestReglagesTousBranches(unittest.TestCase):
     """Un reglage propose a l'utilisateur doit piloter quelque chose.
 

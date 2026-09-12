@@ -110,6 +110,7 @@ async function chargerEtat() {
     ajouterSurMesure($('taille'), 'sur mesure...');
     preselectionner($('ton'), $('ton-libre'), donnees.reglages.ton);
     preselectionner($('taille'), $('chapitres'), donnees.reglages.taille);
+    remplirSeries(donnees.series || []);
     $('ton').addEventListener('change', basculerSurMesure);
     $('taille').addEventListener('change', basculerSurMesure);
     basculerSurMesure();
@@ -556,6 +557,17 @@ async function sonder() {
 }
 
 /* ------------------------------------------------------------- interactions */
+function remplirSeries(noms) {
+  const liste = $('series-connues');
+  if (!liste) return;
+  liste.innerHTML = '';
+  noms.forEach((nom) => {
+    const choix = document.createElement('option');
+    choix.value = nom;
+    liste.appendChild(choix);
+  });
+}
+
 function decrireType() {
   const choisi = (etat.types || []).find((t) => t.cle === $('type').value);
   if (!choisi) return;
@@ -567,6 +579,9 @@ function decrireType() {
 
 $('type').addEventListener('change', () => {
   $('bloc-reseau').hidden = $('type').value !== 'social';
+  // Une serie n'a de sens que pour la fiction : la proposer ailleurs
+  // inviterait a ranger un guide dans une suite qui n'en est pas une.
+  $('bloc-serie').hidden = $('type').value !== 'nouvelle';
   decrireType();
 });
 
@@ -617,6 +632,7 @@ $('lancer').addEventListener('click', async () => {
       qualite: $('qualite').value,
       auteur: $('auteur').value.trim(), nombre: $('nombre').value,
       reseau: $('reseau').value,
+      serie: $('serie').value.trim(),
     }),
   });
   const donnees = await reponse.json();

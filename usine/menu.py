@@ -233,6 +233,12 @@ def menu_fabriquer(executer: Callable[[List[str]], int]) -> None:
         arguments += ["-t", valeurs["ton"], "-T", valeurs["taille"],
                       "--qualite", valeurs["qualite"]]
 
+    # Les options propres a chaque type. Elles n'existaient que dans la ligne
+    # de commande — c'est-a-dire pour personne : la vraie porte d'entree de
+    # cette usine est ce menu, sur un telephone. Six leviers de qualite
+    # etaient ainsi invisibles a qui produit depuis son canape.
+    arguments += _arguments_du_type(produit["cle"])
+
     if produit["cle"] != "complet":
         if demander_oui("Generer aussi le kit de vente ?", True):
             arguments.append("--marketing")
@@ -261,6 +267,116 @@ def menu_fabriquer(executer: Callable[[List[str]], int]) -> None:
     executer(arguments)
     print()
     demander("Appuyez sur Entree pour revenir au menu")
+
+
+def _options_du_type(cle: str) -> Dict[str, object]:
+    """Options propres a un type de produit, demandees a l'utilisateur.
+
+    Le catalogue declare ces options ; chaque interface doit les proposer.
+    Une option declaree et inaccessible depuis le telephone est un levier
+    qu'on croit avoir et qu'on n'a pas — c'est le reglage orphelin deplace
+    d'un cran, et six d'entre elles etaient dans ce cas.
+
+    Rend les noms du CATALOGUE, pas des arguments de ligne de commande : la
+    file de production stocke ce dictionnaire tel quel, et « catalogue.
+    executer » le transmet a la chaine. La conversion en arguments se fait
+    au-dessus, une seule fois, et c'est la qu'une inversion comme
+    « avec_marche » / « --sans-marche » se traite.
+    """
+    if cle == "nouvelle":
+        nom_serie = _demander_serie()
+        return {"serie": nom_serie} if nom_serie else {}
+    if cle == "ebook":
+        return {"relecture_ensemble": True} if demander_oui(
+            "Relire le livre entier a la recherche des contradictions "
+            "entre chapitres ? (1 appel IA)", False) else {}
+    if cle == "formation":
+        return {"narration": True} if demander_oui(
+            "Produire le script de narration a lire a voix haute ? "
+            "(1 appel IA par module)", False) else {}
+    if cle == "impression":
+        # Un interieur broche dont la marge interieure vaut l'exterieure perd
+        # ses premiers caracteres dans la pliure. L'imprimeur publie la sienne.
+        marge = demander("Marge de reliure en mm (0 = impression a domicile)", "0")
+        try:
+            valeur = float(marge)
+        except ValueError:
+            return {}
+        return {"reliure": valeur} if valeur > 0 else {}
+    if cle == "social":
+        from .pipelines import social as chaine_social
+
+        reseaux = sorted(chaine_social.RESEAUX)
+        index = choisir("Reseau",
+                        [(r, chaine_social.RESEAUX[r].split("(")[-1][:58])
+                         for r in reseaux], defaut=1)
+        return {"reseau": reseaux[index - 1]} if index else {}
+    if cle == "logiciel":
+        from .pipelines import logiciel as chaine_logiciel
+
+        cibles = sorted(chaine_logiciel.CIBLES)
+        index = choisir("Forme de l'outil",
+                        [(c, chaine_logiciel.CIBLES[c]["nom"]) for c in cibles],
+                        defaut=1)
+        return {"cible": cibles[index - 1]} if index else {}
+    if cle == "idees":
+        return {} if demander_oui(
+            "Interroger les sources de marche ? (plus lent, mais chiffre)",
+            True) else {"avec_marche": False}
+    return {}
+
+
+# Comment chaque option du catalogue s'ecrit en ligne de commande. Deux
+# d'entre elles ne portent pas le meme nom des deux cotes : la CLI expose
+# « --sans-marche », le catalogue declare « avec_marche ». Recopier cette
+# correspondance dans chaque appelant etait la facon sure de la voir diverger.
+_ARGUMENTS = {
+    "serie": lambda v: ["--serie", str(v)],
+    "relecture_ensemble": lambda v: ["--relecture-ensemble"] if v else [],
+    "narration": lambda v: ["--narration"] if v else [],
+    "reliure": lambda v: ["--reliure", str(v)],
+    "reseau": lambda v: ["--reseau", str(v)],
+    "cible": lambda v: ["--cible", str(v)],
+    "avec_marche": lambda v: [] if v else ["--sans-marche"],
+}
+
+
+def _arguments_du_type(cle: str) -> List[str]:
+    """Les memes options, en arguments pour la ligne de commande."""
+    arguments: List[str] = []
+    for nom, valeur in _options_du_type(cle).items():
+        traduire = _ARGUMENTS.get(nom)
+        if traduire is not None:
+            arguments += traduire(valeur)
+    return arguments
+
+
+def _demander_serie() -> str:
+    """Ranger ce recit dans une suite ? Les series connues sont proposees.
+
+    Retaper le nom a la main invite a la faute de frappe, et une faute de
+    frappe cree une seconde serie vide : le tome repartirait de zero sans
+    rien dire. Le module de serie normalise la casse et les accents, pas les
+    lettres manquantes.
+    """
+    from .core import serie as module_serie
+
+    connues = module_serie.lister()
+    if not connues:
+        return demander("Serie (Entree pour un recit isole)", "")
+
+    index = choisir(
+        "Serie",
+        [("recit isole", "aucune suite")]
+        + [(s["nom"], "{} tome(s) deja ecrits".format(s["tomes"]))
+           for s in connues]
+        + [("nouvelle serie...", "en commencer une")],
+        defaut=1)
+    if index <= 1:
+        return ""
+    if index <= len(connues) + 1:
+        return connues[index - 2]["nom"]
+    return demander("Nom de la nouvelle serie", "")
 
 
 def menu_usine(executer: Callable[[List[str]], int]) -> None:
@@ -384,6 +500,7 @@ def _ajouter_a_la_file() -> None:
         quantite = demander(question, defaut)
         if quantite.isdigit():
             options["nombre"] = int(quantite)
+    options.update(_options_du_type(produit["cle"]))
     priorite = demander("Priorite (1 = en premier, 9 = en dernier)", "5")
     identifiant = file_prod.ajouter(
         sujet, produit["cle"], options=options,

@@ -88,6 +88,14 @@
     <div id="bloc-reseau" hidden><label for="reseau">Reseau</label>
       <select id="reseau"></select></div>
   </div>
+  <div id="bloc-serie" hidden>
+    <label for="serie">Serie</label>
+    <input id="serie" list="series-connues"
+           placeholder="ex : Les rails — laissez vide pour un recit isole"/>
+    <datalist id="series-connues"></datalist>
+    <p class="aide">Un tome reprend le monde, la distribution et les faits des
+      precedents, et sa derniere page annonce les autres.</p>
+  </div>
 
   <button class="principal" id="lancer">Lancer la fabrication</button>
   <p class="aide">La fabrication continue meme si vous fermez cette page.</p>

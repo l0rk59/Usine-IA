@@ -962,6 +962,31 @@ class TestDocteur(BaseServeur):
                 rapport = diagnostic.modeles_disparus()
             self.assertEqual(rapport["injoignables"], ["essai"])
 
+    def test_l_etat_annonce_les_series_connues(self):
+        """Le tableau de bord doit proposer les suites en cours plutot que de
+        faire retaper leur nom : une faute de frappe cree une seconde serie
+        vide, et le tome repartirait de zero sans rien dire."""
+        from usine.core import serie as module_serie
+
+        module_serie.enregistrer_tome(
+            "Les rails", {"cadre": {}, "personnages": []}, "T1", "...")
+        _, corps = self.appeler("/api/etat")
+        etat = json.loads(corps)
+        self.assertIn("series", etat)
+        self.assertIn("Les rails", etat["series"])
+
+    def test_le_formulaire_porte_le_champ_serie(self):
+        """Une option qui n'est pas dans la page n'existe pas pour qui
+        produit depuis un navigateur."""
+        _, corps = self.appeler("/")
+        page = corps.decode("utf-8")
+        self.assertIn('id="serie"', page)
+        self.assertIn("series-connues", page)
+        script = (RACINE / "usine" / "web" / "statique" / "app.js").read_text(
+            encoding="utf-8")
+        self.assertIn("serie: $('serie')", script)
+        self.assertIn("bloc-serie", script)
+
     def test_le_controle_des_modeles_ne_sort_que_si_on_le_demande(self):
         """Une requete par fournisseur : trop lent pour un rafraichissement.
 

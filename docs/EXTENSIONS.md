@@ -427,6 +427,33 @@ rapport entre ce que ça apporte et ce que ça coûte :
 4. ~~**Marge de reliure** pour les cahiers imprimables.~~ **Fait** (§4,
    `impression`).
 
+### Un trou systématique, mesuré en septembre 2026
+
+Le catalogue déclare huit options par type de produit — relire le livre
+entier, produire le script de narration, poser une marge de reliure, choisir
+un réseau, la forme d'un outil, interroger les sources de marché, ranger un
+récit dans une série. Mesure :
+
+| | menu | tableau de bord |
+|---|---|---|
+| avant | 1 sur 8 | 2 sur 8 |
+| après | 7 sur 8 | 2 sur 8 + la série |
+
+**Six leviers n'existaient que dans la ligne de commande** — c'est-à-dire, en
+pratique, pour personne : la vraie porte d'entrée de cette usine est le menu,
+sur un téléphone.
+
+C'est le défaut du réglage orphelin déplacé d'un cran. Le réglage orphelin
+était affiché et jamais lu ; l'option inaccessible est lue et jamais proposée.
+Dans les deux cas l'utilisateur croit disposer d'un levier qu'il n'a pas.
+
+Le garde-fou est dans `tests/test_connexions.py` : il **pilote le menu par son
+entrée standard** et vérifie que chaque option du catalogue est bien demandée.
+Lire le source ne suffisait pas — une première version passait alors que le
+menu ne posait aucune question, parce que le nom de l'option figurait dans un
+commentaire. Une exemption reste possible, mais nommée : `executer` désactive
+la vérification du programme généré, c'est un levier de mise au point.
+
 Cette troisième liste est close. Ce qui reste ouvert, en une phrase chacun :
 
 - ~~les **intrigues secondaires** de la fiction~~ **faites** (§2, §5 de

@@ -1227,6 +1227,8 @@ def _commerce() -> Dict[str, Any]:
 
 
 def _etat() -> Dict[str, Any]:
+    from ..core import serie as module_serie
+
     fournisseurs = [
         {
             "nom": ligne["nom"], "disponible": ligne["disponible"],
@@ -1248,6 +1250,10 @@ def _etat() -> Dict[str, Any]:
         "cles": pool_cles.resume(),
         "travaux": travaux,
         "types": _catalogue(),
+        # La liste sert a proposer les suites en cours plutot qu'a faire
+        # retaper leur nom : une faute de frappe cree une seconde serie vide,
+        # et le tome repartirait de zero sans rien dire.
+        "series": [s["nom"] for s in module_serie.lister()],
         "agents": [{"nom": a.nom, "emoji": a.emoji} for a in equipe.EQUIPE.values()],
         "tons": sorted(TONS),
         "tailles": sorted(TAILLES, key=lambda t: TAILLES[t][0]),
