@@ -123,6 +123,14 @@ d'œil.
 
 ## 3. La sécurité : jusqu'où, et où s'arrête-t-on
 
+> **Décision (mise à jour).** Un outil de reconnaissance passive (`usine
+> recon`) avait été construit puis **entièrement retiré à la demande du
+> propriétaire** : l'usine ne fournit plus aucun outil qui teste ou audite un
+> site, même passivement. Elle reste sur le **contenu** de sécurité (guides,
+> checklists, sensibilisation), que les chaînes existantes savent déjà
+> fabriquer. La section ci-dessous garde la trace du raisonnement, mais le
+> profil « audit local » et l'outil de recon ne sont pas au programme.
+
 Le sujet est vendeur et la demande est réelle. Il faut poser la ligne une
 fois, clairement, parce qu'elle décide de tout le reste.
 
@@ -287,5 +295,5 @@ certains moteurs). Ce qui reste ouvert et utile :
 4. **L'appareil liminaire des ebooks** et la validation EPUBCheck.
 5. **La chaîne `nouvelle`** — la fiction par le format le plus court, pour
    éprouver la continuité avant d'attaquer le roman.
-6. **Le profil « audit local »** de la chaîne logiciel, si la sécurité est
-   une direction retenue.
+*(L'ancien item « profil audit local » est retiré : la direction outillage de
+sécurité a été abandonnée.)*

@@ -852,38 +852,6 @@ def _menu_cache(executer: Callable[[List[str]], int]) -> None:
     demander("\n  Appuyez sur Entree")
 
 
-def _menu_recon(executer: Callable[[List[str]], int]) -> None:
-    """Audit d'un domaine pour la divulgation responsable.
-
-    La porte d'autorisation est posee ICI, en clair, parce que c'est un acte
-    de l'operateur : on ne coche pas « surface » a sa place. Sans elle,
-    l'audit reste passif — que du public, aucun contact avec la cible.
-    """
-    entete("Recon & securite")
-    print("  " + c("Passif", "1;36") + " : registres publics (crt.sh, DNS, RDAP).")
-    print("           Aucun paquet vers la cible. Legal partout.")
-    print("  " + c("Surface", "1;35") + " : une requete vers le domaine, pour "
-          "lire sa")
-    print("           posture. Reserve a un domaine dont vous avez la charge,")
-    print("           ou couvert par un programme de bug bounty.")
-    print()
-    domaine = demander("Domaine a auditer", obligatoire=True)
-    if not domaine:
-        return
-    args = ["recon", domaine]
-    if demander_oui("\n  J'ai la charge de ce domaine (audit de surface) ?",
-                    False):
-        args.append("--autorise")
-    if demander_oui("Ecrire un signalement pret a envoyer ?", False):
-        args.append("--rapport")
-        nom = demander("Votre nom pour le signaler (facultatif)")
-        if nom:
-            args += ["--chercheur", nom]
-    print()
-    executer(args)
-    demander("\n  Appuyez sur Entree")
-
-
 def menu_principal(executer: Callable[[List[str]], int]) -> int:
     while True:
         effacer()
@@ -915,7 +883,6 @@ def menu_principal(executer: Callable[[List[str]], int]) -> int:
             ("Ventes", "importer un export, voir ce qui rapporte vraiment"),
             ("Doublons", "les produits qui se recouvrent"),
             ("Veille de niche", "ce que les gens disent vraiment d'un sujet"),
-            ("Recon & securite", "audit d'un domaine, divulgation responsable"),
             ("Mesurer un marche", "volumes reels sur quatre sources publiques"),
             ("Ce que l'usine a appris", "quel type, quel ton, quelle qualite"),
             ("Sauvegarder l'atelier", "ventes et historique dans une archive"),
@@ -949,28 +916,26 @@ def menu_principal(executer: Callable[[List[str]], int]) -> int:
                 executer(["veille", sujet])
             demander("\n  Appuyez sur Entree")
         elif choix == 8:
-            _menu_recon(executer)
-        elif choix == 9:
             sujet = demander("Quel marche mesurer", obligatoire=True)
             if sujet:
                 executer(["marche", sujet])
             demander("\n  Appuyez sur Entree")
-        elif choix == 10:
+        elif choix == 9:
             executer(["bilan"])
             demander("\n  Appuyez sur Entree")
-        elif choix == 11:
+        elif choix == 10:
             executer(["sauvegarde"])
             demander("\n  Appuyez sur Entree")
-        elif choix == 12:
+        elif choix == 11:
             menu_cles()
-        elif choix == 13:
+        elif choix == 12:
             menu_reglages()
-        elif choix == 14:
+        elif choix == 13:
             _menu_prompts(executer)
-        elif choix == 15:
+        elif choix == 14:
             _menu_cache(executer)
-        elif choix == 16:
+        elif choix == 15:
             executer(["web"])
-        elif choix == 17:
+        elif choix == 16:
             executer(["docteur"])
             demander("\n  Appuyez sur Entree")

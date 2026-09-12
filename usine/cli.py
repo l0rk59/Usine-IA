@@ -459,87 +459,6 @@ def cmd_veille(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_recon(args: argparse.Namespace) -> int:
-    """Reconnaissance passive et audit de surface, pour la divulgation.
-
-    Passif par defaut : registres publics uniquement, aucun paquet vers la
-    cible. « --autorise » ouvre l'audit de surface (une requete vers le
-    site) et n'a de sens que pour un domaine dont on a la charge, ou dans
-    le perimetre d'un programme de bug bounty. Cette affirmation engage
-    celui qui la fait.
-    """
-    from .core import recon
-
-    _COUL = {"grave": "1;31", "moyen": "33", "faible": "36", "ok": "32",
-             "info": "90"}
-    titre_console("Recon — {}".format(recon.normaliser_domaine(args.domaine)))
-    if args.autorise:
-        print("  " + _c("Mode surface autorise", "1;33")
-              + " : une requete sera envoyee au domaine.")
-        print("  " + _c("Vous affirmez en avoir la charge ou l'autorisation.", "90"))
-    else:
-        print("  " + _c("Mode passif", "1;36")
-              + " : registres publics uniquement, aucun contact avec la cible.")
-        print("  " + _c("Ajoutez --autorise pour un domaine dont vous avez la "
-                        "charge.", "90"))
-    print()
-
-    rapport = recon.auditer(args.domaine, autorise=args.autorise)
-    for souci in rapport.erreurs:
-        alerte(souci)
-    if rapport.erreurs and not rapport.constats:
-        return 1
-
-    print("  " + _c("Score de posture : {}/100".format(rapport.score),
-                    "1;32" if rapport.score >= 75 else
-                    "1;33" if rapport.score >= 45 else "1;31"))
-    if rapport.sous_domaines:
-        print("  {} sous-domaine(s) vus dans les journaux de certificats"
-              .format(len(rapport.sous_domaines)))
-    if rapport.contact:
-        print("  Contact securite : " + _c(rapport.contact, "36"))
-    print()
-
-    for c in rapport.constats:
-        if c.gravite == "info":
-            continue
-        puce = {"grave": "!!", "moyen": " !", "faible": " ~", "ok": " v"}.get(
-            c.gravite, "  ")
-        print("  {} {}".format(_c(puce, _COUL.get(c.gravite, "0")),
-                               _c(c.titre, "1" if c.gravite in
-                                  ("grave", "moyen") else "0")))
-        if c.detail:
-            for ligne in _envelopper(c.detail, 66):
-                print("        " + _c(ligne, "90"))
-
-    signalables = [c for c in rapport.constats
-                   if c.gravite in ("grave", "moyen", "faible")]
-    print()
-    if signalables:
-        alerte("{} point(s) a signaler au proprietaire.".format(len(signalables)))
-    else:
-        ok("Rien de notable : posture publique saine.")
-
-    if args.rapport:
-        texte = recon.rapport_divulgation(rapport, chercheur=args.chercheur)
-        config.ensure_dirs()
-        from .pipelines.base import slug
-        chemin = config.WORKDIR / "recon-{}.txt".format(slug(rapport.cible, 40))
-        chemin.write_text(texte, encoding="utf-8")
-        print()
-        ok("Signalement ecrit : {}".format(chemin))
-        print("  Relisez-le avant d'envoyer. La divulgation responsable "
-              "laisse au proprietaire un delai raisonnable.")
-
-    print()
-    print("  " + _c("Rappel", "1") + " : la reconnaissance passive lit du "
-          "public. Envoyer")
-    print("  une charge d'attaque a un site sans accord ecrit est illegal, "
-          "meme")
-    print("  pour signaler. Restez sur ce que cet outil fait.")
-    return 0 if not signalables else 1
-
-
 def cmd_sauvegarde(args: argparse.Namespace) -> int:
     """Mettre l'atelier a l'abri, ou le remettre en place."""
     from .core import sauvegarde
@@ -2017,18 +1936,6 @@ def construire_parseur() -> argparse.ArgumentParser:
                    choices=["day", "week", "month", "year", "all"],
                    help="fenetre de temps")
     p.set_defaults(fonction=cmd_veille)
-
-    p = sous_parseurs.add_parser(
-        "recon", help="audit de securite d'un domaine (divulgation responsable)")
-    p.add_argument("domaine", help="le domaine a examiner (le votre, ou autorise)")
-    p.add_argument("--autorise", action="store_true",
-                   help="j'ai la charge de ce domaine ou l'autorisation de le "
-                        "tester : active l'audit de surface")
-    p.add_argument("--rapport", action="store_true",
-                   help="ecrire un signalement pret a envoyer")
-    p.add_argument("--chercheur", default="",
-                   help="votre nom, pour signer le signalement")
-    p.set_defaults(fonction=cmd_recon)
 
     p = sous_parseurs.add_parser(
         "sauvegarde", help="mettre l'atelier a l'abri, ou le remettre en place")

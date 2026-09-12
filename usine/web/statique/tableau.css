@@ -515,25 +515,3 @@ button.danger { border-radius: 2px; box-shadow: var(--neon-mag); }
 /* -- Verdicts / constats : couleur = gravite ------------------------- */
 .verdict-bloc.gagnant strong, .essai .verdict.gagnant { text-shadow: var(--neon); }
 .controle.bon:before { text-shadow: 0 0 8px var(--vert); }
-
-/* -- Fiches de recon (carte securite) -------------------------------- */
-.constat { display: grid; grid-template-columns: auto 1fr; gap: 0.5rem;
-  padding: 0.4rem 0; border-top: 1px solid var(--bord); font-size: 0.82rem; }
-.constat:first-of-type { border-top: 0; }
-.constat .puce { font-weight: 700; font-family: 'Courier New', monospace; }
-.constat.grave  .puce { color: var(--rouge); text-shadow: 0 0 8px var(--rouge); }
-.constat.moyen  .puce { color: var(--ambre); }
-.constat.faible .puce { color: var(--accent); }
-.constat.ok     .puce { color: var(--vert); }
-.constat .detail { color: var(--doux); font-size: 0.76rem; }
-.jauge-score { height: 8px; border-radius: 0; background: rgba(0,240,255,0.08);
-  overflow: hidden; margin: 0.4rem 0 0.8rem; }
-.jauge-score span { display: block; height: 100%;
-  background: linear-gradient(90deg, var(--rouge), var(--ambre), var(--vert));
-  box-shadow: var(--neon); }
-.sceau { display: inline-block; font-family: 'Courier New', monospace;
-  font-size: 0.72rem; padding: 0.1rem 0.5rem; border: 1px solid var(--bord);
-  color: var(--doux); letter-spacing: 0.08em; }
-.sceau.passif { border-color: var(--accent); color: var(--accent); }
-.sceau.surface { border-color: var(--magenta); color: var(--magenta);
-  text-shadow: var(--neon-mag); }

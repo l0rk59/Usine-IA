@@ -793,7 +793,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         512 tests + test de fumée, aucun appel réseau
+tests/         489 tests + test de fumée, aucun appel réseau
                un atelier temporaire par module (tests/atelier.py)
 install.sh     installation Termux
 ```
@@ -806,7 +806,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 512 tests
+python3 -m unittest discover -s tests -t .   # 489 tests
 python3 scripts/dependances.py               # zéro dépendance
 python3 tests/fumee.py                       # les 9 chaînes via la vraie CLI
 ```
@@ -907,12 +907,10 @@ sait pas faire, et ce qu'on peut y ajouter — est dans
   défaut rédhibitoire pour une fiction, qui a besoin d'une continuité que cette
   architecture ne porte pas. Il faut une chaîne distincte, avec une bible et un
   résumé roulant.
-- **Sécurité : oui, du côté défense — et il y a maintenant un vrai outil.**
-  `usine recon <domaine>` fait de la reconnaissance passive (crt.sh, DNS,
-  RDAP) et, sur autorisation, un audit de surface. Il trouve de vraies failles
-  signalables — e-mail usurpable, en-têtes absents, `.git` exposé, TLS faible —
-  et rédige le signalement de divulgation. Pas d'outil qui attaque ce qui ne
-  vous appartient pas. Voir [docs/RECON.md](docs/RECON.md).
+- **Sécurité : oui, du côté contenu — pas d'outillage.** Guides, checklists de
+  durcissement, politiques types, sensibilisation : ce sont des produits que
+  les chaînes existantes savent déjà fabriquer. L'usine ne fournit aucun outil
+  qui teste ou attaque un site.
 
 ## Ce que l'usine ne fait pas
 

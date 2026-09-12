@@ -263,12 +263,11 @@ class TestMenuPrincipal(unittest.TestCase):
     # absentes de cette table, et le test verifie alors qu'aucune commande
     # ne part.
     ATTENDU = {
-        6: "doublons", 7: "veille", 8: "recon", 9: "marche", 10: "bilan",
-        11: "sauvegarde", 14: "prompts-systeme", 15: "cache",
-        16: "web", 17: "docteur",
+        6: "doublons", 7: "veille", 8: "marche", 9: "bilan",
+        10: "sauvegarde", 13: "prompts-systeme", 14: "cache",
+        15: "web", 16: "docteur",
     }
-    # 12 = Cles, 13 = Reglages : les seuls sous-menus qui ne lancent rien seuls.
-    SOUS_MENUS = (1, 2, 4, 12, 13)
+    SOUS_MENUS = (1, 2, 4, 11, 12)
 
     def _lancer(self, numero):
         frappes = [str(numero), "un sujet quelconque", "1", "", "0", "0", "0"]

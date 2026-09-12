@@ -59,39 +59,6 @@ def requete(
         raise HttpErreur(0, "reseau indisponible : {}".format(exc))
 
 
-def requete_complete(
-    url: str,
-    entetes: Optional[Dict[str, str]] = None,
-    timeout: int = 30,
-) -> Tuple[int, Dict[str, str], bytes]:
-    """Comme « requete », mais renvoie AUSSI les en-tetes de reponse.
-
-    L'audit de surface lit precisement ces en-tetes (HSTS, CSP, cookies) que
-    « requete » jette. On ne suit pas les redirections nous-memes : un audit
-    veut voir la reponse telle qu'elle vient, code de redirection compris.
-    """
-    tetes = {"User-Agent": USER_AGENT, "Accept-Encoding": "gzip"}
-    tetes.update(entetes or {})
-    req = urllib.request.Request(url, headers=tetes, method="GET")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout,
-                                    context=_contexte_ssl()) as rep:
-            brut = rep.read()
-            if rep.headers.get("Content-Encoding") == "gzip":
-                try:
-                    brut = gzip.decompress(brut)
-                except OSError:
-                    pass
-            recus = {cle.lower(): valeur for cle, valeur in rep.headers.items()}
-            return rep.status, recus, brut
-    except urllib.error.HTTPError as exc:
-        recus = {cle.lower(): valeur for cle, valeur in (exc.headers or {}).items()}
-        return exc.code, recus, exc.read() if exc.fp else b""
-    except (urllib.error.URLError, socket.timeout, ssl.SSLError,
-            ConnectionError, OSError) as exc:
-        raise HttpErreur(0, str(exc))
-
-
 def post_json(
     url: str,
     charge: Dict[str, Any],
