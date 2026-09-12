@@ -1080,8 +1080,8 @@ def produire(ctx: Contexte, serie: str = "") -> Dict[str, Any]:
     ctx.journal("Format vise : {} — {} scenes, environ {} mots.".format(
         format_fiction(vise), ctx.nb_chapitres, vise))
     rappel = module_serie.rappel(serie) if serie else ""
+    rang_prevu = module_serie.prochain_rang(serie) if serie else 0
     if serie:
-        rang_prevu = module_serie.prochain_rang(serie)
         ctx.journal("Serie « {} » — tome {}{}".format(
             serie, rang_prevu,
             "" if rang_prevu == 1 else " (le monde et la distribution sont repris)"))
@@ -1218,7 +1218,7 @@ def produire(ctx: Contexte, serie: str = "") -> Dict[str, Any]:
                    ensure_ascii=False, indent=2), encoding="utf-8")
 
     ctx.journal("Etape 5/5 — mise en forme et export...")
-    fichiers = exporter(ctx, bible, sections)
+    fichiers = exporter(ctx, bible, sections, serie=serie, rang=rang_prevu)
 
     rapport: Dict[str, Any] = {"continuite": continuite}
     if local:
@@ -1318,7 +1318,9 @@ def _repli(scene: Dict[str, Any]) -> str:
 
 
 def exporter(ctx: Contexte, bible: Dict[str, Any],
-             sections: List[Tuple[str, str]]) -> List[Path]:
+             sections: List[Tuple[str, str]],
+             serie: str = "", rang: int = 0,
+             reutiliser_couverture: bool = False) -> List[Path]:
     """Confie l'histoire a l'assemblage commun.
 
     Une nouvelle est de la prose sans mise en page particuliere : tout est le
@@ -1326,13 +1328,23 @@ def exporter(ctx: Contexte, bible: Dict[str, Any],
     vocabulaire (« scenes ») et le style de couverture — une couverture de
     guide pratique sur une fiction se voit immediatement.
     """
+    blocs = livraison.blocs_depuis_sections(sections)
+    # La derniere page, quand il y a d'autres tomes. C'est la que la serie
+    # devient une vente : un lecteur qui vient de finir est, a cet instant
+    # precis, le plus disponible qu'il sera jamais pour en acheter un autre.
+    suite = module_serie.page_de_suite(serie, rang) if serie else ""
+    if suite:
+        blocs.append(livraison.Bloc(
+            titre=module_serie.TITRE_PAGE_DE_SUITE, corps=suite))
+
     produit = livraison.Produit(
         type="nouvelle",
         titre=bible["titre"],
         sous_titre=bible.get("genre", ""),
         promesse=bible.get("premisse", ""),
-        blocs=livraison.blocs_depuis_sections(sections),
+        blocs=blocs,
         formats=("md", "pdf", "epub", "html", "txt"),
+        reutiliser_couverture=reutiliser_couverture,
         police_corps="Times-Roman",
         style_couverture="literary fiction book cover, atmospheric, {}".format(
             bible.get("genre") or ctx.sujet),
@@ -1340,3 +1352,61 @@ def exporter(ctx: Contexte, bible: Dict[str, Any],
         libelle_sections="scenes",
     )
     return livraison.livrer(ctx, produit)
+
+
+def rafraichir_serie(nom: str, journal=print) -> List[Dict[str, Any]]:
+    """Refabrique la page de fin des tomes anterieurs d'une serie.
+
+    Un tome fabrique quand il etait le dernier porte une page de fin qui
+    n'annonce rien de ce qui est venu apres. Or c'est precisement le lecteur
+    du tome 1 — celui qui a paye en premier et qui est revenu — qui ne voit
+    rien. Cette fonction relit le markdown deja livre, remplace sa page de
+    fin, et reecrit les fichiers.
+
+    Aucun appel de modele : le texte du recit ne bouge pas, seule sa derniere
+    page change. Et la couverture est REPRISE, pas regeneree — celle d'un
+    modele d'images ne se reproduit pas a l'identique, et un acheteur ne doit
+    pas retrouver un livre dont la couverture a change depuis qu'il l'a vu.
+    """
+    from ..core import store
+    from ..marketing.extrait import decouper, _markdown_du_produit
+
+    refaits: List[Dict[str, Any]] = []
+    for tome in module_serie.tomes_a_rafraichir(nom):
+        fiche = store.lire_produit(tome.get("produit_id") or "")
+        if not fiche or not fiche.get("dossier"):
+            journal("  tome {} : produit introuvable, ignore".format(
+                tome.get("rang")))
+            continue
+        dossier = Path(fiche["dossier"])
+        source = _markdown_du_produit(dossier, "nouvelle") if dossier.exists() else None
+        if source is None:
+            journal("  tome {} : markdown introuvable dans {}".format(
+                tome.get("rang"), dossier))
+            continue
+
+        _, chapitres = decouper(source.read_text(encoding="utf-8"))
+        # La page de fin precedente est remplacee, pas empilee : sans cela,
+        # rafraichir deux fois laisserait deux pages « La suite » qui se
+        # contredisent.
+        sections = [(titre, corps) for titre, corps in chapitres
+                    if titre != module_serie.TITRE_PAGE_DE_SUITE]
+        if not sections:
+            journal("  tome {} : aucune scene relue, ignore".format(
+                tome.get("rang")))
+            continue
+
+        ctx = Contexte(sujet=fiche.get("sujet") or "", dossier=dossier,
+                       produit_id=fiche["id"], sans_image=False,
+                       hors_ligne=True, journal=lambda _m: None)
+        bible = {"titre": fiche.get("titre") or tome.get("titre") or "",
+                 "genre": "", "premisse": ""}
+        fichiers = exporter(ctx, bible, sections, serie=nom,
+                            rang=tome.get("rang") or 0,
+                            reutiliser_couverture=True)
+        journal("  tome {} — « {} » : {} fichier(s) refaits".format(
+            tome.get("rang"), bible["titre"], len(fichiers)))
+        refaits.append({"rang": tome.get("rang"), "titre": bible["titre"],
+                        "dossier": str(dossier),
+                        "fichiers": [f.name for f in fichiers]})
+    return refaits

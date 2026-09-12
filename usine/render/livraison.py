@@ -84,6 +84,11 @@ class Produit:
     # « 8 chapitres » est plus juste que « 8 sections » pour un ebook : chaque
     # type garde son vocabulaire plutot que d'heriter d'un terme generique.
     libelle_sections: str = "section(s)"
+    # Refabriquer un produit deja livre doit lui rendre SA couverture. Celle
+    # d'un modele d'images ne se reproduit pas a l'identique : regenerer, ce
+    # serait livrer a un acheteur un livre dont la couverture a change depuis
+    # qu'il l'a vu. Le drapeau n'est leve que par une refabrication.
+    reutiliser_couverture: bool = False
     # Documents supplementaires : cahier d'exercices, second format de page.
     documents: List[Tuple[str, Callable[[Optional[Tuple[str, Any]]],
                                         DocumentPDF]]] = \
@@ -108,6 +113,15 @@ def _mentions_droits() -> List[str]:
     return [MENTION_IA_COURTE] if reglages.lire("signature_ia", True) else []
 
 
+def _couverture_existante(dossier: Path) -> Optional[Path]:
+    """La couverture deja ecrite dans ce dossier, si elle y est."""
+    for extension in (".jpg", ".jpeg", ".png"):
+        chemin = dossier / "couverture{}".format(extension)
+        if chemin.exists():
+            return chemin
+    return None
+
+
 def livrer(ctx: Any, produit: Produit) -> List[Path]:
     """Ecrit tous les fichiers du produit. Renvoie ceux qui ont ete crees."""
     dossier: Path = ctx.dossier
@@ -120,12 +134,16 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
     # --- couverture (avant le PDF, qui peut l'incorporer) -----------------
     couverture = None
     page_couverture = None
-    if not ctx.sans_image:
+    deja_la = _couverture_existante(dossier) if produit.reutiliser_couverture else None
+    if deja_la is not None:
+        couverture = deja_la
+    elif not ctx.sans_image:
         couverture = images.generer_couverture(
             dossier, produit.titre, produit.sous_titre, ctx.auteur,
             style=produit.style_couverture or produit.type,
             en_ligne=not ctx.hors_ligne,
             marque=getattr(ctx, "marque", "") or "")
+    if couverture is not None:
         fichiers.append(couverture)
         svg = couverture.with_suffix(".svg")
         if svg.exists():

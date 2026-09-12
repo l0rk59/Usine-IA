@@ -228,6 +228,23 @@ def cmd_series(args: argparse.Namespace) -> int:
     """Ce que l'usine a accumule pour chaque suite en cours."""
     from .core import serie as module_serie
 
+    if args.nom and getattr(args, "rafraichir", False):
+        from .pipelines import nouvelle as chaine_nouvelle
+
+        if not module_serie.lire(args.nom):
+            alerte("Aucune serie « {} ».".format(args.nom))
+            return 1
+        titre_console("Rafraichissement de « {} »".format(args.nom))
+        refaits = chaine_nouvelle.rafraichir_serie(args.nom, journal=print)
+        if not refaits:
+            ok("Aucun tome anterieur a refaire : leur page de fin est a jour.")
+            return 0
+        ok("{} tome(s) refaits. Leur derniere page annonce desormais les "
+           "tomes parus depuis.".format(len(refaits)))
+        print("      Redeposez ces fichiers chez votre distributeur pour que "
+              "les lecteurs les voient.")
+        return 0
+
     if args.nom:
         bible = module_serie.lire(args.nom)
         if not bible:
@@ -255,6 +272,14 @@ def cmd_series(args: argparse.Namespace) -> int:
             print("  {}. {}".format(tome.get("rang"), tome.get("titre")))
             if tome.get("resume"):
                 print("     " + _c(tome["resume"][:160], "90"))
+        # Le lecteur du tome 1 est celui qui a paye en premier et qui revient.
+        # Sa derniere page ne connait pourtant aucun des tomes suivants.
+        attente = module_serie.tomes_a_rafraichir(args.nom)
+        if attente:
+            print()
+            alerte("{} tome(s) ont une derniere page qui n'annonce pas les "
+                   "suivants.".format(len(attente)))
+            print("      " + _c('usine series "{}" --rafraichir'.format(args.nom), "1"))
         return 0
 
     series = module_serie.lister()
@@ -1896,6 +1921,9 @@ def construire_parseur() -> argparse.ArgumentParser:
         "series", help="lister les series et leurs tomes")
     p.add_argument("nom", nargs="?", default="",
                    help="detail d'une serie : sa distribution et ses faits")
+    p.add_argument("--rafraichir", action="store_true",
+                   help="refaire la derniere page des tomes anterieurs pour "
+                        "qu'elle annonce les tomes parus depuis")
     p.set_defaults(fonction=cmd_series)
 
     p = sous_parseurs.add_parser("prompts", help="fabriquer un pack de prompts")

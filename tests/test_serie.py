@@ -275,3 +275,70 @@ class TestCanonDuTome(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPageDeSuite(unittest.TestCase):
+    """La derniere page : c'est la que la serie devient une vente.
+
+    Un lecteur qui vient de finir un tome est, a cet instant precis, le plus
+    disponible qu'il sera jamais pour en acheter un autre — et la derniere
+    page est le seul endroit ou on le tient encore.
+    """
+
+    def setUp(self):
+        _vider()
+        serie.enregistrer_tome("Les rails", BIBLE_T1, "Le dernier train",
+                               resume="Camille perd sa ligne.")
+        serie.enregistrer_tome("Les rails", BIBLE_T2, "La voie de service",
+                               resume="Dix ans plus tard, le depot rouvre.")
+
+    def test_le_tome_1_annonce_le_tome_2(self):
+        """Le cas qui rapporte : le lecteur du tome 1 est celui qui a paye en
+        premier et qui reviendra."""
+        page = serie.page_de_suite("Les rails", 1)
+        self.assertIn("La voie de service", page)
+        self.assertNotIn("Le dernier train", page)
+
+    def test_le_tome_2_renvoie_au_tome_1(self):
+        page = serie.page_de_suite("Les rails", 2)
+        self.assertIn("Le dernier train", page)
+        self.assertIn("tome 2", page)
+
+    def test_un_tome_seul_n_a_pas_de_page_de_suite(self):
+        """Une page « la suite » qui n'annonce rien decoit, et une deception
+        a la derniere page est le pire service a rendre a qui vous a lu
+        jusqu'au bout."""
+        _vider()
+        serie.enregistrer_tome("Solo", BIBLE_T1, "Unique", resume="...")
+        self.assertEqual(serie.page_de_suite("Solo", 1), "")
+
+    def test_une_serie_inconnue_ne_donne_rien(self):
+        self.assertEqual(serie.page_de_suite("jamais vue", 1), "")
+
+    def test_elle_demande_un_avis(self):
+        """C'est ce qui decide si quelqu'un d'autre trouvera le livre."""
+        self.assertIn("avis", serie.page_de_suite("Les rails", 1))
+
+
+class TestTomesARafraichir(unittest.TestCase):
+    def setUp(self):
+        _vider()
+
+    def test_le_dernier_tome_n_a_rien_a_rafraichir(self):
+        store.creer_produit("p1", "nouvelle", "T1")
+        serie.enregistrer_tome("Les rails", BIBLE_T1, "T1", "...", produit_id="p1")
+        self.assertEqual(serie.tomes_a_rafraichir("Les rails"), [])
+
+    def test_les_tomes_anterieurs_sont_signales(self):
+        store.creer_produit("p1", "nouvelle", "T1")
+        store.creer_produit("p2", "nouvelle", "T2")
+        serie.enregistrer_tome("Les rails", BIBLE_T1, "T1", "...", produit_id="p1")
+        serie.enregistrer_tome("Les rails", BIBLE_T2, "T2", "...", produit_id="p2")
+        attente = serie.tomes_a_rafraichir("Les rails")
+        self.assertEqual([t["rang"] for t in attente], [1])
+
+    def test_un_tome_sans_produit_n_est_pas_propose(self):
+        """Sans dossier de produit, il n'y a aucun fichier a refaire."""
+        serie.enregistrer_tome("Les rails", BIBLE_T1, "T1", "...")
+        serie.enregistrer_tome("Les rails", BIBLE_T2, "T2", "...")
+        self.assertEqual(serie.tomes_a_rafraichir("Les rails"), [])

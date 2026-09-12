@@ -302,6 +302,91 @@ def enregistrer_tome(nom: str, bible_du_tome: Dict[str, Any],
     return rang
 
 
+# --------------------------------------------------------------------------
+# Ce que le lecteur trouve a la derniere page
+# --------------------------------------------------------------------------
+
+TITRE_PAGE_DE_SUITE = "La suite"
+
+
+def page_de_suite(nom: str, rang: int) -> str:
+    """La page de fin d'un tome : les autres tomes de la serie.
+
+    C'est ici que la serie devient une vente et pas seulement une continuite.
+    Un lecteur qui vient de finir un tome est, a cet instant precis, le plus
+    disponible qu'il sera jamais pour en acheter un autre — et la derniere
+    page est le seul endroit ou on le tient encore.
+
+    Rendue vide quand il n'y a aucun autre tome : une page « la suite » qui
+    n'annonce rien decoit, et une deception a la derniere page est ce qu'on
+    peut faire de pire a un lecteur qui vous a lu jusqu'au bout.
+
+    Aucune promesse sur un tome a venir. Ce qui est annonce existe.
+    """
+    bible = lire(nom)
+    if not bible:
+        return ""
+    autres = [t for t in (bible.get("tomes") or []) if t.get("rang") != rang]
+    if not autres:
+        return ""
+
+    titre_serie = bible.get("nom") or nom
+    lignes = []
+    avant = [t for t in autres if (t.get("rang") or 0) < rang]
+    apres = [t for t in autres if (t.get("rang") or 0) > rang]
+
+    if rang and avant:
+        lignes.append(
+            "Vous venez de lire le tome {} de la serie **{}**. Chaque tome se "
+            "lit seul, mais ils se repondent.".format(rang, titre_serie))
+    else:
+        lignes.append("Ce recit appartient a la serie **{}**.".format(titre_serie))
+    lignes.append("")
+
+    if avant:
+        lignes.append("### Ce qui precede")
+        lignes.append("")
+        for tome in avant:
+            lignes.append("**Tome {} — {}**".format(tome.get("rang"),
+                                                    tome.get("titre", "")))
+            if tome.get("resume"):
+                lignes.append("")
+                lignes.append(_abreger(tome["resume"], 45))
+            lignes.append("")
+    if apres:
+        lignes.append("### La suite")
+        lignes.append("")
+        for tome in apres:
+            lignes.append("**Tome {} — {}**".format(tome.get("rang"),
+                                                    tome.get("titre", "")))
+            if tome.get("resume"):
+                lignes.append("")
+                lignes.append(_abreger(tome["resume"], 45))
+            lignes.append("")
+
+    lignes.append(
+        "Si cette histoire vous a plu, le meilleur service que vous puissiez "
+        "rendre a son auteur tient en deux lignes d'avis la ou vous l'avez "
+        "achetee. C'est ce qui decide si quelqu'un d'autre la trouvera.")
+    return "\n".join(lignes).strip()
+
+
+def tomes_a_rafraichir(nom: str) -> List[Dict[str, Any]]:
+    """Tomes dont la page de fin ne connait pas encore les tomes suivants.
+
+    Un tome fabrique quand il etait le dernier porte une page de fin qui
+    n'annonce rien de ce qui est venu apres. C'est precisement le lecteur le
+    plus precieux — celui du tome 1 — qui ne voit rien.
+    """
+    bible = lire(nom)
+    if not bible:
+        return []
+    tomes = bible.get("tomes") or []
+    dernier = max((t.get("rang") or 0) for t in tomes) if tomes else 0
+    return [t for t in tomes if (t.get("rang") or 0) < dernier
+            and t.get("produit_id")]
+
+
 def tomes_du_produit(produit_id: str) -> Optional[Dict[str, Any]]:
     """Serie et rang d'un produit, ou None s'il n'appartient a aucune serie."""
     produit = store.lire_produit(produit_id)

@@ -962,3 +962,103 @@ class TestSerieDansLaChaine(unittest.TestCase):
         """La CLI, le menu et le tableau de bord passent par le catalogue :
         une option qu'il ne transmet pas n'existe pour personne."""
         self.assertIn("serie", catalogue.obtenir("nouvelle").options)
+
+
+class TestRafraichissementDeSerie(unittest.TestCase):
+    """Le tome 1 doit finir par annoncer le tome 2.
+
+    C'est tout l'interet commercial de la serie, et il n'existe pas a la
+    fabrication du tome 1 : a ce moment-la le tome 2 n'existe pas. Il faut
+    donc revenir sur un produit deja livre — sans toucher au recit, et sans
+    regenerer sa couverture.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from usine.core import serie as module_serie
+
+        cls.serie = module_serie
+        with store.cursor() as cur:
+            cur.execute("DELETE FROM series")
+        cls.t1 = nouvelle.produire(_contexte(sujet="le depot qui ferme"),
+                                   serie="Suite")
+        cls.t2 = nouvelle.produire(_contexte(sujet="dix ans apres"),
+                                   serie="Suite")
+        # Instantane pris AVANT tout rafraichissement : unittest classe les
+        # methodes par ordre alphabetique, et « rafraichissement » passe avant
+        # « tome_1 ». Sans cet instantane, l'assertion « a sa naissance »
+        # lirait un fichier deja refait — un test qui depend de l'ordre de ses
+        # voisins ne dit plus ce qu'il croit dire.
+        cls.markdown_t1_neuf = cls._lire_markdown(cls.t1)
+
+    @staticmethod
+    def _lire_markdown(resume):
+        from usine.marketing.extrait import _markdown_du_produit
+
+        return _markdown_du_produit(Path(resume["dossier"]),
+                                    "nouvelle").read_text(encoding="utf-8")
+
+    def _markdown(self, resume):
+        return self._lire_markdown(resume)
+
+    def test_le_tome_2_annonce_deja_le_tome_1(self):
+        """Lui, il connaissait son predecesseur des sa fabrication."""
+        markdown = self._markdown(self.t2)
+        self.assertIn(self.serie.TITRE_PAGE_DE_SUITE, markdown)
+        # Le rang doit arriver jusqu'a l'export : sans lui, la page dirait
+        # « ce recit appartient a la serie » au lieu de « vous venez de lire
+        # le tome 2 » — et un lecteur qui ignore ou il se trouve dans une
+        # suite ne sait pas quoi acheter ensuite.
+        self.assertIn("tome 2", markdown)
+
+    def test_un_tome_refait_ne_se_cite_pas_lui_meme(self):
+        nouvelle.rafraichir_serie("Suite", journal=lambda _m: None)
+        page = self._markdown(self.t1).split(
+            "\n# " + self.serie.TITRE_PAGE_DE_SUITE)[1]
+        self.assertNotIn("Tome 1 —", page)
+        self.assertIn("Tome 2 —", page)
+
+    def test_le_tome_1_ne_peut_pas_connaitre_le_tome_2_a_sa_naissance(self):
+        self.assertNotIn(self.serie.TITRE_PAGE_DE_SUITE, self.markdown_t1_neuf)
+
+    def test_le_rafraichissement_lui_ajoute_la_page(self):
+        refaits = nouvelle.rafraichir_serie("Suite", journal=lambda _m: None)
+        self.assertEqual([r["rang"] for r in refaits], [1])
+        markdown = self._markdown(self.t1)
+        self.assertIn(self.serie.TITRE_PAGE_DE_SUITE, markdown)
+        self.assertIn(self.t2["titre"], markdown)
+
+    def test_le_recit_lui_meme_n_est_pas_touche(self):
+        """On refait la derniere page, pas le livre."""
+        avant = self._markdown(self.t1)
+        premiere_scene = avant.split("\n# ")[1][:120]
+        nouvelle.rafraichir_serie("Suite", journal=lambda _m: None)
+        self.assertIn(premiere_scene, self._markdown(self.t1))
+
+    def test_rafraichir_deux_fois_ne_double_pas_la_page(self):
+        """Deux pages « La suite » qui se suivent se contrediraient."""
+        nouvelle.rafraichir_serie("Suite", journal=lambda _m: None)
+        nouvelle.rafraichir_serie("Suite", journal=lambda _m: None)
+        markdown = self._markdown(self.t1)
+        self.assertEqual(markdown.count("\n# " + self.serie.TITRE_PAGE_DE_SUITE), 1)
+
+    def test_la_couverture_n_est_pas_regeneree(self):
+        """Celle d'un modele d'images ne se reproduit pas a l'identique : un
+        acheteur ne doit pas retrouver un livre dont la couverture a change.
+
+        Le rafraichissement fabrique un contexte avec les images ACTIVES —
+        c'est le cas normal d'un produit vendu. Sans la reprise explicite, il
+        en dessinerait donc une nouvelle. On en pose une reconnaissable pour
+        que la difference se voie.
+        """
+        couverture = Path(self.t1["dossier"]) / "couverture.png"
+        temoin = b"\x89PNG\r\n\x1a\n-temoin-de-couverture-deja-livree"
+        couverture.write_bytes(temoin)
+        nouvelle.rafraichir_serie("Suite", journal=lambda _m: None)
+        self.assertEqual(couverture.read_bytes(), temoin)
+
+    def test_les_fichiers_livres_sont_bien_reecrits(self):
+        refaits = nouvelle.rafraichir_serie("Suite", journal=lambda _m: None)
+        noms = refaits[0]["fichiers"]
+        self.assertTrue(any(n.endswith(".pdf") for n in noms))
+        self.assertTrue(any(n.endswith(".epub") for n in noms))

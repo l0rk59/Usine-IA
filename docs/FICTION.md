@@ -424,6 +424,44 @@ Rien n'est signalé quand la série est neuve — il n'y a pas de canon à
 contredire — ni pour un attribut que la série ne connaît pas : c'est le tome
 courant qui l'établit.
 
+### La dernière page, qui est la vente
+
+La continuité retient le lecteur. **La dernière page est ce qui lui vend le
+tome suivant** — il vient de finir, c'est l'instant précis où il est le plus
+disponible qu'il sera jamais, et c'est le seul endroit où on le tient encore.
+
+Chaque tome d'une série reçoit donc un bloc « La suite » : les autres tomes,
+avec leur titre et leur résumé, et une demande d'avis — c'est l'avis qui décide
+si quelqu'un d'autre trouvera le livre. Zéro appel de modèle : tout vient de la
+bible de série.
+
+Une page « La suite » qui n'annonce rien n'est pas écrite. Décevoir à la
+dernière page est le pire service à rendre à qui vous a lu jusqu'au bout. Et
+rien n'y promet un tome à venir : ce qui est annoncé existe.
+
+#### Le problème du tome 1, et ce qui le règle
+
+Le tome 1 est fabriqué quand le tome 2 n'existe pas. Sa dernière page ne peut
+donc annoncer personne — alors que son lecteur est **exactement celui qui
+compte** : il a payé en premier, il a fini, il en veut un autre.
+
+```bash
+usine series "Les rails"              # dit combien de tomes sont à refaire
+usine series "Les rails" --rafraichir
+```
+
+Le rafraîchissement relit le markdown déjà livré, **remplace** sa page de fin —
+ne l'empile pas, deux pages « La suite » qui se suivent se contrediraient — et
+réécrit les fichiers. Le récit lui-même n'est pas touché.
+
+Un détail compte plus qu'il n'en a l'air : **la couverture est reprise, pas
+regénérée.** Celle d'un modèle d'images ne se reproduit pas à l'identique, et
+un acheteur ne doit pas retrouver un livre dont la couverture a changé depuis
+qu'il l'a vu. `Produit.reutiliser_couverture` existe pour cela, et n'est levé
+que par une refabrication.
+
+Il reste à redéposer les fichiers chez le distributeur — la commande le dit.
+
 ### Ce que le tome suivant reçoit
 
 Le rappel entre dans l'invite de la bible, avant l'idée. Il nomme la série, le
