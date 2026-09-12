@@ -11,9 +11,11 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from ..core import llm
+from ..pipelines import catalogue
 from ..render import document as D
 from ..render.page import ecrire_page
 from ..pipelines.base import Contexte, nettoyer_titre
+from . import extrait
 
 ROLE = (
     "un redacteur publicitaire specialise dans les produits digitaux, "
@@ -148,7 +150,8 @@ def page_de_vente(titre: str, fiche: Dict[str, Any], prix: str = "",
 
 def produire_kit(ctx: Contexte, titre: str, description_produit: str,
                  dossier: Path, plateforme: str = "gumroad",
-                 couverture: str = "") -> Dict[str, Any]:
+                 couverture: str = "", type_produit: str = "ebook",
+                 chapitres_offerts: int = 0) -> Dict[str, Any]:
     """Genere le kit de vente complet dans `dossier/marketing`."""
     cible = dossier / "marketing"
     cible.mkdir(parents=True, exist_ok=True)
@@ -214,9 +217,25 @@ def produire_kit(ctx: Contexte, titre: str, description_produit: str,
         chemin_emails.write_text("\n".join(lignes_email), encoding="utf-8")
         fichiers.append(chemin_emails)
 
+    # L'edition courte offerte : decoupee dans le livre deja produit, donc
+    # gratuite en quota et fidele a ce qu'on vend. Elle vit dans « marketing »,
+    # qui ne part pas dans l'archive de l'acheteur.
+    edition = None
+    if catalogue.accepte_extrait(type_produit):
+        try:
+            edition = extrait.produire(ctx, dossier, titre, type_produit,
+                                       chapitres_offerts)
+        except Exception as exc:
+            ctx.journal("  extrait non genere : {}".format(exc))
+        if edition:
+            ctx.journal("  extrait offert : {} chapitre(s) sur {}".format(
+                edition["chapitres_offerts"],
+                edition["chapitres_offerts"] + edition["chapitres_restants"]))
+
     return {
         "fiche": fiche,
         "emails": len(emails),
         "fichiers": [f.name for f in fichiers],
         "dossier": str(cible),
+        "extrait": edition,
     }

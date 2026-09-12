@@ -37,6 +37,10 @@ class TypeProduit:
     fabriquer: Optional[Callable[..., Dict[str, Any]]] = None
     vendable: bool = True             # False pour les outils d'analyse
     file: bool = True                 # peut entrer dans la file de production
+    # Une edition courte offerte a un sens pour un produit qu'on LIT. Pour un
+    # outil logiciel, « les deux premiers chapitres » ne veut rien dire : ce
+    # qu'on vend est un programme qui marche, pas un texte qu'on goute.
+    extrait: bool = True
     mots_cles: Tuple[str, ...] = ()   # aide l'explorateur de niches a choisir
     options: Dict[str, Any] = field(default_factory=dict)
 
@@ -176,7 +180,7 @@ TYPES: List[TypeProduit] = [
                    "calendrier editorial"),
     ),
     TypeProduit(
-        cle="logiciel", nom="Outil logiciel",
+        cle="logiciel", nom="Outil logiciel", extrait=False,
         resume="Un outil qui demarre, verifie avant livraison",
         detail="Code source + documentation + rapport de verification",
         formats=("py", "md", "pdf", "html"),
@@ -249,6 +253,12 @@ def executer(cle: str, contexte: Any,
     if type_produit is None:
         raise ValueError("type de produit inconnu : {}".format(cle))
     return type_produit.executer(contexte, options)
+
+
+def accepte_extrait(cle: str) -> bool:
+    """Ce type de produit se prete-t-il a une edition courte offerte ?"""
+    type_produit = obtenir(cle)
+    return bool(type_produit.extrait) if type_produit else False
 
 
 def normaliser(cle: str, defaut: str = "ebook") -> str:

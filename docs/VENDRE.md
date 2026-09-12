@@ -103,8 +103,26 @@ Ne lancez pas sur une audience inexistante. L'ordre qui fonctionne :
 
 1. Publiez pendant deux semaines sur le sujet, gratuitement, là où se trouve
    votre audience.
-2. Proposez un extrait gratuit (le chapitre 1 en PDF) contre une adresse e-mail.
+2. Proposez un **extrait gratuit** contre une adresse e-mail. L'usine le
+   fabrique avec le kit de vente, dans `marketing/extrait/` : PDF et EPUB des
+   premiers chapitres (un quart du livre par défaut), suivis d'une page qui
+   liste les chapitres restants et renvoie vers votre site — celui de vos
+   réglages `site` et `contact`.
+
+   ```bash
+   usine marketing <identifiant>              # un quart du livre
+   usine marketing <identifiant> --extrait 1  # le seul premier chapitre
+   ```
+
+   Il est **découpé dans le livre déjà produit**, sans un seul appel d'IA :
+   il ne consomme aucun quota, et c'est vraiment le début du livre que vous
+   vendez — ce qu'un extrait promet.
 3. Seulement ensuite, envoyez la séquence de lancement à cette liste.
+
+> **L'extrait ne part jamais dans l'archive de l'acheteur.** Il vit dans
+> `marketing/`, exclu de la mise en carton au même titre que votre page de
+> vente. Livrer une version amputée à quelqu'un qui vient de payer le livre
+> entier serait au mieux ridicule.
 
 Un produit à 29 € vendu 20 fois rapporte plus qu'un produit à 9 € vendu deux
 fois. Le prix bas n'accélère pas les ventes, il réduit la valeur perçue.

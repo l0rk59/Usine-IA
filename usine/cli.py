@@ -139,8 +139,14 @@ def _apres_production(args: argparse.Namespace, ctx: Contexte,
                 couverture=next(
                     (n for n in resume.get("fichiers", []) if n.startswith("couverture")), ""
                 ),
+                # Le nom de la commande EST la cle du catalogue : c'est
+                # l'invariant du projet, autant s'y appuyer.
+                type_produit=getattr(args, "commande", "ebook"),
+                chapitres_offerts=getattr(args, "extrait", 0) or 0,
             )
             resume["marketing"] = kit["fichiers"]
+            if kit.get("extrait"):
+                resume["extrait"] = kit["extrait"]
             prix = (kit["fiche"].get("prix_conseille") or {}).get("cible")
             ok("Kit de vente pret ({} fichiers)".format(len(kit["fichiers"])))
             if prix:
@@ -1466,10 +1472,17 @@ def cmd_marketing(args: argparse.Namespace) -> int:
         produit["type"], meta.get("promesse") or produit["sujet"]
     )
     kit = vente.produire_kit(ctx, produit["titre"], description, dossier,
-                             plateforme=args.plateforme)
+                             plateforme=args.plateforme,
+                             type_produit=produit["type"],
+                             chapitres_offerts=getattr(args, "extrait", 0) or 0)
     for nom in kit["fichiers"]:
         ok(nom)
     print("  Dossier : " + kit["dossier"])
+    if kit.get("extrait"):
+        edition = kit["extrait"]
+        ok("Extrait offert : {} chapitre(s), {} fichiers".format(
+            edition["chapitres_offerts"], len(edition["fichiers"])))
+        print("  Dossier : " + edition["dossier"])
     return 0
 
 
@@ -1748,6 +1761,9 @@ def _options_communes(sous: argparse.ArgumentParser, avec_sujet: bool = True) ->
                       help="rapide (sans relecture) | standard (1) | exigeant (2)")
     sous.add_argument("--marketing", action="store_true",
                       help="generer aussi le kit de vente")
+    sous.add_argument("--extrait", type=int, default=0, metavar="N",
+                      help="chapitres de l'edition courte offerte "
+                           "(defaut : un quart du livre)")
     sous.add_argument("--plateforme", default="gumroad",
                       choices=sorted(vente.PLATEFORMES), help="plateforme de vente visee")
     sous.add_argument("--zip", action="store_true", help="produire l'archive livrable")
@@ -1842,6 +1858,8 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.add_argument("produit_id", help="identifiant du produit (voir : usine liste)")
     p.add_argument("--plateforme", default="gumroad", choices=sorted(vente.PLATEFORMES))
     p.add_argument("--prix", default="", help="prix affiche")
+    p.add_argument("--extrait", type=int, default=0, metavar="N",
+                   help="chapitres de l'edition courte offerte")
     p.set_defaults(fonction=cmd_marketing)
 
     p = sous_parseurs.add_parser("livrer", help="creer l'archive ZIP d'un produit")

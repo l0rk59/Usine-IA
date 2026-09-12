@@ -191,7 +191,8 @@ usine logiciel "le calcul de tarif pour freelances" -c web
 -T, --taille     mini (6 ch.) | court (8) | standard (12) | long (18)
 -q, --qualite    rapide (0 relecture) | standard (1) | exigeant (2)
     --auteur     nom affiché comme auteur
-    --marketing  générer aussi le kit de vente
+    --marketing  générer aussi le kit de vente (dont l'extrait offert)
+    --extrait N  chapitres de l'édition courte offerte (défaut : un quart)
     --plateforme gumroad | etsy | payhip | site
     --zip        produire l'archive livrable
     --hors-ligne ne rien télécharger
@@ -766,7 +767,7 @@ refait quand la base a changé.
      ├──► HTML   (responsive, thème clair/sombre, imprimable)
      ├──► CSV / JSON / Markdown / TXT
      ├──► couverture PNG + SVG (composée localement, sans filigrane)
-     └──► kit de vente + archive ZIP
+     └──► kit de vente + extrait offert + archive ZIP
 ```
 
 **L'EPUB est contrôlé avant d'être livré.** EPUBCheck est l'outil de
@@ -812,7 +813,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         621 tests + test de fumée, aucun appel réseau
+tests/         638 tests + test de fumée, aucun appel réseau
                un atelier temporaire par module (tests/atelier.py)
 install.sh     installation Termux
 ```
@@ -825,7 +826,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 621 tests
+python3 -m unittest discover -s tests -t .   # 638 tests
 python3 scripts/dependances.py               # zéro dépendance
 python3 tests/fumee.py                       # les 10 chaînes via la vraie CLI
 ```

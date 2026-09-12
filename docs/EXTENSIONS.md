@@ -211,8 +211,12 @@ Classé par rapport entre ce que ça apporte et ce que ça coûte.
 ### `ebook` — guides
 - ~~**Page de copyright et appareil liminaire**~~ **Fait.** Voir §2.
 - ~~**Validation EPUBCheck** avant livraison~~ **Fait**, en Python : voir §2.
-- **Éditions déclinées** : le même livre en « version courte » offerte pour
-  capter des adresses, et en version complète payante.
+- ~~**Éditions déclinées** : le même livre en « version courte » offerte pour
+  capter des adresses.~~ **Fait.** `usine ebook … --marketing` produit
+  `marketing/extrait/` : PDF + EPUB des premiers chapitres (un quart par
+  défaut, `--extrait N` pour décider), suivis d'une page qui liste ce qui
+  reste et où l'obtenir. **Aucun appel au modèle** — l'extrait est découpé
+  dans le livre déjà produit, donc gratuit et fidèle à ce qu'on vend.
 
 ### `roman` / `nouvelle` — fiction *(chaîne nouvelle)*
 **Fait pour la nouvelle.** `usine nouvelle` livre les trois pièces décrites au
@@ -359,8 +363,7 @@ apporte et ce que ça coûte :
 2. ~~**`termux-share`** : envoyer une archive livrable vers Drive ou un
    courriel depuis l'écran « Mes produits » du menu.~~ **Fait**, avec
    *Ouvrir sur le téléphone* dans le même écran (voir §5).
-3. **Éditions déclinées** d'un ebook : version courte offerte pour capter des
-   adresses, version complète payante.
+3. ~~**Éditions déclinées** d'un ebook.~~ **Fait** (voir §4, `ebook`).
 4. **Quiz auto-corrigés** en HTML autonome pour les mini-formations : la
    chaîne produit déjà du HTML.
 *(L'ancien item « profil audit local » est retiré : la direction outillage de

@@ -312,6 +312,13 @@ class TestChaineComplete(unittest.TestCase):
         (self.dossier / "marketing" / "page-de-vente.html").write_text(
             "prix plancher", encoding="utf-8"
         )
+        # L'edition courte offerte est DANS le kit, un cran plus bas.
+        # L'exclusion doit donc porter sur tout le sous-arbre, pas sur le
+        # seul premier niveau : livrer un extrait a qui vient d'acheter le
+        # livre entier serait au mieux ridicule.
+        (self.dossier / "marketing" / "extrait").mkdir(exist_ok=True)
+        (self.dossier / "marketing" / "extrait" / "livre-extrait.pdf").write_bytes(
+            b"%PDF-1.4 extrait offert")
         archive = livraison.empaqueter(self.dossier, "test-livrable",
                                        self.resume["titre"], "Tests")
         self.assertTrue(archive.exists())
@@ -324,6 +331,8 @@ class TestChaineComplete(unittest.TestCase):
                              "les fichiers de travail ne doivent pas etre livres")
             self.assertFalse(any("marketing" in n for n in noms),
                              "le kit de vente ne doit pas etre livre a l'acheteur")
+            self.assertFalse(any("extrait" in n for n in noms),
+                             "l'edition courte offerte non plus")
 
 
 class TestServeurWeb(unittest.TestCase):
