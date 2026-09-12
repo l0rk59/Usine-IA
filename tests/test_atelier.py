@@ -11,6 +11,7 @@ from __future__ import annotations
 import ast
 import io
 import re
+import sqlite3
 import sys
 import unittest
 from contextlib import redirect_stdout
@@ -210,3 +211,151 @@ class TestDrapeauxDeSchema(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestEchelleDeMigrations(unittest.TestCase):
+    """Une base d'hier doit arriver au schema d'aujourd'hui.
+
+    C'est le seul endroit du depot ou une erreur detruit des donnees que
+    personne ne peut reconstituer : l'historique de production vit sur le
+    telephone de l'utilisateur, et nulle part ailleurs. Le defaut ne se voit
+    pas chez qui developpe — sa base est toujours neuve, donc elle saute les
+    paliers — mais des semaines plus tard, chez quelqu'un d'autre, sous la
+    forme d'un « no such column » en pleine fabrication.
+
+    Ces tests partent donc d'une base VRAIMENT ancienne : les tables telles
+    qu'elles existaient au palier 1, et « PRAGMA user_version = 1 ».
+    """
+
+    def _base_v1(self) -> None:
+        """Recree une base au palier 1 : sans empreintes, sans ventes."""
+        store.close()
+        if config.DB_PATH.exists():
+            config.DB_PATH.unlink()
+        config.ensure_dirs()
+        conn = sqlite3.connect(str(config.DB_PATH), isolation_level=None)
+        conn.executescript(
+            """
+            CREATE TABLE produits (
+                id TEXT PRIMARY KEY, type TEXT NOT NULL, titre TEXT,
+                sujet TEXT, statut TEXT, dossier TEXT, cree_le REAL);
+            CREATE TABLE appels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, fournisseur TEXT NOT NULL,
+                modele TEXT, ts REAL NOT NULL, jour TEXT NOT NULL,
+                ok INTEGER NOT NULL DEFAULT 1, tokens INTEGER DEFAULT 0,
+                latence REAL DEFAULT 0, erreur TEXT, cle_id TEXT DEFAULT '');
+            """
+        )
+        conn.execute(
+            "INSERT INTO produits VALUES ('vieux','ebook','Un titre','sujet',"
+            "'termine','/nulle/part', 1.0)")
+        conn.execute("PRAGMA user_version = 1")
+        conn.close()
+
+    def _tables(self):
+        with store.cursor() as cur:
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            return {ligne[0] for ligne in cur.fetchall()}
+
+    def test_une_base_du_palier_1_monte_au_palier_courant(self):
+        self._base_v1()
+        with store.cursor() as cur:
+            version = cur.execute("PRAGMA user_version").fetchone()[0]
+        self.assertEqual(version, store.VERSION_SCHEMA)
+
+    def _base_v3_sans_les_colonnes(self) -> None:
+        """Une base au palier 3 : « variantes » existe, sans debut ni fin.
+
+        C'est le seul cas qui distingue vraiment l'echelle du reste. Les
+        paliers 2 et 3 ne font que creer des tables, et « CREATE TABLE IF NOT
+        EXISTS » du schema les recree de toute facon : un test qui verifie
+        leur presence passe meme si l'echelle ne tourne pas. Une COLONNE
+        ajoutee a une table existante, elle, ne peut venir que d'un ALTER —
+        donc de l'echelle.
+        """
+        store.close()
+        if config.DB_PATH.exists():
+            config.DB_PATH.unlink()
+        config.ensure_dirs()
+        conn = sqlite3.connect(str(config.DB_PATH), isolation_level=None)
+        conn.executescript(
+            """
+            CREATE TABLE produits (
+                id TEXT PRIMARY KEY, type TEXT NOT NULL, titre TEXT,
+                sujet TEXT, statut TEXT, dossier TEXT, cree_le REAL);
+            CREATE TABLE variantes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                experience_id INTEGER NOT NULL, etiquette TEXT NOT NULL,
+                contenu TEXT NOT NULL, fichier TEXT,
+                meta TEXT NOT NULL DEFAULT '{}', cree_le REAL NOT NULL);
+            """
+        )
+        conn.execute("PRAGMA user_version = 3")
+        conn.close()
+
+    def _colonnes(self, table: str):
+        with store.cursor() as cur:
+            return {ligne[1] for ligne in cur.execute(
+                "PRAGMA table_info({})".format(table))}
+
+    def test_une_colonne_ajoutee_par_un_palier_apparait(self):
+        """Le cas qui distingue l'echelle du schema.
+
+        « CREATE TABLE IF NOT EXISTS » ne touche pas une table deja creee :
+        sans l'echelle, ces deux colonnes n'existeraient jamais chez qui a
+        deja lance une experience — et la premiere requete leverait
+        « no such column: debut », des semaines apres la mise a jour.
+        """
+        self._base_v3_sans_les_colonnes()
+        colonnes = self._colonnes("variantes")
+        self.assertIn("debut", colonnes)
+        self.assertIn("fin", colonnes)
+
+    def test_les_tables_nees_apres_le_palier_1_apparaissent(self):
+        """Celles-la viennent du schema, pas de l'echelle — mais leur absence
+        se verrait tout de suite, donc le constat vaut quand meme."""
+        self._base_v1()
+        tables = self._tables()
+        self.assertIn("empreintes", tables)   # palier 2
+        self.assertIn("ventes", tables)       # palier 3
+
+    def test_les_donnees_d_avant_survivent(self):
+        """Une migration qui recree proprement en perdant tout n'en est pas
+        une : l'historique de ventes et les produits sont irremplacables."""
+        self._base_v1()
+        produit = store.lire_produit("vieux")
+        self.assertIsNotNone(produit)
+        self.assertEqual(produit["titre"], "Un titre")
+
+    def test_les_donnees_survivent_a_une_colonne_ajoutee(self):
+        """Un ALTER ne doit pas se transformer en recreation de table."""
+        self._base_v3_sans_les_colonnes()
+        with store.cursor() as cur:
+            cur.execute(
+                "INSERT INTO variantes(experience_id, etiquette, contenu,"
+                " cree_le) VALUES (1,'A','du texte', 1.0)")
+            cur.execute("SELECT etiquette, debut FROM variantes")
+            ligne = cur.fetchone()
+        self.assertEqual(ligne[0], "A")
+        self.assertIsNone(ligne[1])
+
+    def test_une_base_neuve_saute_les_paliers_sans_les_rejouer(self):
+        """Une base creee ce matin a deja toutes ses tables : lui faire
+        rejouer l'echelle n'ajouterait rien et masquerait une erreur de
+        palier derriere un « IF NOT EXISTS »."""
+        store.close()
+        if config.DB_PATH.exists():
+            config.DB_PATH.unlink()
+        with store.cursor() as cur:
+            version = cur.execute("PRAGMA user_version").fetchone()[0]
+        self.assertEqual(version, store.VERSION_SCHEMA)
+        self.assertIn("ventes", self._tables())
+
+    def test_chaque_palier_declare_a_un_numero_atteignable(self):
+        """Un palier numerote au-dela de VERSION_SCHEMA ne s'execute jamais :
+        la migration est ecrite, commitee, et ne tourne chez personne."""
+        for palier in store.MIGRATIONS:
+            self.assertLessEqual(
+                palier, store.VERSION_SCHEMA,
+                "le palier {} ne sera jamais joue : VERSION_SCHEMA vaut {}"
+                .format(palier, store.VERSION_SCHEMA))

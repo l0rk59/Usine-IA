@@ -89,9 +89,24 @@ pourquoi c'etait invisible**, pas la liste des fichiers touches.
 
 ## Skills du projet
 
-`.claude/skills/` — `mutation`, `fournisseurs`, `nouveau-produit`,
-`avant-de-pousser`. Chacune encode un enchainement que ce depot refait
+`.claude/skills/` — chacune encode un enchainement que ce depot refait
 regulierement et ou l'on se trompe de la meme facon.
+
+| | |
+|---|---|
+| `mutation` | remettre le defaut et verifier que la suite le remarque ; outil livre |
+| `avant-de-pousser` | rejouer en local les cinq controles de la CI |
+| `fournisseurs` | modeles et quotas : la donnee la plus perissable du depot |
+| `nouveau-produit` | ajouter une chaine de fabrication, via le catalogue |
+| `migration-base` | changer le schema SQLite sans detruire l'atelier d'un utilisateur |
+| `rendu` | les moteurs PDF / EPUB ecrits a la main, et pourquoi |
+| `controle-qualite` | ajouter une mesure deterministe sans creer de faux positif |
+| `termux` | ecrire pour un telephone : processus tue, batterie, binaires absents |
+
+`tests/test_skills.py` verifie que chaque skill dit la verite : entete
+lisible, chemins cites existants, fonctions citees reelles. Une skill qui
+cite une fonction renommee est un piege — elle n'echoue nulle part, elle fait
+perdre une heure a qui la suit.
 
 ## Avant de pousser
 
