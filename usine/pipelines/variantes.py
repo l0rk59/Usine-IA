@@ -14,7 +14,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..agents import equipe
-from ..core import diagnostic_titre, evenements, experience, images
+from ..core import config, diagnostic_titre, evenements, experience, images
+from ..core import store
 from ..render.page import ecrire_page
 from .base import Contexte, nettoyer_titre, slug
 
@@ -289,6 +290,20 @@ def planche(experience_id: int, dossier: Path) -> Path:
 # --------------------------------------------------------------------------
 # Chaine complete
 # --------------------------------------------------------------------------
+
+
+def dossier_du_test(produit_id: str, titre: str) -> Path:
+    """Ou vivent les variantes d'un test : a cote du produit, ou a part.
+
+    La regle etait recopiee dans la ligne de commande et dans le tableau de
+    bord, avec deja deux facons differentes d'abreger le titre. Deux copies
+    d'une regle de CHEMIN qui divergent, ce sont des fichiers qu'une des
+    deux interfaces ne retrouve plus.
+    """
+    produit = store.lire_produit(produit_id) if produit_id else None
+    if produit and produit.get("dossier"):
+        return Path(produit["dossier"]) / "variantes"
+    return config.PRODUITS_DIR / "variantes-{}".format(slug(titre, 40))
 
 
 def preparer_test(

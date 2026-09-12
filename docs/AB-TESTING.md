@@ -197,3 +197,30 @@ période déjà enregistrée comme valeur par défaut : repasser dessus sans rie
 taper ne l'efface pas. Une date au mauvais format ou une fin antérieure au
 début est refusée variante par variante, sans interrompre la saisie des
 suivantes.
+
+## Depuis le tableau de bord
+
+C'est là que l'A/B manquait le plus, et le manque était ironique : **on
+compare des couvertures, qui sont des images**, et la seule interface avec un
+écran ne les montrait pas. `usine ab planche` fabrique bien une planche de
+comparaison — qu'on ne pouvait ouvrir qu'en tant que fichier.
+
+La carte **Tests A/B** fait tout le cycle : créer (les couvertures s'affichent
+côte à côte, en vraie taille, cliquables), reporter des vues et des actions,
+dater chaque variante, lire le verdict qui se met à jour, retenir la gagnante,
+supprimer le test. La génération part en tâche de fond : elle appelle le
+modèle, et pour les couvertures elle dessine quatre images.
+
+### Un défaut trouvé en branchant la page
+
+Le chemin d'une variante de couverture n'est **pas un chemin** : la base
+stocke un simple nom de fichier, qui ne vaut que rapporté au dossier du test.
+Et la règle donnant ce dossier — à côté du produit, ou à part si le test ne
+part d'aucun produit — existait **en deux exemplaires**, dans la ligne de
+commande et dans le tableau de bord, avec déjà deux façons différentes
+d'abréger le titre.
+
+Deux copies d'une règle de chemin qui divergent, ce sont des fichiers qu'une
+des deux interfaces ne retrouve plus. Elle vit maintenant dans
+`variantes.dossier_du_test()`, appelée par les trois endroits.
+

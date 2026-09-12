@@ -82,3 +82,26 @@ listes d'expressions régulières que vous pouvez étendre. Un défaut qui revie
 dans vos productions apparaît dans `usine bilan` sous « défauts fréquents » :
 c'est le signal qu'il faut soit ajouter une règle à l'agent rédacteur
 (`usine prompts-systeme --exporter`), soit ajouter le motif ici.
+
+## Le bilan, enfin visible
+
+`usine bilan` est la boucle de rétroaction du projet : note moyenne, gain réel
+de la relecture, classement par type, par ton, par volume, par niveau de
+qualité. Il n'était lisible qu'en console — donc invisible depuis le
+téléphone, qui est l'usage principal.
+
+Le menu (**Ce que l'usine a appris**) et le tableau de bord le montrent
+maintenant tous les deux.
+
+Un réglage n'apparaît qu'à partir de **deux productions notées**, et la page
+le dit : une seule note ne mesure pas un ton. Sans cette phrase, un
+« Par ton » vide se lit comme « le ton ne change rien », ce qui est le
+contraire de ce que les données disent.
+
+### Un défaut de mon propre script
+
+La page lisait `g.note` là où le bilan porte `note_moyenne`. Rien n'aurait
+échoué : chaque barre se serait affichée vide, à zéro, et le classement aurait
+eu l'air d'annoncer que rien ne compte. Un test lit maintenant le script servi
+et vérifie le nom du champ.
+

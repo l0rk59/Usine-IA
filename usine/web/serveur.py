@@ -20,12 +20,13 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from .. import __version__
 from ..agents import equipe
 from ..core import cles as pool_cles
-from ..core import config, empreinte, evenements, file as file_prod, llm
+from ..core import config, empreinte, evenements, experience
+from ..core import file as file_prod, llm
 from ..core import reglages, securite, store, ventes
 from ..pipelines import catalogue, social
 from ..pipelines.base import TAILLES, TONS, Contexte
@@ -43,6 +44,10 @@ VEILLES: Dict[str, Dict[str, Any]] = {}
 # disque du telephone ; ce qu'il faudra ensuite decompresser est
 # borne separement, dans « sauvegarde ».
 TELEVERSEMENT_MAX = 200 * 1024 * 1024
+
+# Le sondage de marche interroge quatre services publics l'un apres l'autre.
+# Comme la veille, il est trop long pour une requete qui attend.
+MARCHES: Dict[str, Dict[str, Any]] = {}
 _VERROU = threading.Lock()
 
 
@@ -222,6 +227,16 @@ class Gestionnaire(BaseHTTPRequestHandler):
             self._json({"produits": _produits()})
         elif chemin == "/api/commerce":
             self._json(_commerce())
+        elif chemin == "/api/ab":
+            self._json({"tests": _tests_ab()})
+        elif chemin.startswith("/api/ab/"):
+            try:
+                identifiant = int(chemin.rsplit("/", 1)[-1])
+            except ValueError:
+                self._json({"erreur": "numero de test invalide"}, 400)
+                return
+            detail = _detail_ab(identifiant)
+            self._json(detail, 200 if "erreur" not in detail else 404)
         elif chemin == "/api/usine":
             from ..production import statut
 
@@ -247,6 +262,16 @@ class Gestionnaire(BaseHTTPRequestHandler):
                        200 if consultation else 404)
         elif chemin == "/api/sauvegardes":
             self._json(_sauvegardes())
+        elif chemin == "/api/bilan":
+            from ..core import apprentissage
+
+            self._json(apprentissage.bilan())
+        elif chemin.startswith("/api/marche/"):
+            marche_id = chemin.rsplit("/", 1)[-1]
+            with _VERROU:
+                sondage = MARCHES.get(marche_id)
+            self._json(sondage if sondage else {"erreur": "sondage inconnu"},
+                       200 if sondage else 404)
         elif chemin.startswith("/archive/"):
             self._servir_archive(unquote(chemin[len("/archive/"):]))
         elif chemin.startswith("/fichier/"):
@@ -287,6 +312,11 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if options is None:
                 return
             self._json(*self._lancer_veille(options))
+        elif chemin == "/api/marche":
+            options = self._corps_json()
+            if options is None:
+                return
+            self._json(*self._lancer_marche(options))
         elif chemin == "/api/doublons":
             options = self._corps_json()
             if options is None:
@@ -299,6 +329,11 @@ class Gestionnaire(BaseHTTPRequestHandler):
             self._json(self._gerer_sauvegarde(options))
         elif chemin == "/api/televerser":
             self._televerser()
+        elif chemin == "/api/ab":
+            options = self._corps_json()
+            if options is None:
+                return
+            self._json(*self._gerer_ab(options))
         else:
             self._json({"erreur": "route inconnue"}, 404)
 
@@ -496,6 +531,22 @@ class Gestionnaire(BaseHTTPRequestHandler):
                          daemon=True).start()
         return ({"veille": veille_id}, 200)
 
+    def _lancer_marche(self, options: Dict[str, Any]):
+        """Mesure une niche depuis quatre sources publiques, en tache de fond."""
+        sujet = str(options.get("sujet") or "").strip()
+        if not sujet:
+            return ({"erreur": "sujet manquant"}, 400)
+        with _VERROU:
+            if any(m["statut"] == "en_cours" for m in MARCHES.values()):
+                return ({"erreur": "un sondage est deja en cours"}, 429)
+            marche_id = uuid.uuid4().hex[:12]
+            MARCHES[marche_id] = {"id": marche_id, "sujet": sujet[:300],
+                                  "statut": "en_cours", "debut": time.time(),
+                                  "resultat": None, "erreur": ""}
+        threading.Thread(target=_sonder_marche, args=(marche_id, sujet),
+                         daemon=True).start()
+        return ({"marche": marche_id}, 200)
+
     def _gerer_doublons(self, options: Dict[str, Any]) -> Dict[str, Any]:
         """Reconstruit les empreintes manquantes.
 
@@ -506,6 +557,79 @@ class Gestionnaire(BaseHTTPRequestHandler):
         if str(options.get("action") or "") != "reconstruire":
             return {"erreur": "action inconnue"}
         return _reconstruire_empreintes()
+
+    def _gerer_ab(self, options: Dict[str, Any]):
+        """Creer un test, reporter des chiffres, dater, conclure.
+
+        Renvoie (corps, code). La creation part en tache de fond : elle
+        appelle le modele, et pour les couvertures elle dessine quatre
+        images — trop long pour une requete qui attend.
+        """
+        action = str(options.get("action") or "")
+
+        if action == "creer":
+            sur = str(options.get("sur") or "titre")
+            if sur not in ("titre", "couverture", "accroche", "prix"):
+                return ({"erreur": "sujet de test inconnu"}, 400)
+            produit = str(options.get("produit") or "")
+            titre = str(options.get("titre") or "").strip()
+            if produit and not store.lire_produit(produit):
+                return ({"erreur": "produit inconnu"}, 400)
+            if not produit and not titre:
+                return ({"erreur": "indiquez un produit ou un titre"}, 400)
+            with _VERROU:
+                en_cours = [t for t in TRAVAUX.values()
+                            if t["statut"] == "en_cours"]
+                if len(en_cours) >= 2:
+                    return ({"erreur": "deux travaux sont deja en cours"}, 429)
+                travail_id = uuid.uuid4().hex[:12]
+                TRAVAUX[travail_id] = {
+                    "id": travail_id, "type": "ab",
+                    "sujet": (titre or produit)[:300], "statut": "en_cours",
+                    "debut": time.time(), "journal": [], "resultat": None,
+                    "erreur": "",
+                }
+            threading.Thread(target=_lancer_ab, args=(travail_id, options),
+                             daemon=True).start()
+            return ({"travail": travail_id}, 200)
+
+        if action == "observer":
+            identifiant = _entier(options.get("variante"))
+            try:
+                experience.observer(identifiant,
+                                    vues=_entier(options.get("vues")),
+                                    actions=_entier(options.get("actions")))
+            except ValueError as exc:
+                # « plus d'actions que de vues » est une erreur de saisie,
+                # pas une panne : elle se corrige a l'ecran.
+                return ({"erreur": str(exc)}, 400)
+            return ({"observe": identifiant}, 200)
+
+        if action == "periode":
+            identifiant = _entier(options.get("variante"))
+            try:
+                pose = experience.fixer_periode(
+                    identifiant, str(options.get("du") or ""),
+                    str(options.get("au") or ""))
+            except ValueError as exc:
+                return ({"erreur": str(exc)}, 400)
+            if not pose:
+                return ({"erreur": "variante introuvable"}, 404)
+            return ({"datee": identifiant}, 200)
+
+        if action == "clore":
+            identifiant = _entier(options.get("id"))
+            if experience.lire(identifiant) is None:
+                return ({"erreur": "test inconnu"}, 404)
+            experience.cloturer(identifiant, _entier(options.get("gagnante")),
+                                str(options.get("note") or ""))
+            return ({"close": identifiant}, 200)
+
+        if action == "supprimer":
+            identifiant = _entier(options.get("id"))
+            return ({"supprime": experience.supprimer(identifiant)}, 200)
+
+        return ({"erreur": "action inconnue"}, 400)
 
     def _gerer_sauvegarde(self, options: Dict[str, Any]) -> Dict[str, Any]:
         """Ecrire une archive, regarder ce qu'elle contient, ou la remettre.
@@ -680,6 +804,153 @@ class Gestionnaire(BaseHTTPRequestHandler):
         self._repondre(200, cible.read_bytes(), type_mime)
 
 
+def _lien_fichier(chemin: Any) -> str:
+    """URL de telechargement d'un fichier de produit, ou chaine vide.
+
+    Les variantes de couverture sont des PNG poses dans l'atelier. Le
+    tableau de bord est la seule interface capable de les MONTRER — c'est
+    tout l'interet de comparer des couvertures — mais il ne sert que ce qui
+    est sous le dossier des produits.
+    """
+    texte = str(chemin or "")
+    if not texte:
+        return ""
+    try:
+        relatif = Path(texte).resolve().relative_to(config.PRODUITS_DIR.resolve())
+    except (ValueError, OSError):
+        return ""
+    return "/fichier/" + "/".join(quote(part) for part in relatif.parts)
+
+
+def _tests_ab(limite: int = 20) -> List[Dict[str, Any]]:
+    """Les tests A/B, avec l'etat de leur verdict."""
+    sortie = []
+    for essai in experience.lister(limite):
+        analyse = experience.analyser(essai["id"])
+        sortie.append({
+            "id": essai["id"], "titre": essai["titre"], "sujet": essai["sujet"],
+            "statut": essai["statut"], "produit_id": essai["produit_id"],
+            "nb_variantes": essai["nb_variantes"],
+            "verdict": analyse["verdict"]["etat"],
+        })
+    return sortie
+
+
+def _detail_ab(experience_id: int) -> Dict[str, Any]:
+    """Un test au complet : variantes, images, verdict, rythme de vente."""
+    from ..pipelines import variantes as pipeline_variantes
+
+    analyse = experience.analyser(experience_id)
+    if "erreur" in analyse:
+        return analyse
+
+    # « variantes.fichier » est un nom de fichier, pas un chemin : il ne
+    # vaut que rapporte au dossier du test.
+    essai_courant = analyse["experience"]
+    dossier = pipeline_variantes.dossier_du_test(
+        essai_courant["produit_id"] or "", essai_courant["titre"] or "")
+
+    rythmes = {}
+    mesures = experience.mesures_reelles(experience_id)
+    if not mesures.get("probleme"):
+        for mesure in mesures["variantes"]:
+            rythmes[mesure["variante"]["id"]] = {
+                "periode": mesure["periode"], "ventes": mesure["ventes"],
+                "jours": round(mesure["jours"], 1)}
+
+    lot = []
+    for variante in analyse["variantes"]:
+        meta = variante.get("meta") or {}
+        lot.append({
+            "id": variante["id"], "etiquette": variante["etiquette"],
+            "contenu": variante["contenu"],
+            "image": _lien_fichier(dossier / variante["fichier"]
+                                   if variante.get("fichier") else ""),
+            "vues": variante["total_vues"], "actions": variante["total_actions"],
+            "debut": variante.get("debut") or "", "fin": variante.get("fin") or "",
+            "angle": str(meta.get("angle") or meta.get("style") or ""),
+            "pourquoi": str(meta.get("pourquoi") or meta.get("diagnostic") or ""),
+            "stats": variante.get("stats") or {},
+            "rythme": rythmes.get(variante["id"], {}),
+        })
+
+    essai = essai_courant
+    return {
+        "id": essai["id"], "titre": essai["titre"], "sujet": essai["sujet"],
+        "statut": essai["statut"], "produit_id": essai["produit_id"],
+        "gagnante": essai.get("gagnante") or 0,
+        "variantes": lot,
+        "verdict": analyse["verdict"],
+        "minimum_actions": experience.MINIMUM_ACTIONS,
+        # Ce que le rythme ne peut pas dire tant qu'il manque des dates :
+        # la page doit l'afficher, pas laisser croire a un resultat vide.
+        "rythme_probleme": mesures.get("probleme", ""),
+        "sans_periode": sum(1 for v in lot if not v["debut"]),
+    }
+
+
+def _lancer_ab(travail_id: str, options: Dict[str, Any]) -> None:
+    """Fabrique les variantes d'un test. Lent : IA, et parfois des images."""
+    from ..pipelines import variantes as pipeline_variantes
+
+    def journal(message: str) -> None:
+        with _VERROU:
+            TRAVAUX[travail_id]["journal"].append(
+                {"ts": time.time(), "texte": securite.expurger(message)})
+        evenements.publier("journal", message=message, travail=travail_id)
+
+    try:
+        produit_id = str(options.get("produit") or "")
+        produit = store.lire_produit(produit_id) if produit_id else None
+        titre = (produit["titre"] if produit
+                 else str(options.get("titre") or "")).strip()
+        description = ""
+        if produit:
+            meta = produit.get("meta") or {}
+            description = str(meta.get("promesse") or produit.get("sujet") or "")
+
+        profil = reglages.charger()
+        ctx = Contexte(
+            sujet=description or titre,
+            audience=options.get("audience") or profil["audience"],
+            ton=profil["ton"], taille=profil["taille"],
+            qualite=profil["qualite"], auteur=profil["auteur"],
+            sans_image=bool(options.get("sans_image")) or not profil["images"],
+            journal=journal)
+
+        dossier = pipeline_variantes.dossier_du_test(produit_id, titre)
+        journal("Preparation du test A/B...")
+        resultat = pipeline_variantes.preparer_test(
+            ctx, titre, dossier, sujet=str(options.get("sur") or "titre"),
+            nombre=_entier(options.get("nombre")) or 5,
+            description=description, produit_id=produit_id)
+        with _VERROU:
+            TRAVAUX[travail_id].update(
+                statut="termine",
+                resultat={"experience_id": resultat["experience_id"],
+                          "distinction": resultat["distinction"],
+                          "planche": _lien_fichier(resultat["planche"])})
+        journal("Test A/B pret.")
+    except Exception as exc:
+        message = securite.expurger(str(exc))
+        with _VERROU:
+            TRAVAUX[travail_id].update(statut="echec", erreur=message)
+        journal("Echec : " + message)
+
+
+def _sonder_marche(marche_id: str, sujet: str) -> None:
+    from ..core import marche as module_marche
+
+    try:
+        rapport = module_marche.sonder(sujet)
+        with _VERROU:
+            MARCHES[marche_id].update(statut="termine", resultat=rapport)
+    except Exception as exc:
+        with _VERROU:
+            MARCHES[marche_id].update(statut="echec",
+                                      erreur=securite.expurger(str(exc)))
+
+
 def _dossier_sauvegardes() -> Path:
     return config.WORKDIR / "sauvegardes"
 
@@ -742,13 +1013,17 @@ def _archive_nommee(nom: Any) -> Optional[Path]:
 
 
 def _atelier_occupe() -> str:
-    """Raison de ne pas toucher a la base maintenant, ou chaine vide."""
-    from ..production import verrou_actif
+    """Raison de ne pas toucher a la base maintenant, ou chaine vide.
 
-    pid = verrou_actif()
-    if pid is not None:
-        return ("l'usine continue tourne (pid {}) : arretez-la avant de "
-                "restaurer".format(pid))
+    Le verrou de l'usine continue est verifie par « sauvegarde », pour que
+    la ligne de commande en beneficie aussi. Restent les travaux propres au
+    tableau de bord, qu'elle ne peut pas connaitre.
+    """
+    from ..core import sauvegarde
+
+    occupe = sauvegarde.occupe()
+    if occupe:
+        return occupe
     with _VERROU:
         if any(t["statut"] == "en_cours" for t in TRAVAUX.values()):
             return "une fabrication est en cours : attendez qu'elle se termine"

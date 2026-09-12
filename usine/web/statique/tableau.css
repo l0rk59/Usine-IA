@@ -303,3 +303,44 @@ label.fichier { display: inline-block; width: auto; margin: 0;
   border-radius: 10px; background: rgba(255,255,255,0.05); color: var(--doux);
   cursor: pointer; }
 label.fichier:hover { color: var(--encre); border-color: var(--accent); }
+
+/* ------------------------------------------------------------- tests A/B */
+.essai { display: flex; gap: 0.6rem; align-items: center; cursor: pointer;
+  border-top: 1px solid var(--bord); padding: 0.55rem 0; }
+.essai:first-of-type { border-top: 0; }
+.essai:hover .nom { color: var(--accent); }
+.essai > div:first-child { flex: 1 1 auto; min-width: 0; }
+.essai .nom { font-size: 0.88rem; font-weight: 600; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.essai .meta { font-size: 0.72rem; color: var(--doux); }
+.essai .verdict, .verdict-bloc strong { font-size: 0.68rem; flex: none;
+  text-transform: uppercase; letter-spacing: 0.07em; border-radius: 999px;
+  border: 1px solid var(--bord); padding: 0.14rem 0.55rem; color: var(--doux); }
+.essai .verdict.gagnant, .verdict-bloc.gagnant strong {
+  color: var(--vert); border-color: var(--vert); }
+.essai .verdict.tendance, .verdict-bloc.tendance strong {
+  color: var(--ambre); border-color: var(--ambre); }
+
+.verdict-bloc { display: flex; gap: 0.6rem; align-items: flex-start;
+  margin: 0.7rem 0; font-size: 0.8rem; color: var(--doux); }
+.verdict-bloc strong { flex: none; }
+
+.variantes { display: grid; gap: 0.7rem; }
+.variantes.avec-images { grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); }
+.variante { border: 1px solid var(--bord); border-radius: 12px;
+  padding: 0.6rem; display: grid; gap: 0.5rem; }
+.variante.gagnante { border-color: var(--vert); }
+.variante img { width: 100%; border-radius: 8px; display: block;
+  background: var(--bord); }
+.variante .haut { display: flex; gap: 0.45rem; align-items: baseline; }
+.variante .lettre { font-weight: 700; color: var(--accent); flex: none; }
+.variante .texte { font-size: 0.85rem; line-height: 1.35; }
+.variante .note { font-size: 0.72rem; color: var(--doux); }
+.variante .rangee { gap: 0.3rem; margin: 0; }
+.variante input { width: auto; flex: 1 1 4.5rem; min-width: 0;
+  padding: 0.3rem 0.4rem; font-size: 0.76rem; }
+.variante button { flex: none; }
+
+/* La region principale n'est qu'un repere pour les lecteurs d'ecran : elle
+   ne doit rien changer a la mise en page. */
+main { display: contents; }

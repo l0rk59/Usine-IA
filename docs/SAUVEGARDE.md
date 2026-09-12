@@ -153,8 +153,18 @@ dans la page : la ligne de commande acceptait déjà n'importe quel chemin.
 La restauration est refusée tant que **l'usine continue tourne**, qu'une
 fabrication est en cours, ou qu'une veille est en route. Remplacer la base
 sous un produit en cours de fabrication le ferait écrire dans un atelier qui
-n'existe plus. La ligne de commande n'a pas ce garde-fou : elle est tapée
-délibérément, la page se touche du pouce.
+n'existe plus.
+
+Le verrou de l'usine continue est vérifié **dans `sauvegarde`**, pas dans la
+page : `usine sauvegarde --restaurer --oui` avait exactement le même angle
+mort, et deux sessions Termux ouvertes est la situation ordinaire, pas le cas
+tordu. Avoir posé la protection d'un seul côté était pire que ne pas l'avoir
+posée — on se croyait couvert. `--oui` dit qu'on a compris l'opération, pas
+qu'on veut la lancer sous un produit en cours ; la commande nomme donc
+`usine usine arreter` au lieu de refuser sèchement.
+
+Les travaux propres au tableau de bord (une fabrication, une veille) restent
+vérifiés par lui : `sauvegarde` ne peut pas les connaître.
 
 ### Un défaut que seule la page pouvait révéler
 

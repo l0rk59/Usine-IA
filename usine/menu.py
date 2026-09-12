@@ -807,6 +807,48 @@ def menu_cles() -> None:
     demander("\n  Appuyez sur Entree")
 
 
+def _menu_prompts(executer: Callable[[List[str]], int]) -> None:
+    """Les prompts et les personnalites d'agents, sans editer de JSON a l'aveugle."""
+    entete("Prompts et agents")
+    print("  Les prompts par defaut sont dans le code. Les exporter en")
+    print("  ecrit une copie dans " + c("atelier/prompts/", "1") + " que vous")
+    print("  pouvez modifier ; l'usine la relit a chaque fabrication.")
+    choix = choisir("Que faire ?", [
+        ("Voir ce qui est personnalise", "ce que l'usine lit en plus du defaut"),
+        ("Exporter les prompts par defaut", "pour les modifier ensuite"),
+        ("Tout remettre par defaut", "supprime vos personnalisations"),
+    ], defaut=1)
+    if choix == 1:
+        executer(["prompts-systeme"])
+    elif choix == 2:
+        executer(["prompts-systeme", "--exporter"])
+    elif choix == 3:
+        if not demander_oui("Supprimer toutes les personnalisations ?", False):
+            return
+        executer(["prompts-systeme", "--reinitialiser"])
+    else:
+        return
+    demander("\n  Appuyez sur Entree")
+
+
+def _menu_cache(executer: Callable[[List[str]], int]) -> None:
+    """Le cache evite de repayer un appel identique. Le vider n'est pas anodin."""
+    entete("Cache IA")
+    choix = choisir("Que faire ?", [
+        ("Voir ce qu'il contient", "taille et nombre de reponses gardees"),
+        ("Le vider", "les memes demandes reconsommeront du quota"),
+    ], defaut=1)
+    if choix == 1:
+        executer(["cache"])
+    elif choix == 2:
+        if not demander_oui("Vider le cache ?", False):
+            return
+        executer(["cache", "--vider"])
+    else:
+        return
+    demander("\n  Appuyez sur Entree")
+
+
 def menu_principal(executer: Callable[[List[str]], int]) -> int:
     while True:
         effacer()
@@ -838,9 +880,13 @@ def menu_principal(executer: Callable[[List[str]], int]) -> int:
             ("Ventes", "importer un export, voir ce qui rapporte vraiment"),
             ("Doublons", "les produits qui se recouvrent"),
             ("Veille de niche", "ce que les gens disent vraiment d'un sujet"),
+            ("Mesurer un marche", "volumes reels sur quatre sources publiques"),
+            ("Ce que l'usine a appris", "quel type, quel ton, quelle qualite"),
             ("Sauvegarder l'atelier", "ventes et historique dans une archive"),
             ("Cles et quotas", "etat des fournisseurs et du pool de cles"),
             ("Reglages", "auteur, marque, ton et qualite par defaut"),
+            ("Prompts et agents", "personnaliser les voix de l'equipe"),
+            ("Cache IA", "consulter ou vider les reponses gardees"),
             ("Tableau de bord 3D", "interface visuelle dans le navigateur"),
             ("Diagnostic complet", "verifier toute l'installation"),
         ], defaut=1, retour="Quitter")
@@ -867,14 +913,26 @@ def menu_principal(executer: Callable[[List[str]], int]) -> int:
                 executer(["veille", sujet])
             demander("\n  Appuyez sur Entree")
         elif choix == 8:
-            executer(["sauvegarde"])
+            sujet = demander("Quel marche mesurer", obligatoire=True)
+            if sujet:
+                executer(["marche", sujet])
             demander("\n  Appuyez sur Entree")
         elif choix == 9:
-            menu_cles()
+            executer(["bilan"])
+            demander("\n  Appuyez sur Entree")
         elif choix == 10:
-            menu_reglages()
+            executer(["sauvegarde"])
+            demander("\n  Appuyez sur Entree")
         elif choix == 11:
-            executer(["web"])
+            menu_cles()
         elif choix == 12:
+            menu_reglages()
+        elif choix == 13:
+            _menu_prompts(executer)
+        elif choix == 14:
+            _menu_cache(executer)
+        elif choix == 15:
+            executer(["web"])
+        elif choix == 16:
             executer(["docteur"])
             demander("\n  Appuyez sur Entree")

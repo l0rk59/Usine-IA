@@ -22,7 +22,9 @@
 </header>
 
 <div class="scene" id="scene">
-  <canvas id="toile"></canvas>
+  <!-- La scene REPETE ce que le journal et les compteurs disent deja en
+       toutes lettres : elle est decorative pour qui ne la voit pas. -->
+  <canvas id="toile" aria-hidden="true"></canvas>
   <div class="repli">
     <div>
       <strong>Vue 3D indisponible</strong><br/>
@@ -40,6 +42,8 @@
     </div>
   </div>
 </div>
+
+<main>
 
 <div class="carte">
   <h2>Equipe d'agents</h2>
@@ -105,7 +109,14 @@
   </div>
   <div class="rangee">
     <button class="discret" id="veille-lancer">Consulter</button>
-    <span class="aide" id="veille-etat"></span>
+    <button class="discret" id="marche-lancer">Mesurer le marche</button>
+    <span class="aide" id="veille-etat" role="status"></span>
+  </div>
+  <div id="marche-resultat" hidden>
+    <h3 class="sous">Ce que les sources publiques mesurent</h3>
+    <div class="chiffres" id="marche-signaux"></div>
+    <ul class="consequences" id="marche-details"></ul>
+    <p class="aide" id="marche-manques"></p>
   </div>
   <div id="veille-resultat" hidden>
     <div class="etiquettes" id="veille-communautes"></div>
@@ -122,7 +133,7 @@
 
 <div class="carte">
   <h2>Usine continue</h2>
-  <p class="etat" id="usine-etat">chargement...</p>
+  <p class="etat" id="usine-etat" role="status">chargement...</p>
   <div class="rangee">
     <button class="discret" id="usine-demarrer">Demarrer</button>
     <button class="discret" id="usine-arreter">Arreter</button>
@@ -138,7 +149,7 @@
 
 <div class="carte">
   <h2>Journal en direct</h2>
-  <pre class="journal" id="journal"><span class="ligne vide">En attente d'activite...</span></pre>
+  <pre class="journal" id="journal" role="log" aria-live="polite"><span class="ligne vide">En attente d'activite...</span></pre>
 </div>
 
 <div class="carte">
@@ -160,12 +171,40 @@
 </div>
 
 <div class="carte">
+  <h2>Tests A/B</h2>
+  <p class="aide">Comparer des titres, ou des couvertures. Les couvertures
+    sont des images : c'est ici qu'on peut enfin les regarder cote a cote.</p>
+  <div class="duo">
+    <div><label for="ab-sur">Comparer</label>
+      <select id="ab-sur">
+        <option value="titre">des titres</option>
+        <option value="couverture">des couvertures</option>
+        <option value="accroche">des accroches</option>
+        <option value="prix">des prix</option>
+      </select></div>
+    <div><label for="ab-produit">A partir de</label>
+      <select id="ab-produit"></select></div>
+  </div>
+  <div class="rangee">
+    <button class="discret" id="ab-creer">Creer le test</button>
+    <span class="aide" id="ab-etat" role="status"></span>
+  </div>
+  <div id="ab-liste"><span class="vide">chargement...</span></div>
+  <div id="ab-detail" hidden></div>
+</div>
+
+<div class="carte">
+  <h2>Ce que l'usine a appris</h2>
+  <div id="bilan"><span class="vide">chargement...</span></div>
+</div>
+
+<div class="carte">
   <h2>Produits qui se recouvrent</h2>
   <div class="alerte" id="doublons-manquants" hidden></div>
   <div id="doublons"><span class="vide">chargement...</span></div>
   <div class="rangee">
     <button class="discret" id="doublons-reconstruire">Reconstruire les empreintes</button>
-    <span class="aide" id="doublons-etat"></span>
+    <span class="aide" id="doublons-etat" role="status"></span>
   </div>
 </div>
 
@@ -183,7 +222,7 @@
     <label class="case"><input type="checkbox" id="sauvegarde-produits"/>
       avec les fichiers des produits</label>
   </div>
-  <span class="aide" id="sauvegarde-etat"></span>
+  <span class="aide" id="sauvegarde-etat" role="status"></span>
 
   <div class="rangee">
     <!-- Le cas de la reinstallation : le telephone a ete efface, et
@@ -191,7 +230,7 @@
     <label class="discret fichier" for="archive-fichier"
       >Televerser une archive...</label>
     <input id="archive-fichier" type="file" accept=".zip,application/zip" hidden/>
-    <span class="aide" id="televersement-etat"></span>
+    <span class="aide" id="televersement-etat" role="status"></span>
   </div>
 
   <div id="sauvegardes"><span class="vide">chargement...</span></div>
@@ -218,6 +257,8 @@
     l'appareil ne protege de rien. La restauration est refusee tant qu'une
     fabrication, une veille ou l'usine continue tourne.</p>
 </div>
+
+</main>
 
 </div>
 <script src="/statique/scene.js"></script>

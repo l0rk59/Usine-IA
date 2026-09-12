@@ -12,6 +12,7 @@ usine                 # menu interactif — l'entrée recommandée sur mobile
 usine ebook "la prospection pour freelances débutants" --marketing --zip
 usine usine demarrer  # production en boucle, sous budget
 usine web             # tableau de bord 3D en temps réel
+python3 -m usine      # sans le raccourci dans le PATH
 ```
 
 ---
@@ -644,7 +645,20 @@ et devient obligatoire.
 
 ### Ce que le navigateur sait faire, et que la console ne peut pas
 
-Trois outils n'existaient qu'en ligne de commande et dans le menu Termux.
+Cinq outils n'existaient qu'en ligne de commande.
+
+**Tests A/B.** Le manque le plus voyant, et le plus ironique : on compare des
+**couvertures**, qui sont des images, et la seule interface avec un écran ne
+les montrait pas. La carte fait tout le cycle — créer (les couvertures
+s'affichent côte à côte, en vraie taille), reporter vues et actions, dater
+chaque variante, lire le verdict qui se met à jour, retenir la gagnante.
+
+**Ce que l'usine a appris.** `usine bilan` est la boucle de rétroaction du
+projet : note moyenne, gain réel de la relecture, classement par type, par ton,
+par qualité. Il n'était lisible qu'en console, donc invisible depuis le
+téléphone. Un réglage n'apparaît qu'à partir de deux productions notées, et la
+page le dit — sans cette phrase, un « Par ton » vide se lit comme « le ton ne
+change rien ».
 
 **Veille de niche.** La même consultation Reddit, en tâche de fond — `scouter`
 s'impose trois secondes entre deux communautés, donc la page interroge
@@ -658,6 +672,11 @@ page pilote l'usine : seul un lien `https` vers `reddit.com` est transmis au
 navigateur — un `javascript:` arrive comme une chaîne vide — et le texte est
 échappé à l'affichage. Le serveur ne nettoie pas le titre lui-même : le
 nettoyer mentirait sur ce que les gens ont écrit.
+
+**Mesurer un marché.** À côté de la veille, dans la même carte : la veille dit
+ce que les gens *disent*, le marché dit combien ils sont. La page affiche les
+sources qui **n'ont pas répondu** — un silence de source n'est pas un marché
+absent.
 
 **Empreintes manquantes.** La carte des doublons affichait « aucun
 recouvrement notable » après avoir comparé **zéro** produit — les empreintes
@@ -763,7 +782,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         451 tests + test de fumée, aucun appel réseau
+tests/         479 tests + test de fumée, aucun appel réseau
                un atelier temporaire par module (tests/atelier.py)
 install.sh     installation Termux
 ```
@@ -776,7 +795,8 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 451 tests
+python3 -m unittest discover -s tests -t .   # 479 tests
+python3 scripts/dependances.py               # zéro dépendance
 python3 tests/fumee.py                       # les 9 chaînes via la vraie CLI
 ```
 
@@ -823,6 +843,23 @@ bout, et l'application web générée a été **ouverte dans un vrai Chromium**.
 La géométrie 3D est vérifiée séparément : les matrices de rotation, de caméra
 et la matrice normale inverse-transposée sont contrôlées numériquement, et le
 tableau de bord est rendu dans un vrai Chromium.
+
+Une **intégration continue** lance la suite et le test de fumée sur Python 3.9,
+3.11 et 3.13, sur une installation nue — la contrainte fondatrice du projet
+étant qu'il s'installe sur un Termux sans `pip`. Un script (`scripts/dependances.py`)
+lit les imports dans l'arbre syntaxique et échoue à la première dépendance
+étrangère ; un autre contrôle vérifie qu'aucune clé API n'est apparue dans le
+dépôt. Deux tests gardent l'annonce elle-même : que toute la source se lise
+en Python 3.9, et que la version plancher soit bien celle que la CI teste.
+
+L'**accessibilité du tableau de bord** a été auditée dans un vrai navigateur,
+ce qui a trouvé deux manques : deux listes déroulantes sans étiquette (donc
+sans nom pour un lecteur d'écran) et l'absence de région principale. Les zones
+qui changent pendant qu'on regarde — journal, états de veille, de sauvegarde,
+de test — sont maintenant annonçables (`role="status"`, `role="log"`), et la
+scène 3D est masquée aux lecteurs d'écran parce qu'elle **répète** ce que le
+journal dit déjà en toutes lettres. Deux tests lisent la page servie et
+refusent un champ sans étiquette.
 
 Les routes du tableau de bord sont testées par le réseau, sur un vrai serveur
 HTTP. Ce qui compte le plus y est ce qu'elles **refusent** : un lien

@@ -250,6 +250,59 @@ def _atelier_rempli():
                        produit_id="menu-p1")
 
 
+class TestMenuPrincipal(unittest.TestCase):
+    """Chaque entree du menu principal lance la commande qu'elle annonce.
+
+    Le menu principal est la plus longue table numero -> branche du projet.
+    Y inserer une entree decale toutes les suivantes en silence : c'est
+    exactement ce qui vient d'arriver en ajoutant « Mesurer un marche » et
+    « Ce que l'usine a appris » au milieu.
+    """
+
+    # Les entrees qui ouvrent un sous-menu ne lancent rien : elles sont
+    # absentes de cette table, et le test verifie alors qu'aucune commande
+    # ne part.
+    ATTENDU = {
+        6: "doublons", 7: "veille", 8: "marche", 9: "bilan",
+        10: "sauvegarde", 13: "prompts-systeme", 14: "cache",
+        15: "web", 16: "docteur",
+    }
+    SOUS_MENUS = (1, 2, 4, 11, 12)
+
+    def _lancer(self, numero):
+        frappes = [str(numero), "un sujet quelconque", "1", "", "0", "0", "0"]
+        return deroule(menu.menu_principal, frappes)
+
+    def test_chaque_entree_lance_ce_qu_elle_annonce(self):
+        for numero, commande in sorted(self.ATTENDU.items()):
+            with self.subTest(entree=numero, commande=commande):
+                lancees = self._lancer(numero)
+                self.assertTrue(lancees, "l'entree {} ne lance rien".format(numero))
+                self.assertEqual(lancees[0][0], commande)
+
+    def test_les_entrees_de_sous_menu_ne_lancent_rien_toutes_seules(self):
+        for numero in self.SOUS_MENUS:
+            with self.subTest(entree=numero):
+                self.assertEqual(self._lancer(numero), [])
+
+    def test_aucune_entree_affichee_ne_tombe_dans_le_vide(self):
+        """Une entree sans branche ne provoque rien : l'utilisateur croit
+        que l'usine a fait quelque chose."""
+        couvertes = set(self.ATTENDU) | set(self.SOUS_MENUS)
+        couvertes.add(3)                      # Tests A/B, couvert plus haut
+        couvertes.add(5)                      # Ventes, sous-menu avec commande
+        affichees = set(range(1, _entrees_du_menu() + 1))
+        self.assertEqual(affichees - couvertes, set(),
+                         "entrees sans branche verifiee")
+
+
+def _entrees_du_menu():
+    """Combien d'entrees le menu principal affiche, lues dans sa source."""
+    source = (Path(menu.__file__)).read_text(encoding="utf-8")
+    bloc = source.split('choisir("Menu principal", [')[1].split("], defaut=")[0]
+    return bloc.count('("')
+
+
 class TestAucunSousMenuNeLeve(unittest.TestCase):
     """Une trace Python en plein ecran de telephone n'est pas une reponse.
 

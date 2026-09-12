@@ -1,0 +1,68 @@
+# L'usine tourne sur un telephone, sans dependance et sans reseau. Cette
+# integration continue verifie exactement cela : la suite et le test de
+# fumee passent sur une installation Python nue, sur plusieurs versions,
+# sans jamais installer quoi que ce soit.
+name: tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Termux livre la version courante ; les anciennes restent en place
+        # longtemps sur un telephone qu'on ne met pas a jour.
+        python: ["3.9", "3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Aucune dependance ne doit etre necessaire
+        run: |
+          python -c "import sys; print(sys.version)"
+          pip list --format=freeze > /tmp/avant.txt
+          cat /tmp/avant.txt
+
+      - name: Suite de tests
+        run: python -m unittest discover -s tests -t . -v
+
+      - name: Test de fumee — les chaines via la vraie CLI
+        run: python tests/fumee.py
+
+      - name: Le module doit se lancer tel quel
+        run: python -m usine --version
+
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Aucun secret dans le depot
+        run: |
+          if git ls-files | grep -qx '.env'; then
+            echo "::error::.env est suivi par git"
+            exit 1
+          fi
+          # Les cles des fournisseurs ont des prefixes reconnaissables.
+          if git grep -nE '\b(gsk_|sk-[A-Za-z0-9]{20}|AIza[0-9A-Za-z_-]{30})' \
+               -- . ':!.github/workflows' > /tmp/fuites.txt; then
+            echo "::error::cle API apparente dans le depot"
+            cat /tmp/fuites.txt
+            exit 1
+          fi
+
+      - name: Tout le code doit se compiler
+        run: python -m compileall -q usine tests
+
+      - name: Aucun import hors bibliotheque standard
+        run: python scripts/dependances.py

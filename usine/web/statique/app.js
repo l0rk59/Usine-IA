@@ -8,7 +8,8 @@ if (!scene.actif) $('scene').classList.add('sans-3d');
 const etat = {
   types: [],
   travail: null, agents: {}, fournisseurs: [], avancement: 0, objectif: 0,
-  dernierEvenement: 0, produitsCharges: null,
+  dernierEvenement: 0, produitsCharges: null, produits: [],
+  abOuvert: 0, abProduits: -1,
 };
 
 /* ------------------------------------------------------------ utilitaires */
@@ -145,6 +146,9 @@ async function chargerProduits() {
   // rendu a un autre atelier d'un produit laissait la page afficher
   // l'ancien, indefiniment. On compare donc ce qui est affiche.
   const empreinte = donnees.produits.map((p) => p.id).join('|');
+  // Gardee meme si rien n'a change a l'ecran : la liste deroulante des
+  // tests A/B s'en sert, et elle est construite ailleurs.
+  etat.produits = donnees.produits;
   if (empreinte === etat.produitsCharges) return;
   etat.produitsCharges = empreinte;
 
@@ -788,6 +792,267 @@ $('archive-fichier').addEventListener('change', async () => {
   afficherSauvegardes(d.sauvegardes);
 });
 
+/* ------------------------------------------------------------- marche */
+$('marche-lancer').addEventListener('click', async () => {
+  const sujet = $('veille-niche').value.trim() || $('sujet').value.trim();
+  if (!sujet) { $('veille-niche').focus(); return; }
+  $('veille-niche').value = sujet;
+  $('marche-lancer').disabled = true;
+  $('veille-etat').textContent = 'mesure de quatre sources publiques...';
+  const reponse = await fetch('/api/marche', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sujet }),
+  });
+  const d = await reponse.json();
+  if (d.erreur) {
+    $('marche-lancer').disabled = false;
+    $('veille-etat').textContent = d.erreur;
+    return;
+  }
+  suivreMarche(d.marche);
+});
+
+async function suivreMarche(identifiant) {
+  const reponse = await fetch('/api/marche/' + identifiant);
+  if (!reponse.ok) { $('marche-lancer').disabled = false; return; }
+  const sondage = await reponse.json();
+  if (sondage.statut === 'en_cours') {
+    setTimeout(() => suivreMarche(identifiant), 2000);
+    return;
+  }
+  $('marche-lancer').disabled = false;
+  if (sondage.statut === 'echec') {
+    $('veille-etat').textContent = sondage.erreur;
+    return;
+  }
+  afficherMarche(sondage.resultat);
+}
+
+function afficherMarche(r) {
+  const lecture = r.lecture || {};
+  $('marche-resultat').hidden = false;
+  $('veille-etat').textContent = `${r.sources_disponibles.length} source(s) sur ${
+    r.sources_disponibles.length + r.sources_indisponibles.length} ont repondu.`;
+  const bloc = (libelle, valeur) => `<div class="bloc">
+      <div class="valeur">${echapper(valeur || 'inconnu')}</div>
+      <div class="libelle">${libelle}</div></div>`;
+  $('marche-signaux').innerHTML =
+    bloc('demande', lecture.demande) + bloc('concurrence', lecture.concurrence)
+    + bloc('tendance', lecture.tendance);
+  $('marche-details').innerHTML = (lecture.signaux || [])
+    .map((ligne) => `<li>${echapper(ligne)}</li>`).join('');
+  // Une source muette n'est pas un marche absent : ne pas le dire serait
+  // laisser lire un verdict la ou il n'y a qu'une mesure manquante.
+  $('marche-manques').textContent = r.sources_indisponibles.length
+    ? 'Sans reponse : ' + r.sources_indisponibles.join(', ')
+      + '. Ce silence ne mesure rien.'
+    : '';
+}
+
+/* -------------------------------------------------------------- tests A/B */
+async function chargerAb() {
+  const reponse = await fetch('/api/ab');
+  if (!reponse.ok) return;
+  const d = await reponse.json();
+  const produits = etat.produits || [];
+  if (!$('ab-produit').options.length || etat.abProduits !== produits.length) {
+    etat.abProduits = produits.length;
+    $('ab-produit').innerHTML = '<option value="">sans produit</option>'
+      + produits.map((p) => `<option value="${echapper(p.id)}">${
+        echapper(p.titre || p.id)}</option>`).join('');
+  }
+  if (!d.tests.length) {
+    $('ab-liste').innerHTML =
+      '<span class="vide">Aucun test pour l\'instant.</span>';
+    return;
+  }
+  $('ab-liste').innerHTML = d.tests.map((t) => `
+    <div class="essai" data-essai="${t.id}">
+      <div>
+        <div class="nom">${echapper(t.titre)}</div>
+        <div class="meta">${echapper(t.sujet)} &middot; ${
+          t.nb_variantes} variantes &middot; ${echapper(t.statut)}</div>
+      </div>
+      <span class="verdict ${echapper(t.verdict)}">${echapper(t.verdict)}</span>
+    </div>`).join('');
+}
+
+$('ab-liste').addEventListener('click', (evenement) => {
+  const ligne = evenement.target.closest?.('[data-essai]');
+  if (ligne) ouvrirAb(Number(ligne.dataset.essai));
+});
+
+async function ouvrirAb(identifiant) {
+  const reponse = await fetch('/api/ab/' + identifiant);
+  if (!reponse.ok) return;
+  afficherAb(await reponse.json());
+}
+
+function afficherAb(d) {
+  etat.abOuvert = d.id;
+  const couverture = d.sujet === 'couverture';
+  const variantes = d.variantes.map((v) => {
+    const taux = v.vues ? (v.actions / v.vues * 100).toFixed(1) + ' %' : '—';
+    const part = v.stats && v.stats.probabilite_meilleure != null
+      ? `${Math.round(v.stats.probabilite_meilleure * 100)} % meilleure` : '';
+    const rythme = v.rythme && v.rythme.periode
+      ? `${v.rythme.ventes} vente(s) en ${v.rythme.jours} j`
+      : (v.debut ? '' : 'sans periode');
+    return `<div class="variante${d.gagnante === v.id ? ' gagnante' : ''}">
+      ${v.image ? `<a href="${v.image}" target="_blank" rel="noopener"
+         ><img src="${v.image}" alt="Variante ${echapper(v.etiquette)}"/></a>` : ''}
+      <div class="corps">
+        <div class="haut"><span class="lettre">${echapper(v.etiquette)}</span>
+          <span class="texte">${echapper(v.contenu)}</span></div>
+        ${v.angle ? `<div class="note">${echapper(v.angle)}</div>` : ''}
+        <div class="note">${v.vues} vues &middot; ${v.actions} actions &middot; ${
+          taux}${part ? ' &middot; ' + part : ''}${
+          rythme ? ' &middot; ' + echapper(rythme) : ''}</div>
+        <div class="rangee">
+          <input type="number" min="0" placeholder="vues" data-vues="${v.id}"/>
+          <input type="number" min="0" placeholder="actions" data-actions="${v.id}"/>
+          <button class="discret" data-observer="${v.id}">Reporter</button>
+        </div>
+        <div class="rangee">
+          <input type="date" value="${echapper(v.debut)}" data-du="${v.id}"/>
+          <input type="date" value="${echapper(v.fin)}" data-au="${v.id}"/>
+          <button class="discret" data-dater="${v.id}">Dater</button>
+          <button class="discret" data-gagnante="${v.id}">Retenir</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  $('ab-detail').hidden = false;
+  $('ab-detail').innerHTML = `
+    <h3 class="sous">${echapper(d.titre)} — ${echapper(d.sujet)}</h3>
+    <div class="verdict-bloc ${echapper(d.verdict.etat)}">
+      <strong>${echapper(d.verdict.etat.toUpperCase())}</strong>
+      <div>${echapper(d.verdict.message)}</div>
+    </div>
+    <div class="variantes${couverture ? ' avec-images' : ''}">${variantes}</div>
+    ${d.sans_periode ? `<p class="aide">${d.sans_periode} variante(s) sans
+      periode : elles ne peuvent recevoir aucune vente importee.</p>` : ''}
+    ${d.rythme_probleme ? `<p class="aide">${echapper(d.rythme_probleme)}</p>` : ''}
+    <div class="rangee">
+      <button class="discret" data-fermer-ab="1">Fermer</button>
+      <button class="discret refaire" data-supprimer-ab="${d.id}">Supprimer le test</button>
+    </div>`;
+  $('ab-detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function envoyerAb(charge) {
+  const reponse = await fetch('/api/ab', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(charge),
+  });
+  const d = await reponse.json();
+  $('ab-etat').textContent = d.erreur || '';
+  return d;
+}
+
+$('ab-detail').addEventListener('click', async (evenement) => {
+  const jeu = evenement.target.dataset || {};
+  if (jeu.fermerAb) { $('ab-detail').hidden = true; return; }
+  if (jeu.observer) {
+    const vues = document.querySelector(`[data-vues="${jeu.observer}"]`).value;
+    const actions = document.querySelector(`[data-actions="${jeu.observer}"]`).value;
+    if (!vues && !actions) return;
+    await envoyerAb({ action: 'observer', variante: Number(jeu.observer),
+                      vues: Number(vues || 0), actions: Number(actions || 0) });
+  } else if (jeu.dater) {
+    const du = document.querySelector(`[data-du="${jeu.dater}"]`).value;
+    if (!du) { $('ab-etat').textContent = 'une periode a besoin d\'un debut.'; return; }
+    await envoyerAb({ action: 'periode', variante: Number(jeu.dater), du,
+                      au: document.querySelector(`[data-au="${jeu.dater}"]`).value });
+  } else if (jeu.gagnante) {
+    await envoyerAb({ action: 'clore', id: etat.abOuvert,
+                      gagnante: Number(jeu.gagnante) });
+  } else if (jeu.supprimerAb) {
+    await envoyerAb({ action: 'supprimer', id: Number(jeu.supprimerAb) });
+    $('ab-detail').hidden = true;
+    chargerAb();
+    return;
+  } else {
+    return;
+  }
+  ouvrirAb(etat.abOuvert);
+  chargerAb();
+});
+
+$('ab-creer').addEventListener('click', async () => {
+  const produit = $('ab-produit').value;
+  const titre = produit ? '' : $('sujet').value.trim();
+  if (!produit && !titre) {
+    $('ab-etat').textContent = 'choisissez un produit, ou ecrivez un titre '
+      + 'dans le champ « Sujet » ci-dessus.';
+    return;
+  }
+  $('ab-creer').disabled = true;
+  $('ab-etat').textContent = 'generation des variantes...';
+  const d = await envoyerAb({ action: 'creer', sur: $('ab-sur').value,
+                              produit, titre });
+  if (d.erreur) { $('ab-creer').disabled = false; return; }
+  suivreAb(d.travail);
+});
+
+async function suivreAb(identifiant) {
+  const reponse = await fetch('/api/travaux/' + identifiant);
+  if (!reponse.ok) { $('ab-creer').disabled = false; return; }
+  const travail = await reponse.json();
+  if (travail.statut === 'en_cours') {
+    setTimeout(() => suivreAb(identifiant), 2500);
+    return;
+  }
+  $('ab-creer').disabled = false;
+  if (travail.statut === 'echec') { $('ab-etat').textContent = travail.erreur; return; }
+  const distinction = travail.resultat.distinction || {};
+  $('ab-etat').textContent = distinction.testable === false
+    ? 'Attention : ' + distinction.message : (distinction.message || 'Test pret.');
+  await chargerAb();
+  ouvrirAb(travail.resultat.experience_id);
+}
+
+/* ------------------------------------------------- ce que l'usine a appris */
+async function chargerBilan() {
+  const reponse = await fetch('/api/bilan');
+  if (!reponse.ok) return;
+  const b = await reponse.json();
+  if (!b.productions) {
+    $('bilan').innerHTML = `<span class="vide">${echapper(b.message)}</span>`;
+    return;
+  }
+  const chiffre = (valeur, libelle) => `<div class="bloc">
+      <div class="valeur">${echapper(valeur)}</div>
+      <div class="libelle">${libelle}</div></div>`;
+  const groupe = (titre, lignes) => !lignes || !lignes.length ? '' : `
+    <h3 class="sous">${titre}</h3>
+    <div class="barres">${lignes.map((g) => `
+      <div class="ligne-vente"><div class="haut">
+        <span class="nom">${echapper(g.valeur)}</span>
+        <span class="montant">${g.note_moyenne}/10 &middot; ${
+          g.productions} prod.</span></div>
+        <div class="piste"><span style="width:${
+          Math.max(3, Math.round(g.note_moyenne / 10 * 100))}%"></span></div>
+      </div>`).join('')}</div>`;
+
+  $('bilan').innerHTML =
+    `<div class="chiffres">
+       ${chiffre(b.productions, 'productions')}
+       ${chiffre(b.note_moyenne != null ? b.note_moyenne + '/10' : '—', 'note moyenne')}
+       ${chiffre(b.mots_totaux.toLocaleString('fr-FR'), 'mots produits')}
+       ${chiffre(b.gain_moyen_relecture != null
+         ? (b.gain_moyen_relecture > 0 ? '+' : '') + b.gain_moyen_relecture
+         : '—', 'gain de relecture')}
+     </div>`
+    + groupe('Par type de produit', b.par_type)
+    + groupe('Par ton', b.par_ton)
+    + groupe('Par volume', b.par_taille)
+    + groupe('Par niveau de qualite', b.par_qualite)
+    + `<p class="aide">Un reglage n'apparait qu'a partir de deux productions
+       notees : une seule ne mesure rien.</p>`;
+}
+
 /* ---------------------------------------------------------------- demarrage */
 try {
   const theme = localStorage.getItem('usine-theme');
@@ -806,6 +1071,9 @@ chargerUsine();
 brancherFlux();
 chargerCommerce();
 chargerSauvegardes();
+chargerAb();
+chargerBilan();
 setInterval(chargerEtat, 15000);
 setInterval(chargerCommerce, 30000);
+setInterval(chargerBilan, 60000);
 setInterval(chargerUsine, 6000);

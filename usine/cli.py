@@ -515,6 +515,12 @@ def _restaurer(args: argparse.Namespace, sauvegarde) -> int:
     resultat = sauvegarde.restaurer(chemin, avec_produits=not args.sans_produits)
     if not resultat["valide"]:
         erreur(resultat["probleme"])
+        if "usine continue" in resultat["probleme"]:
+            # Deux sessions Termux ouvertes est la situation ordinaire, pas
+            # le cas tordu : « --oui » dit qu'on a compris l'operation, pas
+            # qu'on veut la lancer sous un produit en cours.
+            print("      " + _c("usine usine arreter", "1")
+                  + " attend la fin du produit en cours.")
         return 1
     ok("Atelier restaure ({} fichier(s) de produits).".format(
         resultat["fichiers_produits"]))
@@ -962,10 +968,7 @@ def cmd_ab(args: argparse.Namespace) -> int:
             ton="", taille="", auteur="", langue="", qualite="",
             marque="", prix="", hors_ligne=args.hors_ligne,
             sans_image=args.sans_image))
-        dossier = (Path(store.lire_produit(produit_id)["dossier"]) / "variantes"
-                   if produit_id and store.lire_produit(produit_id)
-                   else config.PRODUITS_DIR / "variantes-{}".format(
-                       slug_titre(titre_actuel)))
+        dossier = pipeline_variantes.dossier_du_test(produit_id, titre_actuel)
 
         titre_console("Test A/B — {}".format(args.sur))
         resultat = pipeline_variantes.preparer_test(
@@ -1140,12 +1143,6 @@ def _rappel_echelle() -> None:
         "choisir a l'oeil celle qui vous ressemble le plus, et garder les "
         "autres pour vos publications.", 70):
         print("  " + _c(ligne, "2"))
-
-
-def slug_titre(titre: str) -> str:
-    from .pipelines.base import slug
-
-    return slug(titre, 40)
 
 
 def cmd_marche(args: argparse.Namespace) -> int:

@@ -9,9 +9,11 @@ n'existe plus.
 from __future__ import annotations
 
 import ast
+import io
 import re
 import sys
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 
 RACINE = Path(__file__).resolve().parent.parent
@@ -108,6 +110,70 @@ class TestCloisonnement(unittest.TestCase):
         finally:
             atelier.isoler("atelier")
         self.assertEqual(config.WORKDIR, ici)
+
+
+class TestCompatibilite(unittest.TestCase):
+    """L'integration continue annonce Python 3.9 : encore faut-il que ce
+    soit vrai.
+
+    Un telephone qu'on ne met pas a jour garde longtemps sa version. Une
+    syntaxe trop recente ne se verrait qu'a l'installation, chez quelqu'un
+    d'autre, sans moyen de corriger sur place.
+    """
+
+    PLANCHER = (3, 9)
+
+    def test_toute_la_source_se_lit_en_python_du_plancher(self):
+        fautives = []
+        for fichier in sorted(RACINE.rglob("*.py")):
+            if "__pycache__" in fichier.parts or "atelier" in fichier.parts:
+                continue
+            try:
+                ast.parse(fichier.read_text(encoding="utf-8"), str(fichier),
+                          feature_version=self.PLANCHER)
+            except SyntaxError as exc:
+                fautives.append("{}:{} {}".format(
+                    fichier.relative_to(RACINE), exc.lineno, exc.msg))
+        self.assertEqual(fautives, [], "syntaxe posterieure a Python {}.{}"
+                         .format(*self.PLANCHER))
+
+    def test_le_plancher_annonce_est_celui_de_l_integration_continue(self):
+        """Les deux se contrediraient sans que rien ne le signale."""
+        atelier_ci = RACINE / ".github" / "workflows" / "tests.yml"
+        self.assertTrue(atelier_ci.exists(), "workflow d'integration absent")
+        declare = re.findall(r'"(\d+)\.(\d+)"',
+                             atelier_ci.read_text(encoding="utf-8"))
+        versions = sorted((int(a), int(b)) for a, b in declare)
+        self.assertIn(self.PLANCHER, versions,
+                      "la CI ne teste pas la version plancher")
+        self.assertEqual(versions[0], self.PLANCHER,
+                         "la CI descend plus bas que ce que ce test verifie")
+
+
+class TestDependances(unittest.TestCase):
+    """Zero dependance : c'est la contrainte fondatrice, pas une preference.
+
+    Termux ne sait pas compiler de roue native. Un import ajoute par
+    megarde ne se voit qu'a l'installation sur un telephone neuf.
+    """
+
+    def test_le_verificateur_ne_trouve_rien(self):
+        sys.path.insert(0, str(RACINE / "scripts"))
+        import dependances
+
+        self.assertEqual(dependances.principal(), 0)
+
+    def test_le_verificateur_verrait_une_dependance_ajoutee(self):
+        sys.path.insert(0, str(RACINE / "scripts"))
+        import dependances
+
+        intrus = RACINE / "usine" / "_essai_dependance.py"
+        intrus.write_text("import requests\n", encoding="utf-8")
+        self.addCleanup(intrus.unlink, True)
+        with redirect_stdout(io.StringIO()) as dit:
+            code = dependances.principal()
+        self.assertEqual(code, 1)
+        self.assertIn("requests", dit.getvalue())
 
 
 class TestDrapeauxDeSchema(unittest.TestCase):

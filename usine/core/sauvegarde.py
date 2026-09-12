@@ -166,6 +166,24 @@ def _demesuree(octets: int, octets_base: int) -> str:
     return ""
 
 
+def occupe() -> str:
+    """Raison de ne pas toucher a la base maintenant, ou chaine vide.
+
+    L'usine continue tourne dans SON processus : elle ne sait pas qu'on
+    vient de deplacer le fichier de base sous elle. Le produit en cours
+    finirait d'ecrire dans un atelier qui n'existe plus, et son travail
+    serait perdu sans erreur — sur un telephone, avec deux sessions Termux
+    ouvertes, c'est un enchainement tout a fait ordinaire.
+    """
+    from ..production import verrou_actif
+
+    pid = verrou_actif()
+    if pid is None:
+        return ""
+    return ("l'usine continue tourne (pid {}) : arretez-la avant de "
+            "restaurer".format(pid))
+
+
 def restaurer(archive: Path, avec_produits: bool = True) -> Dict[str, Any]:
     """Remet l'atelier dans l'etat de l'archive.
 
@@ -177,6 +195,9 @@ def restaurer(archive: Path, avec_produits: bool = True) -> Dict[str, Any]:
     fiche = inspecter(archive)
     if not fiche["valide"]:
         return fiche
+    blocage = occupe()
+    if blocage:
+        return {"valide": False, "probleme": blocage}
     if int(fiche.get("schema") or 0) > store.VERSION_SCHEMA:
         return {"valide": False,
                 "probleme": "archive ecrite par une version plus recente "

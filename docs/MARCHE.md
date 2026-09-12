@@ -62,3 +62,16 @@ Ces sources sont souvent citées ; elles sont mortes ou fermées, vérifié :
 
 Les remplacer par « Wikipedia pageviews » (tendance) et « Hacker News »
 (discussions) donne un signal comparable, sans clé et sans blocage.
+
+## Depuis le menu et le tableau de bord
+
+`usine marche` n'existait qu'en ligne de commande. Le menu Termux propose
+maintenant **Mesurer un marché**, et le tableau de bord le lance depuis la
+carte de veille — même champ, deux gestes distincts : la veille dit ce que les
+gens *disent*, le marché dit combien ils sont.
+
+La page affiche les trois signaux (demande, concurrence, tendance), les
+mesures qui les fondent, et surtout **les sources qui n'ont pas répondu**. Un
+silence de source n'est pas un marché absent : ne pas le dire laisserait lire
+un verdict là où il n'y a qu'une mesure manquante.
+

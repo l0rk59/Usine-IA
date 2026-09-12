@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import socket
 import sys
 import threading
@@ -31,7 +32,8 @@ RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 
 from tests import atelier  # noqa: E402
-from usine.core import config, store, veille  # noqa: E402
+from usine.core import config, llm, store, veille  # noqa: E402
+from tests.simulateur import simulateur  # noqa: E402
 from usine.web import serveur  # noqa: E402
 
 
@@ -560,6 +562,205 @@ class TestTeleversement(BaseServeur):
         self.assertIsNone(store.lire_produit("tv-apres"))
 
 
+class TestAb(BaseServeur):
+    """L'A/B dans le navigateur : la seule interface qui puisse MONTRER
+    les couvertures.
+
+    Comparer quatre directions visuelles en lisant des chemins de fichiers
+    dans une console n'a aucun sens. C'est le trou le plus voyant qu'avait
+    le tableau de bord.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        llm.definir_simulateur(simulateur)
+        cls.dossier = config.PRODUITS_DIR / "tab-ab"
+        cls.dossier.mkdir(parents=True, exist_ok=True)
+        store.creer_produit("tab-ab", "ebook", "Le systeme du freelance",
+                            sujet="freelance", dossier=str(cls.dossier))
+
+    def _creer(self, sur="titre", **extra):
+        charge = dict(action="creer", sur=sur, nombre=3, **extra)
+        charge.setdefault("produit", "tab-ab")
+        statut, lance = self.json("/api/ab", charge)
+        self.assertEqual(statut, 200, lance)
+        for _ in range(400):
+            _, travail = self.json("/api/travaux/" + lance["travail"])
+            if travail["statut"] != "en_cours":
+                break
+            threading.Event().wait(0.1)
+        self.assertEqual(travail["statut"], "termine", travail.get("erreur"))
+        return travail["resultat"]["experience_id"]
+
+    def test_creer_sans_produit_ni_titre_est_refuse(self):
+        statut, refus = self.json("/api/ab", {"action": "creer"})
+        self.assertEqual(statut, 400)
+        self.assertIn("produit", refus["erreur"])
+
+    def test_un_sujet_de_test_invente_est_refuse(self):
+        statut, _ = self.json("/api/ab", {"action": "creer", "titre": "x",
+                                          "sur": "la couleur du bouton"})
+        self.assertEqual(statut, 400)
+
+    def test_un_produit_inconnu_est_refuse(self):
+        statut, _ = self.json("/api/ab", {"action": "creer",
+                                          "produit": "nexistepas"})
+        self.assertEqual(statut, 400)
+
+    def test_un_test_inconnu_repond_404(self):
+        self.assertEqual(self.json("/api/ab/999999")[0], 404)
+        self.assertEqual(self.json("/api/ab/pas-un-nombre")[0], 400)
+
+    def test_les_couvertures_arrivent_avec_une_image_servie(self):
+        """Le chemin stocke est un NOM de fichier, pas un chemin.
+
+        Il ne vaut que rapporte au dossier du test — regle qui vivait en
+        deux exemplaires divergents, dans la ligne de commande et ici.
+        """
+        identifiant = self._creer(sur="couverture")
+        _, detail = self.json("/api/ab/{}".format(identifiant))
+        self.assertTrue(detail["variantes"])
+        for variante in detail["variantes"]:
+            self.assertTrue(variante["image"], variante["contenu"])
+            statut, corps = self.appeler(variante["image"])
+            self.assertEqual(statut, 200)
+            self.assertEqual(corps[:4], b"\x89PNG", "ce n'est pas une image")
+
+    def test_un_test_de_titres_n_a_pas_d_image(self):
+        identifiant = self._creer(sur="titre")
+        _, detail = self.json("/api/ab/{}".format(identifiant))
+        self.assertTrue(all(not v["image"] for v in detail["variantes"]))
+        self.assertTrue(all(v["contenu"] for v in detail["variantes"]))
+
+    def test_reporter_des_chiffres_change_le_verdict(self):
+        identifiant = self._creer()
+        _, avant = self.json("/api/ab/{}".format(identifiant))
+        self.assertEqual(avant["verdict"]["etat"], "sans_donnees")
+        for variante, (vues, actions) in zip(avant["variantes"],
+                                             ((900, 120), (900, 20), (900, 18))):
+            statut, _ = self.json("/api/ab", {"action": "observer",
+                                              "variante": variante["id"],
+                                              "vues": vues, "actions": actions})
+            self.assertEqual(statut, 200)
+        _, apres = self.json("/api/ab/{}".format(identifiant))
+        self.assertEqual(apres["verdict"]["etat"], "gagnant")
+        self.assertEqual(apres["variantes"][0]["vues"], 900)
+
+    def test_une_saisie_impossible_est_refusee_a_l_ecran(self):
+        """Plus d'actions que de vues est une erreur de saisie, pas une panne."""
+        identifiant = self._creer()
+        _, detail = self.json("/api/ab/{}".format(identifiant))
+        statut, refus = self.json("/api/ab", {
+            "action": "observer", "variante": detail["variantes"][0]["id"],
+            "vues": 1, "actions": 50})
+        self.assertEqual(statut, 400)
+        self.assertIn("actions", refus["erreur"])
+
+    def test_dater_une_variante_la_rend_mesurable(self):
+        identifiant = self._creer()
+        _, detail = self.json("/api/ab/{}".format(identifiant))
+        self.assertEqual(detail["sans_periode"], len(detail["variantes"]))
+        statut, _ = self.json("/api/ab", {
+            "action": "periode", "variante": detail["variantes"][0]["id"],
+            "du": "2026-01-01", "au": "2026-01-31"})
+        self.assertEqual(statut, 200)
+        _, apres = self.json("/api/ab/{}".format(identifiant))
+        self.assertEqual(apres["variantes"][0]["debut"], "2026-01-01")
+        self.assertEqual(apres["sans_periode"], len(apres["variantes"]) - 1)
+
+    def test_une_date_illisible_est_refusee(self):
+        identifiant = self._creer()
+        _, detail = self.json("/api/ab/{}".format(identifiant))
+        statut, refus = self.json("/api/ab", {
+            "action": "periode", "variante": detail["variantes"][0]["id"],
+            "du": "le 3 janvier"})
+        self.assertEqual(statut, 400)
+        self.assertIn("AAAA-MM-JJ", refus["erreur"])
+
+    def test_clore_retient_la_gagnante(self):
+        identifiant = self._creer()
+        _, detail = self.json("/api/ab/{}".format(identifiant))
+        retenue = detail["variantes"][0]["id"]
+        statut, _ = self.json("/api/ab", {"action": "clore", "id": identifiant,
+                                          "gagnante": retenue, "note": "retenue"})
+        self.assertEqual(statut, 200)
+        _, apres = self.json("/api/ab/{}".format(identifiant))
+        self.assertEqual(apres["statut"], "close")
+        self.assertEqual(apres["gagnante"], retenue)
+
+    def test_supprimer_efface_le_test(self):
+        identifiant = self._creer()
+        self.json("/api/ab", {"action": "supprimer", "id": identifiant})
+        self.assertEqual(self.json("/api/ab/{}".format(identifiant))[0], 404)
+
+    def test_une_action_inconnue_est_refusee(self):
+        statut, _ = self.json("/api/ab", {"action": "tout effacer"})
+        self.assertEqual(statut, 400)
+
+
+class TestBilanEtMarche(BaseServeur):
+    """Deux mesures qui n'existaient qu'en console."""
+
+    def test_le_bilan_tient_sans_aucune_production(self):
+        """C'est l'etat que voit un nouvel utilisateur."""
+        _, bilan = self.json("/api/bilan")
+        self.assertIn("productions", bilan)
+
+    def test_le_bilan_rend_ce_que_l_usine_a_appris(self):
+        from usine.core import apprentissage
+
+        # Deux productions par ton : en dessous, « _grouper » ne rend rien,
+        # et c'est voulu — une seule note ne mesure pas un ton.
+        notes = (("pro", 9.0), ("pro", 8.0), ("amical", 5.0), ("amical", 4.0))
+        for rang, (ton, note) in enumerate(notes):
+            apprentissage.enregistrer("tab-b{}".format(rang), "ebook",
+                                      sujet="s", ton=ton, qualite="standard",
+                                      note=note, mots=3000, appels=10, duree=42)
+        _, bilan = self.json("/api/bilan")
+        self.assertGreaterEqual(bilan["productions"], 4)
+        tons = {g["valeur"]: g["note_moyenne"] for g in bilan["par_ton"]}
+        self.assertGreater(tons["pro"], tons["amical"])
+
+    def test_la_page_lit_le_bon_champ_de_note(self):
+        """Le bilan porte « note_moyenne ». Le script lisait « note ».
+
+        Rien n'aurait echoue : chaque barre se serait affichee vide, a zero,
+        et le classement par ton aurait eu l'air de dire que rien ne compte.
+        """
+        _, corps = self.appeler("/statique/app.js")
+        script = corps.decode("utf-8")
+        self.assertIn("g.note_moyenne", script)
+        self.assertNotIn("g.note ", script)
+
+    def test_un_sondage_de_marche_sans_sujet_est_refuse(self):
+        self.assertEqual(self.json("/api/marche", {"sujet": " "})[0], 400)
+
+    def test_le_sondage_rapporte_ce_qu_il_a_mesure(self):
+        from usine.core import marche as module_marche
+
+        fige = {"sujet": "x", "date": "2026-09-12", "sources": {},
+                "sources_disponibles": ["hacker_news"],
+                "sources_indisponibles": ["wikipedia"],
+                "lecture": {"demande": "moyenne", "concurrence": "faible",
+                            "tendance": "stable", "signaux": ["820 discussions"]}}
+        with mock.patch.object(module_marche, "sonder", lambda *a, **k: fige):
+            _, lance = self.json("/api/marche", {"sujet": "la prospection"})
+            for _ in range(200):
+                _, etat = self.json("/api/marche/" + lance["marche"])
+                if etat["statut"] != "en_cours":
+                    break
+                threading.Event().wait(0.05)
+        self.assertEqual(etat["statut"], "termine")
+        self.assertEqual(etat["resultat"]["lecture"]["demande"], "moyenne")
+        # Une source muette n'est pas un marche absent : la page doit pouvoir
+        # le dire, donc l'etat doit le porter.
+        self.assertEqual(etat["resultat"]["sources_indisponibles"], ["wikipedia"])
+
+    def test_un_sondage_inconnu_repond_404(self):
+        self.assertEqual(self.json("/api/marche/nexistepas")[0], 404)
+
+
 class TestPageServie(BaseServeur):
     """Garde-fou sur ce que la page declare.
 
@@ -573,8 +774,47 @@ class TestPageServie(BaseServeur):
         page = corps.decode("utf-8")
         for marqueur in ("veille-lancer", "doublons-reconstruire",
                          "sauvegarde-creer", "veille-douleurs", "sauvegardes",
-                         "archive-fichier"):
+                         "archive-fichier", "ab-creer", "ab-liste", "bilan",
+                         "marche-lancer"):
             self.assertIn('id="{}"'.format(marqueur), page, marqueur)
+
+    def test_chaque_champ_de_saisie_porte_une_etiquette(self):
+        """Un champ sans etiquette n'a pas de nom pour un lecteur d'ecran.
+
+        Verifie sur la source : les deux listes de la carte A/B sont
+        arrivees sans etiquette, et rien ne l'a signale — un audit dans un
+        vrai navigateur les a trouvees.
+        """
+        _, corps = self.appeler("/")
+        page = corps.decode("utf-8")
+        etiquettes = set(re.findall(r'<label[^>]*\bfor="([^"]+)"', page))
+        # Une case a cocher est souvent ENTOURÉE de son etiquette plutot que
+        # nommee par « for » : les deux sont valides.
+        entourees = [(m.start(), m.end())
+                     for m in re.finditer(r"<label\b.*?</label>", page, re.S)]
+        sans = []
+        for balise in re.finditer(r'<(?:input|select|textarea)\b[^>]*>', page):
+            texte = balise.group(0)
+            if 'type="hidden"' in texte or " hidden" in texte:
+                continue
+            if "placeholder=" in texte or "aria-label=" in texte:
+                continue
+            if any(debut <= balise.start() < fin for debut, fin in entourees):
+                continue
+            trouve = re.search(r'\bid="([^"]+)"', texte)
+            if not trouve or trouve.group(1) not in etiquettes:
+                sans.append(texte[:60])
+        self.assertEqual(sans, [], "champs sans etiquette")
+
+    def test_la_page_a_une_region_principale_et_des_zones_vivantes(self):
+        """Ce qui change pendant qu'on regarde doit pouvoir etre annonce."""
+        _, corps = self.appeler("/")
+        page = corps.decode("utf-8")
+        self.assertIn("<main>", page)
+        self.assertGreaterEqual(page.count('role="status"'), 5)
+        self.assertIn('role="log"', page)
+        # La scene 3D repete ce que le journal dit deja en toutes lettres.
+        self.assertIn('aria-hidden="true"', page)
 
     def test_le_script_echappe_ce_qui_vient_du_flux(self):
         _, corps = self.appeler("/statique/app.js")
