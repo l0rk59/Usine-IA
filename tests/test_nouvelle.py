@@ -26,6 +26,7 @@ sys.path.insert(0, str(RACINE))
 from tests import atelier  # noqa: E402
 from tests.simulateur import simulateur  # noqa: E402
 from usine.core import llm, reglages  # noqa: E402
+from usine.agents import equipe  # noqa: E402
 from usine.pipelines import catalogue, nouvelle  # noqa: E402
 from usine.pipelines.base import Contexte  # noqa: E402
 
@@ -65,12 +66,23 @@ BIBLE = {
 
 GRILLE_COMPLETE = {
     "beats": [{"nom": n, "evenement": "..."} for n, _ in nouvelle.BEATS],
+    # Les scenes portent TOUS les champs que « construire_grille » garantit :
+    # un jeu d'essai ampute ferait passer des tests que la vraie grille
+    # ferait echouer, ce qui est pire que pas de test du tout.
     "scenes": [
-        {"titre": "Le depot", "beat": "situation", "personnages": ["Camille Renard"]},
-        {"titre": "La lettre", "beat": "declencheur", "personnages": ["Camille Renard"]},
-        {"titre": "Le quai", "beat": "climax", "personnages": ["Hakim Oussaid"]},
-        {"titre": "Apres", "beat": "resolution", "personnages": ["Camille Renard"]},
+        dict(titre=titre, beat=beat, lieu="le depot", personnages=presents,
+             point_de_vue=presents[0], objectif="obtenir un sursis",
+             obstacle="le reglement", pivot="le sursis est refuse")
+        for titre, beat, presents in (
+            ("Le depot", "situation", ["Camille Renard"]),
+            ("La lettre", "declencheur", ["Camille Renard"]),
+            ("Le quai", "climax", ["Hakim Oussaid"]),
+            ("Apres", "resolution", ["Camille Renard"]),
+        )
     ],
+    "fils": [],
+    "arcs": [{"personnage": "Camille Renard", "depart": "refuse l'aide",
+              "bascule": 3, "arrivee": "accepte l'aide"}],
 }
 
 
@@ -197,6 +209,233 @@ class TestControleContinuite(unittest.TestCase):
 # --------------------------------------------------------------------------
 # La memoire roulante
 # --------------------------------------------------------------------------
+
+
+class TestFilsTendus(unittest.TestCase):
+    """Ce qui separe un recit long d'une suite de scenes justes.
+
+    Une grille plate de tournants ne sait pas noter qu'un objet montre a la
+    scene 2 doit servir a la scene 11. Chaque scene est alors juste, et
+    l'ensemble ne tient pas : c'est exactement ce qu'on reproche a la
+    fiction generee.
+    """
+
+    def test_un_fil_qui_pointe_hors_du_recit_est_ecarte(self):
+        """Un fil paye a la scene 40 d'un recit de 6 ne serait jamais servi."""
+        fils = nouvelle._normaliser_fils([
+            {"nom": "la lettre", "pose": 1, "paye": 40},
+            {"nom": "le quai", "pose": 0, "paye": 3},
+            {"nom": "bon", "pose": 1, "paye": 4},
+        ], total=6)
+        self.assertEqual([f["nom"] for f in fils], ["bon"])
+
+    def test_un_fil_paye_avant_d_etre_pose_est_ecarte(self):
+        """Il demanderait a la scene 3 de reveler ce que la scene 9 n'a pas
+        encore montre."""
+        fils = nouvelle._normaliser_fils(
+            [{"nom": "a rebours", "pose": 9, "paye": 3}], total=12)
+        self.assertEqual(fils, [])
+
+    def test_un_fil_paye_dans_la_scene_ou_il_est_pose_est_ecarte(self):
+        fils = nouvelle._normaliser_fils(
+            [{"nom": "instantane", "pose": 4, "paye": 4}], total=12)
+        self.assertEqual(fils, [])
+
+    def test_un_fil_sans_nom_est_ecarte(self):
+        """Le nom sert a reconnaitre le fil dans le texte : sans lui, rien
+        n'est verifiable."""
+        fils = nouvelle._normaliser_fils(
+            [{"nom": "  ", "pose": 1, "paye": 3}], total=6)
+        self.assertEqual(fils, [])
+
+    def test_un_numero_ecrit_en_toutes_lettres_est_lu(self):
+        fils = nouvelle._normaliser_fils(
+            [{"nom": "la lettre", "pose": "scene 2", "paye": "scene 5"}], total=8)
+        self.assertEqual((fils[0]["pose"], fils[0]["paye"]), (2, 5))
+
+    def test_le_nombre_de_fils_suit_la_longueur(self):
+        """Six scenes ne tiennent pas huit promesses ; vingt-quatre scenes
+        qui n'en tiennent qu'une sont une suite d'evenements."""
+        self.assertEqual(nouvelle._fils_a_demander(6), 2)
+        self.assertEqual(nouvelle._fils_a_demander(24), 6)
+        self.assertLessEqual(nouvelle._fils_a_demander(200), 10)
+        self.assertGreaterEqual(nouvelle._fils_a_demander(1), 1)
+
+    def test_chaque_scene_sait_ce_qu_elle_doit_poser_payer_et_porter(self):
+        grille = {"fils": [
+            {"nom": "A", "pose": 1, "paye": 4, "quoi": "", "paiement": ""},
+            {"nom": "B", "pose": 2, "paye": 3, "quoi": "", "paiement": ""},
+        ]}
+        premiere = nouvelle.fils_de_la_scene(grille, 0)
+        self.assertEqual([f["nom"] for f in premiere["poser"]], ["A"])
+        self.assertEqual(premiere["payer"], [])
+        troisieme = nouvelle.fils_de_la_scene(grille, 2)
+        self.assertEqual([f["nom"] for f in troisieme["payer"]], ["B"])
+        self.assertEqual([f["nom"] for f in troisieme["suspens"]], ["A"],
+                         "un fil pose et pas encore paye doit rester present")
+
+    def test_un_fil_non_paye_dans_le_texte_est_signale(self):
+        """Le JSON peut promettre ce que la prose n'a pas fait."""
+        scenes = [("S1", "Camille Renard trouve une lettre chez Hakim Oussaid."),
+                  ("S2", "Camille Renard marche seule avec Hakim Oussaid."),
+                  ("S3", "Camille Renard et Hakim Oussaid attendent."),
+                  ("S4", "Camille Renard et Hakim Oussaid se taisent.")]
+        grille = dict(GRILLE_COMPLETE, fils=[
+            {"nom": "le revolver", "pose": 1, "paye": 4, "quoi": "", "paiement": ""}])
+        rapport = nouvelle.controler_continuite(
+            BIBLE, grille, scenes,
+            ["un etat", "deux etats", "trois etats", "quatre etats"])
+        genres = [a["genre"] for a in rapport["anomalies"]]
+        self.assertIn("fil_non_paye", genres)
+        self.assertIn("fil_non_pose", genres)
+
+    def test_un_fil_reellement_paye_ne_declenche_rien(self):
+        scenes = [("S1", "Camille Renard trouve une lettre chez Hakim Oussaid."),
+                  ("S2", "Camille Renard marche seule avec Hakim Oussaid."),
+                  ("S3", "Camille Renard et Hakim Oussaid attendent."),
+                  ("S4", "Camille Renard ouvre la lettre devant Hakim Oussaid.")]
+        grille = dict(GRILLE_COMPLETE, fils=[
+            {"nom": "la lettre", "pose": 1, "paye": 4, "quoi": "", "paiement": ""}])
+        rapport = nouvelle.controler_continuite(
+            BIBLE, grille, scenes,
+            ["un etat", "deux etats", "trois etats", "quatre etats"])
+        self.assertNotIn("fil_non_paye",
+                         [a["genre"] for a in rapport["anomalies"]])
+
+    def test_une_scene_non_redigee_ne_se_voit_pas_reprocher_son_fil(self):
+        """Le budget est tombe : ce n'est pas au recit d'en repondre."""
+        scenes = [("S1", "Camille Renard et Hakim Oussaid."),
+                  ("S2", "fiche de scene"), ("S3", "fiche"), ("S4", "fiche")]
+        grille = dict(GRILLE_COMPLETE, fils=[
+            {"nom": "le revolver", "pose": 1, "paye": 4, "quoi": "", "paiement": ""}])
+        rapport = nouvelle.controler_continuite(
+            BIBLE, grille, scenes, ["a", "b b", "c c c", "d d d d"],
+            redigees=[True, False, False, False])
+        self.assertNotIn("fil_non_paye",
+                         [a["genre"] for a in rapport["anomalies"]])
+
+
+class TestFilsDansLInvite(unittest.TestCase):
+    """Un fil qui n'atteint pas la scene n'est qu'un JSON de plus.
+
+    C'est le point ou ce chantier peut echouer en silence : la grille serait
+    parfaite, le controle passerait, et le modele n'aurait jamais rien su des
+    promesses qu'il devait tenir.
+    """
+
+    def _invite(self, grille, index):
+        recues = []
+        origine = equipe.REDACTEUR.travailler
+
+        def espion(contexte, invite, **kwargs):
+            recues.append(invite)
+            return origine(contexte, invite, **kwargs)
+
+        equipe.REDACTEUR.travailler = espion
+        try:
+            nouvelle.rediger_scene(_contexte(), BIBLE, grille, index,
+                                   grille["scenes"][index], "memoire")
+        finally:
+            equipe.REDACTEUR.travailler = origine
+        return recues[0]
+
+    def test_la_scene_sait_ce_qu_elle_pose_et_ce_qu_elle_paie(self):
+        grille = dict(GRILLE_COMPLETE, fils=[
+            {"nom": "la lettre non ouverte", "pose": 1, "paye": 4,
+             "quoi": "une enveloppe qu'elle ne decachette pas",
+             "paiement": "c'etait sa mutation"}])
+        pose = self._invite(grille, 0)
+        self.assertIn("A POSER", pose)
+        self.assertIn("la lettre non ouverte", pose)
+        self.assertIn("une enveloppe qu'elle ne decachette pas", pose)
+        self.assertNotIn("A PAYER", pose)
+
+        paiement = self._invite(grille, 3)
+        self.assertIn("A PAYER", paiement)
+        self.assertIn("c'etait sa mutation", paiement)
+
+    def test_un_fil_en_cours_reste_sous_les_yeux(self):
+        grille = dict(GRILLE_COMPLETE, fils=[
+            {"nom": "la lettre", "pose": 1, "paye": 4, "quoi": "", "paiement": ""}])
+        milieu = self._invite(grille, 1)
+        self.assertIn("EN SUSPENS", milieu)
+        self.assertIn("ne les oublie pas", milieu)
+
+    def test_la_bascule_est_annoncee_a_la_bonne_scene(self):
+        grille = dict(GRILLE_COMPLETE, arcs=[
+            {"personnage": "Camille Renard", "depart": "refuse l'aide",
+             "bascule": 3, "arrivee": "accepte l'aide"}])
+        self.assertIn("BASCULE de Camille Renard", self._invite(grille, 2))
+        self.assertNotIn("BASCULE", self._invite(grille, 0))
+
+    def test_sans_fil_aucune_rubrique_vide_n_apparait(self):
+        """Une rubrique vide n'est pas neutre : le modele la remplit."""
+        grille = dict(GRILLE_COMPLETE, fils=[], arcs=[])
+        invite = self._invite(grille, 0)
+        for mot in ("A POSER", "A PAYER", "EN SUSPENS", "BASCULE"):
+            self.assertNotIn(mot, invite)
+
+
+class TestArcs(unittest.TestCase):
+    """Un personnage qui finit comme il a commence n'a pas d'arc."""
+
+    def test_un_personnage_hors_bible_n_a_pas_d_arc(self):
+        arcs = nouvelle._normaliser_arcs(
+            [{"personnage": "Le controleur Vasseur", "depart": "a",
+              "bascule": 2, "arrivee": "b"}], BIBLE, total=6)
+        self.assertEqual(arcs, [])
+
+    def test_un_depart_egal_a_l_arrivee_n_est_pas_un_arc(self):
+        arcs = nouvelle._normaliser_arcs(
+            [{"personnage": "Camille Renard", "depart": "seule",
+              "bascule": 2, "arrivee": "Seule"}], BIBLE, total=6)
+        self.assertEqual(arcs, [])
+
+    def test_un_seul_arc_par_personnage(self):
+        arcs = nouvelle._normaliser_arcs([
+            {"personnage": "Camille Renard", "depart": "a", "bascule": 2,
+             "arrivee": "b"},
+            {"personnage": "Camille Renard", "depart": "c", "bascule": 4,
+             "arrivee": "d"},
+        ], BIBLE, total=6)
+        self.assertEqual(len(arcs), 1)
+        self.assertEqual(arcs[0]["arrivee"], "b")
+
+    def test_un_protagoniste_sans_arc_est_signale(self):
+        scenes = [("S{}".format(i), "Camille Renard et Hakim Oussaid parlent.")
+                  for i in range(1, 5)]
+        grille = dict(GRILLE_COMPLETE, arcs=[
+            {"personnage": "Hakim Oussaid", "depart": "a", "bascule": 2,
+             "arrivee": "b"}])
+        rapport = nouvelle.controler_continuite(
+            BIBLE, grille, scenes, ["un", "deux x", "trois y", "quatre z"])
+        self.assertIn("protagoniste_sans_arc",
+                      [a["genre"] for a in rapport["anomalies"]])
+
+    def test_une_bascule_sans_le_personnage_est_signalee(self):
+        scenes = [("S1", "Camille Renard seule."),
+                  ("S2", "Camille Renard encore seule, sous la pluie."),
+                  ("S3", "Camille Renard et Hakim Oussaid."),
+                  ("S4", "Camille Renard et Hakim Oussaid se quittent.")]
+        grille = dict(GRILLE_COMPLETE, arcs=[
+            {"personnage": "Camille Renard", "depart": "a", "bascule": 1,
+             "arrivee": "b"},
+            {"personnage": "Hakim Oussaid", "depart": "a", "bascule": 2,
+             "arrivee": "b"}])
+        rapport = nouvelle.controler_continuite(
+            BIBLE, grille, scenes, ["un", "deux x", "trois y", "quatre z"])
+        detail = " ".join(a["detail"] for a in rapport["anomalies"]
+                          if a["genre"] == "bascule_sans_le_personnage")
+        self.assertIn("Hakim Oussaid", detail)
+
+    def test_une_bascule_hors_du_recit_est_signalee(self):
+        scenes = [("S1", "Camille Renard et Hakim Oussaid.")]
+        grille = dict(GRILLE_COMPLETE, arcs=[
+            {"personnage": "Camille Renard", "depart": "a", "bascule": 0,
+             "arrivee": "b"}])
+        rapport = nouvelle.controler_continuite(BIBLE, grille, scenes, ["un"])
+        self.assertIn("bascule_hors_recit",
+                      [a["genre"] for a in rapport["anomalies"]])
 
 
 class TestMemoire(unittest.TestCase):

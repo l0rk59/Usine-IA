@@ -231,10 +231,17 @@ s'active seule au-delà, et retient 24 faits sur 24 là où la plate en retenait
 12. Chiffres et méthode dans [FICTION.md](FICTION.md) ; la mesure tourne dans
 `tests/test_memoire.py`.
 
-**Ce qui reste au roman n'est plus la mémoire, c'est la structure** :
-intrigues secondaires, arc par personnage, promesse posée en partie 1 et payée
-en partie 4. La grille est une liste plate de tournants ; elle ne sait pas
-noter ce qui est en suspens.
+**La structure suit.** La grille porte maintenant des **fils tendus** (une
+promesse, sa scène de pose, sa scène de paiement) et un **arc par
+personnage** avec sa scène de bascule. Les deux entrent dans l'invite de
+chaque scène — ce qu'elle doit poser, payer, et ce qu'elle porte sans le
+résoudre — et sont vérifiés *contre la prose*, pas seulement contre le JSON :
+un fil déclaré payé à la scène 11 est cherché dans le texte de la scène 11.
+Le tout dans le même appel que la grille, donc sans surcoût.
+
+Reste les **intrigues secondaires** : un second fil narratif entrelacé, avec
+ses propres beats et sa résolution — et un contrôle qui sache dire qu'elle a
+été abandonnée en route, ce qui est le défaut le plus fréquent.
 
 ### `prompts` — packs de prompts
 - **Variantes par modèle** : ce qui marche sur un modèle échoue sur un autre.
@@ -373,9 +380,10 @@ apporte et ce que ça coûte :
 Cette liste-ci est donc close à son tour. La suite naturelle, par ordre de
 rapport entre ce que ça apporte et ce que ça coûte :
 
-1. **La structure du roman** : une grille qui sache noter une promesse en
-   suspens et l'arc de chaque personnage (voir §2). C'est le seul chantier
-   qui reste entre l'usine et un roman tenable.
+1. ~~**La structure du roman** : une grille qui sache noter une promesse en
+   suspens et l'arc de chaque personnage.~~ **Fait** (voir §2). Reste les
+   **intrigues secondaires**, qui sont un objet différent d'un fil tendu :
+   une ligne narrative parallèle, pas une promesse ponctuelle.
 2. **Script de narration** par module de formation, pour qui enregistre une
    voix — la matière est déjà écrite, il lui manque une mise en forme.
 3. **Cadres de référence** pour les boîtes à outils : CIS et NIST CSF sont

@@ -122,7 +122,7 @@ indisponibles. Pour l'utiliser en priorité : `USINE_LOCAL_FIRST=1` dans le `.en
 | Commande | Produit | Contenu livré |
 |---|---|---|
 | `usine ebook` | Ebook complet | PDF, EPUB, HTML, Markdown, TXT, couverture |
-| `usine nouvelle` | **Fiction courte** | Bible, **mémoire d'une scène à l'autre**, contrôle de continuité |
+| `usine nouvelle` | **Fiction courte** | Bible, **mémoire d'une scène à l'autre**, fils tendus, contrôle de continuité |
 | `usine prompts` | Pack de prompts | PDF, CSV (import Notion), JSON, HTML |
 | `usine formation` | Mini-formation | Manuel PDF, cahier d'exercices, **quiz auto-corrigé**, séquence e-mail |
 | `usine outils` | Boîte à outils | Checklists imprimables, modèles, tableaux CSV |
@@ -830,7 +830,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         658 tests + test de fumée, aucun appel réseau
+tests/         678 tests + test de fumée, aucun appel réseau
                un atelier temporaire par module (tests/atelier.py)
 install.sh     installation Termux
 ```
@@ -843,7 +843,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 658 tests
+python3 -m unittest discover -s tests -t .   # 678 tests
 python3 scripts/dependances.py               # zéro dépendance
 python3 tests/fumee.py                       # les 10 chaînes via la vraie CLI
 ```
@@ -946,12 +946,16 @@ sait pas faire, et ce qu'on peut y ajouter — est dans
   la première ligne, un **résumé roulant** que chaque scène reçoit et met à
   jour, et une **grille de beats** au lieu d'un plan de chapitres. Un contrôle
   de continuité déterministe relit ensuite la bible contre le texte produit.
+  La grille porte aussi les **fils tendus** — une promesse posée à la scène 2
+  et payée à la scène 11 — et un **arc par personnage** : chaque scène sait ce
+  qu'elle doit poser, payer, et porter sans le résoudre.
   Voir [docs/FICTION.md](docs/FICTION.md). **La longueur d'un roman est
   atteignable** (`--chapitres 24 --mots 3500`) : la mémoire passe en mode
   hiérarchique dès la treizième scène — des parties closes, figées une fois
   pour toutes, plus l'état de la partie en cours. Ce qui manque encore à un
-  roman n'est pas la mémoire mais la **structure** : intrigues secondaires,
-  arc par personnage, promesses payées plusieurs parties plus loin.
+  roman n'est plus la mémoire ni la trame, mais les **intrigues
+  secondaires** : une ligne narrative parallèle qui s'entrelace avec la
+  principale.
 - **Sécurité : oui, du côté contenu — pas d'outillage.** Guides, checklists de
   durcissement, politiques types, sensibilisation : ce sont des produits que
   les chaînes existantes savent déjà fabriquer. L'usine ne fournit aucun outil

@@ -205,14 +205,31 @@ def resumer_bible(bible: Dict[str, Any]) -> str:
 # --------------------------------------------------------------------------
 
 
+def _fils_a_demander(nombre_scenes: int) -> int:
+    """Combien de fils tendus demander, selon la longueur.
+
+    Une nouvelle de six scenes n'a pas la place de tenir huit promesses ; un
+    roman de vingt-quatre scenes qui n'en tient qu'une est une suite
+    d'evenements, pas une intrigue. Un fil toutes les quatre scenes environ.
+    """
+    return max(1, min(10, round(nombre_scenes / 4)))
+
+
 def construire_grille(ctx: Contexte, bible: Dict[str, Any]) -> Dict[str, Any]:
-    """Les tournants d'abord, les scenes qui les livrent ensuite."""
+    """Les tournants, les scenes qui les livrent, et ce qui les relie.
+
+    Les FILS TENDUS sont l'ajout qui separe une nouvelle d'un recit long. Une
+    grille plate de tournants ne sait pas noter qu'un objet montre a la scene
+    2 doit servir a la scene 11 : chaque scene est alors juste, et l'ensemble
+    ne tient pas. Un fil dit ou il est pose, ou il est paye, et par quoi.
+    """
     armature = "\n".join("- {} : {}".format(nom, role) for nom, role in BEATS)
+    total = ctx.nb_chapitres
     invite = (
-        "Construis la grille d'une nouvelle a partir de cette bible.\n\n"
+        "Construis la grille d'un recit a partir de cette bible.\n\n"
         "{bible}\n\n"
         "FIN VISEE : {fin}\n\n"
-        "Travaille en deux temps.\n"
+        "Travaille en quatre temps.\n"
         "1. Les BEATS : les tournants de l'histoire, dans cet ordre :\n"
         "{armature}\n"
         "   Pour chacun, dis l'EVENEMENT precis qui le realise dans CETTE "
@@ -223,16 +240,34 @@ def construire_grille(ctx: Contexte, bible: Dict[str, Any]) -> Dict[str, Any]:
         "personnage de point de vue VEUT dans cette scene, l'OBSTACLE qui s'y "
         "oppose, et le PIVOT : ce qui a change a la fin de la scene et qui "
         "n'etait pas vrai au debut. Une scene sans pivot est une scene morte.\n"
-        "   Le titre d'une scene est evocateur et court, jamais « Scene 1 ».\n\n"
+        "   Le titre d'une scene est evocateur et court, jamais « Scene 1 ».\n"
+        "3. Les FILS TENDUS : {fils} promesse(s) faites au lecteur. Un fil est "
+        "POSE dans une scene (un objet, une phrase, une absence que le lecteur "
+        "remarque) et PAYE dans une scene ULTERIEURE, ou il se revele. "
+        "Un fusil accroche au mur au premier acte doit tirer au dernier. "
+        "Donne le numero des deux scenes, a partir de 1, et un nom court qui "
+        "servira a le reconnaitre dans le texte (« la lettre non ouverte »).\n"
+        "4. Les ARCS : pour chaque personnage nomme dans la bible, d'ou il "
+        "part, dans quelle scene il BASCULE, et ou il arrive. Un personnage "
+        "qui finit comme il a commence n'a pas d'arc — et le protagoniste "
+        "doit en avoir un.\n\n"
         "Schema JSON exact attendu :\n"
         '{{"beats": [{{"nom": "situation", "evenement": "..."}}], '
         '"scenes": [{{"titre": "...", "beat": "situation", "lieu": "...", '
         '"personnages": ["..."], "point_de_vue": "...", "objectif": "...", '
-        '"obstacle": "...", "pivot": "..."}}]}}'
+        '"obstacle": "...", "pivot": "..."}}], '
+        '"fils": [{{"nom": "la lettre non ouverte", "pose": 2, "paye": 11, '
+        '"quoi": "ce que le lecteur voit sans comprendre", '
+        '"paiement": "ce que cela revele"}}], '
+        '"arcs": [{{"personnage": "...", "depart": "...", "bascule": 14, '
+        '"arrivee": "..."}}]}}'
     ).format(bible=resumer_bible(bible), fin=bible.get("fin_visee") or "libre",
-             armature=armature, n=ctx.nb_chapitres)
+             armature=armature, n=total, fils=_fils_a_demander(total))
 
-    grille = equipe.ARCHITECTE.travailler_json(ctx, invite, max_tokens=3200)
+    # Le budget suit la longueur : une grille de vingt-quatre scenes tronquee
+    # a mi-chemin est une grille perdue, et l'appel avec elle.
+    grille = equipe.ARCHITECTE.travailler_json(
+        ctx, invite, max_tokens=min(8000, 1600 + total * 130))
     if not isinstance(grille, dict) or not grille.get("scenes"):
         raise ValueError("Grille de scenes invalide renvoyee par le modele")
 
@@ -270,7 +305,95 @@ def construire_grille(ctx: Contexte, bible: Dict[str, Any]) -> Dict[str, Any]:
         beats.append({"nom": str(brut.get("nom") or "").strip().lower(),
                       "evenement": str(brut.get("evenement") or "").strip()})
     grille["beats"] = beats
+    grille["fils"] = _normaliser_fils(grille.get("fils"), len(grille["scenes"]))
+    grille["arcs"] = _normaliser_arcs(grille.get("arcs"), bible,
+                                      len(grille["scenes"]))
     return grille
+
+
+def _numero_de_scene(valeur: Any, total: int) -> int:
+    """Numero de scene a partir de 1, ou 0 s'il ne designe rien.
+
+    Le modele ecrit parfois « scene 3 » ou « 3 » : on prend le nombre. Un
+    numero hors des bornes ne designe aucune scene, et un fil qui pointe dans
+    le vide vaudrait moins que pas de fil du tout.
+    """
+    if isinstance(valeur, bool):
+        return 0
+    if isinstance(valeur, str):
+        trouve = re.search(r"\d+", valeur)
+        valeur = trouve.group(0) if trouve else ""
+    try:
+        numero = int(valeur)
+    except (TypeError, ValueError):
+        return 0
+    return numero if 1 <= numero <= total else 0
+
+
+def _normaliser_fils(brut: Any, total: int) -> List[Dict[str, Any]]:
+    """Ne garde que les fils qu'une scene peut reellement porter.
+
+    Trois refus, et chacun evite une invite qui ment a la scene : un fil sans
+    nom ne se reconnaitrait pas dans le texte, un fil dont une extremite
+    pointe hors du recit ne serait jamais servi, et un fil paye AVANT d'etre
+    pose demanderait a la scene 3 de reveler ce que la scene 9 n'a pas encore
+    montre.
+    """
+    fils: List[Dict[str, Any]] = []
+    for element in brut or []:
+        if not isinstance(element, dict):
+            continue
+        nom = str(element.get("nom") or "").strip()
+        pose = _numero_de_scene(element.get("pose"), total)
+        paye = _numero_de_scene(element.get("paye"), total)
+        if not nom or not pose or not paye or paye <= pose:
+            continue
+        fils.append({
+            "nom": nom,
+            "pose": pose,
+            "paye": paye,
+            "quoi": str(element.get("quoi") or "").strip(),
+            "paiement": str(element.get("paiement") or "").strip(),
+        })
+    return fils
+
+
+def _normaliser_arcs(brut: Any, bible: Dict[str, Any],
+                     total: int) -> List[Dict[str, Any]]:
+    """Un arc par personnage de la bible, au plus. La bible fait foi."""
+    noms = [p["nom"] for p in bible["personnages"]]
+    arcs: List[Dict[str, Any]] = []
+    deja = set()
+    for element in brut or []:
+        if not isinstance(element, dict):
+            continue
+        personnage = str(element.get("personnage") or "").strip()
+        officiel = next((n for n in noms if _reconnu(personnage, [n])), "")
+        if not officiel or officiel in deja:
+            continue
+        depart = str(element.get("depart") or "").strip()
+        arrivee = str(element.get("arrivee") or "").strip()
+        # Un personnage qui finit comme il a commence n'a pas d'arc : le
+        # noter comme s'il en avait un ferait mentir le controle.
+        if not depart or not arrivee or depart.lower() == arrivee.lower():
+            continue
+        deja.add(officiel)
+        arcs.append({
+            "personnage": officiel,
+            "depart": depart,
+            "bascule": _numero_de_scene(element.get("bascule"), total),
+            "arrivee": arrivee,
+        })
+    return arcs
+
+
+def _bloc(texte: str) -> str:
+    """Une section d'invite, ou rien du tout si elle est vide.
+
+    Une rubrique vide dans une invite n'est pas neutre : le modele y repond
+    quand meme, en inventant de quoi la remplir.
+    """
+    return "{}\n".format(texte) if texte else ""
 
 
 def _normaliser(texte: str) -> str:
@@ -367,6 +490,53 @@ def _memoire_de_secours(memoire: str, scene: Dict[str, Any]) -> str:
 # --------------------------------------------------------------------------
 
 
+def fils_de_la_scene(grille: Dict[str, Any], index: int) -> Dict[str, List[Dict]]:
+    """Ce que cette scene doit poser, ce qu'elle doit payer, ce qui pend.
+
+    L'index est celui de la scene, a partir de 0 ; les fils comptent a partir
+    de 1. Un fil « en suspens » a ete pose avant et n'est pas encore paye :
+    la scene n'a pas a le resoudre, mais elle ne doit pas l'oublier.
+    """
+    numero = index + 1
+    return {
+        "poser": [f for f in grille.get("fils", []) if f["pose"] == numero],
+        "payer": [f for f in grille.get("fils", []) if f["paye"] == numero],
+        "suspens": [f for f in grille.get("fils", [])
+                    if f["pose"] < numero < f["paye"]],
+    }
+
+
+def _consignes_de_fils(fils: Dict[str, List[Dict]]) -> str:
+    """Les fils, tels qu'ils entrent dans l'invite de la scene."""
+    lignes = []
+    for fil in fils["poser"]:
+        lignes.append(
+            "A POSER dans cette scene — « {} » : {}. Montre-le sans "
+            "l'expliquer : le lecteur doit le remarquer sans comprendre "
+            "encore.".format(fil["nom"], fil["quoi"] or "a toi de le montrer"))
+    for fil in fils["payer"]:
+        lignes.append(
+            "A PAYER dans cette scene — « {} » : {}. C'est ici que cela "
+            "prend son sens.".format(
+                fil["nom"], fil["paiement"] or "revele ce que cela signifiait"))
+    if fils["suspens"]:
+        lignes.append("EN SUSPENS (ne les resous pas ici, ne les oublie pas) : "
+                      + " ; ".join('« {} »'.format(f["nom"])
+                                   for f in fils["suspens"]))
+    return "\n".join(lignes)
+
+
+def _consigne_d_arc(grille: Dict[str, Any], index: int) -> str:
+    """La bascule d'un personnage, quand elle tombe dans cette scene."""
+    numero = index + 1
+    bascules = [a for a in grille.get("arcs", []) if a["bascule"] == numero]
+    return "\n".join(
+        "BASCULE de {} dans cette scene : il/elle passe de « {} » a "
+        "« {} ». C'est le moment ou cela change, pas une explication.".format(
+            arc["personnage"], arc["depart"], arc["arrivee"])
+        for arc in bascules)
+
+
 def rediger_scene(ctx: Contexte, bible: Dict[str, Any], grille: Dict[str, Any],
                   index: int, scene: Dict[str, Any], memoire: str,
                   fin_precedente: str = "") -> Tuple[str, str]:
@@ -394,6 +564,8 @@ def rediger_scene(ctx: Contexte, bible: Dict[str, Any], grille: Dict[str, Any],
         "CE QUE {pdv} VEUT ICI : {objectif}\n"
         "OBSTACLE : {obstacle}\n"
         "PIVOT (vrai a la fin, faux au debut) : {pivot}\n"
+        "{fils}"
+        "{arc}"
         "{fin_precedente}"
         "SCENES SUIVANTES (ne les ecris pas, laisse-leur la place) : {reste}\n\n"
         "Consignes :\n"
@@ -423,6 +595,8 @@ def rediger_scene(ctx: Contexte, bible: Dict[str, Any], grille: Dict[str, Any],
         objectif=scene["objectif"] or "libre",
         obstacle=scene["obstacle"] or "libre",
         pivot=scene["pivot"] or "libre",
+        fils=_bloc(_consignes_de_fils(fils_de_la_scene(grille, index))),
+        arc=_bloc(_consigne_d_arc(grille, index)),
         fin_precedente=("FIN DE LA SCENE PRECEDENTE (enchaine dessus, ne la "
                         "repete pas) : « ...{} »\n".format(fin_precedente)
                         if fin_precedente else ""),
@@ -463,6 +637,28 @@ def _apparait(nom: str, texte: str) -> bool:
         return False
     return any(re.search(r"\b{}\b".format(re.escape(m)), normalise)
                for m in morceaux)
+
+
+def _evoque(nom_du_fil: str, texte: str) -> bool:
+    """Le texte parle-t-il de ce fil ?
+
+    On cherche les mots PORTEURS du nom — « la lettre non ouverte » se
+    reconnait a « lettre », pas a « la » ni a « non ». Il suffit qu'un seul
+    apparaisse : une scene qui paie un fil le nomme rarement mot pour mot.
+
+    Le compromis est le meme que pour les personnages : le controle rate
+    parfois un fil bel et bien paye autrement (« l'enveloppe » pour « la
+    lettre »), mais il n'en invente jamais un qui manque. Un garde-fou qui
+    crie a tort finit ignore, ce qui est pire que de se taire.
+    """
+    porteurs = [m for m in _normaliser(nom_du_fil).split() if len(m) >= 5]
+    if not porteurs:
+        porteurs = [m for m in _normaliser(nom_du_fil).split() if len(m) >= 3]
+    if not porteurs:
+        return True  # rien d'exploitable : on ne reproche rien
+    normalise = _normaliser(texte)
+    return any(re.search(r"\b{}".format(re.escape(mot)), normalise)
+               for mot in porteurs)
 
 
 def _proximite(a: str, b: str) -> float:
@@ -554,7 +750,61 @@ def controler_continuite(bible: Dict[str, Any], grille: Dict[str, Any],
                 "detail": "aucune scene ne livre le beat « {} »".format(nom),
             })
 
-    # -- 6. ce que l'usine n'a pas ecrit, dit une fois et sans detour -------
+    # -- 6. les fils tendus : poses, payes, ou oublies ----------------------
+    for fil in grille.get("fils", []):
+        rang = fil["paye"] - 1
+        if rang >= len(scenes):
+            continue
+        if rang < len(ecrites) and not ecrites[rang]:
+            continue  # scene non redigee : deja dit ailleurs, une fois
+        if not _evoque(fil["nom"], scenes[rang][1]):
+            anomalies.append({
+                "genre": "fil_non_paye",
+                "gravite": "majeur",
+                "detail": "le fil « {} » devait etre paye dans « {} », qui "
+                          "n'en dit rien".format(fil["nom"], scenes[rang][0]),
+            })
+        depart = fil["pose"] - 1
+        if depart < len(scenes) and depart < len(ecrites) and ecrites[depart]:
+            if not _evoque(fil["nom"], scenes[depart][1]):
+                anomalies.append({
+                    "genre": "fil_non_pose",
+                    "gravite": "mineur",
+                    "detail": "le fil « {} » devait etre pose dans « {} », qui "
+                              "n'en dit rien".format(fil["nom"],
+                                                     scenes[depart][0]),
+                })
+
+    # -- 7. les arcs : un protagoniste qui finit ou il a commence -----------
+    heros_a_un_arc = any(a["personnage"] == heros for a in grille.get("arcs", []))
+    if grille.get("arcs") is not None and not heros_a_un_arc:
+        anomalies.append({
+            "genre": "protagoniste_sans_arc",
+            "gravite": "majeur",
+            "detail": "« {} » traverse l'histoire sans changer : aucun arc ne "
+                      "lui est attache".format(heros),
+        })
+    for arc in grille.get("arcs", []):
+        rang = arc["bascule"] - 1
+        if not arc["bascule"] or rang >= len(scenes):
+            anomalies.append({
+                "genre": "bascule_hors_recit",
+                "gravite": "mineur",
+                "detail": "la bascule de « {} » ne tombe dans aucune "
+                          "scene".format(arc["personnage"]),
+            })
+            continue
+        if rang < len(ecrites) and not ecrites[rang]:
+            continue
+        if not _apparait(arc["personnage"], scenes[rang][1]):
+            anomalies.append({
+                "genre": "bascule_sans_le_personnage",
+                "gravite": "majeur",
+                "detail": "« {} » doit basculer dans « {} », ou il n'apparait "
+                          "pas".format(arc["personnage"], scenes[rang][0]),
+            })
+
+    # -- 8. ce que l'usine n'a pas ecrit, dit une fois et sans detour -------
     manquantes = [titre for (titre, _), ecrite in zip(scenes, ecrites)
                   if not ecrite]
     if manquantes:

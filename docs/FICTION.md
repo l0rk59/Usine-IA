@@ -136,6 +136,36 @@ scènes peuvent servir un même beat. Chaque scène porte un **pivot** : ce qui
 est vrai à la fin et ne l'était pas au début. Une scène sans pivot est une
 scène morte.
 
+### 4. Les fils tendus, et les arcs
+
+Une grille plate de tournants suffit à une nouvelle. Elle ne suffit pas à un
+récit long, et la raison est précise : **elle ne sait pas noter qu'un objet
+montré à la scène 2 doit servir à la scène 11.** Chaque scène est alors
+juste, et l'ensemble ne tient pas — c'est exactement ce qu'on reproche à la
+fiction générée.
+
+Un **fil tendu** est une promesse faite au lecteur. Il dit où il est *posé*,
+où il est *payé*, et par quoi :
+
+```json
+{"nom": "la lettre non ouverte", "pose": 2, "paye": 11,
+ "quoi": "une enveloppe qu'elle ne décachette pas",
+ "paiement": "c'était la mutation qu'elle refusait"}
+```
+
+Un fusil accroché au mur au premier acte doit tirer au dernier. Chaque scène
+reçoit donc trois choses : ce qu'elle doit **poser**, ce qu'elle doit
+**payer**, et ce qui reste **en suspens** — qu'elle ne doit pas résoudre,
+mais pas oublier non plus. Le nombre de fils suit la longueur : un tous les
+quatre scènes environ, jamais plus de dix.
+
+Un **arc** dit d'où part un personnage, dans quelle scène il *bascule*, et où
+il arrive. Un personnage qui finit comme il a commencé n'a pas d'arc, et un
+tel « arc » est écarté plutôt que noté — le noter ferait mentir le contrôle.
+
+Tout cela vient dans **le même appel** que la grille : la structure ne coûte
+pas un appel de plus.
+
 ## Le contrôle de continuité
 
 Déterministe, gratuit, instantané — comme le contrôle qualité des guides, et
@@ -149,6 +179,17 @@ jugement d'un modèle.
 | une scène où personne de la distribution n'est nommé | la scène a dérivé |
 | deux états successifs identiques | la scène n'a rien fait avancer |
 | un déclencheur, un climax ou une résolution qu'aucune scène ne livre | il manque un tournant sans lequel il n'y a pas de récit |
+| un fil que la scène payeuse ne mentionne pas | le JSON promettait ce que la prose n'a pas fait |
+| un fil que la scène où il est posé ne mentionne pas | le lecteur ne peut pas remarquer ce qui n'est pas là |
+| un protagoniste sans arc | il traverse l'histoire sans changer |
+| une bascule dans une scène où le personnage n'apparaît pas | il change hors champ |
+
+Le contrôle des fils mérite d'être décrit, parce qu'il va plus loin que les
+autres : il ne se contente pas de relire la grille, il **relit la prose**. Un
+fil déclaré payé à la scène 11 est cherché dans le texte de la scène 11, par
+les mots porteurs de son nom (« lettre » pour « la lettre non ouverte »). Le
+modèle peut promettre dans le JSON ce qu'il n'a pas écrit ; c'est là qu'on
+s'en aperçoit.
 
 Les quatre autres beats ne sont **pas** exigés : une nouvelle de six scènes ne
 peut pas livrer sept tournants séparément, et le lui reprocher serait faux.
@@ -169,9 +210,13 @@ rapport dit à la place, une fois, combien de scènes n'ont pas été rédigées
 
 Il compte les noms propres. Deux personnages qui partagent un nom de famille
 se reconnaissent donc l'un l'autre, et une mère citée seule marque sa fille
-comme présente. Le contrôle **rate alors une absence au lieu d'en inventer
-une** — c'est le bon sens de l'erreur pour un garde-fou qui doit être cru
-quand il parle.
+comme présente. Même biais pour les fils : une scène qui paie « la lettre »
+en parlant de « l'enveloppe » passera pour muette.
+
+Dans les deux cas, le contrôle **rate un manque au lieu d'en inventer un** —
+c'est le bon sens de l'erreur pour un garde-fou qui doit être cru quand il
+parle. Un garde-fou qui crie à tort finit ignoré, ce qui est pire que de se
+taire.
 
 ## Les longueurs
 
@@ -211,14 +256,18 @@ leur fiche, mais tronqué. Comptez plusieurs heures sur un téléphone : lancez-
 via l'usine continue, écran verrouillé, téléphone en charge. Le cache rend une
 interruption sans conséquence : relancer reprend où l'on s'était arrêté.
 
-**La structure, qui est le vrai chantier.** Un roman n'est pas une nouvelle
-longue. Sept beats et une distribution de quatre personnages tiennent une
-nouvelle ; un roman demande des **intrigues secondaires**, un **arc par
-personnage** et des **retournements qui se préparent sur plusieurs parties**.
-La grille actuelle est une liste plate de tournants — elle ne sait pas
-représenter une promesse posée en partie 1 et payée en partie 4. C'est le
-chantier suivant, et il ne commence pas par écrire plus : il commence par
-donner à la grille de quoi noter ce qui est en suspens.
+**La structure.** Les deux tiers en sont faits : la grille sait maintenant
+noter une promesse posée en partie 1 et payée en partie 4 (les **fils
+tendus**), et un **arc par personnage** avec sa scène de bascule — voir §4.
+Les deux entrent dans l'invite de chaque scène et sont vérifiés contre la
+prose produite.
+
+Reste les **intrigues secondaires** : un second fil narratif qui s'entrelace
+avec le principal, avec ses propres beats et sa propre résolution. C'est
+différent d'un fil tendu, qui est une promesse ponctuelle. Il faudrait que la
+grille sache porter plusieurs lignes parallèles et que les scènes alternent
+entre elles — et surtout un contrôle qui sache dire qu'une intrigue
+secondaire a été abandonnée en route, ce qui est le défaut le plus fréquent.
 
 ## Ce qui change pour le fichier livré
 

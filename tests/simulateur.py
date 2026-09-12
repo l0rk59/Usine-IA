@@ -466,9 +466,39 @@ def simulateur(messages, role):
         beats = ["situation", "declencheur", "engagement", "complication",
                  "crise", "climax", "resolution"]
         distribution = ["Camille Renard", "Hakim Oussaid", "Lucie Renard"]
+        # Les noms de fils reprennent des mots que « _texte_scene » emploie
+        # vraiment : le controle verifie qu'une scene PARLE du fil qu'elle
+        # doit payer, et un simulateur qui l'ignorerait fabriquerait un
+        # defaut au lieu d'exercer le controle.
+        matiere = ["la lettre non ouverte", "la motrice du depot",
+                   "le quai deux", "la porte du hangar", "la voiture de Lucie"]
+        fils = []
+        combien = max(1, min(10, round(n / 4)))
+        for rang in range(combien):
+            # Etales sur le recit : poses dans la premiere moitie, payes dans
+            # la seconde. Les grouper au debut laisserait la fin sans rien a
+            # resoudre, et le milieu sans rien a porter.
+            pose = max(1, min(n - 1, 1 + round(rang * (n / 2 - 1) / max(1, combien))))
+            paye = max(pose + 1, min(n, round(n / 2) + round(
+                (rang + 1) * (n / 2) / max(1, combien))))
+            fils.append({
+                "nom": matiere[rang % len(matiere)],
+                "pose": pose,
+                "paye": paye,
+                "quoi": "ce que le lecteur voit sans comprendre {}".format(rang),
+                "paiement": "ce que cela revelait {}".format(rang),
+            })
+        arcs = [
+            {"personnage": "Camille Renard", "depart": "refuse toute aide",
+             "bascule": max(1, n - 1), "arrivee": "accepte l'aide de sa fille"},
+            {"personnage": "Hakim Oussaid", "depart": "applique le reglement",
+             "bascule": max(1, n // 2), "arrivee": "assume une decision"},
+        ]
         return json.dumps({
             "beats": [{"nom": nom, "evenement": "Evenement du beat {}".format(nom)}
                       for nom in beats],
+            "fils": fils,
+            "arcs": arcs,
             "scenes": [
                 {"titre": "Scene modele {}".format(i + 1),
                  # Les trois tournants indispensables sont places aux bons
