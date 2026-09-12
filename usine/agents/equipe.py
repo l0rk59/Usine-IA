@@ -206,11 +206,16 @@ def controler_et_corriger(
     mots_cibles: int = 0,
     precedents: Optional[List[str]] = None,
     tentatives: int = 2,
+    exiger_structure: bool = True,
 ) -> Tuple[str, List["ctrl.Controle"]]:
     """Boucle locale : mesurer, corriger, remesurer. Un appel IA par tour.
 
     Renvoie le texte et l'historique des controles, pour que le rapport montre
     la progression reelle plutot qu'une affirmation.
+
+    « exiger_structure » existe pour la fiction : une scene de nouvelle n'a ni
+    sous-titre ni liste numerotee, et lui reprocher leur absence la ferait
+    reecrire dans le sens contraire de ce qu'elle doit etre.
     """
     # Le controle deterministe EST le travail du controleur : on allume
     # sa pastille pour que l'interface le montre a l'oeuvre, meme si
@@ -220,7 +225,8 @@ def controler_et_corriger(
     historique: List[ctrl.Controle] = []
     courant = texte
     for tour in range(max(1, tentatives)):
-        rapport = ctrl.controler(courant, mots_cibles, precedents or [])
+        rapport = ctrl.controler(courant, mots_cibles, precedents or [],
+                                 exiger_structure=exiger_structure)
         historique.append(rapport)
         evenements.publier("controle", intitule=intitule, note=rapport.note,
                            anomalies=len(rapport.anomalies),

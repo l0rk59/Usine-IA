@@ -20,6 +20,7 @@ def _combien(invite: str, defaut: int) -> int:
     for motif in (r"LONGUEUR\s*:\s*(\d+)",
                   r"de\s+(\d+)\s+(?:prompts|publications|outils|idees|fiches|bases)",
                   r"en\s+(\d+)\s+modules", r"calendrier editorial de (\d+)",
+                  r"(\d+)\s+scenes qui livrent",
                   r"systeme de (\d+) bases"):
         trouve = re.search(motif, invite, re.IGNORECASE)
         if trouve:
@@ -39,6 +40,44 @@ def _texte_markdown() -> str:
         "atteint 5 400 euros.\n\n"
         "> Ce qui se mesure s'ameliore.\n\n"
         "**A retenir :** Choisissez une seule audience. Mesurez une metrique."
+    )
+
+
+def _beat_de_scene(beats, index: int, total: int) -> str:
+    """Repartit les beats : declencheur tot, climax puis resolution a la fin."""
+    if index == 0:
+        return "situation"
+    if index == 1:
+        return "declencheur"
+    if index == total - 1:
+        return "resolution"
+    if index == total - 2:
+        return "climax"
+    milieu = beats[2:-2] or ["complication"]
+    return milieu[(index - 2) % len(milieu)]
+
+
+def _texte_scene() -> str:
+    """De la prose, pas du guide : ni sous-titre ni liste, et des noms propres.
+
+    Le controle de continuite compte les personnages nommes : un texte de
+    remplissage anonyme ferait echouer chaque scene pour « aucun personnage de
+    la bible ».
+    """
+    return (
+        "Camille Renard poussa la porte du depot. Le froid entrait par la "
+        "verriere cassee, comme chaque hiver depuis trente ans.\n\n"
+        "Hakim Oussaid l'attendait pres du quai deux, un dossier sous le bras. "
+        "Il ne s'assit pas.\n\n"
+        "« Sept jours, dit-il. Je n'y peux rien. »\n\n"
+        "Elle regarda la motrice. Elle connaissait le bruit de ce moteur mieux "
+        "que la voix de sa fille. Dehors, Lucie Renard attendait dans la "
+        "voiture, moteur allume, et klaxonna une fois.\n\n"
+        "Camille posa la main sur la tole glacee. Elle ne demanda rien. Elle "
+        "n'avait jamais rien demande, et c'etait exactement le probleme.\n\n"
+        "« Je conduirai le dernier », dit-elle enfin.\n\n"
+        "Hakim Oussaid hocha la tete et nota quelque chose. La lettre restait "
+        "dans la poche de Camille, toujours fermee.\n"
     )
 
 
@@ -375,6 +414,106 @@ def simulateur(messages, role):
                                "justification": "Volume et specificite."},
             "garantie": "Remboursement sous 14 jours.",
         }, ensure_ascii=False)
+
+    # --- fiction : la bible -------------------------------------------------
+    if '"personnages"' in invite and '"premisse"' in invite:
+        return json.dumps({
+            "titre": "Le dernier train de Roubaix",
+            "genre": "drame social",
+            "premisse": "Un cheminot decouvre que la ligne qu'il conduit "
+                        "depuis trente ans ferme dans une semaine.",
+            "cadre": {"lieu": "Roubaix, le depot", "epoque": "aujourd'hui",
+                      "regles": ["La ligne ferme dans sept jours"]},
+            "personnages": [
+                {"nom": "Camille Renard", "role": "protagoniste",
+                 "desir": "sauver la ligne", "defaut": "ne demande jamais d'aide",
+                 "voix": "phrases courtes, jamais de plainte"},
+                {"nom": "Hakim Oussaid", "role": "antagoniste",
+                 "desir": "fermer le depot proprement",
+                 "defaut": "confond fermete et durete",
+                 "voix": "vocabulaire de gestion, poli"},
+                {"nom": "Lucie Renard", "role": "secondaire",
+                 "desir": "que sa mere parte a temps",
+                 "defaut": "impatiente", "voix": "directe, coupe la parole"},
+            ],
+            "enjeu": "Camille perd le depot et la seule chose qui la tenait.",
+            "fin_visee": "Camille conduit le dernier train et accepte l'aide "
+                         "de sa fille.",
+        }, ensure_ascii=False)
+
+    # --- fiction : la grille de beats ---------------------------------------
+    if '"scenes"' in invite and '"beat"' in invite:
+        n = _combien(invite, 6)
+        beats = ["situation", "declencheur", "engagement", "complication",
+                 "crise", "climax", "resolution"]
+        distribution = ["Camille Renard", "Hakim Oussaid", "Lucie Renard"]
+        return json.dumps({
+            "beats": [{"nom": nom, "evenement": "Evenement du beat {}".format(nom)}
+                      for nom in beats],
+            "scenes": [
+                {"titre": "Scene modele {}".format(i + 1),
+                 # Les trois tournants indispensables sont places aux bons
+                 # endroits : un simulateur qui les oublierait fabriquerait un
+                 # defaut de continuite au lieu de l'exercer.
+                 "beat": _beat_de_scene(beats, i, n),
+                 "lieu": "le depot",
+                 "personnages": [distribution[i % 3], distribution[(i + 1) % 3]],
+                 "point_de_vue": "Camille Renard",
+                 "objectif": "Obtenir un sursis {}".format(i + 1),
+                 "obstacle": "Le reglement",
+                 "pivot": "Camille apprend le detail {}".format(i + 1)}
+                for i in range(n)
+            ],
+        }, ensure_ascii=False)
+
+    # --- fiction : mise a jour du resume roulant -----------------------------
+    if "reecris l'etat complet" in bas:
+        # La memoire doit VARIER d'une scene a l'autre : un resume fige ferait
+        # passer le controle de continuite pour vert alors qu'il doit signaler
+        # une histoire qui n'avance pas.
+        etapes = [
+            "Camille Renard apprend la fermeture du depot de Roubaix ; elle "
+            "n'en parle a personne.",
+            "Hakim Oussaid refuse le sursis ; Camille cache la convocation "
+            "dans sa poche.",
+            "Lucie Renard trouve la lettre et comprend que sa mere ment "
+            "depuis une semaine.",
+            "La motrice tombe en panne ; les cheminots votent l'occupation "
+            "du quai deux.",
+            "L'occupation echoue, Camille perd son habilitation, Hakim "
+            "signe l'arrete de fermeture.",
+            "Camille obtient de conduire le dernier convoi ; Lucie monte "
+            "avec elle dans la cabine.",
+            "Le depot ferme ; Camille accepte l'aide de sa fille et quitte "
+            "Roubaix sans regret.",
+        ]
+        # Le resume doit reellement progresser d'une scene a l'autre : le
+        # controle de continuite compare le vocabulaire, et un etat qui ne
+        # differe que par un chiffre ne bouge pas. Un simulateur qui figerait
+        # la memoire ferait echouer un controle qui a raison.
+        # Une nouvelle peut compter plus de scenes que d'etapes ci-dessus :
+        # au-dela, l'etat continue d'avancer par un detail en suspens, sans
+        # quoi le simulateur figerait la memoire et ferait echouer un
+        # controle qui aurait raison.
+        suspens = [
+            "La convocation reste sur la table.",
+            "Le syndicat promet une reponse mardi.",
+            "Un journaliste local rode devant le portail.",
+            "La sous-prefecture repousse l'audience.",
+            "Les rails du quai trois sont demontes.",
+            "Un ancien collegue revient de Lille.",
+        ]
+        trouve = re.search(r"SCENE « Scene modele (\d+) »", invite)
+        rang = int(trouve.group(1)) - 1 if trouve else invite.count("Apres ")
+        rang = max(rang, 0)
+        etat = etapes[min(rang, len(etapes) - 1)]
+        if rang >= len(etapes):
+            etat = "{} {}".format(etat, suspens[rang % len(suspens)])
+        return etat
+
+    # --- fiction : le texte d'une scene --------------------------------------
+    if "ecris la scene" in bas:
+        return _texte_scene()
 
     # --- tout le reste : du markdown ---------------------------------------
     if "json" in bas and "schema" in bas:

@@ -10,6 +10,7 @@ une archive prête à mettre en ligne.
 ```bash
 usine                 # menu interactif — l'entrée recommandée sur mobile
 usine ebook "la prospection pour freelances débutants" --marketing --zip
+usine nouvelle "un gardien de phare et le dernier hiver" -T court
 usine usine demarrer  # production en boucle, sous budget
 usine web             # tableau de bord 3D en temps réel
 python3 -m usine      # sans le raccourci dans le PATH
@@ -121,6 +122,7 @@ indisponibles. Pour l'utiliser en priorité : `USINE_LOCAL_FIRST=1` dans le `.en
 | Commande | Produit | Contenu livré |
 |---|---|---|
 | `usine ebook` | Ebook complet | PDF, EPUB, HTML, Markdown, TXT, couverture |
+| `usine nouvelle` | **Fiction courte** | Bible, **mémoire d'une scène à l'autre**, contrôle de continuité |
 | `usine prompts` | Pack de prompts | PDF, CSV (import Notion), JSON, HTML |
 | `usine formation` | Mini-formation | Manuel PDF, cahier d'exercices, séquence e-mail |
 | `usine outils` | Boîte à outils | Checklists imprimables, modèles, tableaux CSV |
@@ -153,7 +155,7 @@ divergé : l'explorateur de niches ne connaissait ni `impression` ni `modeles`,
 et convertissait silencieusement ces idées en ebooks.
 
 « Vrai type » signifie : une chaîne de fabrication qui lui est propre. C'est la
-différence entre neuf types et une énumération de soixante.
+différence entre dix types et une énumération de soixante.
 Voir [docs/TYPES-PRODUITS.md](docs/TYPES-PRODUITS.md).
 
 ### Exemples
@@ -810,7 +812,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         569 tests + test de fumée, aucun appel réseau
+tests/         590 tests + test de fumée, aucun appel réseau
                un atelier temporaire par module (tests/atelier.py)
 install.sh     installation Termux
 ```
@@ -823,9 +825,9 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 569 tests
+python3 -m unittest discover -s tests -t .   # 590 tests
 python3 scripts/dependances.py               # zéro dépendance
-python3 tests/fumee.py                       # les 9 chaînes via la vraie CLI
+python3 tests/fumee.py                       # les 10 chaînes via la vraie CLI
 ```
 
 Couvre notamment : validité de la table xref du PDF, conformité de l'archive
@@ -919,11 +921,15 @@ Une revue complète — état du câblage, ce que chaque type de produit sait et
 sait pas faire, et ce qu'on peut y ajouter — est dans
 [docs/EXTENSIONS.md](docs/EXTENSIONS.md). Les deux réponses courtes :
 
-- **Romans et nouvelles : non, pas aujourd'hui.** Les chapitres d'un ebook sont
-  rédigés indépendamment les uns des autres — une qualité pour un guide, un
-  défaut rédhibitoire pour une fiction, qui a besoin d'une continuité que cette
-  architecture ne porte pas. Il faut une chaîne distincte, avec une bible et un
-  résumé roulant.
+- **Nouvelles : oui, par une chaîne distincte** (`usine nouvelle`). Les
+  chapitres d'un ebook sont rédigés indépendamment les uns des autres — une
+  qualité pour un guide, un défaut rédhibitoire pour une fiction. La chaîne
+  fiction ajoute les trois pièces qui manquaient : une **bible** écrite avant
+  la première ligne, un **résumé roulant** que chaque scène reçoit et met à
+  jour, et une **grille de beats** au lieu d'un plan de chapitres. Un contrôle
+  de continuité déterministe relit ensuite la bible contre le texte produit.
+  Voir [docs/FICTION.md](docs/FICTION.md). **Le roman reste hors de portée** :
+  à 80 000 mots, un résumé roulant de quatre-vingt-dix mots ne suffit plus.
 - **Sécurité : oui, du côté contenu — pas d'outillage.** Guides, checklists de
   durcissement, politiques types, sensibilisation : ce sont des produits que
   les chaînes existantes savent déjà fabriquer. L'usine ne fournit aucun outil

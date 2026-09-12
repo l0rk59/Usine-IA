@@ -33,11 +33,12 @@ Ils doivent rester **sans accent** — ils sont comparés à du texte normalisé
 mot-clé accentué ne correspondrait jamais à rien : une assertion à l'import le
 refuse bruyamment plutôt que de le laisser silencieusement inopérant.
 
-## Les neuf types réels
+## Les dix types réels
 
 | Clé | Produit | Formats livrés |
 |---|---|---|
 | `ebook` | Guide structuré | PDF, EPUB, HTML, MD, TXT |
+| `nouvelle` | Fiction courte, avec bible et continuité | PDF, EPUB, HTML, MD, TXT |
 | `prompts` | Bibliothèque de prompts | PDF, CSV, JSON, HTML, MD |
 | `formation` | Modules + cahier d'exercices | PDF ×2, HTML, MD |
 | `outils` | Checklists et tableaux | PDF, CSV, HTML, MD |
@@ -49,7 +50,7 @@ refuse bruyamment plutôt que de le laisser silencieusement inopérant.
 
 **« Vrai type » signifie : une chaîne de fabrication qui lui est propre.** Un
 type qui produirait le même fichier qu'un autre sous un nom différent n'a pas sa
-place ici — c'est la différence entre neuf types et une énumération de soixante.
+place ici — c'est la différence entre dix types et une énumération de soixante.
 
 ## L'assemblage commun
 

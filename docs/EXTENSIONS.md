@@ -215,9 +215,16 @@ Classé par rapport entre ce que ça apporte et ce que ça coûte.
   capter des adresses, et en version complète payante.
 
 ### `roman` / `nouvelle` — fiction *(chaîne nouvelle)*
-Voir §2. C'est le plus gros chantier de la liste, et le plus demandé.
-Une **nouvelle** (5 000 – 10 000 mots) est le bon premier pas : assez courte
-pour qu'un résumé roulant suffise, assez longue pour prouver la continuité.
+**Fait pour la nouvelle.** `usine nouvelle` livre les trois pièces décrites au
+§2 — bible, résumé roulant, grille de beats — plus un contrôle de continuité
+déterministe. Voir [FICTION.md](FICTION.md).
+
+**Le roman reste ouvert**, et pour une raison mesurable : le résumé roulant
+fait quatre-vingt-dix mots. Il porte une nouvelle de huit scènes ; il ne
+portera pas vingt-quatre scènes et 80 000 mots. Il faudrait une mémoire
+hiérarchique — un résumé par partie, plus un état courant — et le chantier
+commence par mesurer où la mémoire actuelle lâche, pas par l'agrandir au
+jugé.
 
 ### `prompts` — packs de prompts
 - **Variantes par modèle** : ce qui marche sur un modèle échoue sur un autre.
@@ -322,7 +329,25 @@ certains moteurs). Ce qui reste ouvert et utile :
    en Python plutôt qu'EPUBCheck, qui demanderait Java. 16 des tests du
    contrôle cassent volontairement un EPUB valide — un contrôle qui ne sait
    rien refuser ne prouve rien.
-5. **La chaîne `nouvelle`** — la fiction par le format le plus court, pour
-   éprouver la continuité avant d'attaquer le roman.
+5. ~~**La chaîne `nouvelle`** — la fiction par le format le plus court, pour
+   éprouver la continuité avant d'attaquer le roman.~~ **Fait.**
+   `usine/pipelines/nouvelle.py` : bible, résumé roulant, grille de beats,
+   contrôle de continuité déterministe. Le test de fumée refuse désormais de
+   passer si un type du catalogue n'est fabriqué par aucun de ses scénarios —
+   c'est ainsi que l'oubli d'une chaîne se voit.
+
+### Ce qui vient ensuite
+
+Le backlog n'est pas vide pour autant. Par ordre de rapport entre ce que ça
+apporte et ce que ça coûte :
+
+1. **La mémoire hiérarchique**, sans laquelle le roman reste hors de portée
+   (voir §4, `roman` / `nouvelle`).
+2. **`termux-share`** : envoyer une archive livrable vers Drive ou un courriel
+   depuis l'écran « Mes produits » du menu (voir §5).
+3. **Éditions déclinées** d'un ebook : version courte offerte pour capter des
+   adresses, version complète payante.
+4. **Quiz auto-corrigés** en HTML autonome pour les mini-formations : la
+   chaîne produit déjà du HTML.
 *(L'ancien item « profil audit local » est retiré : la direction outillage de
 sécurité a été abandonnée.)*

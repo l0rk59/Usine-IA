@@ -35,6 +35,11 @@ SCENARIOS = [
                     "--sans-image"]),
     ("ebook", ["ebook", "la prospection pour freelances", "-T", "mini",
                "--sans-image", "--marketing", "--zip"]),
+    # La fiction : la seule chaine qui porte une memoire d'une section a la
+    # suivante. Le scenario verifie que la bible et la continuite sortent.
+    ("nouvelle", ["nouvelle", "un gardien de phare et le dernier hiver",
+                  "-T", "mini", "--sans-image",
+                  "--dedicace", "Pour ceux qui restent"]),
     ("prompts", ["prompts", "la gestion de projet", "-n", "8", "--sans-image"]),
     ("formation", ["formation", "le copywriting", "-m", "4", "--sans-image"]),
     ("outils", ["outils", "la facturation", "-n", "5", "--sans-image"]),
@@ -96,6 +101,8 @@ SCENARIOS = [
 
 ATTENDUS = {
     "ebook": [".pdf", ".epub", "lire.html", "livre.md", "livre.txt"],
+    "nouvelle": [".pdf", ".epub", "bible.json", "continuite.json",
+                 "nouvelle.md", "lire.html"],
     "prompts": [".pdf", "prompts.csv", "prompts.json", "lire.html"],
     "formation": ["-manuel.pdf", "-cahier-exercices.pdf", "formation.md"],
     "outils": [".pdf", "boite-outils.md", "lire.html"],
@@ -154,8 +161,26 @@ def _resoudre(argument: str) -> str:
     return str(chemin)
 
 
+def types_non_exerces() -> list:
+    """Types du catalogue qu'aucun scenario ne fabrique.
+
+    Le catalogue est la source unique de verite ; cette liste-ci est ecrite a
+    la main. Sans ce controle, ajouter une chaine de fabrication la laisserait
+    hors du seul test qui passe par la VRAIE CLI, et personne ne le verrait.
+    """
+    from usine.pipelines import catalogue
+
+    lances = {scenario[1][0] for scenario in SCENARIOS}
+    return [cle for cle in catalogue.cles(fabricables=True)
+            if cle not in lances]
+
+
 def principal() -> int:
     echecs = []
+    oublies = types_non_exerces()
+    if oublies:
+        echecs.append(("catalogue", "type(s) jamais fabrique(s) par ce test : "
+                       + ", ".join(oublies)))
     for scenario in SCENARIOS:
         nom, arguments = scenario[0], list(scenario[1])
         arguments = [_resoudre(a) for a in arguments]

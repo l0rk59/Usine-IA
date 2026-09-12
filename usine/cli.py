@@ -24,7 +24,8 @@ from .core.http import en_ligne
 from .marketing import vente
 from .packaging import livraison
 from .pipelines import (boite_outils, catalogue, ebook, formation, idees,
-                        impression, logiciel, modeles, pack_prompts, social)
+                        impression, logiciel, modeles, nouvelle, pack_prompts,
+                        social)
 from .pipelines.base import (CHAPITRES_MAX, CHAPITRES_MIN, Contexte, MOTS_MAX,
                              MOTS_MIN, TAILLES, TONS)
 
@@ -190,6 +191,20 @@ def cmd_ebook(args: argparse.Namespace) -> int:
     description = "Ebook de {} chapitres, {} mots. {}".format(
         resume["chapitres"], resume["mots"], resume.get("sous_titre", "")
     )
+    _resume_console(_apres_production(args, ctx, resume, description))
+    return 0
+
+
+def cmd_nouvelle(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    _avertir_sujet(args.sujet)
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication d'une nouvelle")
+    resume = nouvelle.produire(ctx)
+    description = "Nouvelle{}, {} scenes, {} mots.".format(
+        " — " + resume["sous_titre"] if resume.get("sous_titre") else "",
+        resume["scenes"], resume["mots"])
     _resume_console(_apres_production(args, ctx, resume, description))
     return 0
 
@@ -1755,6 +1770,11 @@ def construire_parseur() -> argparse.ArgumentParser:
     p = sous_parseurs.add_parser("ebook", help="fabriquer un ebook complet")
     _options_communes(p)
     p.set_defaults(fonction=cmd_ebook)
+
+    p = sous_parseurs.add_parser(
+        "nouvelle", help="fabriquer une nouvelle (fiction courte)")
+    _options_communes(p)
+    p.set_defaults(fonction=cmd_nouvelle)
 
     p = sous_parseurs.add_parser("prompts", help="fabriquer un pack de prompts")
     _options_communes(p)

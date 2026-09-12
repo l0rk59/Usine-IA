@@ -81,10 +81,11 @@ class TypeProduit:
 def _chaines() -> Dict[str, Callable]:
     """Import tardif : le catalogue est lu par des modules que les chaines importent."""
     from . import (boite_outils, ebook, formation, idees, impression, logiciel,
-                   modeles, pack_prompts, social)
+                   modeles, nouvelle, pack_prompts, social)
 
     return {
         "ebook": ebook.produire,
+        "nouvelle": nouvelle.produire,
         "prompts": pack_prompts.produire,
         "formation": formation.produire,
         "outils": boite_outils.produire,
@@ -104,6 +105,17 @@ TYPES: List[TypeProduit] = [
         formats=("pdf", "epub", "html", "md", "txt"),
         minutes=(10, 25),
         mots_cles=("guide", "methode", "livre", "manuel", "apprendre"),
+    ),
+    TypeProduit(
+        cle="nouvelle", nom="Nouvelle (fiction)",
+        resume="Une histoire courte, avec bible et continuite tenue",
+        detail="PDF + EPUB + HTML + Markdown + couverture",
+        formats=("pdf", "epub", "html", "md", "txt"),
+        minutes=(12, 30),
+        # Volontairement etroits : « nouvelle » ou « histoire » designent
+        # aussi bien un recit qu'une nouvelle methode ou l'histoire d'un
+        # marche. Un mot-cle trop large enverrait des guides a la fiction.
+        mots_cles=("fiction", "recit", "roman", "conte", "intrigue"),
     ),
     TypeProduit(
         cle="prompts", nom="Pack de prompts",
