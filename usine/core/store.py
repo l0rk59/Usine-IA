@@ -478,27 +478,47 @@ def _et_modele(modele: str) -> str:
     return " AND modele=?" if modele else ""
 
 
-def compteur_minute(fournisseur: str, modele: str = "") -> int:
+# Les quotas d'un fournisseur s'appliquent a un COMPTE, donc a une cle. Les
+# compter pour tout le fournisseur revenait a additionner les consommations de
+# cles independantes : deux cles donnaient un seul quota, et le pool — dont
+# toute la raison d'etre est de ne jamais s'arreter faute de quota — ne
+# multipliait rien du tout.
+def _et_cle(cle_id: str) -> str:
+    return " AND cle_id=?" if cle_id else ""
+
+
+def _filtres(modele: str, cle_id: str) -> Tuple[str, Tuple[Any, ...]]:
+    """Clause SQL et parametres pour restreindre a un modele et/ou une cle."""
+    clause = _et_modele(modele) + _et_cle(cle_id)
+    valeurs = tuple(v for v in (modele, cle_id) if v)
+    return clause, valeurs
+
+
+def compteur_minute(fournisseur: str, modele: str = "",
+                    cle_id: str = "") -> int:
+    clause, valeurs = _filtres(modele, cle_id)
     with cursor() as cur:
         cur.execute(
-            "SELECT COUNT(*) FROM appels WHERE fournisseur=? AND ts > ?"
-            + _et_modele(modele),
-            (fournisseur, time.time() - 60) + ((modele,) if modele else ()),
+            "SELECT COUNT(*) FROM appels WHERE fournisseur=? AND ts > ?" + clause,
+            (fournisseur, time.time() - 60) + valeurs,
         )
         return int(cur.fetchone()[0])
 
 
-def compteur_jour(fournisseur: str, modele: str = "") -> int:
+def compteur_jour(fournisseur: str, modele: str = "",
+                  cle_id: str = "") -> int:
+    clause, valeurs = _filtres(modele, cle_id)
     with cursor() as cur:
         cur.execute(
             "SELECT COUNT(*) FROM appels WHERE fournisseur=? AND jour=? AND "
-            + _TRAITE + _et_modele(modele),
-            (fournisseur, _jour()) + ((modele,) if modele else ()),
+            + _TRAITE + clause,
+            (fournisseur, _jour()) + valeurs,
         )
         return int(cur.fetchone()[0])
 
 
-def jetons_minute(fournisseur: str, modele: str = "") -> Tuple[int, float]:
+def jetons_minute(fournisseur: str, modele: str = "",
+                  cle_id: str = "") -> Tuple[int, float]:
     """Jetons consommes dans la derniere minute, et date du plus ancien.
 
     Le plafond par minute est une fenetre GLISSANTE : la place ne se libere
@@ -507,24 +527,25 @@ def jetons_minute(fournisseur: str, modele: str = "") -> Tuple[int, float]:
     faut au lieu d'attendre une minute entiere a chaque fois.
     """
     debut = time.time() - 60
+    clause, valeurs = _filtres(modele, cle_id)
     with cursor() as cur:
         cur.execute(
             "SELECT COALESCE(SUM(tokens), 0), COALESCE(MIN(ts), 0) FROM appels"
-            " WHERE fournisseur=? AND ts > ? AND ok=1 AND tokens > 0"
-            + _et_modele(modele),
-            (fournisseur, debut) + ((modele,) if modele else ()),
+            " WHERE fournisseur=? AND ts > ? AND ok=1 AND tokens > 0" + clause,
+            (fournisseur, debut) + valeurs,
         )
         ligne = cur.fetchone()
         return int(ligne[0]), float(ligne[1])
 
 
-def jetons_jour(fournisseur: str, modele: str = "") -> int:
+def jetons_jour(fournisseur: str, modele: str = "", cle_id: str = "") -> int:
     """Jetons consommes aujourd'hui chez un fournisseur."""
+    clause, valeurs = _filtres(modele, cle_id)
     with cursor() as cur:
         cur.execute(
             "SELECT COALESCE(SUM(tokens), 0) FROM appels"
-            " WHERE fournisseur=? AND jour=? AND ok=1" + _et_modele(modele),
-            (fournisseur, _jour()) + ((modele,) if modele else ()),
+            " WHERE fournisseur=? AND jour=? AND ok=1" + clause,
+            (fournisseur, _jour()) + valeurs,
         )
         return int(cur.fetchone()[0])
 

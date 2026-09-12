@@ -466,3 +466,98 @@ class TestModeleDisparu(unittest.TestCase):
         ollama = config.PROVIDERS_BY_NAME["ollama"]
         texte = llm._expliquer(ollama, HttpErreur(404, "Not Found"))
         self.assertIn("ollama pull", texte)
+
+
+class TestQuotaParCle(unittest.TestCase):
+    """Le pool de cles doit multiplier le quota, ce qui est toute sa raison
+    d'etre : « ne jamais s'arreter pour cause de quota ».
+
+    Il ne multipliait rien. Les plafonds d'un fournisseur s'appliquent a un
+    COMPTE, donc a une cle, et le routeur les comptait pour tout le
+    fournisseur : il additionnait les consommations de cles independantes.
+    Mille appels sur la premiere cle de Groq suffisaient a declarer le
+    fournisseur epuise, la seconde n'ayant servi a rien.
+    """
+
+    def setUp(self):
+        _vider_appels()
+        self.groq = config.PROVIDERS_BY_NAME["groq"]
+
+    def _consommer(self, cle_id, nombre, tokens=10):
+        maintenant = time.time()
+        with store.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO appels(fournisseur, modele, ts, jour, ok, tokens,"
+                " cle_id) VALUES ('groq','openai/gpt-oss-120b',?,?,1,?,?)",
+                [(maintenant, store._jour(), tokens, cle_id)] * nombre)
+
+    def test_epuiser_une_cle_n_epuise_pas_l_autre(self):
+        self._consommer("cle-A", self.groq.quota("standard").rpd)
+        self.assertFalse(llm._quota_ok(self.groq, "standard", "cle-A"))
+        self.assertTrue(llm._quota_ok(self.groq, "standard", "cle-B"))
+
+    def test_le_plafond_en_jetons_se_compte_aussi_par_cle(self):
+        q = self.groq.quota("standard")
+        self._consommer("cle-A", 1, tokens=q.tpd)
+        self.assertFalse(llm._quota_ok(self.groq, "standard", "cle-A"))
+        self.assertTrue(llm._quota_ok(self.groq, "standard", "cle-B"))
+
+    def test_le_debit_par_minute_aussi(self):
+        """Sinon deux cles se freinent l'une l'autre : le pool ralentit la
+        production au lieu de l'accelerer."""
+        q = self.groq.quota("standard")
+        self._consommer("cle-A", q.rpm)
+        self.assertGreater(llm._attente(self.groq, "standard", 100, "cle-A"), 0)
+        self.assertEqual(llm._attente(self.groq, "standard", 100, "cle-B"), 0.0)
+
+    def test_le_repos_du_fournisseur_vaut_pour_toutes_les_cles(self):
+        """Un modele retire ou un service en panne ne regarde aucune cle en
+        particulier : la ce sont bien toutes qui doivent s'arreter."""
+        llm._reposer("groq", 600, "modele inconnu")
+        self.assertFalse(llm._quota_ok(self.groq, "standard", "cle-A"))
+        self.assertFalse(llm._quota_ok(self.groq, "standard", "cle-B"))
+
+    def test_une_cle_saturee_en_JETONS_est_sautee_pas_le_fournisseur(self):
+        """Le pool ecarte deja une cle qui a epuise ses REQUETES. Il ignore
+        tout des jetons — et c'est le plafond qui tombe en premier chez Groq,
+        deux cent mille jetons valant environ un livre. Une cle a bout de
+        jetons mais pas de requetes doit donc etre sautee ici, et la suivante
+        essayee : abandonner le fournisseur entier gaspillerait la seconde.
+        """
+        lot = pool_cles.Pool("groq", [
+            pool_cles.Cle(valeur="cle-premiere", fournisseur="groq", rang=0),
+            pool_cles.Cle(valeur="cle-seconde", fournisseur="groq", rang=1),
+        ])
+        premiere, seconde = lot.cles
+        # Peu d'appels, beaucoup de jetons : sous le plafond de requetes,
+        # au-dessus de celui de jetons. La seconde cle en a fait davantage,
+        # pour que le pool — qui classe la moins sollicitee en tete — propose
+        # bien la premiere d'abord : sinon la seconde repondrait sans que le
+        # saut ait lieu, et ce test ne prouverait rien.
+        self._consommer(premiere.id, 1, tokens=self.groq.quota("standard").tpd)
+        self._consommer(seconde.id, 3, tokens=1)
+
+        with mock.patch.object(pool_cles, "pool", return_value=lot):
+            with mock.patch.object(llm, "post_json", return_value=_reponse()):
+                with mock.patch.object(config, "active_providers",
+                                       return_value=[self.groq]):
+                    rep = llm.generer("court", cache=False)
+        self.assertEqual(rep.cle, seconde.affichage)
+
+    def test_le_routeur_bascule_sur_la_seconde_cle(self):
+        """Le bout en bout : la premiere cle est saturee, l'appel doit partir
+        quand meme, et avec l'autre cle."""
+        lot = pool_cles.Pool("groq", [
+            pool_cles.Cle(valeur="cle-premiere", fournisseur="groq", rang=0),
+            pool_cles.Cle(valeur="cle-seconde", fournisseur="groq", rang=1),
+        ])
+        premiere, seconde = lot.cles
+        self._consommer(premiere.id, self.groq.quota("standard").rpd)
+
+        with mock.patch.object(pool_cles, "pool", return_value=lot):
+            with mock.patch.object(llm, "post_json", return_value=_reponse()):
+                with mock.patch.object(config, "active_providers",
+                                       return_value=[self.groq]):
+                    rep = llm.generer("court", cache=False)
+        self.assertEqual(rep.fournisseur, "groq")
+        self.assertEqual(rep.cle, seconde.affichage)

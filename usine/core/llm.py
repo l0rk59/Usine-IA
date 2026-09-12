@@ -173,26 +173,49 @@ def _cout_estime(messages: Sequence[Dict[str, str]], max_tokens: int,
     return entree + sortie
 
 
-def _quota_ok(p: config.Provider, role: str = "standard") -> bool:
+def _au_repos(p: config.Provider) -> bool:
+    """Le fournisseur entier est-il en repos ? Cela ne depend d'aucune cle."""
     _charger_repos()
-    if _REPOS.get(p.name, 0) > time.time():
+    return _REPOS.get(p.name, 0) > time.time()
+
+
+def _quota_ok(p: config.Provider, role: str = "standard",
+              cle_id: str = "") -> bool:
+    """Ce quota est-il encore ouvert pour CETTE cle ?
+
+    Les plafonds d'un fournisseur s'appliquent a un compte, donc a une cle.
+    Les compter pour tout le fournisseur additionnait les consommations de
+    cles independantes : deux cles donnaient un seul quota, et le pool — dont
+    toute la raison d'etre est de ne jamais s'arreter faute de quota — ne
+    multipliait rien. Mesure : mille appels sur la premiere cle de Groq
+    suffisaient a declarer le fournisseur epuise, la seconde n'ayant servi a
+    rien.
+
+    Le cas connu qui va dans l'autre sens est Google, qui compte par PROJET :
+    deux cles d'un meme projet partagent leur quota, et compter par cle y est
+    optimiste. Le prix en est un 429, que le routeur sait deja traiter en
+    mettant la cle au repos — alors qu'un comptage trop prudent rend le pool
+    entierement inutile, ce qui est pire.
+    """
+    if _au_repos(p):
         return False
     if p.local:
         return True
     q = p.quota(role)
     modele = _compte_pour(p, role)
-    if store.compteur_jour(p.name, modele) >= q.rpd:
+    if store.compteur_jour(p.name, modele, cle_id) >= q.rpd:
         return False
     # Plusieurs paliers gratuits s'epuisent en JETONS bien avant de s'epuiser
     # en requetes : Groq n'en accorde que deux cent mille par jour, de quoi
     # ecrire un livre et pas deux. Ne compter que les requetes revenait a
     # decouvrir la limite sous forme de 429 en pleine fabrication.
-    if q.tpd and store.jetons_jour(p.name, modele) >= q.tpd:
+    if q.tpd and store.jetons_jour(p.name, modele, cle_id) >= q.tpd:
         return False
     return True
 
 
-def _attente(p: config.Provider, role: str, cout: int) -> Optional[float]:
+def _attente(p: config.Provider, role: str, cout: int,
+             cle_id: str = "") -> Optional[float]:
     """Secondes a patienter pour rester sous les plafonds par minute.
 
     Rend None quand aucune attente ne suffira : la demande pese a elle seule
@@ -207,12 +230,12 @@ def _attente(p: config.Provider, role: str, cout: int) -> Optional[float]:
     q = p.quota(role)
     modele = _compte_pour(p, role)
     attente = 0.0
-    if store.compteur_minute(p.name, modele) >= q.rpm:
+    if store.compteur_minute(p.name, modele, cle_id) >= q.rpm:
         attente = min(62.0, 60.0 / max(q.rpm, 1) + 1.0)
     if q.tpm:
         if cout > q.tpm:
             return None
-        utilises, plus_ancien = store.jetons_minute(p.name, modele)
+        utilises, plus_ancien = store.jetons_minute(p.name, modele, cle_id)
         if utilises + cout > q.tpm and plus_ancien:
             # La fenetre glisse : la place se libere quand le plus vieil
             # appel en sort, pas a la minute ronde.
@@ -220,14 +243,15 @@ def _attente(p: config.Provider, role: str, cout: int) -> Optional[float]:
     return attente
 
 
-def _laisser_passer(p: config.Provider, role: str, cout: int) -> bool:
-    """Attend si besoin, et dit si ce fournisseur peut servir la demande."""
-    pause = _attente(p, role, cout)
+def _laisser_passer(p: config.Provider, role: str, cout: int,
+                    cle_id: str = "") -> bool:
+    """Attend si besoin, et dit si cette cle peut servir la demande."""
+    pause = _attente(p, role, cout, cle_id)
     if pause is None:
         return False
     if pause > 0:
         time.sleep(pause)
-        pause = _attente(p, role, cout)
+        pause = _attente(p, role, cout, cle_id)
     return bool(pause == 0.0)
 
 
@@ -337,8 +361,11 @@ def generer(
 
     erreurs: List[str] = []
     for p in fournisseurs:
-        if not _quota_ok(p, role):
-            erreurs.append("{} : quota journalier atteint ou en repos".format(p.name))
+        # Le repos vaut pour le fournisseur entier ; le quota, lui, se
+        # verifie cle par cle plus bas — c'est tout l'interet d'en avoir
+        # plusieurs.
+        if _au_repos(p):
+            erreurs.append("{} : en repos".format(p.name))
             continue
         cout = _cout_estime(messages, max_tokens, p)
 
@@ -359,7 +386,12 @@ def generer(
         for cle in candidates:
             if fournisseur_hors_jeu:
                 break
-            if not _laisser_passer(p, role, cout):
+            identifiant_cle = cle.id if cle else ""
+            if not _quota_ok(p, role, identifiant_cle):
+                erreurs.append("{}{} : quota du jour atteint".format(
+                    p.name, "/" + cle.affichage if cle else ""))
+                continue
+            if not _laisser_passer(p, role, cout, identifiant_cle):
                 erreurs.append(
                     "{} : {} jetons demandes, budget par minute insuffisant"
                     .format(p.name, cout))

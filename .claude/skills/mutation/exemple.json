@@ -11,7 +11,7 @@
   {
     "titre": "le plafond de jetons par jour ferme le fournisseur",
     "fichier": "usine/core/llm.py",
-    "avant": "if q.tpd and store.jetons_jour(p.name, modele) >= q.tpd:\n        return False\n",
+    "avant": "if q.tpd and store.jetons_jour(p.name, modele, cle_id) >= q.tpd:\n        return False\n",
     "apres": "",
     "tests": [
       "tests.test_routeur"
@@ -38,7 +38,7 @@
   {
     "titre": "le routeur ecarte le fournisseur au lieu d'appeler",
     "fichier": "usine/core/llm.py",
-    "avant": "if not _laisser_passer(p, role, cout):",
+    "avant": "if not _laisser_passer(p, role, cout, identifiant_cle):",
     "apres": "if False:",
     "tests": [
       "tests.test_routeur"

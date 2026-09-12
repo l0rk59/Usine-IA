@@ -139,9 +139,41 @@ routeur s'y conforme seul. Trois habitudes utiles quand même :
   poser : *est-ce que les modèles que je demande existent encore ?*
 - `usine docteur` affiche désormais la consommation en jetons à côté de celle
   en requêtes, quand le fournisseur publie un plafond.
-- Plusieurs clés chez un même fournisseur multiplient les requêtes, **pas** les
-  jetons si elles appartiennent au même projet : chez Google, les quotas se
-  comptent par projet, pas par clé.
+- Plusieurs clés chez un même fournisseur multiplient les requêtes **et** les
+  jetons — sauf si elles appartiennent au même projet : chez Google, les
+  quotas se comptent par projet, pas par clé. Voir ci-dessous.
+
+## 5. Le pool de clés ne multipliait rien
+
+Le pool existe pour une seule raison : **ne jamais s'arrêter pour cause de
+quota.** Il ne l'obtenait pas.
+
+Les plafonds d'un fournisseur s'appliquent à un **compte**, donc à une clé. Le
+routeur, lui, les comptait pour tout le fournisseur — il additionnait les
+consommations de clés indépendantes. Mesuré :
+
+```
+quota d'UNE cle : 1000 requetes/jour
+cle A a consomme : 1000
+cle B a consomme : 0
+le routeur declare groq utilisable ? -> False
+```
+
+Deux clés donnaient un seul quota. Le même défaut valait pour les jetons par
+jour et pour le débit par minute — là, deux clés se **freinaient l'une
+l'autre** : le pool ralentissait la production au lieu de l'accélérer.
+
+Le décompte se fait désormais par clé (`compteur_jour`, `jetons_jour`,
+`compteur_minute` et `jetons_minute` acceptent un `cle_id`). Une clé épuisée
+est sautée, la suivante essayée ; c'est seulement le **repos** d'un
+fournisseur — un modèle retiré, un service en panne — qui vaut pour toutes ses
+clés à la fois, parce qu'il ne regarde aucune clé en particulier.
+
+**Le cas qui va dans l'autre sens**, et il est assumé : Google compte par
+projet. Deux clés d'un même projet partagent leur quota, et compter par clé y
+est optimiste. Le prix en est un 429, que le routeur sait déjà traiter en
+mettant la clé au repos pour la durée que le service demande. Un décompte
+trop prudent, lui, rend le pool entièrement inutile — ce qui est pire.
 
 ## Comment ces corrections sont gardées
 
