@@ -926,10 +926,11 @@ class TestDocteur(BaseServeur):
         faux = self._fournisseur({"rapide": "vivant", "standard": "mort"})
         with mock.patch.object(config, "active_providers", return_value=[faux]):
             with self._faux_catalogue(["vivant", "autre"]):
-                ecarts = diagnostic.modeles_disparus()
-        self.assertEqual(len(ecarts), 1)
-        self.assertEqual(ecarts[0]["manquants"], ["mort"])
-        self.assertIn("autre", ecarts[0]["proposes"])
+                rapport = diagnostic.modeles_disparus()
+        self.assertEqual(len(rapport["ecarts"]), 1)
+        self.assertEqual(rapport["ecarts"][0]["manquants"], ["mort"])
+        self.assertIn("autre", rapport["ecarts"][0]["proposes"])
+        self.assertEqual(rapport["consultes"], ["essai"])
 
     def test_un_catalogue_complet_ne_signale_rien(self):
         from unittest import mock
@@ -938,7 +939,9 @@ class TestDocteur(BaseServeur):
         faux = self._fournisseur({"rapide": "a", "standard": "b"})
         with mock.patch.object(config, "active_providers", return_value=[faux]):
             with self._faux_catalogue(["a", "b", "c"]):
-                self.assertEqual(diagnostic.modeles_disparus(), [])
+                rapport = diagnostic.modeles_disparus()
+        self.assertEqual(rapport["ecarts"], [])
+        self.assertEqual(rapport["consultes"], ["essai"])
 
     def test_un_service_injoignable_n_accuse_personne(self):
         """« Je ne sais pas » ne doit pas se lire « aucun modele » : un reseau
@@ -949,9 +952,15 @@ class TestDocteur(BaseServeur):
         faux = self._fournisseur({"standard": "mort"})
         with mock.patch.object(config, "active_providers", return_value=[faux]):
             with mock.patch("usine.core.http.requete", side_effect=OSError("hs")):
-                self.assertEqual(diagnostic.modeles_disparus(), [])
+                rapport = diagnostic.modeles_disparus()
+            self.assertEqual(rapport["ecarts"], [])
+            # Et surtout : le rapport dit que personne n'a repondu. Une liste
+            # d'ecarts vide ne doit pas pouvoir se lire « tout va bien ».
+            self.assertEqual(rapport["consultes"], [])
+            self.assertEqual(rapport["injoignables"], ["essai"])
             with self._faux_catalogue([], statut=403):
-                self.assertEqual(diagnostic.modeles_disparus(), [])
+                rapport = diagnostic.modeles_disparus()
+            self.assertEqual(rapport["injoignables"], ["essai"])
 
     def test_le_controle_des_modeles_ne_sort_que_si_on_le_demande(self):
         """Une requete par fournisseur : trop lent pour un rafraichissement.
@@ -962,7 +971,7 @@ class TestDocteur(BaseServeur):
         from usine.core import diagnostic
 
         etat = diagnostic.etat_installation(avec_reseau=False, avec_locaux=False)
-        self.assertEqual(etat["modeles_disparus"], [])
+        self.assertIsNone(etat["modeles"])
         source = (RACINE / "usine" / "cli.py").read_text(encoding="utf-8")
         self.assertIn("--modeles", source)
 

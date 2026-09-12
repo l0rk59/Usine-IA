@@ -1610,18 +1610,29 @@ def cmd_docteur(args: argparse.Namespace) -> int:
             print("  {} {:<13} {:<9} definir {} — {}".format(
                 _c("-", "90"), ligne["nom"], genre, ligne["cle_env"], ligne["inscription"]))
 
-    ecarts = etat.get("modeles_disparus") or []
-    if ecarts:
-        titre_console("Modeles disparus des catalogues")
-        for ecart in ecarts:
+    controle = etat.get("modeles")
+    if controle is not None:
+        titre_console("Catalogues des fournisseurs")
+        for ecart in controle["ecarts"]:
             alerte("{} ne sert plus : {}".format(
                 ecart["fournisseur"], ", ".join(ecart["manquants"])))
             if ecart["proposes"]:
                 print("      propose a la place : " +
                       ", ".join(ecart["proposes"][:6]))
-        print("      Corrigez les identifiants dans usine/core/config.py.")
-    elif getattr(args, "modeles", False):
-        ok("Tous les modeles configures existent encore chez leur fournisseur")
+        if controle["ecarts"]:
+            print("      Corrigez les identifiants dans usine/core/config.py.")
+        intacts = [n for n in controle["consultes"]
+                   if n not in {e["fournisseur"] for e in controle["ecarts"]}]
+        if intacts:
+            ok("Modeles confirmes chez : " + ", ".join(intacts))
+        # « Personne n'a repondu » ne doit pas se lire « tout va bien » :
+        # c'est precisement la confusion qui a laisse Groq mourir en silence.
+        if controle["injoignables"]:
+            alerte("Non verifie (pas de cle, ou service injoignable) : "
+                   + ", ".join(controle["injoignables"]))
+        if not controle["consultes"]:
+            alerte("Aucun fournisseur n'a pu etre interroge : ce controle ne "
+                   "dit rien, ni dans un sens ni dans l'autre.")
 
     titre_console("Verdict")
     verdict = etat["verdict"]

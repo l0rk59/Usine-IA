@@ -35,19 +35,27 @@ fournisseur pour comparer au configuré — c'est ce qui empêche la prochaine
 disparition de passer inaperçue :
 
 ```
-== Modeles disparus des catalogues
+== Catalogues des fournisseurs
   [!] groq ne sert plus : llama-3.3-70b-versatile
       propose a la place : openai/gpt-oss-120b, openai/gpt-oss-20b, ...
       Corrigez les identifiants dans usine/core/config.py.
+  [ok] Modeles confirmes chez : gemini, mistral
+  [!] Non verifie (pas de cle, ou service injoignable) : nvidia
 ```
 
 Et quand le 404 tombe quand même, le routeur ne dit plus `HTTP 404` mais :
 *« le modèle « … » n'existe plus chez groq […] vérifiez avec usine docteur
 --modeles »*.
 
-Un service injoignable, une clé absente ou un endpoint muet rendent
-**« je ne sais pas »**, jamais « aucun modèle » : un réseau coupé déclarerait
-sinon toute la configuration morte.
+**Le rapport nomme qui a répondu.** Un service injoignable, une clé absente ou
+un endpoint muet rendent « je ne sais pas », jamais « aucun modèle » — un
+réseau coupé déclarerait sinon toute la configuration morte. Mais l'inverse
+est un piège symétrique : un contrôle qui n'a pu interroger personne rendait
+une liste d'écarts vide, **indistinguable d'un contrôle où tout va bien**.
+C'est exactement la confusion qui a laissé Groq mourir en silence, et elle
+avait été réintroduite dans le contrôle censé la supprimer. Le rapport dit
+donc les trois états : ce qui est confirmé, ce qui a disparu, ce qui n'a pas
+pu être vérifié.
 
 ## 2. Le quota qui compte n'est pas celui qu'on comptait
 

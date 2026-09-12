@@ -94,7 +94,7 @@ def _catalogue_distant(fournisseur: config.Provider,
     return noms
 
 
-def modeles_disparus(timeout: int = 10) -> List[Dict[str, Any]]:
+def modeles_disparus(timeout: int = 10) -> Dict[str, Any]:
     """Modeles configures que leur fournisseur ne sert plus.
 
     Ce controle existe a cause d'une panne reelle et entierement silencieuse :
@@ -107,14 +107,23 @@ def modeles_disparus(timeout: int = 10) -> List[Dict[str, Any]]:
 
     Une ligne par ecart, avec les identifiants proposes par le fournisseur :
     la correction se fait dans usine/core/config.py.
+
+    Le resultat dit aussi QUI a repondu. Sans cela, un controle qui n'a pu
+    interroger personne rendait une liste vide, indistinguable d'un controle
+    ou tout va bien — la meme fausse assurance que ce module existe pour
+    supprimer.
     """
     ecarts: List[Dict[str, Any]] = []
+    consultes: List[str] = []
+    injoignables: List[str] = []
     for fournisseur in config.active_providers():
         if fournisseur.local:
             continue  # un modele local se verifie deja par « locaux_actifs »
         servis = _catalogue_distant(fournisseur, timeout)
         if servis is None:
+            injoignables.append(fournisseur.name)
             continue
+        consultes.append(fournisseur.name)
         connus = set(servis)
         manquants = sorted({m for m in fournisseur.models.values()
                             if m and m not in connus})
@@ -124,7 +133,8 @@ def modeles_disparus(timeout: int = 10) -> List[Dict[str, Any]]:
                 "manquants": manquants,
                 "proposes": servis[:12],
             })
-    return ecarts
+    return {"ecarts": ecarts, "consultes": consultes,
+            "injoignables": injoignables}
 
 
 def etat_installation(avec_reseau: bool = True,
@@ -156,7 +166,7 @@ def etat_installation(avec_reseau: bool = True,
     # Une requete par fournisseur : assez lent pour ne pas le faire a chaque
     # rafraichissement du tableau de bord, assez important pour que
     # « usine docteur --modeles » existe.
-    etat["modeles_disparus"] = modeles_disparus() if avec_modeles else []
+    etat["modeles"] = modeles_disparus() if avec_modeles else None
     etat["verdict"] = _verdict(etat)
     return etat
 
