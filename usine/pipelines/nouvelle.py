@@ -1368,7 +1368,7 @@ def rafraichir_serie(nom: str, journal=print) -> List[Dict[str, Any]]:
     modele d'images ne se reproduit pas a l'identique, et un acheteur ne doit
     pas retrouver un livre dont la couverture a change depuis qu'il l'a vu.
     """
-    from ..core import store
+    from ..core import config, store
     from ..marketing.extrait import decouper, _markdown_du_produit
 
     refaits: List[Dict[str, Any]] = []
@@ -1379,6 +1379,17 @@ def rafraichir_serie(nom: str, journal=print) -> List[Dict[str, Any]]:
                 tome.get("rang")))
             continue
         dossier = Path(fiche["dossier"])
+        # Cette fonction REECRIT des fichiers deja livres. Le dossier vient de
+        # la base, donc d'une ligne qu'on n'a pas ecrite a la main : s'assurer
+        # qu'il est bien sous l'atelier avant d'ecraser quoi que ce soit coute
+        # trois lignes, et une erreur ici detruirait des fichiers que
+        # l'utilisateur a peut-etre deja mis en vente.
+        try:
+            dossier.resolve().relative_to(config.PRODUITS_DIR.resolve())
+        except (ValueError, OSError):
+            journal("  tome {} : dossier hors de l'atelier, ignore".format(
+                tome.get("rang")))
+            continue
         source = _markdown_du_produit(dossier, "nouvelle") if dossier.exists() else None
         if source is None:
             journal("  tome {} : markdown introuvable dans {}".format(

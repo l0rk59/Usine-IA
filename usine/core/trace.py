@@ -11,12 +11,16 @@ niche sautee, le fournisseur tombe, l'arret sur batterie faible.
 
 Trois contraintes viennent du telephone, et chacune a dicte une decision.
 
-  - **Le processus peut mourir sans preavis.** Chaque ligne est donc ecrite et
-    videe immediatement : un tampon perdrait exactement les lignes qui
-    expliquent l'arret.
-  - **Le disque est fini.** Un fichier par jour, et les plus anciens sont
-    effaces au-dela de JOURS_GARDES. Un journal qui remplit le telephone fait
-    echouer la fabrication qu'il etait cense documenter.
+  - **Le processus peut mourir sans preavis.** Le fichier est donc ouvert et
+    referme a chaque ligne, au lieu d'une poignee gardee ouverte : un tampon
+    perdrait exactement les lignes qui expliquent l'arret.
+  - **Le disque est fini.** Un fichier par jour, les plus anciens effaces
+    au-dela de JOURS_GARDES, et un fichier qui depasse TAILLE_MAX repart de
+    zero. Un journal qui remplit le telephone fait echouer la fabrication
+    qu'il etait cense documenter.
+  - **Un jour est une date.** Il vient d'un argument de ligne de commande, et
+    le poser tel quel dans un nom de fichier laissait « ../.. » designer un
+    fichier hors du dossier des journaux.
   - **Une cle ne doit jamais toucher le disque.** Chaque ligne passe par
     « securite.expurger », et la premiere fois qu'un secret est reconnu, le
     journal le dit : masquer sans prevenir laisserait l'utilisateur avec une
@@ -25,6 +29,7 @@ Trois contraintes viennent du telephone, et chacune a dicte une decision.
 
 from __future__ import annotations
 
+import re
 import time
 from pathlib import Path
 from typing import List, Optional
@@ -42,8 +47,26 @@ LIGNE_MAX = 500
 _secret_signale = False
 
 
+# Un journal d'une journee entiere tient largement dessous. Au-dela, on repart
+# d'un fichier neuf plutot que de laisser grossir : sur un telephone, un
+# fichier de trace qui remplit le disque fait echouer la fabrication qu'il
+# documentait — meme contrainte que le nombre de jours gardes, a l'autre bout.
+TAILLE_MAX = 2 * 1024 * 1024
+
+_JOUR = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
 def fichier(jour: Optional[str] = None) -> Path:
-    jour = jour or time.strftime("%Y-%m-%d")
+    """Chemin du journal d'une journee.
+
+    Le jour vient d'un argument de ligne de commande, donc d'une chaine
+    libre : le poser tel quel dans un nom de fichier laissait
+    « ../../quelque-chose » designer un fichier hors du dossier des journaux,
+    que « nettoyer » aurait ensuite pu effacer. Un jour est une date et rien
+    d'autre ; le reste retombe sur aujourd'hui.
+    """
+    if not jour or not _JOUR.match(jour):
+        jour = time.strftime("%Y-%m-%d")
     return config.LOG_DIR / "usine-{}.log".format(jour)
 
 
@@ -70,12 +93,18 @@ def ecrire(message: str, categorie: str = "") -> None:
                                propre)
     try:
         config.LOG_DIR.mkdir(parents=True, exist_ok=True)
+        chemin = fichier()
+        if chemin.exists() and chemin.stat().st_size > TAILLE_MAX:
+            # On repart de zero plutot que de couper par le debut : relire un
+            # fichier ampute en tete donnerait un journal qui commence au
+            # milieu d'une phrase, et c'est la FIN qui interesse.
+            chemin.unlink()
         # Ouvert et referme a chaque ligne, ce qui est plus couteux qu'une
         # poignee gardee ouverte — et c'est le but. Android tue le processus
         # sans preavis, et ce sont precisement les dernieres lignes qui
         # expliquent l'arret : un tampon les emporterait. La fermeture du
         # bloc vide le tampon, un « flush » explicite n'ajouterait rien.
-        with open(fichier(), "a", encoding="utf-8") as sortie:
+        with open(chemin, "a", encoding="utf-8") as sortie:
             sortie.write(ligne)
     except OSError:
         pass

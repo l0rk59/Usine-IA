@@ -312,7 +312,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if options is None:
                 return
             self._json({"reglages": reglages.ecrire(
-                {k: v for k, v in options.items() if k in reglages.DEFAUTS})})
+                {k: v for k, v in options.items()
+                 if k in reglages.DEFAUTS and k not in REGLAGES_HORS_WEB})})
         elif chemin == "/api/veille":
             options = self._corps_json()
             if options is None:
@@ -1224,6 +1225,16 @@ def _commerce() -> Dict[str, Any]:
         # compare ». La difference decide de ce qu'on fabrique ensuite.
         "sans_empreinte": len(_sans_empreinte()),
     }
+
+
+# Reglages qu'on ne change PAS depuis le tableau de bord.
+#
+# « jeton_web » est le mot de passe qui protege ce tableau de bord. Le rendre
+# modifiable par lui revenait a laisser la porte decider de sa propre serrure :
+# qui atteint la page peut s'y enfermer en posant un jeton, ou l'ouvrir a tous
+# en l'effacant. Un identifiant ne se change jamais par la surface qu'il garde
+# — il se change depuis la machine, par « usine reglages » ou le menu.
+REGLAGES_HORS_WEB = frozenset({"jeton_web"})
 
 
 def _etat() -> Dict[str, Any]:

@@ -992,6 +992,25 @@ class TestDocteur(BaseServeur):
             encoding="utf-8")
         self.assertIn("'/api/reglages'", script)
 
+    def test_le_mot_de_passe_du_tableau_ne_se_change_pas_depuis_le_tableau(self):
+        """Un identifiant ne se change jamais par la surface qu'il garde.
+
+        « jeton_web » protege ce tableau de bord. Le rendre modifiable par lui
+        revenait a laisser la porte decider de sa propre serrure : qui atteint
+        la page pouvait s'y enfermer en posant un jeton, ou l'ouvrir a tous en
+        l'effacant.
+        """
+        from usine.core import reglages
+
+        avant = reglages.lire("jeton_web", "")
+        _, corps = self.appeler(
+            "/api/reglages",
+            corps={"jeton_web": "vole", "auteur": "Passe quand meme"})
+        retour = json.loads(corps)
+        self.assertEqual(reglages.lire("jeton_web", ""), avant)
+        # Le reste de la requete passe : on ecarte un reglage, pas l'appel.
+        self.assertEqual(retour["reglages"]["auteur"], "Passe quand meme")
+
     def test_le_formulaire_porte_le_champ_serie(self):
         """Une option qui n'est pas dans la page n'existe pas pour qui
         produit depuis un navigateur."""

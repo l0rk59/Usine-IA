@@ -133,6 +133,48 @@ class TestDisque(BaseTrace):
             trace.ecrire("une ligne")  # ne doit rien lever
 
 
+class TestSurfaceDAttaque(BaseTrace):
+    """Le jour vient d'un argument de ligne de commande, donc d'une chaine
+    libre, et il finit dans un nom de fichier que « nettoyer » peut effacer."""
+
+    def test_une_traversee_de_repertoire_retombe_sur_aujourd_hui(self):
+        chemin = trace.fichier("../../etc/passwd")
+        self.assertEqual(chemin.parent.resolve(), config.LOG_DIR.resolve())
+        self.assertRegex(chemin.name, r"^usine-\d{4}-\d{2}-\d{2}\.log$")
+
+    def test_une_date_valable_est_respectee(self):
+        self.assertEqual(trace.fichier("2026-09-10").name, "usine-2026-09-10.log")
+
+    def test_ce_qui_n_est_pas_une_date_retombe_sur_aujourd_hui(self):
+        for brut in ("", "hier", "2026-9-1", "2026-09-10/../x", None):
+            with self.subTest(jour=brut):
+                self.assertEqual(trace.fichier(brut).name,
+                                 trace.fichier().name)
+
+    def test_relire_ne_sort_pas_du_dossier(self):
+        ailleurs = config.LOG_DIR.parent / "secret.txt"
+        ailleurs.write_text("ne doit pas etre lu\n", encoding="utf-8")
+        try:
+            self.assertNotIn("ne doit pas etre lu",
+                             "\n".join(trace.relire(jour="../secret")))
+        finally:
+            ailleurs.unlink()
+
+    def test_un_fichier_trop_gros_repart_de_zero(self):
+        """Un journal qui remplit le telephone fait echouer la fabrication
+        qu'il etait cense documenter."""
+        trace.fichier().write_text("x" * (trace.TAILLE_MAX + 10), encoding="utf-8")
+        trace.ecrire("apres la bascule")
+        contenu = trace.fichier().read_text(encoding="utf-8")
+        self.assertLess(len(contenu), 1000)
+        self.assertIn("apres la bascule", contenu)
+
+    def test_un_fichier_normal_continue_de_grossir(self):
+        trace.ecrire("premiere")
+        trace.ecrire("seconde")
+        self.assertEqual(len(trace.relire()), 2)
+
+
 class TestBrancheDansLaProduction(unittest.TestCase):
     """Du code sans appelant ne protege personne."""
 

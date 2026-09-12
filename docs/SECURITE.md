@@ -96,3 +96,51 @@ L'archive ZIP exclut le dossier `marketing/` (votre page de vente, vos e-mails
 de lancement, le prix plancher que vous étiez prêt à accepter) et les fichiers
 de travail (`plan.json`, `systeme.json`, `cahier.json`…). Un test de
 non-régression le vérifie à chaque exécution.
+
+## Revue de septembre 2026
+
+Quatre points relevés sur ce que la session venait d'ajouter — un journal sur
+disque, une table, des appels HTTP, une refabrication de fichiers.
+
+### Un identifiant ne se change pas par la surface qu'il garde
+
+`jeton_web` est le mot de passe du tableau de bord. `POST /api/reglages`
+acceptait tout réglage déclaré dans `DEFAUTS`, **y compris celui-là**. Qui
+atteignait la page pouvait donc s'y enfermer en posant un jeton, ou l'ouvrir à
+tous en l'effaçant.
+
+Le défaut préexistait ; le rendre appelable depuis la page l'a mis en lumière.
+`REGLAGES_HORS_WEB` l'écarte désormais. Le jeton se change depuis la machine —
+`usine reglages`, ou le menu.
+
+### Un jour est une date, pas une chaîne libre
+
+`usine journal <jour>` posait son argument directement dans un nom de
+fichier : `../../quelque-chose` désignait un fichier **hors** du dossier des
+journaux — que `nettoyer()` aurait ensuite pu effacer. Le format est vérifié,
+et tout le reste retombe sur aujourd'hui.
+
+### Un journal ne remplit pas le téléphone
+
+Quatorze fichiers gardés bornaient leur *nombre*, pas leur *taille*. Une
+production de plusieurs heures écrivait sans limite. Au-delà de 2 Mo, le
+fichier repart de zéro — et de zéro plutôt que coupé par le début : relire un
+fichier amputé en tête donnerait un journal qui commence au milieu d'une
+phrase, alors que c'est la fin qui intéresse.
+
+### Une refabrication n'écrit que dans l'atelier
+
+`usine series --rafraichir` **réécrit des fichiers déjà livrés**, dans un
+dossier lu en base. Le dossier est maintenant vérifié comme étant sous
+`PRODUITS_DIR` avant tout écrasement : une erreur ici détruirait des fichiers
+que l'utilisateur a peut-être déjà mis en vente.
+
+### Ce qui a été vérifié et n'a rien donné
+
+- Les requêtes SQL de `core/serie.py` sont toutes paramétrées, et le nom d'une
+  série est réduit à `[a-z0-9-]`.
+- `expurger` couvre les deux seuls endroits où un message quitte le processus.
+  La console n'y passe pas, et c'est un constat : le corps d'une réponse HTTP
+  en erreur — seul endroit où un service renverrait une clé — est porté par
+  `HttpErreur.corps` et n'est affiché nulle part.
+

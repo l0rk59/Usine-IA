@@ -1062,3 +1062,39 @@ class TestRafraichissementDeSerie(unittest.TestCase):
         noms = refaits[0]["fichiers"]
         self.assertTrue(any(n.endswith(".pdf") for n in noms))
         self.assertTrue(any(n.endswith(".epub") for n in noms))
+
+
+class TestRafraichissementRefuseHorsAtelier(unittest.TestCase):
+    """Le rafraichissement REECRIT des fichiers deja livres.
+
+    Le dossier vient de la base, donc d'une ligne qu'on n'a pas ecrite a la
+    main. Une erreur ici detruirait des fichiers que l'utilisateur a
+    peut-etre deja mis en vente.
+    """
+
+    def test_un_dossier_hors_de_l_atelier_est_ignore(self):
+        import tempfile
+        from usine.core import serie as module_serie
+
+        with store.cursor() as cur:
+            cur.execute("DELETE FROM series")
+        with tempfile.TemporaryDirectory() as ailleurs:
+            dehors = Path(ailleurs)
+            temoin = dehors / "nouvelle.md"
+            temoin.write_text("# Un titre\n\n# Scene 1\n\ndu texte\n",
+                              encoding="utf-8")
+            avant = temoin.read_text(encoding="utf-8")
+
+            store.creer_produit("hors", "nouvelle", "Dehors",
+                                dossier=str(dehors))
+            base = {"cadre": {}, "personnages": []}
+            module_serie.enregistrer_tome("Piege", base, "Dehors", "...",
+                                          produit_id="hors")
+            module_serie.enregistrer_tome("Piege", base, "Second", "...")
+
+            dits = []
+            refaits = nouvelle.rafraichir_serie("Piege", journal=dits.append)
+
+        self.assertEqual(refaits, [])
+        self.assertEqual(avant, "# Un titre\n\n# Scene 1\n\ndu texte\n")
+        self.assertTrue(any("hors de l'atelier" in d for d in dits))
