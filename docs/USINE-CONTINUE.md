@@ -1,5 +1,39 @@
 # L'usine continue
 
+## Le journal sur disque
+
+Une production continue tourne des heures sur un téléphone dont Android
+réclame le tampon du terminal. Une niche qui échoue à trois heures du matin ne
+laissait donc **aucune trace lisible** : la base retient bien les étapes de
+chaque produit, mais pas ce qui s'est passé *entre* eux — la niche sautée, le
+fournisseur tombé, l'arrêt sur batterie faible.
+
+`config.LOG_DIR` était créé à chaque démarrage et n'avait jamais rien reçu.
+
+```bash
+usine journal                # les 40 dernières lignes du jour
+usine journal 2026-09-10 -n 200
+```
+
+Sur un téléphone : « Usine continue » → « Journal ».
+
+Trois contraintes de l'appareil ont dicté la forme du module
+(`core/trace.py`) :
+
+| Contrainte | Décision |
+|---|---|
+| le processus meurt sans préavis | le fichier est **ouvert et refermé à chaque ligne** — plus coûteux qu'une poignée gardée ouverte, et c'est le but : un tampon emporterait précisément les lignes qui expliquent l'arrêt |
+| le disque est fini | un fichier par jour, les plus anciens effacés au-delà de 14 jours. Un journal qui remplit le téléphone fait échouer la fabrication qu'il était censé documenter |
+| une clé ne doit jamais toucher le disque | chaque ligne passe par `securite.expurger` |
+
+Sur ce dernier point, le journal **dit** que le masquage a eu lieu, une seule
+fois par session : masquer en silence laisserait l'utilisateur avec une clé
+exposée quelque part et aucune raison de la renouveler. Répétée à chaque
+ligne, l'alerte deviendrait invisible — et c'est une alerte qu'il faut lire.
+
+Le journal est une trace, pas une fonction métier : toute erreur d'écriture
+est avalée. Un journal qui empêche de produire est pire qu'un journal absent.
+
 Vous remplissez une file de niches, vous fixez un budget, vous lancez. L'usine
 produit en boucle et s'arrête toute seule — sur la fin de la file, sur le
 budget, ou sur votre demande.

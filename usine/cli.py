@@ -224,6 +224,29 @@ def cmd_nouvelle(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_journal(args: argparse.Namespace) -> int:
+    """Ce que l'usine a fait pendant qu'on ne regardait pas."""
+    from .core import trace
+
+    jours = trace.jours_disponibles()
+    if not jours:
+        print("  Aucun journal pour l'instant. Il s'ecrit pendant une")
+        print("  production continue : " + _c("usine usine demarrer", "1"))
+        return 0
+    jour = args.jour or jours[0]
+    if jour not in jours:
+        alerte("Aucun journal pour le {}. Disponibles : {}".format(
+            jour, ", ".join(jours[:7])))
+        return 1
+    lignes = trace.relire(args.lignes, jour)
+    titre_console("Journal du {}".format(jour))
+    for ligne in lignes:
+        print("  " + ligne)
+    if len(jours) > 1:
+        print("\n  " + _c("Autres jours : " + ", ".join(jours[1:7]), "90"))
+    return 0
+
+
 def cmd_series(args: argparse.Namespace) -> int:
     """Ce que l'usine a accumule pour chaque suite en cours."""
     from .core import serie as module_serie
@@ -1916,6 +1939,14 @@ def construire_parseur() -> argparse.ArgumentParser:
                         "monde, la distribution et les faits des precedents, "
                         "et la continuite est verifiee contre eux")
     p.set_defaults(fonction=cmd_nouvelle)
+
+    p = sous_parseurs.add_parser(
+        "journal", help="ce que l'usine a fait pendant qu'on ne regardait pas")
+    p.add_argument("jour", nargs="?", default="",
+                   help="jour au format AAAA-MM-JJ (defaut : le plus recent)")
+    p.add_argument("-n", "--lignes", type=int, default=40,
+                   help="nombre de lignes a afficher")
+    p.set_defaults(fonction=cmd_journal)
 
     p = sous_parseurs.add_parser(
         "series", help="lister les series et leurs tomes")

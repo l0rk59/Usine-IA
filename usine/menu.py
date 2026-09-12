@@ -412,6 +412,7 @@ def menu_usine(executer: Callable[[List[str]], int]) -> None:
             ("Demarrer l'usine", "produit en boucle jusqu'au budget ou a la fin"),
             ("Arreter l'usine", "termine le produit en cours puis s'arrete"),
             ("Regler le budget", "plafonds d'appels et de produits"),
+            ("Journal", "ce qui s'est passe pendant qu'on ne regardait pas"),
         ], defaut=1)
 
         if choix == 0:
@@ -446,6 +447,10 @@ def menu_usine(executer: Callable[[List[str]], int]) -> None:
             demander("\n  Appuyez sur Entree")
         elif choix == 6:
             _regler_budget()
+
+        elif choix == 7:
+            executer(["journal"])
+            demander("\n  Appuyez sur Entree")
 
 
 def _prospecter(executer: Callable[[List[str]], int]) -> None:

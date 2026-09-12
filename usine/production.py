@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from .core import (apprentissage, budget, config, empreinte, evenements,
-                   file, llm, reglages, store, telephone)
+                   file, llm, reglages, store, telephone, trace)
 from .pipelines import catalogue, idees
 from .pipelines.base import Contexte
 
@@ -225,7 +225,13 @@ class UsineContinue:
     ):
         self.auto = auto
         self.maximum = maximum
-        self.journal = journal or (lambda message: print("  " + message))
+        # Tout ce qui est dit a l'ecran est aussi ecrit sur disque. Une
+        # production continue tourne des heures sur un telephone dont Android
+        # reclame le tampon du terminal : sans cela, une niche qui echoue a
+        # trois heures du matin ne laisse aucune trace lisible.
+        afficher = journal or (lambda message: print("  " + message))
+        self.journal = lambda message: (afficher(message),
+                                        trace.ecrire(message))[0]
         self.compteur = budget.Compteur()
         self.pause = (reglages.lire("pause_entre_produits", 60)
                       if pause is None else pause)
@@ -237,6 +243,7 @@ class UsineContinue:
         self.arret_demande = False
         self.arret_immediat = False
         self.debut = time.time()
+        trace.nettoyer()
         self.faits: List[Dict[str, Any]] = []
         self.motif_fin = ""
 
