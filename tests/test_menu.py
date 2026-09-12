@@ -323,6 +323,63 @@ def _atelier_rempli():
                        produit_id="menu-p1")
 
 
+class TestMenuSeries(unittest.TestCase):
+    """L'ecran des series, et surtout l'action qui rapporte.
+
+    Le rafraichissement n'a l'air de rien et c'est lui qui fait vendre : un
+    tome fabrique quand il etait le dernier porte une derniere page qui
+    n'annonce rien de ce qui est venu apres, et c'est le lecteur du tome 1 —
+    celui qui a paye en premier et qui est revenu — qui ne voit rien.
+    """
+
+    def setUp(self):
+        from usine.core import serie as module_serie
+
+        with store.cursor() as cur:
+            cur.execute("DELETE FROM series")
+        self.module_serie = module_serie
+
+    def _piloter(self, frappes):
+        return deroule(menu.menu_series, frappes)
+
+    def test_sans_serie_l_ecran_explique_ou_en_commencer_une(self):
+        texte = io.StringIO()
+        with redirect_stdout(texte):
+            with mock.patch("builtins.input", lambda invite="": ""):
+                menu.menu_series(lambda a: 0)
+        self.assertIn("Aucune serie", texte.getvalue())
+        self.assertIn("Fabriquer un produit", texte.getvalue())
+
+    def test_le_rafraichissement_lance_la_bonne_commande(self):
+        self.module_serie.enregistrer_tome(
+            "Les rails", {"cadre": {}, "personnages": []}, "T1", "...")
+        lancees = self._piloter(["1", "1", "", "0", "0"])
+        self.assertIn(["series", "Les rails", "--rafraichir"], lancees)
+
+    def test_ecrire_le_tome_suivant_reprend_la_serie(self):
+        self.module_serie.enregistrer_tome(
+            "Les rails", {"cadre": {}, "personnages": []}, "T1", "...")
+        lancees = self._piloter(["1", "2", "un nouveau depart", "", "0", "0"])
+        self.assertIn(["nouvelle", "un nouveau depart", "--serie", "Les rails"],
+                      lancees)
+
+    def test_l_ecran_signale_les_tomes_a_rafraichir(self):
+        store.creer_produit("s1", "nouvelle", "T1")
+        store.creer_produit("s2", "nouvelle", "T2")
+        base = {"cadre": {}, "personnages": []}
+        self.module_serie.enregistrer_tome("Les rails", base, "T1", "...",
+                                           produit_id="s1")
+        self.module_serie.enregistrer_tome("Les rails", base, "T2", "...",
+                                           produit_id="s2")
+        texte = io.StringIO()
+        entrees = iter(["0"])
+        with redirect_stdout(texte):
+            with mock.patch("builtins.input",
+                            lambda invite="": next(entrees, "0")):
+                menu.menu_series(lambda a: 0)
+        self.assertIn("a rafraichir", texte.getvalue())
+
+
 class TestMenuPrincipal(unittest.TestCase):
     """Chaque entree du menu principal lance la commande qu'elle annonce.
 
@@ -335,12 +392,15 @@ class TestMenuPrincipal(unittest.TestCase):
     # Les entrees qui ouvrent un sous-menu ne lancent rien : elles sont
     # absentes de cette table, et le test verifie alors qu'aucune commande
     # ne part.
+    # Table mise a jour a l'insertion de « Mes series » en 5 : tout ce qui
+    # suivait « Mes produits » a recule d'un cran. C'est exactement le
+    # decalage que ce test existe pour attraper.
     ATTENDU = {
-        6: "doublons", 7: "veille", 8: "marche", 9: "bilan",
-        10: "sauvegarde", 13: "prompts-systeme", 14: "cache",
-        15: "web", 16: "docteur",
+        7: "doublons", 8: "veille", 9: "marche", 10: "bilan",
+        11: "sauvegarde", 14: "prompts-systeme", 15: "cache",
+        16: "web", 17: "docteur",
     }
-    SOUS_MENUS = (1, 2, 4, 11, 12)
+    SOUS_MENUS = (1, 2, 4, 5, 12, 13)
 
     def _lancer(self, numero):
         frappes = [str(numero), "un sujet quelconque", "1", "", "0", "0", "0"]
@@ -358,12 +418,34 @@ class TestMenuPrincipal(unittest.TestCase):
             with self.subTest(entree=numero):
                 self.assertEqual(self._lancer(numero), [])
 
+    def test_les_sous_menus_ouvrent_vraiment_leur_ecran(self):
+        """« ne lance aucune commande » est vrai d'un sous-menu comme d'une
+        branche vide. Il faut donc regarder ce qui s'affiche : une entree
+        cablee sur rien laisse l'utilisateur croire qu'il s'est passe
+        quelque chose.
+        """
+        # Des textes que SEUL l'ecran vise imprime. L'etiquette du menu ne
+        # convient pas : elle s'affiche que la branche soit cablee ou vide,
+        # ce qui rendait une premiere version de ce test complaisante.
+        reperes = {5: "Aucune serie pour l'instant",
+                   12: "pollinations",
+                   13: "Tout reinitialiser"}
+        for numero, attendu in sorted(reperes.items()):
+            texte = io.StringIO()
+            entrees = iter([str(numero)])
+            with self.subTest(entree=numero):
+                with redirect_stdout(texte):
+                    with mock.patch("builtins.input",
+                                    lambda invite="": next(entrees, "0")):
+                        menu.menu_principal(lambda a: 0)
+                self.assertIn(attendu, texte.getvalue())
+
     def test_aucune_entree_affichee_ne_tombe_dans_le_vide(self):
         """Une entree sans branche ne provoque rien : l'utilisateur croit
         que l'usine a fait quelque chose."""
         couvertes = set(self.ATTENDU) | set(self.SOUS_MENUS)
         couvertes.add(3)                      # Tests A/B, couvert plus haut
-        couvertes.add(5)                      # Ventes, sous-menu avec commande
+        couvertes.add(6)                      # Ventes, sous-menu avec commande
         affichees = set(range(1, _entrees_du_menu() + 1))
         self.assertEqual(affichees - couvertes, set(),
                          "entrees sans branche verifiee")

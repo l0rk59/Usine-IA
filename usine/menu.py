@@ -880,6 +880,58 @@ _A_CHOISIR = {"ton": _choisir_ton, "taille": _choisir_taille,
               "qualite": _choisir_qualite}
 
 
+def menu_series(executer: Callable[[List[str]], int]) -> None:
+    """Les suites en cours, et la seule action qui rapporte : rafraichir.
+
+    Un tome fabrique quand il etait le dernier porte une derniere page qui
+    n'annonce rien de ce qui est venu apres. Or c'est le lecteur du tome 1 —
+    celui qui a paye en premier et qui est revenu — qui ne voit rien.
+    """
+    from .core import serie as module_serie
+
+    while True:
+        effacer()
+        entete("Mes series")
+        series = module_serie.lister()
+        if not series:
+            print("  Aucune serie pour l'instant.\n")
+            print("  Une serie commence a son premier tome : choisissez")
+            print("  « Fabriquer un produit », puis « Nouvelle ».")
+            demander("\n  Appuyez sur Entree")
+            return
+
+        entrees = []
+        for ligne in series:
+            attente = module_serie.tomes_a_rafraichir(ligne["nom"])
+            entrees.append((ligne["nom"], "{} tome(s){}".format(
+                ligne["tomes"],
+                ", {} a rafraichir".format(len(attente)) if attente else "")))
+        index = choisir("Series", entrees, defaut=1)
+        if index == 0:
+            return
+        nom = series[index - 1]["nom"]
+
+        while True:
+            effacer()
+            entete("Serie « {} »".format(nom))
+            executer(["series", nom])
+            action = choisir("Que faire", [
+                ("Rafraichir les derniers tomes",
+                 "leur derniere page annoncera les tomes parus depuis"),
+                ("Ecrire le tome suivant", "reprend le monde et la distribution"),
+            ], defaut=1)
+            if action == 0:
+                break
+            if action == 1:
+                executer(["series", nom, "--rafraichir"])
+                demander("\n  Appuyez sur Entree")
+            elif action == 2:
+                sujet = demander("Sujet du tome suivant", obligatoire=True)
+                if sujet:
+                    executer(["nouvelle", sujet, "--serie", nom])
+                demander("\n  Appuyez sur Entree")
+
+
 def menu_reglages() -> None:
     while True:
         entete("Reglages")
@@ -1069,6 +1121,7 @@ def menu_principal(executer: Callable[[List[str]], int]) -> int:
             ("Usine continue", "file de niches, budget, production en boucle"),
             ("Tests A/B", "titres et couvertures : comparer et decider"),
             ("Mes produits", "consulter, vendre, empaqueter"),
+            ("Mes series", "suites en cours, et leur derniere page"),
             ("Ventes", "importer un export, voir ce qui rapporte vraiment"),
             ("Doublons", "les produits qui se recouvrent"),
             ("Veille de niche", "ce que les gens disent vraiment d'un sujet"),
@@ -1095,36 +1148,38 @@ def menu_principal(executer: Callable[[List[str]], int]) -> int:
         elif choix == 4:
             menu_produits(executer)
         elif choix == 5:
-            menu_ventes(executer)
+            menu_series(executer)
         elif choix == 6:
+            menu_ventes(executer)
+        elif choix == 7:
             executer(["doublons"])
             demander("\n  Appuyez sur Entree")
-        elif choix == 7:
+        elif choix == 8:
             sujet = demander("Quelle niche explorer", obligatoire=True)
             if sujet:
                 executer(["veille", sujet])
             demander("\n  Appuyez sur Entree")
-        elif choix == 8:
+        elif choix == 9:
             sujet = demander("Quel marche mesurer", obligatoire=True)
             if sujet:
                 executer(["marche", sujet])
             demander("\n  Appuyez sur Entree")
-        elif choix == 9:
+        elif choix == 10:
             executer(["bilan"])
             demander("\n  Appuyez sur Entree")
-        elif choix == 10:
+        elif choix == 11:
             executer(["sauvegarde"])
             demander("\n  Appuyez sur Entree")
-        elif choix == 11:
-            menu_cles()
         elif choix == 12:
-            menu_reglages()
+            menu_cles()
         elif choix == 13:
-            _menu_prompts(executer)
+            menu_reglages()
         elif choix == 14:
-            _menu_cache(executer)
+            _menu_prompts(executer)
         elif choix == 15:
-            executer(["web"])
+            _menu_cache(executer)
         elif choix == 16:
+            executer(["web"])
+        elif choix == 17:
             executer(["docteur"])
             demander("\n  Appuyez sur Entree")

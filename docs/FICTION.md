@@ -450,6 +450,11 @@ usine series "Les rails"              # dit combien de tomes sont à refaire
 usine series "Les rails" --rafraichir
 ```
 
+Sur un téléphone, tout cela est dans **« Mes séries »** au menu principal :
+la liste des suites, le nombre de tomes à rafraîchir, et les deux actions —
+rafraîchir, ou écrire le tome suivant. Une option qui n'existe que dans la
+ligne de commande n'existe pas pour qui produit depuis son canapé.
+
 Le rafraîchissement relit le markdown déjà livré, **remplace** sa page de fin —
 ne l'empile pas, deux pages « La suite » qui se suivent se contrediraient — et
 réécrit les fichiers. Le récit lui-même n'est pas touché.
