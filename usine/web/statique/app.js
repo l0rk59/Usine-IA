@@ -163,13 +163,113 @@ async function chargerProduits() {
       `<a href="${echapper(f.url)}" target="_blank" rel="noopener">${echapper(f.nom)}</a>`
     ).join('');
     const note = p.note ? ` &middot; qualite ${p.note}/10` : '';
+    // La carte listait et servait les fichiers, sans savoir rien en faire —
+    // alors que c'est le moment ou l'on veut le kit de vente ou l'archive.
     return `<div class="produit">
       <div class="titre">${echapper(p.titre)}</div>
       <div class="meta">${echapper(p.type)} &middot; ${date}${
         p.mots ? ' &middot; ' + p.mots + ' mots' : ''}${note}</div>
-      <div class="fichiers">${liens}</div></div>`;
+      <div class="fichiers">${liens}</div>
+      <div class="rangee">
+        <button class="discret" data-livrer="${echapper(p.id)}">Archive ZIP</button>
+        <button class="discret" data-marketing="${echapper(p.id)}">Kit de vente</button>
+        <span class="aide" data-etat="${echapper(p.id)}" role="status"></span>
+      </div></div>`;
   }).join('');
 }
+
+$('produits').addEventListener('click', async (evenement) => {
+  const jeu = evenement.target.dataset || {};
+  const identifiant = jeu.livrer || jeu.marketing;
+  if (!identifiant) return;
+  const zone = () => document.querySelector(`[data-etat="${identifiant}"]`);
+  const dire = (html) => { const z = zone(); if (z) z.innerHTML = html; };
+  const rendre = () => {
+    // Les DEUX boutons du produit, pas le premier trouve : « querySelector »
+    // rendait toujours « Archive ZIP » et laissait « Kit de vente » gris.
+    document.querySelectorAll(
+      `[data-livrer="${identifiant}"], [data-marketing="${identifiant}"]`)
+      .forEach((b) => { b.disabled = false; });
+  };
+  evenement.target.disabled = true;
+  dire(jeu.livrer ? 'empaquetage...' : 'redaction du kit de vente...');
+  let d;
+  try {
+    const reponse = await fetch('/api/produit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: jeu.livrer ? 'livrer' : 'marketing',
+                             id: identifiant }),
+    });
+    d = await reponse.json();
+  } catch (e) {
+    // Sans ce filet, un serveur qui tombe laisse le bouton desactive et
+    // l'utilisateur devant un « empaquetage... » qui ne finit jamais.
+    rendre();
+    dire("l'usine n'a pas repondu.");
+    return;
+  }
+  if (d.erreur) { rendre(); dire(echapper(d.erreur)); return; }
+  if (d.archive) {
+    // L'archive est ecrite A COTE du dossier du produit, pas dedans : la
+    // liste de fichiers ne la verra jamais. On donne donc le lien ici.
+    rendre();
+    dire(`<a href="${echapper(d.archive)}" download>Telecharger l'archive</a>
+          &middot; ${d.ko} Ko`);
+    return;
+  }
+  suivreKit(d.travail, identifiant, dire, rendre);
+});
+
+async function suivreKit(travail, identifiant, dire, rendre) {
+  let t;
+  try {
+    const reponse = await fetch('/api/travaux/' + travail);
+    if (!reponse.ok) { rendre(); return; }
+    t = await reponse.json();
+  } catch (e) { rendre(); dire("l'usine n'a pas repondu."); return; }
+  if (t.statut === 'en_cours') {
+    setTimeout(() => suivreKit(travail, identifiant, dire, rendre), 3000);
+    return;
+  }
+  rendre();
+  if (t.statut === 'echec') { dire(echapper(t.erreur)); return; }
+  dire(t.resultat.fichiers.filter(Boolean).map((f) =>
+    `<a href="${echapper(f)}" target="_blank" rel="noopener">${
+      echapper(f.split('/').pop())}</a>`).join(' &middot; ')
+    || 'kit de vente ecrit.');
+}
+
+/* ------------------------------------------------------------- diagnostic */
+$('docteur-lancer').addEventListener('click', async () => {
+  $('docteur-lancer').disabled = true;
+  $('docteur').innerHTML = '<span class="vide">verification en cours...</span>';
+  const reponse = await fetch('/api/docteur');
+  $('docteur-lancer').disabled = false;
+  if (!reponse.ok) { $('docteur').innerHTML =
+    '<span class="vide">diagnostic indisponible.</span>'; return; }
+  const d = await reponse.json();
+  const ligne = (bon, texte) =>
+    `<div class="controle ${bon ? 'bon' : 'souci'}">${echapper(texte)}</div>`;
+  const espace = d.espace.connu
+    ? ligne(d.espace.libre_mo > 200, `Espace libre : ${d.espace.libre_mo} Mo`)
+    : '';
+  $('docteur').innerHTML =
+    `<div class="verdict-bloc ${d.verdict.etat === 'bloque' ? '' : 'gagnant'}">
+       <strong>${echapper(d.verdict.etat)}</strong>
+       <div>${echapper(d.verdict.message)}</div></div>`
+    + ligne(true, 'Python ' + d.python)
+    + ligne(true, 'Atelier : ' + d.workdir)
+    + ligne(d.env_present, d.env_present ? 'Fichier .env present'
+        : 'Aucun fichier .env — lancez « usine cles »')
+    + espace
+    + ligne(d.reseau, d.reseau ? 'Reseau disponible'
+        : 'Reseau indisponible — seule l\'IA locale fonctionnera')
+    + ligne(d.node, d.node ? 'Node.js present : verification complete du JavaScript'
+        : 'Node.js absent : JavaScript verifie en mode degrade')
+    + (d.locaux.length
+        ? ligne(true, 'IA locale : ' + d.locaux.join(', '))
+        : ligne(true, 'Aucune IA locale detectee'));
+});
 
 /* --------------------------------------------------- commerce et doublons */
 async function chargerCommerce() {

@@ -189,6 +189,37 @@ class TestSecurite(unittest.TestCase):
         self.assertTrue(securite.analyser_sujet("comment guérir le stress"))
         self.assertFalse(securite.analyser_sujet("la cuisine italienne facile"))
 
+    def test_la_securite_informatique_est_signalee(self):
+        """Le domaine ou la frontiere entre expliquer et outiller compte le
+        plus etait justement celui qui manquait.
+
+        « guide de test d'intrusion » passait sans un mot d'avertissement.
+        Le garde-fou ne bloque rien : il informe le vendeur, qui decide.
+        """
+        for sujet in ("un guide de test d'intrusion pour debutants",
+                      "comment craquer un mot de passe wifi",
+                      "se proteger du ransomware",
+                      "reconnaitre une tentative de hameconnage"):
+            with self.subTest(sujet=sujet):
+                domaines = [d for d, _ in securite.analyser_sujet(sujet)]
+                self.assertIn("securite", domaines)
+
+    def test_un_sujet_de_securite_ordinaire_n_alarme_pas(self):
+        """Durcir sa propre configuration n'a rien de sensible."""
+        for sujet in ("securiser son activite en 7 jours",
+                      "durcir la configuration de son routeur",
+                      "sauvegarder ses donnees correctement"):
+            with self.subTest(sujet=sujet):
+                self.assertEqual(
+                    [d for d, _ in securite.analyser_sujet(sujet)], [])
+
+    def test_l_avertissement_dit_ou_est_la_ligne(self):
+        """Un avertissement qui ne dit pas quoi faire ne sert a rien."""
+        _, texte = [a for a in securite.analyser_sujet("pentest")
+                    if a[0] == "securite"][0]
+        for attendu in ("VOTRE materiel", "defense", "places de marche"):
+            self.assertIn(attendu, texte)
+
 
 class TestReglages(unittest.TestCase):
     def setUp(self):

@@ -1495,30 +1495,40 @@ def cmd_liste(args: argparse.Namespace) -> int:
 
 
 def cmd_docteur(args: argparse.Namespace) -> int:
+    """Diagnostic complet. Les constats viennent de « core.diagnostic ».
+
+    Ils y vivent parce que le tableau de bord les montre aussi : deux jeux
+    de controles finiraient par ne plus dire la meme chose.
+    """
+    from .core import diagnostic as module_diagnostic
+
+    etat = module_diagnostic.etat_installation()
     print(BANNIERE.format(version=__version__))
     titre_console("Environnement")
-    ok("Python {}".format(sys.version.split()[0]))
-    ok("Dossier de travail : {}".format(config.WORKDIR))
+    ok("Python {}".format(etat["python"]))
+    ok("Dossier de travail : {}".format(etat["workdir"]))
     ok("Fichier .env : {}".format(
-        config.ENV_PATH if config.ENV_PATH.exists() else "absent (usine cles)"
-    ))
-    reseau = en_ligne()
-    (ok if reseau else alerte)(
-        "Reseau : {}".format("disponible" if reseau else
+        config.ENV_PATH if etat["env_present"] else "absent (usine cles)"))
+    espace = etat["espace"]
+    if espace["connu"]:
+        (ok if espace["libre_mo"] > 200 else alerte)(
+            "Espace libre : {} Mo".format(espace["libre_mo"]))
+    (ok if etat["reseau"] else alerte)(
+        "Reseau : {}".format("disponible" if etat["reseau"] else
                              "indisponible — seule l'IA locale fonctionnera")
     )
 
     # Node n'est pas requis pour produire, mais son absence affaiblit la
     # verification du JavaScript genere : le repli structurel ne voit pas une
     # erreur de syntaxe fine.
-    if verification.node_disponible():
+    if etat["node"]:
         ok("Node.js present : verification complete du JavaScript genere")
     else:
         alerte("Node.js absent : le JavaScript genere sera verifie en mode "
                "degrade (pkg install nodejs-lts)")
 
     titre_console("Fournisseurs IA")
-    lignes = llm.diagnostic()
+    lignes = etat["fournisseurs"]
     for ligne in lignes:
         genre = "local" if ligne["local"] else ("sans cle" if ligne["sans_cle"] else "cle API")
         if ligne["disponible"]:
@@ -1531,24 +1541,19 @@ def cmd_docteur(args: argparse.Namespace) -> int:
             print("  {} {:<13} {:<9} definir {} — {}".format(
                 _c("-", "90"), ligne["nom"], genre, ligne["cle_env"], ligne["inscription"]))
 
-    disponibles = [l for l in lignes if l["disponible"] and not l["local"]]
-    locaux_actifs = _tester_locaux()
     titre_console("Verdict")
-    if disponibles:
-        ok("{} fournisseur(s) distant(s) pret(s). L'usine peut produire.".format(
-            len(disponibles)))
-    elif locaux_actifs:
-        ok("IA locale detectee : {}. Production hors ligne possible.".format(
-            ", ".join(locaux_actifs)))
+    verdict = etat["verdict"]
+    (alerte if verdict["etat"] == "bloque" else ok)(verdict["message"])
+    if verdict["etat"] == "local":
         print("      Comptez plusieurs minutes par chapitre : un modele de 3")
         print("      milliards de parametres produit 3 a 10 jetons par seconde")
         print("      sur un telephone. Le delai d'attente est regle en")
         print("      consequence ({} s par appel).".format(
             config.PROVIDERS_BY_NAME["ollama"].timeout))
-    else:
-        alerte("Aucun fournisseur pret. Lancez : " + _c("usine cles", "1"))
+    elif verdict["etat"] == "bloque":
+        print("      " + _c("usine cles", "1"))
 
-    details = pool_cles.resume()
+    details = etat["pool"]
     if details:
         titre_console("Pool de cles — rotation automatique")
         for detail in details:
@@ -1557,7 +1562,7 @@ def cmd_docteur(args: argparse.Namespace) -> int:
             print("  {:<13} {:<14} {:>4} appels aujourd'hui   {}".format(
                 detail["fournisseur"], detail["cle"], detail["appels_jour"], etat))
 
-    stats = store.stats_fournisseurs()
+    stats = etat["consommation"]
     if stats:
         titre_console("Consommation du jour")
         for stat in stats:
@@ -1565,25 +1570,6 @@ def cmd_docteur(args: argparse.Namespace) -> int:
                 stat["fournisseur"], stat["total"], stat["reussites"] or 0,
                 stat["tokens"] or 0, stat["latence"] or 0))
     return 0
-
-
-def _tester_locaux() -> List[str]:
-    """Verifie si un serveur d'IA locale repond, et ce qu'il propose."""
-    from .core.http import HttpErreur, requete
-
-    actifs: List[str] = []
-    for nom in ("ollama", "llamacpp"):
-        fournisseur = config.PROVIDERS_BY_NAME[nom]
-        url = fournisseur.base_url.rstrip("/") + "/models"
-        try:
-            statut, corps = requete(url, timeout=3)
-        except (HttpErreur, OSError):
-            continue
-        if statut >= 500:
-            continue
-        actifs.append(nom)
-        _detailler_local(fournisseur, corps)
-    return actifs
 
 
 def _detailler_local(fournisseur, corps: bytes) -> None:

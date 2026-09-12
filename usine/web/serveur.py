@@ -262,6 +262,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
                        200 if consultation else 404)
         elif chemin == "/api/sauvegardes":
             self._json(_sauvegardes())
+        elif chemin == "/api/docteur":
+            from ..core import diagnostic as module_diagnostic
+
+            # Le reseau et les serveurs locaux sont sondes seulement ici :
+            # la page ne demande le diagnostic que sur un clic.
+            self._json(module_diagnostic.etat_installation())
         elif chemin == "/api/bilan":
             from ..core import apprentissage
 
@@ -334,6 +340,11 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if options is None:
                 return
             self._json(*self._gerer_ab(options))
+        elif chemin == "/api/produit":
+            options = self._corps_json()
+            if options is None:
+                return
+            self._json(*self._gerer_produit(options))
         else:
             self._json({"erreur": "route inconnue"}, 404)
 
@@ -628,6 +639,59 @@ class Gestionnaire(BaseHTTPRequestHandler):
         if action == "supprimer":
             identifiant = _entier(options.get("id"))
             return ({"supprime": experience.supprimer(identifiant)}, 200)
+
+        return ({"erreur": "action inconnue"}, 400)
+
+    def _gerer_produit(self, options: Dict[str, Any]):
+        """Ce qui se fait APRES avoir regarde un produit : vendre, empaqueter.
+
+        La carte listait les produits et servait leurs fichiers, sans savoir
+        rien en faire — alors que c'est exactement le moment ou l'on veut le
+        kit de vente ou l'archive.
+        """
+        action = str(options.get("action") or "")
+        produit_id = str(options.get("id") or "")
+        produit = store.lire_produit(produit_id) if produit_id else None
+        if produit is None:
+            return ({"erreur": "produit inconnu"}, 404)
+
+        if action == "livrer":
+            # Empaqueter ne coute aucun appel : c'est de la copie de fichiers.
+            from ..packaging import livraison
+            from ..pipelines.base import slug
+
+            dossier = Path(produit["dossier"] or "")
+            if not dossier.exists():
+                return ({"erreur": "dossier du produit introuvable"}, 404)
+            meta = produit.get("meta") or {}
+            archive = livraison.empaqueter(
+                dossier, slug(produit["titre"] or produit_id, 46),
+                produit["titre"] or produit_id,
+                str(meta.get("auteur") or reglages.lire("auteur") or "Usine-IA"),
+                promesse=str(meta.get("promesse") or ""),
+                contact=str(reglages.lire("contact") or "votre adresse e-mail"))
+            return ({"archive": _lien_fichier(archive),
+                     "ko": max(1, archive.stat().st_size // 1024)}, 200)
+
+        if action == "marketing":
+            # Le kit de vente appelle le modele : en tache de fond, comme
+            # une fabrication.
+            with _VERROU:
+                if len([t for t in TRAVAUX.values()
+                        if t["statut"] == "en_cours"]) >= 2:
+                    return ({"erreur": "deux travaux sont deja en cours"}, 429)
+                travail_id = uuid.uuid4().hex[:12]
+                TRAVAUX[travail_id] = {
+                    "id": travail_id, "type": "marketing",
+                    "sujet": (produit["titre"] or produit_id)[:300],
+                    "statut": "en_cours", "debut": time.time(), "journal": [],
+                    "resultat": None, "erreur": "",
+                }
+            threading.Thread(target=_lancer_marketing,
+                             args=(travail_id, produit_id,
+                                   str(options.get("prix") or "")),
+                             daemon=True).start()
+            return ({"travail": travail_id}, 200)
 
         return ({"erreur": "action inconnue"}, 400)
 
@@ -931,6 +995,48 @@ def _lancer_ab(travail_id: str, options: Dict[str, Any]) -> None:
                           "distinction": resultat["distinction"],
                           "planche": _lien_fichier(resultat["planche"])})
         journal("Test A/B pret.")
+    except Exception as exc:
+        message = securite.expurger(str(exc))
+        with _VERROU:
+            TRAVAUX[travail_id].update(statut="echec", erreur=message)
+        journal("Echec : " + message)
+
+
+def _lancer_marketing(travail_id: str, produit_id: str, prix: str) -> None:
+    """Kit de vente d'un produit deja fabrique."""
+    from ..marketing import vente
+
+    def journal(message: str) -> None:
+        with _VERROU:
+            TRAVAUX[travail_id]["journal"].append(
+                {"ts": time.time(), "texte": securite.expurger(message)})
+        evenements.publier("journal", message=message, travail=travail_id)
+
+    try:
+        produit = store.lire_produit(produit_id)
+        meta = produit.get("meta") or {}
+        profil = reglages.charger()
+        ctx = Contexte(
+            sujet=produit["sujet"] or produit["titre"] or produit_id,
+            audience=produit["audience"] or profil["audience"],
+            auteur=str(meta.get("auteur") or profil["auteur"]),
+            ton=str(meta.get("ton") or profil["ton"]),
+            prix=prix,
+            journal=journal)
+        ctx.produit_id = produit_id
+        journal("Redaction du kit de vente...")
+        description = "Produit de type {}. {}".format(
+            produit["type"], meta.get("promesse") or produit["sujet"] or "")
+        resultat = vente.produire_kit(
+            ctx, produit["titre"] or produit_id, description,
+            Path(produit["dossier"]))
+        dossier = Path(resultat["dossier"])
+        with _VERROU:
+            TRAVAUX[travail_id].update(
+                statut="termine",
+                resultat={"fichiers": [_lien_fichier(dossier / nom)
+                                       for nom in resultat["fichiers"]]})
+        journal("Kit de vente pret.")
     except Exception as exc:
         message = securite.expurger(str(exc))
         with _VERROU:

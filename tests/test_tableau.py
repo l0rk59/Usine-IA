@@ -761,6 +761,116 @@ class TestBilanEtMarche(BaseServeur):
         self.assertEqual(self.json("/api/marche/nexistepas")[0], 404)
 
 
+class TestActionsProduit(BaseServeur):
+    """La carte Produits savait lister, pas agir.
+
+    « usine marketing » et « usine livrer » sont les deux commandes qu'on
+    lance APRES avoir regarde un produit — donc exactement la ou la page
+    s'arretait.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        llm.definir_simulateur(simulateur)
+
+    def _un_produit(self):
+        dossier = config.PRODUITS_DIR / "tab-act"
+        dossier.mkdir(parents=True, exist_ok=True)
+        (dossier / "livre.md").write_text(
+            "# Un livre\n\nDu texte suffisant pour empaqueter quelque chose.\n",
+            encoding="utf-8")
+        store.creer_produit("tab-act", "ebook", "Un livre a empaqueter",
+                            sujet="un sujet", dossier=str(dossier))
+        return "tab-act"
+
+    def test_un_produit_inconnu_est_refuse(self):
+        statut, refus = self.json("/api/produit",
+                                  {"action": "livrer", "id": "nexistepas"})
+        self.assertEqual(statut, 404)
+        self.assertIn("inconnu", refus["erreur"])
+
+    def test_une_action_inconnue_est_refusee(self):
+        identifiant = self._un_produit()
+        statut, _ = self.json("/api/produit",
+                              {"action": "detruire", "id": identifiant})
+        self.assertEqual(statut, 400)
+
+    def test_livrer_ecrit_une_archive_telechargeable(self):
+        """L'archive est ecrite A COTE du dossier du produit, pas dedans.
+
+        La liste de fichiers ne la voit donc jamais : c'est la reponse qui
+        doit porter son lien, sinon elle est introuvable depuis la page.
+        """
+        identifiant = self._un_produit()
+        statut, fait = self.json("/api/produit",
+                                 {"action": "livrer", "id": identifiant})
+        self.assertEqual(statut, 200, fait)
+        self.assertTrue(fait["archive"].startswith("/fichier/"))
+        self.assertGreater(fait["ko"], 0)
+
+        code, corps = self.appeler(fait["archive"])
+        self.assertEqual(code, 200)
+        self.assertEqual(corps[:2], b"PK")
+
+        _, produits = self.json("/api/produits")
+        fichiers = [f["nom"] for p in produits["produits"]
+                    if p["id"] == identifiant for f in p["fichiers"]]
+        self.assertFalse([f for f in fichiers if f.endswith(".zip")],
+                         "l'archive n'est pas dans le dossier du produit")
+
+    def test_le_kit_de_vente_part_en_tache_de_fond(self):
+        identifiant = self._un_produit()
+        statut, lance = self.json("/api/produit",
+                                  {"action": "marketing", "id": identifiant})
+        self.assertEqual(statut, 200, lance)
+        for _ in range(600):
+            _, travail = self.json("/api/travaux/" + lance["travail"])
+            if travail["statut"] != "en_cours":
+                break
+            threading.Event().wait(0.1)
+        self.assertEqual(travail["statut"], "termine", travail.get("erreur"))
+        liens = travail["resultat"]["fichiers"]
+        self.assertTrue(liens)
+        self.assertTrue(any("page-de-vente" in lien for lien in liens), liens)
+        for lien in liens:
+            self.assertEqual(self.appeler(lien)[0], 200, lien)
+
+
+class TestDocteur(BaseServeur):
+    """Le bouton « pourquoi ca ne marche pas », dans le navigateur."""
+
+    def test_le_diagnostic_rend_des_faits_et_un_verdict(self):
+        from usine.core import diagnostic
+
+        # Les deux controles reseau sont neutralises : la suite ne doit
+        # dependre d'aucune connexion.
+        with mock.patch.object(diagnostic, "_reseau", lambda: True), \
+                mock.patch.object(diagnostic, "locaux_actifs", lambda **k: []):
+            _, etat = self.json("/api/docteur")
+        for cle in ("python", "workdir", "env_present", "node", "espace",
+                    "fournisseurs", "verdict", "reseau", "locaux"):
+            self.assertIn(cle, etat)
+        self.assertIn(etat["verdict"]["etat"], ("pret", "local", "bloque"))
+        self.assertTrue(etat["verdict"]["message"])
+
+    def test_le_verdict_dit_quoi_faire_quand_rien_n_est_pret(self):
+        from usine.core import diagnostic
+
+        verdict = diagnostic._verdict(
+            {"distants_prets": 0, "locaux": []})
+        self.assertEqual(verdict["etat"], "bloque")
+        self.assertIn("usine cles", verdict["message"])
+        verdict = diagnostic._verdict({"distants_prets": 0, "locaux": ["ollama"]})
+        self.assertEqual(verdict["etat"], "local")
+
+    def test_les_memes_controles_servent_les_deux_interfaces(self):
+        """Recopier les controles cote web en aurait fait deux jeux qui
+        divergent : « docteur » lit desormais le meme module."""
+        source = (RACINE / "usine" / "cli.py").read_text(encoding="utf-8")
+        self.assertIn("module_diagnostic.etat_installation()", source)
+
+
 class TestPageServie(BaseServeur):
     """Garde-fou sur ce que la page declare.
 
@@ -775,7 +885,7 @@ class TestPageServie(BaseServeur):
         for marqueur in ("veille-lancer", "doublons-reconstruire",
                          "sauvegarde-creer", "veille-douleurs", "sauvegardes",
                          "archive-fichier", "ab-creer", "ab-liste", "bilan",
-                         "marche-lancer"):
+                         "marche-lancer", "docteur-lancer", "docteur"):
             self.assertIn('id="{}"'.format(marqueur), page, marqueur)
 
     def test_chaque_champ_de_saisie_porte_une_etiquette(self):

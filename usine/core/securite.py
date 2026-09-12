@@ -127,6 +127,18 @@ DOMAINES_SENSIBLES: List[Tuple[str, str, str]] = [
                 r"obligatoire)",
      "Contenu visant des mineurs : verifiez les obligations de protection et "
      "de moderation de votre plateforme."),
+    # La securite informatique est le domaine ou la frontiere entre expliquer
+    # et outiller compte le plus — et c'est celui qui manquait. Un « guide de
+    # test d'intrusion » passait sans un mot.
+    ("securite", r"(test d.intrusion|pentest|penetration testing|piratage|"
+                 r"hacking|hacker un|exploit|faille de securite|vulnerabilite|"
+                 r"craquer un mot de passe|forcer un mot de passe|keylogger|"
+                 r"ransomware|malware|phishing|hameconnage|deni de service|"
+                 r"contourner une protection|anonymat total)",
+     "Securite informatique : expliquer une attaque est legal, en outiller "
+     "une ne l'est pas. Ce qui est autorise sur VOTRE materiel ne l'est pas "
+     "ailleurs, et les places de marche retirent ce qu'elles jugent offensif. "
+     "Restez sur la defense, la sensibilisation et l'audit de son propre parc."),
 ]
 
 

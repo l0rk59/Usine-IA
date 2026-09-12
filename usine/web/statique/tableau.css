@@ -344,3 +344,11 @@ label.fichier:hover { color: var(--encre); border-color: var(--accent); }
 /* La region principale n'est qu'un repere pour les lecteurs d'ecran : elle
    ne doit rien changer a la mise en page. */
 main { display: contents; }
+
+.controle { font-size: 0.8rem; padding: 0.28rem 0 0.28rem 1rem;
+  position: relative; color: var(--doux); }
+.controle:before { content: '•'; position: absolute; left: 0; }
+.controle.bon:before { content: '✓'; color: var(--vert); }
+.controle.souci { color: var(--encre); }
+.controle.souci:before { content: '!'; color: var(--ambre); font-weight: 700; }
+.produit .rangee { margin: 0.5rem 0 0; gap: 0.35rem; }

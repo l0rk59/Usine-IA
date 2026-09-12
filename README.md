@@ -673,6 +673,17 @@ navigateur — un `javascript:` arrive comme une chaîne vide — et le texte es
 échappé à l'affichage. Le serveur ne nettoie pas le titre lui-même : le
 nettoyer mentirait sur ce que les gens ont écrit.
 
+**Agir sur un produit.** La carte listait les produits et servait leurs
+fichiers, sans savoir rien en faire — alors que c'est le moment où l'on veut
+l'archive ZIP ou le kit de vente. Les deux boutons y sont. L'archive est écrite
+*à côté* du dossier du produit, donc invisible dans la liste de fichiers : la
+réponse porte son lien de téléchargement.
+
+**Diagnostic.** Le bouton « pourquoi ça ne marche pas », là où on le cherche.
+Les contrôles vivent dans `core/diagnostic.py` et servent les deux interfaces —
+deux jeux finiraient par ne plus dire la même chose. Il gagne au passage
+l'espace disque libre.
+
 **Mesurer un marché.** À côté de la veille, dans la même carte : la veille dit
 ce que les gens *disent*, le marché dit combien ils sont. La page affiche les
 sources qui **n'ont pas répondu** — un silence de source n'est pas un marché
@@ -782,7 +793,7 @@ usine/
   production.py  usine continue : file, budget, verrou, arrêt propre
   menu.py      menu interactif Termux
   cli.py       interface en ligne de commande
-tests/         479 tests + test de fumée, aucun appel réseau
+tests/         489 tests + test de fumée, aucun appel réseau
                un atelier temporaire par module (tests/atelier.py)
 install.sh     installation Termux
 ```
@@ -795,7 +806,7 @@ par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 479 tests
+python3 -m unittest discover -s tests -t .   # 489 tests
 python3 scripts/dependances.py               # zéro dépendance
 python3 tests/fumee.py                       # les 9 chaînes via la vraie CLI
 ```
@@ -884,6 +895,21 @@ La bascule a lieu maintenant dans `setUpModule`, et trois tests interdisent le
 retour en arrière.
 
 ---
+
+## Ce qu'on pourrait ajouter
+
+Une revue complète — état du câblage, ce que chaque type de produit sait et ne
+sait pas faire, et ce qu'on peut y ajouter — est dans
+[docs/EXTENSIONS.md](docs/EXTENSIONS.md). Les deux réponses courtes :
+
+- **Romans et nouvelles : non, pas aujourd'hui.** Les chapitres d'un ebook sont
+  rédigés indépendamment les uns des autres — une qualité pour un guide, un
+  défaut rédhibitoire pour une fiction, qui a besoin d'une continuité que cette
+  architecture ne porte pas. Il faut une chaîne distincte, avec une bible et un
+  résumé roulant.
+- **Sécurité : oui, du côté défense.** Guides, checklists de durcissement,
+  politiques types, sensibilisation. Pas d'outil qui attaque ce qui ne vous
+  appartient pas. Le garde-fou des sujets connaît désormais ce domaine.
 
 ## Ce que l'usine ne fait pas
 
