@@ -237,6 +237,55 @@ signalerait comme « l'histoire n'avance plus ». Ce serait blâmer le récit po
 notre propre dégradation : ces scènes sont exclues de ce contrôle-là, et le
 rapport dit à la place, une fois, combien de scènes n'ont pas été rédigées.
 
+### Le registre des faits
+
+Les douze contrôles ci-dessus lisent la **charpente**. Aucun ne lit ce que les
+phrases affirment — et une héroïne aux yeux verts scène 2 puis aux yeux bleus
+scène 9 ne casse aucune structure. C'est pourtant l'erreur de continuité que
+les lecteurs relèvent le plus, et celle qui échappe le plus sûrement à une
+relecture d'auteur : à plus forte raison quand le texte est écrit scène par
+scène par un modèle dont la mémoire est un résumé de quatre-vingt-dix mots.
+
+`pipelines/faits.py` relève ce que le texte affirme, et signale ce qu'il
+affirme de deux façons incompatibles. Trois attributs, tous à vocabulaire
+fermé :
+
+| Attribut | Peut changer ? | Gravité d'une divergence |
+|---|---|---|
+| couleur des yeux | non | **majeure** |
+| couleur des cheveux | oui — teinture, âge | mineure, « peut être voulu » |
+| âge | non, au-delà d'une dizaine d'écart | majeure |
+
+Chaque constat cite **les deux passages**. Sans eux, vérifier une
+contradiction demande de rouvrir le manuscrit ; personne ne le fait, et
+l'alerte est ignorée.
+
+```
+[majeur] Camille : la couleur des yeux passe de « vert » a « bleu »
+    Scene 2 : « Camille leva ses yeux verts vers le ciel. »
+    Scene 9 : « Les yeux bleus de Camille ne cillaient plus. »
+```
+
+Trois décisions méritent d'être dites, parce qu'elles limitent volontairement
+ce que le registre trouve :
+
+- **Une phrase qui nomme deux personnages n'attribue rien.** À qui
+  appartiennent « ses yeux verts » dans *« Camille regarda Lucie »* ? Deviner
+  serait pire que se taire.
+- **Les homonymes sont départagés au score.** Une mère et sa fille partagent
+  un nom de famille : « Camille Renard » retrouve deux de ses mots dans
+  *« Camille poussa la porte »*, « Lucie Renard » un seul. À égalité, la
+  phrase reste ambiguë et n'est pas retenue. C'est le même départage que
+  `personnage_officiel` — et le même bug d'homonyme, trouvé deux fois.
+- **L'âge s'écrit en lettres.** La fiction dit « quarante-cinq ans », pas
+  « 45 ans ». Ne lire que les chiffres revenait à ne rien lire. Le lecteur de
+  nombres s'arrête à cent vingt : *« trois cents ans de solitude »* n'est
+  l'âge de personne, et se rabattre sur son dernier mot en aurait fait un
+  centenaire.
+
+Un seul constat par personnage et par attribut : signaler chaque paire d'un
+attribut cité dix fois noierait le constat dans sa propre répétition.
+
 ### Ce qu'il ne sait pas faire
 
 Il compte les noms propres. Deux personnages qui partagent un nom de famille
@@ -248,6 +297,14 @@ Dans les deux cas, le contrôle **rate un manque au lieu d'en inventer un** —
 c'est le bon sens de l'erreur pour un garde-fou qui doit être cru quand il
 parle. Un garde-fou qui crie à tort finit ignoré, ce qui est pire que de se
 taire.
+
+Le registre des faits obéit à la même règle, et paie le même prix : il ne suit
+que trois attributs, et seulement quand la phrase ne nomme qu'un personnage.
+Une contradiction sur un métier, un lieu de naissance ou un nombre d'enfants
+lui échappe entièrement. Ces faits-là n'ont pas de vocabulaire fermé, et les
+reconnaître demanderait de comprendre le récit — ce qu'un contrôle
+déterministe ne fait pas, et ce qu'un modèle relisant sa propre prose fait
+mal.
 
 ## Les longueurs
 

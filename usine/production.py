@@ -524,10 +524,12 @@ class UsineContinue:
         """Deux rappels a la fin d'un lot, parce que c'est la qu'on publie.
 
         Fabriquer vite et publier au meme rythme est le profil exact d'un
-        compte qui se fait fermer : KDP plafonne a trois titres par jour et
-        ferme les comptes de contenu depose en volume. Un compte ferme
-        emporte l'historique de ventes et les avis ; ralentir les depots ne
-        coute rien.
+        compte qui se fait fermer : KDP limite la creation a dix titres par
+        format et par semaine (verifie le 12 septembre 2026 sur la page
+        d'aide d'Amazon — c'etait trois par jour jusqu'a fin 2025, un plafond
+        plus large pour qui ne publie qu'en numerique) et ferme les comptes de
+        contenu depose en volume. Un compte ferme emporte l'historique de
+        ventes et les avis ; ralentir les depots ne coute rien.
         """
         if not self.faits:
             return

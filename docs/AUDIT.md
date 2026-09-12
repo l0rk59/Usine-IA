@@ -4,6 +4,10 @@ Revue de bout en bout après le retrait du chercheur de failles : agents,
 connexions, paramétrages, installation, dépendances. Chaque constat a été
 **vérifié sur le code**, corrigé, puis gardé par un test.
 
+Deux audits ont suivi celui-ci : [ROUTEUR.md](ROUTEUR.md) pour le routeur IA
+et les agents, [COMPARAISON.md](COMPARAISON.md) pour ce que l'usine vaut face
+aux projets équivalents — et pour la panne que cette comparaison a révélée.
+
 ## Agents : deux étaient déclarés mais ne travaillaient jamais
 
 Un agent ne s'allume dans l'interface que lorsqu'une chaîne l'appelle

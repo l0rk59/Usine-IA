@@ -43,6 +43,7 @@ from ..core import controle as ctrl
 from ..core import evenements, llm, securite
 from ..render import document as D
 from ..render import livraison
+from . import faits
 from . import memoire as M
 from .base import (Contexte, elaguer_markdown, jetons_pour, nettoyer_titre,
                    preparer, terminer)
@@ -1004,12 +1005,29 @@ def controler_continuite(bible: Dict[str, Any], grille: Dict[str, Any],
                       "{}".format(len(manquantes), ", ".join(manquantes[:3])),
         })
 
+    # -- 13. ce que le texte affirme de deux facons incompatibles -----------
+    # Les douze controles precedents lisent la charpente. Celui-ci lit les
+    # phrases : une heroine aux yeux verts scene deux et aux yeux bleus scene
+    # neuf ne casse aucune structure, et c'est pourtant l'erreur que les
+    # lecteurs relevent le plus. Voir pipelines/faits.py.
+    registre = faits.controler(scenes, [p["nom"] for p in bible["personnages"]])
+    for contradiction in registre["contradictions"]:
+        anomalies.append({
+            "genre": contradiction["genre"],
+            "gravite": contradiction["gravite"],
+            "detail": contradiction["detail"],
+            # Sans les deux citations, verifier la contradiction demande de
+            # relire le livre : personne ne le fait, et l'alerte est ignoree.
+            "preuves": contradiction["preuves"],
+        })
+
     graves = [a for a in anomalies if a["gravite"] == "majeur"]
     return {
         "anomalies": anomalies,
         "majeures": len(graves),
         "scenes": len(scenes),
         "personnages": len(bible["personnages"]),
+        "faits_releves": registre["faits"],
         "resume": ("continuite tenue" if not anomalies else
                    "{} anomalie(s) de continuite, dont {} majeure(s)".format(
                        len(anomalies), len(graves))),
@@ -1146,6 +1164,11 @@ def produire(ctx: Contexte) -> Dict[str, Any]:
     ctx.journal("  " + continuite["resume"])
     for anomalie in continuite["anomalies"][:4]:
         ctx.journal("    [{}] {}".format(anomalie["gravite"], anomalie["detail"]))
+        # Une contradiction de fait s'accompagne des deux passages : c'est ce
+        # qui permet de trancher sans rouvrir le manuscrit.
+        for preuve in anomalie.get("preuves") or []:
+            ctx.journal("        {} : « {} »".format(
+                preuve["section"], preuve["extrait"][:110]))
     ctx.etape("continuite",
               "ok" if not continuite["majeures"] else "echec",
               continuite["resume"])

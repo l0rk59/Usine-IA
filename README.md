@@ -958,6 +958,22 @@ retour en arrière.
 
 ---
 
+## Ce que l'usine vaut face aux autres
+
+Quatre projets ouverts couvrent le même besoin. Comparaison mesurée sur leurs
+dépôts — [docs/COMPARAISON.md](docs/COMPARAISON.md) — dont le partage tient en
+une ligne : **aucun des quatre ne s'installe sur un téléphone.** Ils exigent
+Docker et PostgreSQL, ou Pandoc et LaTeX, ou Node 22. C'est ce que paient les
+moteurs PDF et EPUB écrits à la main : cher en lignes de code, sans intérêt
+sur un ordinateur de bureau, décisif sur le seul appareil que tout le monde
+possède.
+
+Second partage : là où les autres font relire par un modèle, l'usine
+**mesure**. Un modèle qui se relit confirme ses propres erreurs ; une mesure ne
+coûte rien, ne s'épuise pas, et donne le même verdict deux fois de suite. Le
+prix est réel et il est dit dans la comparaison — un contrôle déterministe
+rate ce qu'il ne sait pas nommer.
+
 ## Ce qu'on pourrait ajouter
 
 Une revue complète — état du câblage, ce que chaque type de produit sait et ne
@@ -980,8 +996,12 @@ sait pas faire, et ce qu'on peut y ajouter — est dans
   pour toutes, plus l'état de la partie en cours. Ce qui manque encore à un
   roman n'est plus structurel : mémoire hiérarchique, fils tendus, arcs et
   **intrigues secondaires** sont là, et le contrôle sait dire qu'une ligne a
-  été abandonnée en route. Ce qui manque est du jugement — savoir si
-  l'histoire vaut la peine d'être lue — et aucun outil ne sait le faire.
+  été abandonnée en route. Un **registre des faits** lit en plus ce que les
+  phrases affirment : une héroïne aux yeux verts scène 2 puis aux yeux bleus
+  scène 9 ne casse aucune structure, et c'est l'erreur que les lecteurs
+  relèvent le plus. Chaque contradiction cite les deux passages. Ce qui manque
+  est du jugement — savoir si l'histoire vaut la peine d'être lue — et aucun
+  outil ne sait le faire.
 - **Sécurité : oui, du côté contenu — pas d'outillage.** Guides, checklists de
   durcissement, politiques types, sensibilisation : ce sont des produits que
   les chaînes existantes savent déjà fabriquer. L'usine ne fournit aucun outil

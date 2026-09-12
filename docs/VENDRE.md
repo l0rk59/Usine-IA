@@ -81,8 +81,16 @@ C'est le piège le plus coûteux, et il ne vient pas du logiciel.
 
 `usine usine` sait fabriquer plusieurs produits par jour. **Les publier au
 même rythme est le profil exact d'un compte qui se fait fermer.** Amazon KDP
-plafonne à trois titres par jour et ferme les comptes de contenu IA déposé en
-volume ; Etsy et Gumroad suspendent sur signalement de contenu dupliqué.
+« limite le nombre de titres que vous pouvez créer en même temps à **10 par
+format de livre et par semaine** » (page d'aide KDP, vérifiée le 12 septembre
+2026) et ferme les comptes de contenu IA déposé en volume ; Etsy et Gumroad
+suspendent sur signalement de contenu dupliqué.
+
+Ce plafond a changé : de septembre 2023 à fin 2025, c'était trois titres par
+jour. Le nouveau est **plus serré** pour qui ne publie qu'en un seul format —
+dix par semaine au lieu de vingt et un. Chaque format compte séparément, donc
+le même livre en numérique, broché et relié consomme trois quotas différents,
+pas un. Et une **mise à jour** d'un titre existant ne compte pas.
 
 Produisez en lot, publiez lentement :
 
