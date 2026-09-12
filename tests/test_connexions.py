@@ -7,6 +7,7 @@ que la licence ignorait. Ces tests échouent si l'une redevient orpheline.
 
 from __future__ import annotations
 
+import pathlib
 import sys
 import unittest
 from pathlib import Path
@@ -89,6 +90,73 @@ class TestAgentsRelies(unittest.TestCase):
                 self.assertGreater(
                     occurrences, 2,
                     "l'agent {} n'est presque jamais reference".format(nom))
+
+
+class TestDocumentationAtteignable(unittest.TestCase):
+    """Une note que rien ne reference est une note que personne ne lit.
+
+    C'est le defaut de l'orphelin applique a la documentation : le fichier
+    existe, il est juste, il est a jour — et le seul moyen de le trouver est
+    de lister le dossier. Deux notes etaient dans ce cas, dont celle qui
+    explique comment sauvegarder un atelier.
+
+    Etre reference depuis le CODE suffit : le journal de production renvoie a
+    « docs/VENDRE.md » au moment ou la question se pose, ce qui vaut mieux
+    qu'un lien dans un sommaire.
+    """
+
+    # Ce qui peut renvoyer vers une note.
+    MOTIFS = ("*.md", "docs/*.md", ".claude/skills/*/SKILL.md",
+              "usine/*.py", "usine/*/*.py", "usine/web/statique/*")
+
+    @classmethod
+    def orphelines(cls, racine):
+        """Notes de `racine/docs` que rien d'autre ne mentionne.
+
+        Une note est lue fichier par fichier et non en un seul bloc, pour
+        pouvoir l'ecarter d'elle-meme : une note qui cite son propre nom se
+        vouche toute seule, et le garde-fou devient muet.
+        """
+        notes = sorted((racine / "docs").glob("*.md"))
+        sources = [f for motif in cls.MOTIFS for f in sorted(racine.glob(motif))
+                   if f.is_file()]
+        orphelines = []
+        for note in notes:
+            texte = "\n".join(
+                f.read_text(encoding="utf-8", errors="replace")
+                for f in sources if f != note)
+            if note.name not in texte:
+                orphelines.append(note.name)
+        return orphelines
+
+    def test_chaque_note_est_atteignable(self):
+        self.assertTrue(sorted((RACINE / "docs").glob("*.md")))
+        # Pas de corpus dans le message : un echec doit tenir en une ligne,
+        # sinon personne ne le lit.
+        self.assertEqual(self.orphelines(RACINE), [])
+
+    def test_une_note_qui_se_cite_elle_meme_reste_orpheline(self):
+        """Sinon il suffirait qu'une note prononce son propre nom pour que le
+        garde-fou la declare atteignable — et il ne garderait plus rien."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as racine:
+            chemin = pathlib.Path(racine)
+            (chemin / "docs").mkdir()
+            (chemin / "docs" / "SEULE.md").write_text(
+                "Voir SEULE.md pour le detail.", encoding="utf-8")
+            (chemin / "README.md").write_text("rien ici", encoding="utf-8")
+            self.assertEqual(self.orphelines(chemin), ["SEULE.md"])
+
+    def test_une_note_reliee_depuis_le_readme_passe(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as racine:
+            chemin = pathlib.Path(racine)
+            (chemin / "docs").mkdir()
+            (chemin / "docs" / "SEULE.md").write_text("du contenu", encoding="utf-8")
+            (chemin / "README.md").write_text("voir docs/SEULE.md", encoding="utf-8")
+            self.assertEqual(self.orphelines(chemin), [])
 
 
 class TestOptionsDuCatalogueAtteignables(unittest.TestCase):

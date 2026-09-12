@@ -136,7 +136,7 @@ indisponibles. Pour l'utiliser en priorité : `USINE_LOCAL_FIRST=1` dans le `.en
 | `usine bilan` | Mémoire de l'usine | ce que vos productions révèlent sur vos réglages |
 | `usine doublons` | **Anti-répétition** | les produits qui se recouvrent, avant qu'un acheteur ne le voie |
 | `usine ventes` | **Ce qui rapporte** | import Gumroad/Etsy, chiffre d'affaires par niche, prix réels |
-| `usine sauvegarde` | Mettre à l'abri | ventes et historique dans une archive — le reste se refabrique |
+| `usine sauvegarde` | Mettre à l'abri | ventes et historique dans une archive — le reste se refabrique ([docs/SAUVEGARDE.md](docs/SAUVEGARDE.md)) |
 | `usine complet` | **Offre complète** | Ebook + 2 bonus + kit de vente + archive ZIP |
 | `usine file` | File de production | les niches en attente de fabrication |
 | `usine usine` | **Usine continue** | produit en boucle, sous budget, jusqu'à l'arrêt |
@@ -654,7 +654,9 @@ termux-open-url http://localhost:8777
 ```
 
 Une scène WebGL **écrite à la main** — pas de three.js, pas de CDN, donc elle
-fonctionne hors connexion sur le téléphone :
+fonctionne hors connexion sur le téléphone. La peau néon, la grille en fuite
+et les scanlines tiennent en CSS plus un canvas léger :
+[docs/CYBERPUNK.md](docs/CYBERPUNK.md).
 
 - le **socle** est l'atelier ;
 - les **orbes en orbite** sont les dix fournisseurs ; celui qui répond s'allume
