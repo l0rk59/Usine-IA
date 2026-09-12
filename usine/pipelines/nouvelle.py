@@ -45,6 +45,7 @@ from ..render import document as D
 from ..render import livraison
 from . import faits
 from . import memoire as M
+from . import voix
 from .base import (Contexte, elaguer_markdown, jetons_pour, nettoyer_titre,
                    preparer, terminer)
 
@@ -1021,6 +1022,14 @@ def controler_continuite(bible: Dict[str, Any], grille: Dict[str, Any],
             "preuves": contradiction["preuves"],
         })
 
+    # -- 14. qui prend la parole -------------------------------------------
+    # La bible donne une voix a chaque personnage et cette voix part dans
+    # l'invite de chaque scene. Rien ne verifiait qu'elle avait ete tenue —
+    # une consigne emise, jamais relue. Voir pipelines/voix.py, qui mesure ce
+    # qui se mesure et s'abstient de juger le reste.
+    parole = voix.controler(scenes, bible["personnages"])
+    anomalies.extend(parole["anomalies"])
+
     graves = [a for a in anomalies if a["gravite"] == "majeur"]
     return {
         "anomalies": anomalies,
@@ -1028,6 +1037,9 @@ def controler_continuite(bible: Dict[str, Any], grille: Dict[str, Any],
         "scenes": len(scenes),
         "personnages": len(bible["personnages"]),
         "faits_releves": registre["faits"],
+        "parole": {"repliques": parole["repliques"],
+                   "profils": parole["profils"],
+                   "comparables": parole["comparables"]},
         "resume": ("continuite tenue" if not anomalies else
                    "{} anomalie(s) de continuite, dont {} majeure(s)".format(
                        len(anomalies), len(graves))),

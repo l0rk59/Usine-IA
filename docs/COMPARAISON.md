@@ -112,10 +112,13 @@ Trois choses, honnêtement :
 2. **Préparation audiobook** avec attribution des voix (AuthorAgent). Nous
    avons le script de narration (`render/narration.py`) et sa durée mesurée,
    pas l'attribution par personnage ni la synthèse.
-3. **Agents-personnages critiques** — un critique par personnage majeur, qui
-   signale les répliques hors voix. Notre bible déclare une « voix » par
-   personnage, et rien ne vérifie qu'elle est tenue. Mesurable en partie
-   (longueur des répliques, vocabulaire, tics déclarés) : candidat sérieux.
+3. ~~**Agents-personnages critiques**~~ — un critique par personnage majeur,
+   qui signale les répliques hors voix. **Traité, en partie et sans modèle** :
+   `pipelines/voix.py` rattache chaque réplique à qui la prononce, signale un
+   personnage muet et une parole confisquée, et *rend* les profils mesurés
+   sans les juger. Le verdict « ils parlent tous pareil » n'est pas émis,
+   faute d'un seuil mesuré sur de la fiction réelle — voir
+   [FICTION.md](FICTION.md).
 
 ### Ce qu'ils ont et que nous avons déjà en mieux
 
@@ -143,15 +146,17 @@ Trois choses, honnêtement :
 | Cerebras : 25 req/min supposées, 5 réelles | corrigé |
 | KDP : « trois titres par jour » | « dix par format et par semaine », vérifié sur la page d'aide d'Amazon |
 | Aucun contrôle des faits affirmés par la prose | `pipelines/faits.py`, branché dans le contrôle de continuité |
+| La voix déclarée dans la bible n'était jamais relue | `pipelines/voix.py` : qui parle, combien, et les profils mesurés |
 
 ## 5. Ce qui reste ouvert
 
 - **La bible de série.** L'absence la plus nette. Demande un modèle de données
   partagé entre produits, et une décision sur ce qu'on fait des empreintes
   existantes.
-- **Le contrôle de voix par personnage.** Mesurable en partie, et le premier
-  candidat parce qu'il ne demande aucun appel de modèle : la bible déclare
-  déjà une voix, rien ne vérifie qu'elle est tenue.
+- **Le verdict sur la ressemblance des voix.** L'extraction des répliques est
+  faite ; ce qui manque est un seuil mesuré sur de la fiction réelle, au-delà
+  duquel deux profils sont « la même voix ». Sans cette mesure, le verdict
+  serait une invention.
 - **Les quotas datés à la main.** Aucun fournisseur ne les publie sous une
   forme lisible par un programme. Ils porteront donc toujours une date de
   vérification dans le commentaire, et ils vieilliront.

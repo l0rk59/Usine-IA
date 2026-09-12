@@ -286,6 +286,61 @@ ce que le registre trouve :
 Un seul constat par personnage et par attribut : signaler chaque paire d'un
 attribut cité dix fois noierait le constat dans sa propre répétition.
 
+### Qui prend la parole
+
+La bible donne à chaque personnage une **voix** — « registre, tic de langage,
+ce qu'il ne dit jamais » — et cette voix part dans l'invite de chaque scène :
+*« Chaque personnage parle avec la voix que lui donne la bible. »* Rien ne
+vérifiait qu'elle avait été tenue. C'est exactement le défaut que l'usine
+traque partout ailleurs : **une consigne émise, jamais relue.**
+
+`pipelines/voix.py` relève les répliques et les rattache à qui les prononce.
+Trois formes de dialogue, toutes trois produites par les modèles :
+
+| Forme | Où est l'incise |
+|---|---|
+| `— Non, dit Camille.` | après la réplique, ouverte par la virgule |
+| `— Vraiment ? demanda Lucie.` | après la réplique, sans virgule |
+| `« Non », dit Camille.` | tout ce qui entoure les guillemets |
+
+Deux conditions pour attribuer, toutes deux nécessaires : un **verbe de
+parole** dans l'incise, et **un seul personnage nommé**. Sans le verbe,
+*« Non. » Camille recula* attribuerait à Camille une réplique qui peut être de
+l'autre. Sans l'unicité, *« Assez, dit Camille en regardant Lucie »* ferait
+deviner lequel parle.
+
+Le verbe retenu est le **dernier** de la ligne : une réplique peut contenir
+*« il m'a dit »* sans que ce soit l'incise.
+
+#### Ce que le contrôle affirme
+
+Deux constats, parce que deux seulement se tiennent sans seuil inventé :
+
+- **un personnage présent dans la prose et qui ne prend jamais la parole** —
+  majeur pour le protagoniste, mineur sinon. Le constat ne tombe que s'il y a
+  du dialogue ailleurs : une nouvelle entièrement narrative est un choix, pas
+  un défaut ;
+- **un personnage qui confisque la parole** — 80 % des répliques à lui seul.
+  Le seuil est volontairement haut : dans une nouvelle à deux personnages,
+  soixante pour cent des répliques pour l'un des deux est un équilibre normal.
+
+#### Ce que le contrôle n'affirme pas
+
+*« Les personnages parlent tous de la même voix »* est le défaut le plus
+courant de la fiction générée, et ce module **ne le déclare pas**. Le déclarer
+demanderait un seuil sur la distance entre deux profils, et ce seuil n'a pas
+été mesuré sur de la fiction réelle. L'inventer produirait un garde-fou qui
+crie à tort, donc un garde-fou que personne ne lit.
+
+Les profils sont donc **rendus**, pas jugés — longueur moyenne des répliques
+et son écart-type, part de questions, part d'exclamations, diversité du
+vocabulaire — et c'est un humain qui les regarde. En dessous de quatre
+répliques, une moyenne ne veut rien dire : le rapport dit sur combien de
+personnages la comparaison aurait un sens.
+
+Une mesure honnête vaut mieux qu'un verdict fabriqué. Un test garde cette
+abstention, pour que personne n'ajoute le verdict sans la mesure.
+
 ### Ce qu'il ne sait pas faire
 
 Il compte les noms propres. Deux personnages qui partagent un nom de famille
