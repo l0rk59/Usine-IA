@@ -133,6 +133,15 @@ def _apres_production(args: argparse.Namespace, ctx: Contexte,
                       resume: Dict[str, Any], description: str) -> Dict[str, Any]:
     """Kit de vente + archive, si demandes."""
     dossier = Path(resume["dossier"])
+    if not (getattr(args, "contact", "") or reglages.lire("contact", "")):
+        # La notice promet d'envoyer une version adaptee a qui en demande une.
+        # C'est ce que la reglementation europeenne d'accessibilite attend
+        # d'etre tenu — et sans adresse, la promesse n'est pas ecrite. Le
+        # vendeur doit le savoir : c'est lui qui decide, pas nous.
+        alerte("Aucune adresse de contact : la notice livree ne propose donc "
+               "pas de version adaptee aux lecteurs qui en auraient besoin.")
+        print("      " + _c("usine reglages", "1")
+              + "  ou  " + _c("--contact vous@exemple.fr", "1"))
     if getattr(args, "marketing", False):
         titre_console("Kit de vente")
         try:
@@ -163,8 +172,8 @@ def _apres_production(args: argparse.Namespace, ctx: Contexte,
 
         archive = livraison.empaqueter(
             dossier, slug(resume["titre"], 46), resume["titre"], ctx.auteur,
-            promesse=description[:200], contact=getattr(args, "contact", "") or
-            "votre adresse e-mail",
+            promesse=description[:200],
+            contact=getattr(args, "contact", "") or "",
         )
         resume["archive"] = str(archive)
         ok("Archive : {} ({} Ko)".format(archive.name, archive.stat().st_size // 1024))
@@ -1608,7 +1617,7 @@ def cmd_livrer(args: argparse.Namespace) -> int:
         dossier, slug(produit["titre"], 46), produit["titre"],
         meta.get("auteur", "Usine-IA"),
         promesse=str(meta.get("promesse") or ""),
-        contact=args.contact or "votre adresse e-mail",
+        contact=args.contact or "",
     )
     ok("Archive : {} ({} Ko)".format(archive, archive.stat().st_size // 1024))
     return 0

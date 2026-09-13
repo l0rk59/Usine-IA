@@ -73,21 +73,41 @@ logique, titres hierarchises, table des matieres navigable, texte
 redimensionnable sans perte d'information, contraste verifie a 4,5:1 au
 minimum. Aucun contenu clignotant ni sonore. Les metadonnees d'accessibilite
 sont incluses dans le fichier.
-
-Si un format vous convient mal, ecrivez a {contact} : une version adaptee
-vous sera envoyee.
-
-## Une question ?
-
-Ecrivez a {contact}.
-
+{contact_accessibilite}{contact_question}
 ---
 {auteur} — {date}
 """
 
+# Ce qui s'ecrit quand le vendeur a donne une adresse — et rien quand il n'en
+# a pas donne.
+#
+# « votre adresse e-mail » etait le repli, et il partait tel quel chez
+# l'acheteur : « Ecrivez a votre adresse e-mail ». Un rappel destine au
+# VENDEUR, imprime dans le document VENDU. Pire que ridicule : la section
+# accessibilite promettait une version adaptee a une adresse qui n'existe
+# pas, alors que cette promesse est precisement ce que la reglementation
+# europeenne attend d'etre tenue. Sans adresse, la promesse n'est plus faite.
+CONTACT_ACCESSIBILITE = """
+Si un format vous convient mal, ecrivez a {contact} : une version adaptee
+vous sera envoyee.
+"""
+CONTACT_QUESTION = """
+## Une question ?
+
+Ecrivez a {contact}.
+"""
+
+
 
 def ecrire_notice(dossier: Path, titre: str, promesse: str, auteur: str,
-                  contact: str = "votre adresse e-mail") -> Path:
+                  contact: str = "") -> Path:
+    """Ecrit le LISEZ-MOI que l'acheteur trouve dans le dossier.
+
+    Sans adresse de contact, les deux passages qui en demandent une sont
+    simplement absents : l'usine n'ecrit pas une promesse qu'elle ne peut pas
+    tenir. « usine ebook --contact vous@exemple.fr », ou le reglage
+    « contact », les fait revenir.
+    """
     fichiers = sorted(
         f for f in dossier.iterdir()
         if f.is_file() and f.name not in ("LISEZ-MOI.md", "LICENCE.txt")
@@ -104,7 +124,11 @@ def ecrire_notice(dossier: Path, titre: str, promesse: str, auteur: str,
     chemin.write_text(
         NOTICE.format(
             titre=titre, promesse=promesse or "", fichiers=liste,
-            contact=contact, auteur=auteur, date=time.strftime("%d/%m/%Y"),
+            contact_accessibilite=(
+                CONTACT_ACCESSIBILITE.format(contact=contact) if contact else ""),
+            contact_question=(
+                CONTACT_QUESTION.format(contact=contact) if contact else ""),
+            auteur=auteur, date=time.strftime("%d/%m/%Y"),
         ),
         encoding="utf-8",
     )
@@ -140,7 +164,7 @@ def empaqueter(
     titre: str,
     auteur: str,
     promesse: str = "",
-    contact: str = "votre adresse e-mail",
+    contact: str = "",
     exclure: Optional[List[str]] = None,
     exclure_dossiers: Optional[List[str]] = None,
 ) -> Path:

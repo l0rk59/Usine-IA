@@ -670,7 +670,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 produit["titre"] or produit_id,
                 str(meta.get("auteur") or reglages.lire("auteur") or "Usine-IA"),
                 promesse=str(meta.get("promesse") or ""),
-                contact=str(reglages.lire("contact") or "votre adresse e-mail"))
+                contact=str(reglages.lire("contact") or ""))
             return ({"archive": _lien_fichier(archive),
                      "ko": max(1, archive.stat().st_size // 1024)}, 200)
 
