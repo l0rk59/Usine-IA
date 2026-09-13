@@ -111,15 +111,82 @@ class TestAucuneFonctionSansAppelant(unittest.TestCase):
     TOLEREES = frozenset()
 
     @staticmethod
-    def orphelines(racine):
+    def _noms_lies(fonction):
+        """Noms que la fonction fabrique elle-meme : parametres, variables, imports.
+
+        Ce sont ceux qu'il ne faut PAS compter comme des appels : ils parlent
+        d'autre chose que de la fonction de module qui porte le meme nom.
+        """
         import ast
-        import re
+
+        noms = set()
+        args = fonction.args
+        for groupe in (args.posonlyargs, args.args, args.kwonlyargs):
+            noms.update(a.arg for a in groupe)
+        if args.vararg:
+            noms.add(args.vararg.arg)
+        if args.kwarg:
+            noms.add(args.kwarg.arg)
+        for noeud in ast.walk(fonction):
+            if isinstance(noeud, ast.Name) and isinstance(noeud.ctx,
+                                                          (ast.Store, ast.Del)):
+                noms.add(noeud.id)
+            elif isinstance(noeud, (ast.Import, ast.ImportFrom)):
+                for alias in noeud.names:
+                    noms.add((alias.asname or alias.name).split(".")[0])
+        return noms
+
+    @classmethod
+    def _references(cls, fichiers):
+        """Tout ce qui ressemble a « quelqu'un se sert de ce nom-la ».
+
+        La premiere version de ce detecteur cherchait le nom dans le TEXTE du
+        depot. Elle a laisse passer « http.en_ligne », qui n'avait aucun
+        appelant : le mot apparaissait ailleurs comme nom de parametre
+        (« en_ligne=not ctx.hors_ligne »), et cela suffisait a le declarer
+        employe. Un garde-fou satisfait par une homonymie ne garde rien.
+
+        On lit donc l'arbre : un appel, un attribut, un nom charge hors de sa
+        propre portee. Les chaines de caracteres comptent aussi — une fonction
+        atteinte par « getattr(module, "nom") » a un appelant bien reel, et
+        l'accuser serait crier a tort.
+        """
+        import ast
+
+        vues = set()
+        for fichier in fichiers:
+            arbre = ast.parse(fichier.read_text(encoding="utf-8"))
+            lies = {}
+            for noeud in ast.walk(arbre):
+                if isinstance(noeud, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    locaux = cls._noms_lies(noeud)
+                    for sous in ast.walk(noeud):
+                        lies.setdefault(id(sous), set()).update(locaux)
+            for noeud in ast.walk(arbre):
+                if isinstance(noeud, ast.Attribute):
+                    vues.add(noeud.attr)
+                elif isinstance(noeud, ast.Name) and isinstance(noeud.ctx, ast.Load):
+                    if noeud.id not in lies.get(id(noeud), set()):
+                        vues.add(noeud.id)
+                elif isinstance(noeud, ast.Constant) and isinstance(noeud.value, str):
+                    vues.update(noeud.value.split())
+                elif isinstance(noeud, (ast.Import, ast.ImportFrom)):
+                    for alias in noeud.names:
+                        vues.add(alias.name.split(".")[-1])
+        return vues
+
+    @classmethod
+    def orphelines(cls, racine):
+        import ast
 
         fichiers = sorted(racine.glob("usine/**/*.py"))
-        corpus = "\n".join(
-            f.read_text(encoding="utf-8")
-            for f in fichiers + sorted(racine.glob("tests/*.py"))
-            + sorted(racine.glob("scripts/*.py")))
+        vues = cls._references(fichiers + sorted(racine.glob("tests/*.py"))
+                               + sorted(racine.glob("scripts/*.py")))
+        # Le tableau de bord appelle des fonctions Python par leur nom, depuis
+        # du JavaScript et des gabarits : les ignorer en ferait des orphelines.
+        for fichier in sorted(racine.glob("usine/web/statique/*.js")):
+            vues.update(fichier.read_text(encoding="utf-8")
+                        .replace("(", " ").replace(".", " ").split())
         seules = []
         for fichier in fichiers:
             arbre = ast.parse(fichier.read_text(encoding="utf-8"))
@@ -128,9 +195,7 @@ class TestAucuneFonctionSansAppelant(unittest.TestCase):
                     continue
                 if noeud.name.startswith("_") or noeud.name == "main":
                     continue
-                # Une seule occurrence dans tout le depot : sa definition.
-                if len(re.findall(r"\b" + re.escape(noeud.name) + r"\b",
-                                  corpus)) <= 1:
+                if noeud.name not in vues:
                     seules.append("{}:{}".format(
                         fichier.relative_to(racine), noeud.name))
         return seules
@@ -176,6 +241,42 @@ class TestAucuneFonctionSansAppelant(unittest.TestCase):
             racine = self._depot(pathlib.Path(brut),
                                  "def _interne():\n    return 1\n")
             self.assertEqual(self.orphelines(racine), [])
+
+    def test_un_parametre_homonyme_ne_compte_pas_pour_un_appel(self):
+        """Le defaut exact qui a laisse « http.en_ligne » sans appelant.
+
+        Le detecteur lisait le texte du depot. « en_ligne » y apparaissait
+        souvent — comme nom de parametre, jamais comme appel — et cela
+        suffisait a le declarer employe.
+        """
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as brut:
+            racine = self._depot(
+                pathlib.Path(brut),
+                "def en_ligne():\n    return True\n\n\n"
+                "def dessiner(en_ligne=False):\n"
+                "    return 1 if en_ligne else 0\n")
+            # L'ordre est celui des definitions dans le fichier.
+            self.assertEqual(self.orphelines(racine),
+                             ["usine/module.py:en_ligne",
+                              "usine/module.py:dessiner"])
+
+    def test_une_fonction_atteinte_par_son_nom_en_chaine_n_est_pas_accusee(self):
+        """L'autre direction : ne pas inventer un defaut.
+
+        Un nom passe a getattr est un appelant bien reel. Le detecteur doit
+        rater ce cas plutot que de le signaler.
+        """
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as brut:
+            racine = self._depot(
+                pathlib.Path(brut),
+                "def repondre():\n    return 1\n\n\n"
+                "def routeur(mod):\n"
+                "    return getattr(mod, \"repondre\")()\n")
+            self.assertEqual(self.orphelines(racine), ["usine/module.py:routeur"])
 
 
 class TestAucunImportInutile(unittest.TestCase):

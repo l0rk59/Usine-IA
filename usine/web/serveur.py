@@ -1240,6 +1240,15 @@ REGLAGES_HORS_WEB = frozenset({"jeton_web"})
 def _etat() -> Dict[str, Any]:
     from ..core import serie as module_serie
 
+    # La base d'abord, et on s'arrete la si elle ne se lit plus. Tout ce qui
+    # suit l'interroge — fournisseurs, pool, series, file — et le tableau de
+    # bord mourait donc sur sa toute premiere requete : la page restait vide,
+    # y compris le bouton « docteur » qui, lui, aurait su repondre.
+    base = store.diagnostic_base()
+    if base:
+        return {"version": __version__, "base": base,
+                "remede": "usine sauvegarde --restaurer archive.zip --oui"}
+
     fournisseurs = [
         {
             "nom": ligne["nom"], "disponible": ligne["disponible"],
@@ -1255,6 +1264,7 @@ def _etat() -> Dict[str, Any]:
     profil = reglages.charger()
     return {
         "version": __version__,
+        "base": "",
         "fournisseurs": fournisseurs,
         "avec_cle": sum(1 for f in fournisseurs
                         if f["disponible"] and not f["local"] and not f["sans_cle"]),

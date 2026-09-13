@@ -969,6 +969,25 @@ fabrication inaccessibles depuis un téléphone, et un tableau de bord qui
 pouvait effacer le mot de passe qui le protège. Les sept autres disent que les
 garde-fous existants tiennent, ce qui est l'autre moitié de l'information.
 
+## Quand la machine lâche
+
+Le disque se remplit au milieu d'une fabrication, la base de l'atelier est
+écrasée, le réseau tombe — trois pannes qu'un téléphone produit vraiment, et
+qu'aucun test ne provoquait. Elles ont été provoquées pour de bon :
+[docs/PANNES.md](docs/PANNES.md).
+
+Ce qu'elles ont appris tient en une phrase : **le message est une pièce de
+l'usine**. Devant `[Errno 28] No space left on device`, on ne sait ni où, ni
+quoi faire, ni — le plus coûteux — que le travail déjà payé n'est pas perdu.
+L'usine dit maintenant les trois. Elle a aussi cessé de conseiller « créez une
+clé » quand le vrai problème est le wifi, et de mourir sur toutes ses commandes,
+`docteur` compris, quand sa base ne se lit plus.
+
+Deux défauts se sont montrés en chemin : `usine docteur` plantait chez tous
+ceux qui possèdent une clé API — c'est-à-dire tous les vrais utilisateurs — et
+le détecteur de fonctions orphelines se laissait tromper par un simple
+homonyme.
+
 ## Ce que l'usine vaut face aux autres
 
 Quatre projets ouverts couvrent le même besoin. Comparaison mesurée sur leurs

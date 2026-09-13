@@ -321,6 +321,54 @@ def close() -> None:
         rappel()
 
 
+def diagnostic_base() -> str:
+    """Rend le defaut constate sur le fichier de base, ou "" si elle est saine.
+
+    On MESURE au lieu de deduire. « sqlite3.DatabaseError » couvre aussi bien
+    un fichier illisible qu'une colonne mal nommee : conseiller une
+    restauration de sauvegarde a qui vient de croiser un defaut de requete
+    serait le garde-fou qui crie a tort, et on lui ferait detruire son atelier
+    pour rien. Le seul moyen de trancher est de rouvrir le fichier et de le
+    faire verifier par SQLite lui-meme.
+
+    Trois formes de casse existent, et elles ne se voient pas au meme moment
+    (mesure du 13/09/2026, Python 3.11) :
+
+    - entete detruite ou fichier remplace par du texte : « file is not a
+      database », des la premiere lecture ;
+    - fichier tronque : « database disk image is malformed », des la premiere
+      lecture ;
+    - page interieure ecrasee : AUCUNE erreur a l'ouverture. Le defaut ne
+      sort que le jour ou l'on lit cette page-la. C'est la forme la plus
+      couteuse, et « PRAGMA integrity_check » est ce qui la trouve.
+
+    Un fichier VIDE n'est pas une base cassee : SQLite y ecrit son schema.
+    Rien a signaler, donc, et c'est voulu.
+
+    On ouvre une connexion a part, qu'on ferme aussitot : celle du thread
+    peut etre justement celle qui vient d'echouer.
+    """
+    if not config.DB_PATH.exists():
+        return ""
+    try:
+        conn = sqlite3.connect(str(config.DB_PATH), timeout=5)
+    except sqlite3.Error as exc:
+        return str(exc)
+    try:
+        lignes = conn.execute("PRAGMA integrity_check").fetchall()
+    except sqlite3.DatabaseError as exc:
+        return str(exc)
+    finally:
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+    # SQLite rend exactement une ligne « ok » quand tout va bien.
+    if len(lignes) == 1 and str(lignes[0][0]).lower() == "ok":
+        return ""
+    return " ; ".join(str(ligne[0]) for ligne in lignes[:3])
+
+
 # --------------------------------------------------------------------------
 # Empreintes : ce que l'usine a deja ecrit
 # --------------------------------------------------------------------------

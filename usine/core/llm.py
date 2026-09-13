@@ -571,8 +571,14 @@ def generer_json(
             essais, ", ".join(tentes) or "aucun fournisseur", derniere))
 
 
-def diagnostic() -> List[Dict[str, Any]]:
-    """Etat de chaque fournisseur (pour 'usine docteur')."""
+def diagnostic(compteurs: bool = True) -> List[Dict[str, Any]]:
+    """Etat de chaque fournisseur (pour 'usine docteur').
+
+    « compteurs=False » quand la base est illisible : la consommation du jour
+    y est enregistree, et elle devient alors inconnaissable. On rend None, pas
+    zero. Zero serait un chiffre sans source, et le pire moment pour en
+    inventer un est celui ou l'utilisateur cherche ce qui a casse.
+    """
     lignes: List[Dict[str, Any]] = []
     for p in config.PROVIDERS:
         q = p.quota("standard")
@@ -586,7 +592,8 @@ def diagnostic() -> List[Dict[str, Any]]:
                 "cle_env": p.api_key_env,
                 "nb_cles": len(pool_cles.pool(p.name, p.api_key_env)),
                 "modele": p.model_for("standard"),
-                "aujourdhui": store.compteur_jour(p.name, modele),
+                "aujourdhui": (store.compteur_jour(p.name, modele)
+                               if compteurs else None),
                 "rpd": q.rpd,
                 "rpm": q.rpm,
                 # Les plafonds en jetons sont ceux qui arretent vraiment une
@@ -594,7 +601,8 @@ def diagnostic() -> List[Dict[str, Any]]:
                 # ailleurs quand le fournisseur le plus rapide se tait.
                 "tpm": q.tpm,
                 "tpd": q.tpd,
-                "jetons_aujourdhui": store.jetons_jour(p.name, modele),
+                "jetons_aujourdhui": (store.jetons_jour(p.name, modele)
+                                      if compteurs else None),
                 "inscription": p.signup,
                 "notes": p.notes,
             }

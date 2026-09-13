@@ -19,11 +19,16 @@ from . import cles as pool_cles
 from . import verification
 
 
-def _espace_libre() -> Dict[str, Any]:
+def espace_libre() -> Dict[str, Any]:
     """Place restante la ou l'usine ecrit.
 
     Un telephone se remplit, et une fabrication qui s'arrete faute de place
     laisse un produit a moitie ecrit sans dire pourquoi.
+
+    Publique parce que deux appelants la veulent : « docteur » pour son
+    rapport, et le message de disque plein pour dire combien il reste. La
+    recopier dans la CLI en aurait fait deux mesures qui divergent — un
+    garde-fou de tests l'interdit, et il a servi.
     """
     try:
         usage = shutil.disk_usage(str(config.WORKDIR))
@@ -146,7 +151,12 @@ def etat_installation(avec_reseau: bool = True,
     reseau : les tests ne doivent pas dependre d'une connexion, et le
     tableau de bord ne doit pas les refaire a chaque rafraichissement.
     """
-    fournisseurs = llm.diagnostic()
+    # D'abord la base : c'est le seul constat dont depend la possibilite meme
+    # de constater. Quand elle est illisible, « docteur » mourait comme toutes
+    # les autres commandes — alors que c'est precisement la commande qu'on
+    # lance quand plus rien ne marche.
+    base = store.diagnostic_base()
+    fournisseurs = llm.diagnostic(compteurs=not base)
     distants = [f for f in fournisseurs if f["disponible"] and not f["local"]]
 
     etat: Dict[str, Any] = {
@@ -154,12 +164,13 @@ def etat_installation(avec_reseau: bool = True,
         "workdir": str(config.WORKDIR),
         "env_present": config.ENV_PATH.exists(),
         "node": verification.node_disponible(),
-        "espace": _espace_libre(),
+        "espace": espace_libre(),
         "telephone": telephone.etat(),
         "fournisseurs": fournisseurs,
         "distants_prets": len(distants),
         "pool": pool_cles.resume(),
-        "consommation": store.stats_fournisseurs(),
+        "base": base,
+        "consommation": {} if base else store.stats_fournisseurs(),
     }
     etat["reseau"] = _reseau() if avec_reseau else None
     etat["locaux"] = locaux_actifs() if avec_locaux else []
@@ -183,14 +194,24 @@ def _reseau() -> bool:
 
 def _verdict(etat: Dict[str, Any]) -> Dict[str, str]:
     """Ce qu'on peut faire, en une phrase, et quoi faire sinon."""
+    # Une base illisible passe avant les fournisseurs : dix cles valides ne
+    # servent a rien si l'usine ne peut rien enregistrer.
+    if etat.get("base"):
+        # « remede » existe parce que le geste ne decoule pas de l'etat :
+        # « bloque » conseillait « usine cles » quoi qu'il arrive, et une base
+        # cassee ne se repare pas en ajoutant une cle.
+        return {"etat": "bloque",
+                "message": "Base illisible ({}). Vos produits restent sur le "
+                           "disque.".format(etat["base"]),
+                "remede": "usine sauvegarde --restaurer archive.zip --oui"}
     if etat["distants_prets"]:
-        return {"etat": "pret",
+        return {"etat": "pret", "remede": "",
                 "message": "{} fournisseur(s) distant(s) pret(s). "
                            "L'usine peut produire.".format(etat["distants_prets"])}
     if etat["locaux"]:
-        return {"etat": "local",
+        return {"etat": "local", "remede": "",
                 "message": "IA locale detectee : {}. Production hors ligne "
                            "possible, mais comptez plusieurs minutes par "
                            "chapitre.".format(", ".join(etat["locaux"]))}
-    return {"etat": "bloque",
+    return {"etat": "bloque", "remede": "usine cles",
             "message": "Aucun fournisseur pret. Lancez « usine cles »."}

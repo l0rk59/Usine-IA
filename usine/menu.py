@@ -1029,8 +1029,11 @@ def menu_cles() -> None:
             etat, couleur = "{} cle(s)".format(ligne["nb_cles"]), "32"
         else:
             etat, couleur = "absente", "90"
+        # « ? » et non « 0 » : une base illisible n'est pas une journee sans
+        # appel, et c'est ce menu qu'on regarde quand on doute de son quota.
+        jour = "?" if ligne["aujourdhui"] is None else ligne["aujourdhui"]
         print("  {:<13} {:<11} {:>4}/{:<6} {}".format(
-            ligne["nom"], c(etat, couleur), ligne["aujourdhui"], ligne["rpd"],
+            ligne["nom"], c(etat, couleur), jour, ligne["rpd"],
             c(ligne["modele"][:24], "2")))
 
     details = pool_cles.resume()

@@ -17,7 +17,7 @@ garde-fou revient dans les six mois.
 | Options du catalogue proposées par le menu | 8 options | **1 sur 8** |
 | Commandes CLI atteignables depuis le menu | 32 commandes | 1 manquante |
 | Notes de `docs/` référencées quelque part | 22 notes | 2 orphelines |
-| Fonctions publiques avec un appelant | ~400 | **6 mortes** |
+| Fonctions publiques avec un appelant | ~400 | **6 mortes** (7 — voir post-scriptum) |
 | Imports employés | tous les modules | **17 inutiles** |
 | Événements publiés ayant un consommateur | 9 événements | 2 sans destinataire |
 | Routes servies ayant un appelant | 20 routes | 1 sans appelant |
@@ -131,3 +131,31 @@ que personne n'osera décider.
 
 La liste d'exemptions du garde-fou est **vide**. Y ajouter un nom demandera
 d'écrire pourquoi.
+
+---
+
+## Post-scriptum : le compte de fonctions mortes était trop bas
+
+**Six** était le chiffre de la ligne « Fonctions publiques avec un appelant ».
+Il était faux, et le détecteur lui-même en était la cause : il cherchait le nom
+dans le **texte** du dépôt.
+
+`http.en_ligne()` n'avait aucun appelant. Mais le mot apparaissait ailleurs
+comme nom de paramètre — `en_ligne=not ctx.hors_ligne`, dans cinq pipelines — et
+cela suffisait à le déclarer employé. Un garde-fou satisfait par une homonymie
+ne garde rien, et celui-ci a rendu un audit vert sur un dépôt qui ne l'était pas.
+
+Le détecteur lit maintenant l'arbre syntaxique : un appel, un attribut, un nom
+chargé **hors de sa propre portée**. Les chaînes de caractères continuent de
+compter comme des appels — une fonction atteinte par `getattr(module, "nom")` a
+un appelant bien réel, et l'accuser serait crier à tort ; le détecteur reste
+donc du côté qui rate un défaut plutôt que d'en inventer un.
+
+Mesure après réécriture, sur le dépôt d'avant correction : **une** orpheline,
+celle qu'on cherchait, et **aucune fausse alerte**. C'est ce qui a autorisé
+l'adoption ; un détecteur plus strict qui aurait accusé ne serait-ce qu'une
+fonction à tort n'aurait pas été adopté, parce qu'un contrôle qui signale à
+tort finit ignoré.
+
+Le vrai total est donc **sept**. Le détail de la panne qui l'a révélé est dans
+[PANNES.md](PANNES.md).

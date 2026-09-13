@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -33,6 +34,15 @@ _COULEUR = sys.stdout.isatty()
 
 def _c(texte: str, code: str) -> str:
     return "\033[{}m{}\033[0m".format(code, texte) if _COULEUR else texte
+
+
+def _compte(valeur: Optional[int]) -> str:
+    """Un compteur du jour, ou « ? » quand la base ne se lit plus.
+
+    Ecrire « 0 » serait plus joli et faux : zero appel et compteur illisible
+    ne demandent pas la meme chose a l'utilisateur.
+    """
+    return "?" if valeur is None else str(valeur)
 
 
 def _milliers(nombre: int) -> str:
@@ -1630,9 +1640,16 @@ def cmd_liste(args: argparse.Namespace) -> int:
               + _c('usine ebook "votre sujet"', "1"))
         return 0
     titre_console("Produits fabriques")
+    inacheves = 0
     for produit in produits:
         meta = produit.get("meta") or {}
-        marque = "pret" if produit["statut"] == "pret" else produit["statut"]
+        # « en_cours » ne veut dire qu'une chose : la fabrication s'est
+        # arretee en chemin — coupure de reseau, quota, processus tue par
+        # Android. Le mot seul ne le disait pas, et la ligne s'affichait sous
+        # « Produits fabriques » comme les autres.
+        inacheve = produit["statut"] == "en_cours"
+        inacheves += int(inacheve)
+        marque = _c("inacheve", "33") if inacheve else produit["statut"]
         print("  {}  {}".format(
             _c(time.strftime("%d/%m %H:%M", time.localtime(produit["cree_le"])), "2"),
             _c(produit["titre"][:58], "1"),
@@ -1640,6 +1657,9 @@ def cmd_liste(args: argparse.Namespace) -> int:
         print("     {} | {} | {}".format(produit["type"], marque, produit["id"]))
         if meta.get("mots"):
             print("     {} mots".format(meta["mots"]))
+    if inacheves:
+        print("\n  {} produit(s) inacheve(s). {}".format(
+            inacheves, _explique_le_cache()))
     return 0
 
 
@@ -1705,10 +1725,11 @@ def cmd_docteur(args: argparse.Namespace) -> int:
             budget = ""
             if ligne.get("tpd"):
                 budget = " · {}/{} jetons".format(
-                    ligne.get("jetons_aujourdhui", 0), _milliers(ligne["tpd"]))
+                    _compte(ligne.get("jetons_aujourdhui")),
+                    _milliers(ligne["tpd"]))
             print("  {} {:<13} {:<9} {:<28} {}/{} aujourd'hui{}{}".format(
                 _c("v", "32"), ligne["nom"], genre, ligne["modele"],
-                ligne["aujourdhui"], ligne["rpd"], _c(budget, "90"),
+                _compte(ligne["aujourdhui"]), ligne["rpd"], _c(budget, "90"),
                 _c(suffixe, "36")))
         else:
             print("  {} {:<13} {:<9} definir {} — {}".format(
@@ -1747,17 +1768,25 @@ def cmd_docteur(args: argparse.Namespace) -> int:
         print("      sur un telephone. Le delai d'attente est regle en")
         print("      consequence ({} s par appel).".format(
             config.PROVIDERS_BY_NAME["ollama"].timeout))
-    elif verdict["etat"] == "bloque":
-        print("      " + _c("usine cles", "1"))
+    elif verdict.get("remede"):
+        print("      " + _c(verdict["remede"], "1"))
 
     details = etat["pool"]
     if details:
         titre_console("Pool de cles — rotation automatique")
         for detail in details:
-            etat = (_c("disponible", "32") if detail["disponible"]
-                    else _c("repos {}s".format(detail["repos_restant"]), "33"))
+            # Surtout pas « etat » : cette boucle ecrasait le dictionnaire du
+            # diagnostic par une chaine de couleur, et la section suivante
+            # mourait sur « string indices must be integers ». Le defaut ne
+            # sortait que chez qui possede une cle — le pool est vide sans cle,
+            # donc la boucle ne tournait jamais dans la suite de tests. Autrement
+            # dit : « usine docteur » plantait pour tous les vrais utilisateurs,
+            # et pour eux seuls.
+            repos = (_c("disponible", "32") if detail["disponible"]
+                     else _c("repos {}s".format(detail["repos_restant"]), "33"))
             print("  {:<13} {:<14} {:>4} appels aujourd'hui   {}".format(
-                detail["fournisseur"], detail["cle"], detail["appels_jour"], etat))
+                detail["fournisseur"], detail["cle"], detail["appels_jour"],
+                repos))
 
     stats = etat["consommation"]
     if stats:
@@ -2250,6 +2279,85 @@ def _fabrication(commande: str) -> bool:
     return commande in set(catalogue.cles()) | {"complet"}
 
 
+def _explique_le_cache() -> str:
+    """Ce que l'utilisateur ignore et qui change tout : relancer ne repart pas de zero.
+
+    Chaque reponse du modele est gardee en cache par empreinte de l'invite.
+    Relancer la meme commande rejoue donc gratuitement tout ce qui avait deja
+    ete paye, et ne facture que la suite. Sans cette phrase, l'utilisateur
+    croit avoir brule sa journee de quota pour rien, et n'essaie pas.
+
+    Mesure du 13/09/2026, ebook de 8 chapitres via le simulateur : 27 appels
+    d'un trait ; coupe apres 6, la relance en a coute 21. La difference est
+    exactement ce que le cache a rendu. On ne promet donc PAS une relance
+    gratuite — ce serait faux des la premiere interruption precoce — mais une
+    relance qui ne repaie pas ce qui est fait.
+    """
+    return ("Les reponses deja obtenues sont en cache : relancer la MEME "
+            "commande reprend ou vous en etiez, sans repayer ce qui est fait.")
+
+
+def _expliquer_ecriture(exc: OSError) -> str:
+    """Traduit un echec d'ecriture en geste a faire — ou rend "" si ce n'en est pas un.
+
+    Rendre "" plutot que deviner. « OSError » ne parle pas que du disque :
+    « Address already in use » (tableau de bord deja lance) en est une, et
+    annoncer un disque plein a qui a simplement lance « usine web » deux fois
+    est exactement le garde-fou qui crie a tort. Le message generique, lui,
+    reste juste. On ne parle donc que des trois errno qu'on sait traduire.
+    """
+    import errno
+
+    if exc.errno == errno.ENOSPC:
+        from .core import diagnostic as module_diagnostic
+
+        espace = module_diagnostic.espace_libre()
+        reste = (" Il reste {} Mo.".format(espace["libre_mo"])
+                 if espace["connu"] else "")
+        return ("Plus de place sur l'appareil.{} Faites de la place, puis "
+                "relancez. {}".format(reste, _explique_le_cache()))
+    if exc.errno in (errno.EACCES, errno.EPERM):
+        return ("Ecriture refusee dans {}. Sur Android, un dossier de /sdcard "
+                "demande l'autorisation de stockage : « termux-setup-storage ». "
+                "{}".format(config.WORKDIR, _explique_le_cache()))
+    if exc.errno == errno.EROFS:
+        return ("Le dossier de travail est en lecture seule ({}). Choisissez-en "
+                "un autre : USINE_HOME=~/Usine-IA. {}".format(
+                    config.WORKDIR, _explique_le_cache()))
+    return ""
+
+
+def _expliquer_base(defaut: str) -> str:
+    """Ce qu'on dit quand le fichier de base ne se lit plus.
+
+    La panne rend l'usine ENTIEREMENT muette : toutes les commandes passent
+    par la base, « docteur » et « sauvegarde » compris. L'utilisateur voyait
+    « DatabaseError : file is not a database » sur chacune, sans savoir quel
+    fichier, ni que ses produits, eux, sont intacts.
+
+    Ce dernier point est le seul qui compte vraiment : les produits sont des
+    FICHIERS dans produits/, et les reglages un JSON a cote. Ce que la base
+    garde et qu'on perdrait, c'est l'historique, les ventes, les bibles de
+    serie et le cache des reponses. On le dit tel quel plutot que de
+    rassurer : une bible de serie perdue, c'est du contenu perdu.
+
+    On n'efface rien : deplacer soi-meme la base de quelqu'un serait decider
+    a sa place que son historique ne vaut rien.
+    """
+    return (
+        "La base de l'atelier est illisible : {defaut}.\n"
+        "  Fichier : {base}\n"
+        "  Vos produits sont intacts : ce sont des fichiers dans {produits},\n"
+        "  et vos reglages sont dans reglages.json. La base contient\n"
+        "  l'historique, les ventes, les bibles de serie et le cache.\n"
+        "\n"
+        "  Si vous avez une sauvegarde :\n"
+        "    usine sauvegarde --restaurer archive.zip --oui\n"
+        "  Sinon, mettez la base de cote — l'usine en recreera une vide :\n"
+        "    mv {base} {base}.casse"
+    ).format(defaut=defaut, base=config.DB_PATH, produits=config.PRODUITS_DIR)
+
+
 def principal(argv: Optional[List[str]] = None) -> int:
     config.load_env()
     config.ensure_dirs()
@@ -2278,9 +2386,41 @@ def principal(argv: Optional[List[str]] = None) -> int:
         return 130
     except llm.PlusDeFournisseur as exc:
         erreur(str(exc))
-        print("\n  Diagnostic : " + _c("usine docteur", "1"))
-        print("  Nouvelle cle : " + _c("usine cles", "1"))
+        # Le geste depend de la cause, et la cause se mesure : « usine cles »
+        # est un conseil absurde quand le telephone est simplement sorti du
+        # wifi. On demande donc au reseau, une fois, avant de conseiller.
+        from .core.http import en_ligne
+
+        print("\n  " + _explique_le_cache())
+        if not en_ligne():
+            print("  Le reseau est coupe. Rebranchez le wifi ou les donnees "
+                  "mobiles, puis relancez la meme commande.")
+        else:
+            print("\n  Diagnostic : " + _c("usine docteur", "1"))
+            print("  Nouvelle cle : " + _c("usine cles", "1"))
         return 3
+    except sqlite3.DatabaseError as exc:
+        # On ne croit pas l'exception sur parole : « DatabaseError » couvre
+        # aussi les defauts de requete. On rouvre le fichier et on demande a
+        # SQLite. Sans base cassee, on retombe sur le message generique.
+        defaut = store.diagnostic_base()
+        erreur(_expliquer_base(defaut) if defaut
+               else "{} : {}".format(type(exc).__name__, exc))
+        if config.env_bool("USINE_DEBUG"):
+            raise
+        return 1
+    except OSError as exc:
+        # La panne la plus previsible sur un telephone, et celle que le
+        # message brut expliquait le moins : « [Errno 28] No space left on
+        # device » ne dit ni ou, ni quoi faire, ni — surtout — que le travail
+        # deja fait n'est pas perdu.
+        explication = _expliquer_ecriture(exc)
+        erreur(explication or "{} : {}".format(type(exc).__name__, exc))
+        if config.env_bool("USINE_DEBUG"):
+            raise
+        if not explication:
+            print("  Details complets : USINE_DEBUG=1 usine ...")
+        return 1
     except Exception as exc:
         erreur("{} : {}".format(type(exc).__name__, exc))
         if config.env_bool("USINE_DEBUG"):

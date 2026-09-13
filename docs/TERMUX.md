@@ -163,11 +163,17 @@ pkg install ca-certificates openssl
 ```
 
 **`Tous les fournisseurs ont échoué`**
+L'usine teste elle-même la connexion avant de conseiller : si le réseau est
+coupé, elle vous dit de rebrancher le wifi plutôt que de créer une clé. Sinon :
 ```bash
 usine docteur      # montre quelle clé manque et quel quota est atteint
 ```
 Les quotas journaliers se remettent à zéro toutes les 24 h. Ajoutez une
 deuxième clé chez un autre fournisseur pour ne plus jamais attendre.
+
+Dans les deux cas, **relancez la même commande** : les réponses déjà obtenues
+sont en cache, la fabrication reprend où elle s'était arrêtée sans repayer ce
+qui est fait. `usine liste` marque **inachevé** les produits coupés en route.
 
 **La fabrication semble figée**
 Un appel IA peut prendre 60 à 150 secondes sur un modèle chargé. Le journal
@@ -175,7 +181,28 @@ affiche chaque chapitre terminé. En cas de doute : `Ctrl+C`, puis relancez —
 le cache reprendra où vous en étiez.
 
 **`no space left on device`**
-Les produits pèsent quelques mégaoctets, mais le cache grossit :
+Le message vous dit combien il reste et que le travail déjà fait n'est pas
+perdu. Les produits pèsent quelques mégaoctets, mais le cache grossit :
 ```bash
 usine cache --vider
 ```
+
+**`Ecriture refusée` dans un dossier de `/sdcard`**
+Android demande l'autorisation de stockage :
+```bash
+termux-setup-storage
+```
+
+**`La base de l'atelier est illisible`**
+Une carte SD fatiguée ou un processus tué en pleine écriture. **Vos produits
+sont intacts** : ce sont des fichiers dans `produits/`, pas des lignes de la
+base. Si vous avez une archive :
+```bash
+usine sauvegarde --restaurer archive.zip --oui
+```
+Sinon, mettez la base de côté — l'usine en recrée une vide au démarrage
+suivant. Vous perdez l'historique, les ventes, les bibles de série et le cache,
+rien d'autre. `usine docteur` continue de fonctionner dans cet état : c'est lui
+qui nomme le fichier et le remède.
+
+Le détail de ces trois pannes, et ce qui a été mesuré : [PANNES.md](PANNES.md).

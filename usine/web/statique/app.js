@@ -77,14 +77,28 @@ async function chargerEtat() {
   const donnees = await reponse.json();
   $('version').textContent = 'v' + donnees.version;
 
+  /* Base illisible : le reste de la reponse n'existe pas, et l'afficher
+     quand meme ferait une page a moitie peinte sans dire pourquoi. On montre
+     la panne et le geste, une bonne fois. */
+  if (donnees.base) {
+    $('conseil').innerHTML = `Base de l'atelier illisible :
+      ${echapper(donnees.base)}. Vos produits restent sur le disque.
+      <code>${echapper(donnees.remede)}</code>`;
+    $('jauges').innerHTML = '<span class="vide">diagnostic indisponible</span>';
+    return;
+  }
+
   etat.fournisseurs = donnees.fournisseurs.map((f) => f.nom);
   scene.majEtat({ fournisseurs: etat.fournisseurs });
 
   $('jauges').innerHTML = donnees.fournisseurs.map((f) => {
-    const part = f.rpd ? Math.min(100, (f.aujourdhui / f.rpd) * 100) : 0;
+    // « aujourdhui » vaut null quand la base est illisible : la jauge reste
+    // vide et affiche « ? », au lieu de montrer une journee vierge rassurante.
+    const connu = f.aujourdhui !== null && f.aujourdhui !== undefined;
+    const part = f.rpd && connu ? Math.min(100, (f.aujourdhui / f.rpd) * 100) : 0;
     const chaud = part > 75 ? ' chaud' : '';
     const etiquette = f.local ? 'local'
-      : (f.disponible ? `${f.aujourdhui}/${f.rpd}` : 'sans cle');
+      : (f.disponible ? `${connu ? f.aujourdhui : '?'}/${f.rpd}` : 'sans cle');
     const cles = f.nb_cles > 1 ? ` &times;${f.nb_cles}` : '';
     return `<div class="jauge${f.disponible ? '' : ' absent'}">
       <span class="nom">${echapper(f.nom)}${cles}</span>
@@ -281,7 +295,11 @@ $('docteur-lancer').addEventListener('click', async () => {
   $('docteur').innerHTML =
     `<div class="verdict-bloc ${d.verdict.etat === 'bloque' ? '' : 'gagnant'}">
        <strong>${echapper(d.verdict.etat)}</strong>
-       <div>${echapper(d.verdict.message)}</div></div>`
+       <div>${echapper(d.verdict.message)}${d.verdict.remede
+         ? `<br><code>${echapper(d.verdict.remede)}</code>` : ''}</div></div>`
+    /* La base d'abord : quand elle ne se lit plus, les lignes suivantes
+       decrivent une usine qui ne peut de toute facon rien enregistrer. */
+    + (d.base ? ligne(false, 'Base illisible : ' + d.base) : '')
     + ligne(true, 'Python ' + d.python)
     + ligne(true, 'Atelier : ' + d.workdir)
     + ligne(d.env_present, d.env_present ? 'Fichier .env present'
