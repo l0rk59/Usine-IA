@@ -47,10 +47,18 @@ REVISEUR = _agent("reviseur")
 STYLISTE = _agent("styliste")
 MARKETEUR = _agent("marketeur")
 CONTROLEUR = _agent("controleur")
+# Les cinq metiers que l'usine exercait sans les nommer, plus le lecteur.
+FORMATEUR = _agent("formateur")
+ANIMATEUR = _agent("animateur")
+BIBLIOTHECAIRE = _agent("bibliothecaire")
+OUTILLEUR = _agent("outilleur")
+PROSPECTEUR = _agent("prospecteur")
+LECTEUR = _agent("lecteur")
 
 EQUIPE: Dict[str, Agent] = {
     a.nom: a for a in (ARCHITECTE, REDACTEUR, EDITEUR, REVISEUR, STYLISTE,
-                       MARKETEUR, CONTROLEUR)
+                       MARKETEUR, CONTROLEUR, FORMATEUR, ANIMATEUR,
+                       BIBLIOTHECAIRE, OUTILLEUR, PROSPECTEUR, LECTEUR)
 }
 
 
@@ -529,6 +537,90 @@ def polir(contexte: Any, texte: str, fournisseur_auteur: str = "") -> str:
 
     poli = elaguer_markdown(reponse.texte)
     return poli if len(poli) > len(texte) * 0.6 else texte
+
+
+def lire_comme_l_audience(contexte: Any, sections: List[Tuple[str, str]],
+                          promesse: str = "",
+                          fournisseur_auteur: str = "") -> Dict[str, Any]:
+    """Le produit lu par celui a qui on le vend, et par personne d'autre.
+
+    Tous les controles de l'usine jugent le TEXTE : sa progression, sa tenue,
+    ses tics, ses contradictions. Aucun ne demandait s'il est comprehensible
+    pour son audience. Ce sont deux questions differentes, et la seconde est
+    celle qui decide si un acheteur demande un remboursement : un chapitre
+    techniquement excellent et incomprehensible pour son public est un
+    chapitre rate, et rien ne le signalait.
+
+    Un appel par produit, sur le texte entier — comme la relecture
+    d'ensemble, et pour la meme raison : ce qu'on cherche n'est visible
+    qu'a la lecture complete. Un sigle explique au chapitre neuf mais employe
+    au chapitre deux ne se voit d'aucune section prise seule.
+    """
+    if len(sections) < 2:
+        return {}
+    corps = "\n\n".join(
+        "### {}\n{}".format(titre, texte[:2200]) for titre, texte in sections)
+    invite = (
+        "Tu es le lecteur a qui ce produit est vendu : {audience}.\n"
+        "Tu n'es ni editeur, ni correcteur. Tu l'as achete pour apprendre a "
+        "faire quelque chose.\n\n"
+        "CE QU'ON T'A PROMIS : {promesse}\n\n"
+        "--- LE PRODUIT ---\n{corps}\n--- FIN ---\n\n"
+        "Reponds honnetement, a la premiere personne :\n"
+        "- ou as-tu decroche, et a quel endroit exactement ;\n"
+        "- quel mot ou sigle est employe sans avoir ete explique avant ;\n"
+        "- qu'est-ce que tu ne sauras toujours pas faire apres avoir lu ;\n"
+        "- la promesse a-t-elle ete tenue, oui ou non.\n\n"
+        "Ne parle ni du style ni de la mise en forme. Si tout etait clair, "
+        "dis-le : c'est une reponse parfaitement acceptable.\n\n"
+        "Schema JSON exact :\n"
+        '{{"promesse_tenue": true, "note_clarte": 8.0, '
+        '"decrochages": [{{"section": "titre", "passage": "citation exacte", '
+        '"pourquoi": "ce que je n\'ai pas compris"}}], '
+        '"mots_non_expliques": ["..."], '
+        '"ce_que_je_ne_sais_toujours_pas_faire": ["..."]}}'
+    ).format(audience=getattr(contexte, "audience", "un public francophone"),
+             promesse=promesse or "non precisee", corps=corps[:28000])
+
+    try:
+        donnees, relecteur = LECTEUR.travailler_json(
+            contexte, invite, max_tokens=1600,
+            eviter=[fournisseur_auteur] if fournisseur_auteur else None,
+            avec_fournisseur=True)
+    except Exception as exc:
+        evenements.publier("qualite", etat="lecteur_indisponible", detail=str(exc))
+        return {"disponible": False, "raison": str(exc)}
+    if not isinstance(donnees, dict):
+        return {"disponible": False, "raison": "reponse illisible"}
+
+    decrochages = [d for d in (donnees.get("decrochages") or [])
+                   if isinstance(d, dict) and d.get("pourquoi")][:6]
+    mots = [str(m)[:60] for m in (donnees.get("mots_non_expliques") or [])][:8]
+    manques = [str(m)[:160] for m in
+               (donnees.get("ce_que_je_ne_sais_toujours_pas_faire") or [])][:5]
+    try:
+        clarte = round(float(donnees.get("note_clarte")), 1)
+    except (TypeError, ValueError):
+        clarte = None
+    resume = "lecteur : {} decrochage(s), {} mot(s) non explique(s)".format(
+        len(decrochages), len(mots))
+    if clarte is not None:
+        resume += ", clarte {}/10".format(clarte)
+    if donnees.get("promesse_tenue") is False:
+        resume += " — PROMESSE NON TENUE"
+    evenements.publier("lecteur", clarte=clarte, decrochages=len(decrochages),
+                       promesse_tenue=bool(donnees.get("promesse_tenue", True)),
+                       relecteur=relecteur)
+    return {
+        "disponible": True,
+        "promesse_tenue": bool(donnees.get("promesse_tenue", True)),
+        "note_clarte": clarte,
+        "decrochages": decrochages,
+        "mots_non_expliques": mots,
+        "manques": manques,
+        "resume": resume,
+        "relecteur": relecteur,
+    }
 
 
 def relire_l_ensemble(contexte: Any, sections: List[Tuple[str, str]],

@@ -10,17 +10,13 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from ..core import llm
+from ..agents import equipe
 from ..pipelines import catalogue
 from ..render import document as D
 from ..render.page import ecrire_page
 from ..pipelines.base import Contexte, nettoyer_titre
 from . import extrait
 
-ROLE = (
-    "un redacteur publicitaire specialise dans les produits digitaux, "
-    "qui vend par la clarte et la preuve, jamais par la pression"
-)
 
 PLATEFORMES = {
     "gumroad": "Gumroad (description en markdown, 150-300 mots, titre court, "
@@ -54,7 +50,8 @@ def fiche_produit(ctx: Contexte, titre: str, description_produit: str,
         '"garantie": "formulation de la garantie"}}'
     ).format(titre=titre, contenu=description_produit[:2500],
              audience=ctx.audience, plateforme=PLATEFORMES.get(plateforme, plateforme))
-    fiche = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="costaud",
+    fiche = equipe.MARKETEUR.travailler_json(
+        ctx, invite, role_modele="costaud",
                              temperature=0.75, max_tokens=3500)
     if not isinstance(fiche, dict):
         raise ValueError("Fiche produit invalide")
@@ -78,7 +75,8 @@ def sequence_lancement(ctx: Contexte, titre: str, fiche: Dict[str, Any]) -> List
     ).format(titre=titre, accroche=fiche.get("accroche", ""),
              benefices=" ; ".join(str(b) for b in fiche.get("benefices", [])[:6]),
              audience=ctx.audience)
-    donnees = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="standard",
+    donnees = equipe.MARKETEUR.travailler_json(
+        ctx, invite, role_modele="standard",
                                temperature=0.78, max_tokens=4096)
     emails = donnees.get("emails") if isinstance(donnees, dict) else donnees
     return [

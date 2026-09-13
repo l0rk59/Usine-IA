@@ -10,14 +10,13 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from ..core import images, llm
+from ..agents import equipe
+from ..core import images
 from ..render import document as D
 from ..render import tableur
 from ..render import livraison
 from ..render.page import ecrire_page
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
-
-ROLE = "un consultant operationnel qui transforme des methodes en outils utilisables"
 
 
 def _sommaire(ctx: Contexte, nombre: int) -> Dict[str, Any]:
@@ -34,7 +33,8 @@ def _sommaire(ctx: Contexte, nombre: int) -> Dict[str, Any]:
         '"quand": "dans quelle situation l\'utiliser", '
         '"resultat": "ce que l\'utilisateur obtient"}}]}}'
     ).format(n=nombre, sujet=ctx.sujet, audience=ctx.audience)
-    donnees = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="costaud",
+    donnees = equipe.OUTILLEUR.travailler_json(
+        ctx, invite, role_modele="costaud",
                                temperature=0.68, max_tokens=2600)
     if not isinstance(donnees, dict) or not donnees.get("outils"):
         raise ValueError("Sommaire de boite a outils invalide")
@@ -89,7 +89,8 @@ def _remplir(ctx: Contexte, boite: Dict[str, Any], outil: Dict[str, Any]) -> Dic
         quand=outil["quand"], resultat=outil["resultat"],
         sujet=ctx.sujet, audience=ctx.audience, consigne=consigne,
     )
-    contenu = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="standard",
+    contenu = equipe.OUTILLEUR.travailler_json(
+        ctx, invite, role_modele="standard",
                                temperature=0.7, max_tokens=3000)
     return contenu if isinstance(contenu, dict) else {"intro": "", "points": []}
 

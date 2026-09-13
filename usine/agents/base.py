@@ -112,6 +112,7 @@ class Agent:
         temperature: Optional[float] = None,
         eviter: Optional[Sequence[str]] = None,
         avec_fournisseur: bool = False,
+        role_modele: Optional[str] = None,
     ) -> Any:
         """Rend l'objet decode, ou (objet, fournisseur) si on le demande.
 
@@ -122,7 +123,11 @@ class Agent:
         resultat, fournisseur = llm.generer_json(
             invite,
             systeme=self.systeme(contexte),
-            role=self.role_modele,
+            # Un agent garde son metier ; ce qui change, c'est le modele.
+            # Batir une structure demande un modele costaud la ou remplir une
+            # fiche n'en demande pas — et c'est le meme agent qui fait les
+            # deux.
+            role=role_modele or self.role_modele,
             temperature=0.45 if temperature is None else temperature,
             max_tokens=max_tokens,
             eviter=eviter,

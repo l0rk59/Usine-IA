@@ -636,6 +636,14 @@ function traiter(evenement) {
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
       `reponse coupee au plafond (${echapper(evenement.fournisseur)}, ` +
       `${evenement.plafond} jetons) : le texte s'arrete avant sa fin`, 'souci');
+  } else if (evenement.type === 'lecteur') {
+    /* Tout le reste de l'usine juge le texte. Le lecteur dit s'il a compris,
+       ce qui est la seule question a laquelle un acheteur repond vraiment. */
+    ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
+      `lecture par l'audience : clarte ${evenement.clarte ?? '?'}/10, ` +
+      `${evenement.decrochages} decrochage(s)` +
+      (evenement.promesse_tenue ? '' : ' &middot; <strong>promesse non tenue</strong>'),
+      evenement.promesse_tenue && evenement.decrochages === 0 ? 'succes' : 'souci');
   } else if (evenement.type === 'deliberation') {
     /* Les sept agents ne se parlaient pas : l'editeur critiquait, le reviseur
        appliquait. Quand l'auteur conteste et qu'un tiers tranche, c'est la

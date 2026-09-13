@@ -135,6 +135,20 @@ def simulateur(messages, role):
     invite = messages[-1]["content"]
     bas = invite.lower()
 
+    # --- lecture par l'audience --------------------------------------------
+    if '"ce_que_je_ne_sais_toujours_pas_faire"' in invite:
+        return json.dumps({
+            "promesse_tenue": True,
+            "note_clarte": 7.5,
+            "decrochages": [
+                {"section": "Chapitre modele 2",
+                 "passage": "Le probleme n'est pas son tarif",
+                 "pourquoi": "je ne vois pas de quel tarif on parle"}],
+            "mots_non_expliques": ["taux journalier reel"],
+            "ce_que_je_ne_sais_toujours_pas_faire": [
+                "fixer mon propre tarif a partir de mes charges"],
+        }, ensure_ascii=False)
+
     # --- deliberation : l'auteur conteste, le controleur tranche ------------
     if '"objections"' in invite:
         # L'auteur conteste le premier point, jamais les autres : un

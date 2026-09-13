@@ -6,17 +6,13 @@ import csv
 import json
 from typing import Any, Dict, List
 
-from ..core import config, llm, marche, veille, ventes
+from ..agents import equipe
+from ..core import config, marche, veille, ventes
 from . import catalogue
 from ..render import document as D
 from ..render import tableur
 from ..render.page import ecrire_page
 from .base import Contexte, nettoyer_titre
-
-ROLE = (
-    "un analyste de marche des produits digitaux, lucide sur ce qui se vend "
-    "reellement et sur la saturation des niches"
-)
 
 
 def explorer(ctx: Contexte, nombre: int = 12,
@@ -58,7 +54,8 @@ def explorer(ctx: Contexte, nombre: int = 12,
              terrain=discussions,
              catalogue=catalogue.resume_pour_ia(),
              types="|".join(catalogue.cles(vendables=True)))
-    donnees = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="costaud",
+    donnees = equipe.PROSPECTEUR.travailler_json(
+        ctx, invite, role_modele="costaud",
                                temperature=0.85, max_tokens=4096)
     idees = donnees.get("idees") if isinstance(donnees, dict) else donnees
     propres: List[Dict[str, Any]] = []

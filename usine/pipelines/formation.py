@@ -7,13 +7,12 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..core import images, llm
+from ..agents import equipe
+from ..core import images
 from ..render import livraison, narration, quiz
 from ..render.pdf import DocumentPDF
 from .base import (Contexte, elaguer_markdown, jetons_pour, nettoyer_titre,
                    preparer, slug, terminer)
-
-ROLE = "un concepteur pedagogique qui cree des formations en ligne actionnables"
 
 
 def _programme(ctx: Contexte, modules: int) -> Dict[str, Any]:
@@ -30,7 +29,8 @@ def _programme(ctx: Contexte, modules: int) -> Dict[str, Any]:
         '"livrable": "ce que l\'apprenant produit", '
         '"notions": ["...", "..."], "exercice": "consigne de l\'exercice"}}]}}'
     ).format(n=modules, sujet=ctx.sujet, audience=ctx.audience)
-    programme = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="costaud",
+    programme = equipe.FORMATEUR.travailler_json(
+        ctx, invite, role_modele="costaud",
                                  temperature=0.65, max_tokens=3000)
     if not isinstance(programme, dict) or not programme.get("modules"):
         raise ValueError("Programme de formation invalide")
@@ -78,7 +78,8 @@ def _rediger_module(ctx: Contexte, programme: Dict[str, Any], index: int,
         mots=ctx.mots_par_chapitre,
         exercice=module["exercice"] or "a definir",
     )
-    reponse = llm.generer(invite, systeme=ctx.systeme(ROLE), role="standard",
+    reponse = equipe.FORMATEUR.travailler(
+        ctx, invite, role_modele="standard",
                           temperature=0.75,
                           max_tokens=jetons_pour(ctx.mots_par_chapitre))
     texte = elaguer_markdown(reponse.texte)
@@ -123,7 +124,8 @@ def _quiz(ctx: Contexte, programme: Dict[str, Any],
     ).format(titre=programme["titre"], promesse=programme.get("promesse", ""),
              modules=modules, n=par_module)
 
-    brut = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="costaud",
+    brut = equipe.FORMATEUR.travailler_json(
+        ctx, invite, role_modele="costaud",
                             temperature=0.5, max_tokens=3200)
     questions = brut.get("quiz") if isinstance(brut, dict) else None
     if not isinstance(questions, list):
@@ -199,7 +201,8 @@ def _narration(ctx: Contexte, programme: Dict[str, Any],
         ).format(formation=programme["titre"], num=index + 1,
                  total=len(contenus), titre=module.get("titre", nom),
                  objectif=module.get("objectif", ""), corps=corps[:9000])
-        reponse = llm.generer(invite, systeme=ctx.systeme(ROLE), role="standard",
+        reponse = equipe.FORMATEUR.travailler(
+        ctx, invite, role_modele="standard",
                               temperature=0.7,
                               max_tokens=jetons_pour(ctx.mots_par_chapitre))
         scripts.append((nom, elaguer_markdown(reponse.texte)))
@@ -223,7 +226,8 @@ def _sequence_email(ctx: Contexte, programme: Dict[str, Any]) -> List[Dict[str, 
         promesse=programme.get("promesse", ""),
         modules="\n".join("- " + m["titre"] for m in programme["modules"]),
     )
-    donnees = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="standard",
+    donnees = equipe.FORMATEUR.travailler_json(
+        ctx, invite, role_modele="standard",
                                temperature=0.7, max_tokens=4096)
     emails = donnees.get("emails") if isinstance(donnees, dict) else donnees
     return [

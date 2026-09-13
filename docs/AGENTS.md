@@ -1,21 +1,76 @@
 # Les agents et la boucle qualité
 
-## Pourquoi sept rôles plutôt qu'un seul prompt
+## Pourquoi treize rôles plutôt qu'un seul prompt
 
 Un prompt unique qui demande « écris un chapitre utile, concret, bien écrit,
 sans risque juridique et qui tienne la promesse du titre » produit un texte
 moyen sur tous ces axes. Chaque agent n'a qu'un objectif à tenir, et le tient
 mieux.
 
-| Agent | Rôle | Modèle | Température |
-|---|---|---|---|
-| `architecte` | conçoit les plans | costaud | 0.65 |
-| `redacteur` | écrit le contenu | standard | 0.80 |
-| `editeur` | critique sans complaisance | costaud | 0.35 |
-| `reviseur` | applique les corrections | standard | 0.55 |
-| `styliste` | retire les tics d'IA | standard | 0.60 |
-| `marketeur` | écrit la page de vente | costaud | 0.78 |
-| `controleur` | valide la mise en vente | costaud | 0.30 |
+Le signe est celui qui apparaît dans le journal du tableau de bord pendant une
+fabrication — c'est tout ce qu'on voit d'un agent qui travaille, et c'est
+pourquoi un test vérifie que deux agents n'en partagent jamais un.
+
+| Agent | Signe | Rôle | Modèle | Température |
+|---|---|---|---|---|
+| `architecte` | `#` | conçoit les plans | costaud | 0.65 |
+| `redacteur` | `~` | écrit le contenu | standard | 0.80 |
+| `editeur` | `!` | critique sans complaisance | costaud | 0.35 |
+| `reviseur` | `+` | applique les corrections | standard | 0.55 |
+| `styliste` | `/` | retire les tics d'IA | standard | 0.60 |
+| `marketeur` | `$` | écrit la page de vente | costaud | 0.78 |
+| `formateur` | `^` | découpe une méthode en modules qu'on finit | standard | 0.70 |
+| `animateur` | `@` | écrit pour les réseaux sociaux | standard | 0.82 |
+| `bibliothecaire` | `&` | classe et teste les packs de prompts | standard | 0.60 |
+| `outilleur` | `=` | transforme une méthode en gabarit utilisable | standard | 0.62 |
+| `prospecteur` | `?` | juge une niche | raisonnement | 0.55 |
+| `lecteur` | `o` | lit le produit fini, en acheteur | standard | 0.50 |
+| `controleur` | `v` | valide la mise en vente | costaud | 0.30 |
+
+### Les six derniers venus, et ce qui manquait sans eux
+
+Les sept premiers ne servaient qu'aux ebooks et aux pages de vente. **Cinq
+chaînes sur dix n'avaient aucune équipe** : la formation, les publications
+sociales, les packs de prompts, les boîtes à outils et l'étude de niche
+appelaient le routeur directement, avec une personnalité écrite en dur dans
+chaque fichier — quinze appels au total.
+
+Ce qu'elles y perdaient ne se voyait nulle part :
+
+- aucune règle de métier, donc le prompt de chaque fichier vieillissait seul ;
+- **aucune relecture croisée** : le même modèle écrivait et se relisait ;
+- aucun événement `agent`, donc un panneau éteint dans le tableau de bord
+  pour la moitié du catalogue ;
+- et surtout **aucun signalement de réponse tronquée**, qui est pourtant « le
+  défaut le plus coûteux du routeur, parce qu'il est invisible partout en
+  aval ».
+
+`formateur`, `animateur`, `bibliothecaire`, `outilleur` et `prospecteur`
+couvrent ces cinq chaînes. Un test les mesure par les **événements réellement
+publiés** pendant une fabrication, et non en cherchant leur nom dans le code :
+un agent importé et jamais appelé passerait une recherche de texte.
+
+Le treizième, `lecteur`, répond à un manque d'une autre nature.
+
+## Le lecteur : la seule voix qui ne juge pas le métier
+
+Tous les autres contrôles jugent le **texte**. Un chapitre techniquement
+excellent et incompréhensible pour son public reste un chapitre raté, et rien
+ne le signalait.
+
+`lecteur` reçoit le produit **entier** et une seule consigne : être l'acheteur.
+Il rend ce qu'aucun relecteur ne rend — ce qu'il n'a pas compris, où il a
+décroché, les sigles employés avant d'être expliqués, et si la promesse du
+titre est tenue.
+
+```bash
+usine ebook "sujet" --relecture-ensemble
+```
+
+Il ne s'impose pas : un appel par produit, sur le texte complet, quand la
+chaîne le demande. Et il **refuse de juger une section seule** — ce qu'il
+cherche (un sigle expliqué trop tard, une promesse non tenue) n'existe qu'à
+l'échelle du produit. Trois tests gardent ces trois points.
 
 ## La boucle : écrire → critiquer → corriger
 
@@ -52,6 +107,32 @@ Un réviseur qui renvoie un texte deux fois plus court a tronqué au lieu de
 corriger. Dans ce cas le texte d'origine est conservé et l'événement
 `revision_rejetee` est publié. Sans cette vérification, un chapitre pouvait
 arriver amputé dans le PDF final.
+
+## Quand deux moitiés de l'usine se contredisent
+
+Le rédacteur avait pour règle « toute affirmation est suivie d'un exemple ou
+d'un chiffre illustratif ». Le contrôle déterministe, lui, signale tout chiffre
+dont la phrase ne porte aucun marqueur de source — c'est une règle du dépôt :
+*pas de chiffre sans source*.
+
+Les deux étaient justes séparément. Ensemble, elles coûtaient **trois appels
+par chapitre** : le texte sortait fautif, le contrôle le voyait, le réviseur le
+corrigeait. Personne ne pouvait le remarquer, parce que le résultat final était
+correct.
+
+La règle du rédacteur nomme désormais les marqueurs que le contrôle accepte :
+
+> Un chiffre précis s'introduit TOUJOURS par « par exemple », « imaginons »,
+> « supposons » ou « selon \<source nommée\> ». Sans cette marque, il passe
+> pour une statistique inventée — et il en est une.
+
+Un test relit chaque fiche d'agent et vérifie qu'aucune ne prescrit un tic que
+le contrôle pénalise, ni ne cite un marqueur que le contrôle ne reconnaît pas.
+Il a fallu l'écrire avec précaution : le styliste a pour métier de supprimer
+« en conclusion », donc il **cite** le tic pour l'interdire. Un détecteur qui
+compte cette citation accuserait la seule fiche qui fait exactement ce qu'il
+faut — et *un garde-fou qui crie à tort finit ignoré*. Le détecteur retire donc
+ce qui est entre guillemets avant de chercher.
 
 ## Choisir le niveau
 

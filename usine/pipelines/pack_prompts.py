@@ -7,12 +7,10 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from ..core import llm
+from ..agents import equipe
 from ..render import document as D
 from ..render import livraison
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
-
-ROLE = "un ingenieur prompt qui concoit des bibliotheques de prompts professionnelles"
 
 
 def _categories(ctx: Contexte, nombre: int) -> List[Dict[str, Any]]:
@@ -27,7 +25,8 @@ def _categories(ctx: Contexte, nombre: int) -> List[Dict[str, Any]]:
         '"prompts": ["intitule court du prompt 1", "intitule court du prompt 2"]}}]}}\n'
         "Au total exactement {n} intitules repartis entre les categories."
     ).format(n=nombre, sujet=ctx.sujet, audience=ctx.audience)
-    donnees = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="costaud",
+    donnees = equipe.BIBLIOTHECAIRE.travailler_json(
+        ctx, invite, role_modele="costaud",
                                temperature=0.7, max_tokens=2600)
     categories = donnees.get("categories") if isinstance(donnees, dict) else donnees
     propres: List[Dict[str, Any]] = []
@@ -71,7 +70,8 @@ def _rediger_lot(ctx: Contexte, categorie: Dict[str, Any]) -> List[Dict[str, str
         intention=categorie["intention"],
         liste="\n".join("- " + p for p in categorie["prompts"]),
     )
-    donnees = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="standard",
+    donnees = equipe.BIBLIOTHECAIRE.travailler_json(
+        ctx, invite, role_modele="standard",
                                temperature=0.72, max_tokens=4096)
     elements = donnees.get("prompts") if isinstance(donnees, dict) else donnees
     resultat: List[Dict[str, str]] = []

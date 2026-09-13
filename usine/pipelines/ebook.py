@@ -325,12 +325,42 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False) -> Dict[str, Any]:
         ctx.etape("ensemble", "ok" if ensemble.get("disponible") else "echec",
                   ensemble.get("resume", ""))
 
+    # Le lecteur : la seule voix qui ne juge pas le metier. Tout le reste de
+    # l'usine juge le TEXTE ; personne ne demandait s'il est comprehensible
+    # pour celui a qui on le vend. Un chapitre techniquement excellent et
+    # incomprehensible pour son audience est un chapitre rate, et rien ne le
+    # signalait.
+    lecture = {}
+    if relecture_ensemble and not budget_epuise:
+        ctx.journal("Lecture par l'audience : ce qui n'est pas compris...")
+        try:
+            lecture = equipe.lire_comme_l_audience(
+                ctx, sections, plan.get("promesse", ""))
+        except PLUS_RIEN_A_DEMANDER as exc:
+            budget_epuise = True
+            ctx.journal("  {} — lecture par l'audience ignoree".format(exc))
+        except Exception as exc:
+            ctx.journal("  lecture par l'audience indisponible : {}".format(exc))
+        if lecture.get("disponible"):
+            ctx.journal("  " + lecture["resume"])
+            for decrochage in lecture["decrochages"][:3]:
+                ctx.journal("    « {} » — {}".format(
+                    str(decrochage.get("passage", ""))[:60],
+                    str(decrochage.get("pourquoi", ""))[:80]))
+            if lecture["mots_non_expliques"]:
+                ctx.journal("    jamais expliques : "
+                            + ", ".join(lecture["mots_non_expliques"][:6]))
+        ctx.etape("lecteur", "ok" if lecture.get("disponible") else "echec",
+                  lecture.get("resume", ""))
+
     ctx.journal("Etape 5/5 — mise en forme et export...")
     fichiers = exporter(ctx, plan, sections)
 
     rapport = equipe.rapport_qualite(qualite) if qualite else {}
     if ensemble:
         rapport["ensemble"] = ensemble
+    if lecture:
+        rapport["lecteur"] = lecture
     if local:
         rapport["controle_local"] = {
             "sections": [

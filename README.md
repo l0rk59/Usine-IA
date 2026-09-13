@@ -1005,6 +1005,29 @@ ceux qui possèdent une clé API — c'est-à-dire tous les vrais utilisateurs �
 le détecteur de fonctions orphelines se laissait tromper par un simple
 homonyme.
 
+## Cinq chaînes sur dix n'avaient aucune équipe
+
+Sept agents, et la moitié du catalogue qui ne les voyait jamais. La formation,
+les publications sociales, les packs de prompts, les boîtes à outils et l'étude
+de niche appelaient le routeur directement — quinze appels, chacun avec sa
+personnalité écrite en dur. Elles y perdaient quatre choses, toutes
+invisibles : aucune règle de métier, aucune relecture croisée, aucun événement
+dans le tableau de bord, et **aucun signalement de réponse tronquée** — le
+défaut le plus coûteux du routeur, précisément parce qu'il ne se voit nulle
+part en aval.
+
+Six agents s'ajoutent : [docs/AGENTS.md](docs/AGENTS.md). Cinq comblent ces
+chaînes. Le sixième, `lecteur`, répond à un manque d'une autre nature — tous
+les contrôles jugeaient le **texte**, personne ne lisait le produit comme son
+acheteur. Il reçoit le livre entier et dit ce qu'il n'a pas compris, où il a
+décroché, et quels sigles arrivent avant leur explication.
+
+Une contradiction s'est révélée en chemin : le rédacteur réclamait « un chiffre
+illustratif » et le contrôle refuse tout chiffre sans marqueur de source. Les
+deux règles étaient justes séparément ; ensemble elles coûtaient trois appels
+par chapitre, et le résultat final était correct — donc personne ne pouvait le
+remarquer.
+
 ## Ce que l'usine vaut face aux autres
 
 Quatre projets ouverts couvrent le même besoin. Comparaison mesurée sur leurs

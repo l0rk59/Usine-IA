@@ -7,12 +7,12 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from ..core import images, llm
+from ..agents import equipe
+from ..core import images
 from ..render import livraison, tableur
 from ..render.page import ecrire_page
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
 
-ROLE = "un strategiste de contenu qui ecrit des posts qui font reagir, sans clickbait"
 
 RESEAUX = {
     "linkedin": "LinkedIn (ton professionnel, 120-220 mots, paragraphes d'une ligne, "
@@ -38,7 +38,8 @@ def _calendrier(ctx: Contexte, nombre: int, reseau: str) -> List[Dict[str, Any]]
         '"accroche": "la premiere phrase du post", "objectif": "notoriete|engagement|vente"}}]}}'
     ).format(n=nombre, sujet=ctx.sujet, audience=ctx.audience,
              reseau=RESEAUX.get(reseau, reseau))
-    donnees = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="costaud",
+    donnees = equipe.ANIMATEUR.travailler_json(
+        ctx, invite, role_modele="costaud",
                                temperature=0.8, max_tokens=3500)
     publications = donnees.get("publications") if isinstance(donnees, dict) else donnees
     propres = []
@@ -77,7 +78,8 @@ def _rediger_lot(ctx: Contexte, lot: List[Dict[str, Any]], reseau: str) -> List[
         '"hashtags": "#un #deux", "visuel": "description en anglais de l\'image a generer"}}]}}'
     ).format(sujet=ctx.sujet, audience=ctx.audience,
              reseau=RESEAUX.get(reseau, reseau), liste=descriptions)
-    donnees = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="standard",
+    donnees = equipe.ANIMATEUR.travailler_json(
+        ctx, invite, role_modele="standard",
                                temperature=0.85, max_tokens=4096)
     posts = donnees.get("posts") if isinstance(donnees, dict) else donnees
     resultat = []
