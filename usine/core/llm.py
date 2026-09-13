@@ -149,13 +149,28 @@ def _compte_pour(p: config.Provider, role: str) -> str:
     return p.model_for(role) if p.quota(role).portee == "modele" else ""
 
 
-# Caracteres francais par jeton. Les tokeniseurs BPE des modeles courants
-# decoupent l'anglais autour de quatre caracteres par jeton, le francais un
-# peu plus finement : accents, elisions et terminaisons y produisent plus de
-# fragments. Trois caracteres et demi surestiment donc legerement le cout,
-# et c'est le bon sens de l'erreur : sous-estimer fait tenter un appel que le
-# fournisseur refusera, surestimer fait seulement choisir un autre.
-CARACTERES_PAR_JETON = 3.5
+# --------------------------------------------------------------------------
+# Combien de jetons pese du francais
+#
+# Deux estimateurs coexistaient et se contredisaient : celui qui fixe le
+# plafond de sortie comptait 2,6 jetons par mot, celui qui pese une demande
+# avant de l'envoyer comptait 3,5 caracteres par jeton. Sur mille mots de
+# francais, l'un annoncait 2 600 jetons et l'autre 1 598 — un facteur 1,63,
+# et une contradiction que personne ne pouvait voir puisque les deux vivaient
+# dans des modules differents.
+#
+# MESURE : 5,59 caracteres par mot, espace compris, sur les 27 375 mots de
+# francais de docs/. C'est le seul des deux chiffres qu'on puisse mesurer ici
+# — le second demanderait le tokeniseur du modele, qu'on n'a pas.
+#
+# CHOIX : le ratio jetons-par-mot fait foi, et le ratio par caractere en
+# decoule. Aligner dans l'autre sens ferait demander MOINS de jetons de
+# sortie, donc des textes coupes ; aligner dans ce sens-ci ne fait qu'ecarter
+# un fournisseur un peu plus tot. Surestimer coute une bascule, sous-estimer
+# coute un 429 ou une phrase tranchee.
+CARACTERES_PAR_MOT = 5.59
+JETONS_PAR_MOT = 2.6
+CARACTERES_PAR_JETON = CARACTERES_PAR_MOT / JETONS_PAR_MOT
 
 
 def _cout_estime(messages: Sequence[Dict[str, str]], max_tokens: int,

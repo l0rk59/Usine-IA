@@ -38,7 +38,10 @@ MOTS_MIN, MOTS_MAX = 300, 4000
 # Jetons par mot en francais. Mesure haute plutot que moyenne : un texte qui
 # tient dans son plafond vaut mieux qu'un texte coupe au milieu d'une phrase,
 # et les jetons non consommes ne coutent rien.
-JETONS_PAR_MOT = 2.6
+# Une seule conversion « francais -> jetons » pour tout le depot, et elle vit
+# dans le module qui compte les jetons. En tenir une seconde ici, c'est ce qui
+# a permis aux deux de diverger d'un facteur 1,63 sans que personne ne le voie.
+from ..core.llm import JETONS_PAR_MOT  # noqa: F401  (re-export historique)
 # Plafond absolu d'une reponse. Le routeur le ramene ensuite a ce que le
 # fournisseur choisi sait reellement emettre (Provider.max_sortie).
 JETONS_MAX = 8192

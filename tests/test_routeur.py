@@ -380,10 +380,34 @@ class TestBudgetEnJetonsParFournisseur(unittest.TestCase):
         self.groq = config.PROVIDERS_BY_NAME["groq"]
 
     def test_le_cout_estime_compte_l_entree_et_la_sortie(self):
-        messages = [{"role": "user", "content": "a" * 3500}]
+        """Exprime par la constante, pas par un nombre fige : un test qui
+        recopie une valeur derivee casse a chaque reetalonnage et n'apprend
+        rien sur ce qui est vrai."""
+        caracteres = 3500
+        messages = [{"role": "user", "content": "a" * caracteres}]
         cout = llm._cout_estime(messages, 2000, self.groq)
-        self.assertGreater(cout, 2000 + 900)
-        self.assertLess(cout, 2000 + 1200)
+        attendu = 2000 + caracteres / llm.CARACTERES_PAR_JETON
+        self.assertGreater(cout, attendu * 0.95)
+        self.assertLess(cout, attendu * 1.10)
+
+    def test_les_deux_estimateurs_de_jetons_s_accordent(self):
+        """Ils convertissent tous deux du francais en jetons, et ils ne
+        peuvent pas avoir raison ensemble.
+
+        Ils ont diverge d'un facteur 1,63 : celui qui fixe le plafond de
+        sortie comptait 2,6 jetons par mot, celui qui pese une demande avant
+        de l'envoyer 3,5 caracteres par jeton. La contradiction tenait dans
+        deux modules differents, ou personne ne pouvait la voir.
+        """
+        from usine.pipelines.base import jetons_pour
+
+        mots = 1000
+        par_le_plafond = jetons_pour(mots, marge=0)
+        texte = "a" * int(mots * llm.CARACTERES_PAR_MOT)
+        par_le_cout = llm._cout_estime([{"role": "user", "content": texte}],
+                                       0, self.groq) - self.groq.max_sortie
+        self.assertAlmostEqual(par_le_plafond, par_le_cout,
+                               delta=par_le_plafond * 0.05)
 
     def test_une_demande_plus_grosse_que_la_minute_ecarte_le_fournisseur(self):
         messages = [{"role": "user", "content": "a" * 12000}]

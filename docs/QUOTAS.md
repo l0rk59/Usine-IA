@@ -114,6 +114,31 @@ limits* renvoie vers AI Studio, derrière une authentification. Les valeurs
 retenues sont **les plus basses rapportées** : sous-estimer coûte une attente,
 surestimer coûte un 429.
 
+## 4bis. Deux estimateurs de jetons qui se contredisaient
+
+Trouvé en confrontant deux constantes qui n'avaient jamais été mises côte à
+côte, parce qu'elles vivaient dans des modules différents :
+
+| | Pour 1 000 mots de français |
+|---|---:|
+| `jetons_pour` — fixe le plafond de sortie | 2 600 jetons |
+| `_cout_estime` — pèse une demande avant de l'envoyer | 1 598 jetons |
+
+**Un facteur 1,63.** Les deux convertissent du français en jetons ; ils ne
+peuvent pas avoir raison ensemble.
+
+**Mesuré** : 5,59 caractères par mot, espace compris, sur les 27 375 mots de
+français de `docs/`. C'est le seul des deux chiffres qu'on puisse mesurer ici
+— le second demanderait le tokeniseur du modèle, qu'on n'a pas.
+
+**Choisi** : le ratio jetons-par-mot fait foi, et le ratio par caractère en
+découle (2,15 caractères par jeton). Aligner dans l'autre sens ferait demander
+*moins* de jetons de sortie, donc des textes coupés ; aligner dans ce sens-ci
+ne fait qu'écarter un fournisseur un peu plus tôt. Surestimer coûte une
+bascule, sous-estimer coûte un 429 ou une phrase tranchée.
+
+Un test vérifie désormais que les deux estimateurs s'accordent à 5 % près.
+
 ## 4. Estimer le coût avant d'appeler
 
 Pour savoir si une demande tient dans le budget de la minute, il faut la peser
