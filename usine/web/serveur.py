@@ -694,6 +694,52 @@ class Gestionnaire(BaseHTTPRequestHandler):
                              daemon=True).start()
             return ({"travail": travail_id}, 200)
 
+        if action == "reprendre":
+            # Reprendre appelle le modele : en tache de fond, comme une
+            # fabrication — sinon la requete tient dix minutes et le
+            # navigateur la coupe avant la fin.
+            from ..pipelines import carnet
+
+            dossier = Path(produit["dossier"] or "")
+            commande = carnet.commande(dossier)
+            if not commande:
+                return ({"erreur": "ce produit n'a pas garde la commande qui "
+                                   "l'a fabrique ; relancez-la a la main"}, 409)
+            with _VERROU:
+                if len([t for t in TRAVAUX.values()
+                        if t["statut"] == "en_cours"]) >= 2:
+                    return ({"erreur": "deux travaux sont deja en cours"}, 429)
+                travail_id = uuid.uuid4().hex[:12]
+                TRAVAUX[travail_id] = {
+                    "id": travail_id, "type": "reprise",
+                    "sujet": (produit["titre"] or produit_id)[:300],
+                    "statut": "en_cours", "debut": time.time(), "journal": [],
+                    "resultat": None, "erreur": "",
+                }
+            threading.Thread(target=_lancer_reprise,
+                             args=(travail_id, produit_id),
+                             daemon=True).start()
+            return ({"travail": travail_id}, 200)
+
+        if action == "supprimer":
+            # Effacer depuis le navigateur demande la meme prudence qu'ailleurs :
+            # le dossier doit etre SOUS l'atelier. Une fiche dont le chemin a
+            # ete modifie a la main ne doit pas pouvoir faire effacer autre
+            # chose, et un POST egare non plus — d'ou la confirmation exigee.
+            import shutil
+
+            if not options.get("confirme"):
+                return ({"erreur": "confirmation manquante"}, 400)
+            dossier = Path(produit["dossier"] or "")
+            if dossier.exists() and dossier.is_dir():
+                try:
+                    dossier.resolve().relative_to(config.PRODUITS_DIR.resolve())
+                except ValueError:
+                    return ({"erreur": "dossier hors de l'atelier"}, 400)
+                shutil.rmtree(dossier, ignore_errors=True)
+            store.supprimer_produit(produit_id)
+            return ({"efface": produit_id, "produits": _produits()}, 200)
+
         return ({"erreur": "action inconnue"}, 400)
 
     def _gerer_sauvegarde(self, options: Dict[str, Any]) -> Dict[str, Any]:
@@ -1045,6 +1091,44 @@ def _lancer_marketing(travail_id: str, produit_id: str, prix: str) -> None:
         journal("Echec : " + message)
 
 
+def _lancer_reprise(travail_id: str, produit_id: str) -> None:
+    """Finit un produit interrompu, en rejouant sa commande d'origine.
+
+    On passe par la CLI plutot que par le pipeline : c'est elle qui sait
+    reconstruire le contexte a partir des arguments, et une seconde
+    reconstruction cote web aurait fini par diverger de la premiere.
+    """
+    from .. import cli
+    from ..pipelines import carnet
+
+    def journal(message: str) -> None:
+        with _VERROU:
+            TRAVAUX[travail_id]["journal"].append(
+                {"ts": time.time(), "texte": securite.expurger(message)})
+        evenements.publier("journal", message=message, travail=travail_id)
+
+    try:
+        produit = store.lire_produit(produit_id) or {}
+        commande = carnet.commande(Path(produit.get("dossier") or ""))
+        journal("Reprise : usine " + " ".join(commande))
+        code = cli.principal(list(commande) + ["--reprendre-id", produit_id])
+        fini = store.lire_produit(produit_id) or {}
+        manquants = (fini.get("meta") or {}).get("manquants") or []
+        with _VERROU:
+            TRAVAUX[travail_id].update(
+                statut="termine" if code == 0 else "echec",
+                resultat={"statut": fini.get("statut"),
+                          "manquants": manquants,
+                          "produits": _produits()})
+        journal("Produit termine." if not manquants
+                else "{} section(s) manquent encore.".format(len(manquants)))
+    except Exception as exc:
+        message = securite.expurger(str(exc))
+        with _VERROU:
+            TRAVAUX[travail_id].update(statut="echec", erreur=message)
+        journal("Echec : " + message)
+
+
 def _sonder_marche(marche_id: str, sujet: str) -> None:
     from ..core import marche as module_marche
 
@@ -1322,6 +1406,9 @@ def _produits() -> List[Dict[str, Any]]:
             "id": produit["id"], "titre": produit["titre"], "type": produit["type"],
             "statut": produit["statut"], "cree_le": produit["cree_le"],
             "mots": meta.get("mots"), "note": note, "fichiers": fichiers[:16],
+            # Ce qui reste a ecrire : la page en fait un bouton « Reprendre »
+            # plutot qu'un produit qu'on croit fini.
+            "manquants": [str(m) for m in (meta.get("manquants") or [])],
         })
     return sortie
 

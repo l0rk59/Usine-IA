@@ -515,3 +515,10 @@ button.danger { border-radius: 2px; box-shadow: var(--neon-mag); }
 /* -- Verdicts / constats : couleur = gravite ------------------------- */
 .verdict-bloc.gagnant strong, .essai .verdict.gagnant { text-shadow: var(--neon); }
 .controle.bon:before { text-shadow: 0 0 8px var(--vert); }
+
+/* Un produit interrompu : visible d'un coup d'oeil dans la liste, sinon il
+   se confond avec les produits finis et personne ne le reprend jamais. */
+.produit.incomplet { border-left: 2px solid var(--ambre); padding-left: 0.5rem; }
+.produit .inacheve { color: var(--ambre); font-weight: 600; }
+.produit .reprendre { color: var(--ambre); }
+.produit .refaire { color: var(--ambre); opacity: 0.75; }

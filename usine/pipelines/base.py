@@ -11,7 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from ..core import apprentissage, config, empreinte, store
+from ..core import apprentissage, budget, config, empreinte, llm, store
+from . import carnet
 
 TONS = {
     "expert": "expert, precis, appuye sur des faits et des chiffres",
@@ -144,6 +145,20 @@ def code_langue(nom: str, defaut: str = "fr") -> str:
     return defaut
 
 
+# Les deux facons de n'avoir plus rien a demander a un modele, et pourquoi
+# elles se traitent ensemble.
+#
+# « BudgetEpuise » est le plafond que l'utilisateur s'est fixe ; « PlusDeFournisseur »
+# est le monde exterieur qui se tait — quota du jour atteint partout, reseau
+# coupe, cles refusees. Les pipelines n'attrapaient que la premiere. La seconde
+# remontait donc jusqu'a la CLI et **tuait la fabrication entiere** : le plan,
+# l'avant-propos et les chapitres deja ecrits partaient avec le processus. Or
+# la reponse est la meme dans les deux cas : cesser de demander, garder ce qui
+# existe, et le dire.
+PLUS_RIEN_A_DEMANDER: Tuple[type, ...] = (budget.BudgetEpuise, llm.PlusDeFournisseur)
+
+
+
 @dataclass
 class Contexte:
     """Tout ce dont une chaine de production a besoin."""
@@ -234,6 +249,10 @@ def preparer(ctx: Contexte, type_produit: str, titre: str) -> Path:
         dossier=str(dossier),
         meta={"ton": ctx.ton, "taille": ctx.taille, "auteur": ctx.auteur},
     )
+    # La commande d'origine, pour que « usine reprendre » rejoue exactement
+    # celle-la. Ecrite ici parce que c'est le premier instant ou le dossier
+    # existe — et une fabrication peut mourir des le chapitre suivant.
+    carnet.noter_commande(dossier)
     return dossier
 
 
@@ -364,9 +383,21 @@ def terminer(ctx: Contexte, fichiers: List[Path], meta: Optional[Dict[str, Any]]
                                 produit_avant.get("titre", "") or ctx.sujet)
     if doublon:
         infos["doublon"] = doublon
+    # « pret » veut dire vendable. Un produit dont des sections ont ete
+    # remplacees par leur plan ne l'est pas : il etait pourtant marque pret
+    # comme les autres, et se presentait au catalogue, au tableau de bord et
+    # a « usine livrer » sans rien signaler. On le laisse « en_cours », ce qui
+    # le fait apparaitre « inacheve » et le rend reprenable.
+    manquants = [str(m) for m in (infos.get("manquants") or [])]
+    if manquants:
+        infos["manquants"] = manquants
+        ctx.journal(
+            "[!] {} section(s) non ecrites : {}. Le produit reste inacheve — "
+            "« usine reprendre » ne refera que celles-la."
+            .format(len(manquants), ", ".join(manquants[:6])))
     store.maj_produit(
         ctx.produit_id,
-        statut="pret",
+        statut="en_cours" if manquants else "pret",
         meta=dict(infos, fichiers=[f.name for f in fichiers]),
     )
     # Trace mesuree : c'est elle qui alimente « usine bilan » et « usine conseils ».

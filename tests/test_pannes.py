@@ -301,11 +301,15 @@ class ReseauCoupe(unittest.TestCase):
                 _, texte = self._principal(en_ligne, ["ebook", "un sujet"])
                 self.assertIn("sans repayer ce qui est fait", texte)
 
-    def test_une_coupure_ne_fait_pas_passer_un_produit_pour_livre(self):
-        """Le defaut le plus couteux serait le silencieux.
+    def test_une_coupure_va_au_bout_et_se_declare_inachevee(self):
+        """Avant : la coupure tuait la fabrication et tout le travail partait.
 
-        Un dossier de produit reste sur le disque apres la coupure. Il ne doit
-        ni s'annoncer livre, ni apparaitre au catalogue comme un produit fini.
+        Le pipeline n'attrapait que « BudgetEpuise ». « PlusDeFournisseur » —
+        quota atteint partout, reseau coupe — remontait jusqu'a la CLI et
+        emportait le plan, l'avant-propos et les chapitres deja ecrits.
+
+        Maintenant la fabrication va au bout avec ce qu'elle a, et le produit
+        se declare inacheve au lieu de se presenter comme vendable.
         """
         from tests.simulateur import simulateur
 
@@ -329,11 +333,12 @@ class ReseauCoupe(unittest.TestCase):
             _, liste = self._principal(False, ["liste"])
         finally:
             atelier.isoler("pannes")
-        self.assertEqual(code, 3)
-        self.assertNotIn("Produit livre", texte)
+        self.assertEqual(code, 0, "la fabrication doit aller au bout")
         # Le dossier reste : c'est voulu, il porte le travail deja paye. Ce
         # qui ne doit pas rester, c'est l'idee qu'il est fini.
         self.assertEqual([p["statut"] for p in produits], ["en_cours"])
+        self.assertTrue((produits[0].get("meta") or {}).get("manquants"),
+                        "les sections non ecrites doivent etre nommees")
         self.assertIn("inacheve", liste)
         self.assertIn("sans repayer ce qui est fait", liste)
 

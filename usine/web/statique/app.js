@@ -191,14 +191,26 @@ async function chargerProduits() {
     const note = p.note ? ` &middot; qualite ${p.note}/10` : '';
     // La carte listait et servait les fichiers, sans savoir rien en faire —
     // alors que c'est le moment ou l'on veut le kit de vente ou l'archive.
-    return `<div class="produit">
+    /* Un produit interrompu se presentait comme les autres. Il porte
+       maintenant son etat et le bouton qui le finit — sans repayer ce qui
+       est deja ecrit. */
+    const inacheve = p.statut === 'en_cours';
+    const reste = (p.manquants || []).length;
+    const marque = inacheve
+      ? `<span class="inacheve">inacheve${reste ? ' &middot; ' + reste
+         + ' section(s) a finir' : ''}</span>` : '';
+    return `<div class="produit${inacheve ? ' incomplet' : ''}">
       <div class="titre">${echapper(p.titre)}</div>
       <div class="meta">${echapper(p.type)} &middot; ${date}${
-        p.mots ? ' &middot; ' + p.mots + ' mots' : ''}${note}</div>
+        p.mots ? ' &middot; ' + p.mots + ' mots' : ''}${note} ${marque}</div>
       <div class="fichiers">${liens}</div>
       <div class="rangee">
+        ${inacheve ? `<button class="discret reprendre"
+          data-reprendre="${echapper(p.id)}">Reprendre</button>` : ''}
         <button class="discret" data-livrer="${echapper(p.id)}">Archive ZIP</button>
         <button class="discret" data-marketing="${echapper(p.id)}">Kit de vente</button>
+        <button class="discret refaire"
+          data-supprimer="${echapper(p.id)}">Effacer</button>
         <span class="aide" data-etat="${echapper(p.id)}" role="status"></span>
       </div></div>`;
   }).join('');
@@ -206,25 +218,53 @@ async function chargerProduits() {
 
 $('produits').addEventListener('click', async (evenement) => {
   const jeu = evenement.target.dataset || {};
-  const identifiant = jeu.livrer || jeu.marketing;
+  const identifiant = jeu.livrer || jeu.marketing || jeu.reprendre || jeu.supprimer;
   if (!identifiant) return;
+  /* Effacer est irreversible : on le demande, ici et pas seulement cote
+     serveur, parce qu'un clic sur un telephone se fait a cote du bouton
+     voisin plus souvent qu'on ne le croit. */
+  if (jeu.supprimer) {
+    if (!window.confirm("Effacer ce produit et son dossier ? "
+                        + "Cette action est definitive.")) return;
+    evenement.target.disabled = true;
+    const z = document.querySelector(`[data-etat="${identifiant}"]`);
+    if (z) z.textContent = 'suppression...';
+    try {
+      const r = await fetch('/api/produit', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'supprimer', id: identifiant,
+                               confirme: true }),
+      });
+      const d = await r.json();
+      if (d.erreur) { evenement.target.disabled = false;
+                      if (z) z.textContent = d.erreur; return; }
+      etat.produitsCharges = '';   /* forcer le redessin de la liste */
+      chargerProduits();
+    } catch (e) {
+      evenement.target.disabled = false;
+      if (z) z.textContent = "l'usine n'a pas repondu.";
+    }
+    return;
+  }
   const zone = () => document.querySelector(`[data-etat="${identifiant}"]`);
   const dire = (html) => { const z = zone(); if (z) z.innerHTML = html; };
   const rendre = () => {
     // Les DEUX boutons du produit, pas le premier trouve : « querySelector »
     // rendait toujours « Archive ZIP » et laissait « Kit de vente » gris.
     document.querySelectorAll(
-      `[data-livrer="${identifiant}"], [data-marketing="${identifiant}"]`)
+      `[data-livrer="${identifiant}"], [data-marketing="${identifiant}"],`
+      + `[data-reprendre="${identifiant}"], [data-supprimer="${identifiant}"]`)
       .forEach((b) => { b.disabled = false; });
   };
   evenement.target.disabled = true;
-  dire(jeu.livrer ? 'empaquetage...' : 'redaction du kit de vente...');
+  const action = jeu.livrer ? 'livrer' : (jeu.reprendre ? 'reprendre' : 'marketing');
+  dire({ livrer: 'empaquetage...', reprendre: 'reprise en cours...',
+         marketing: 'redaction du kit de vente...' }[action]);
   let d;
   try {
     const reponse = await fetch('/api/produit', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: jeu.livrer ? 'livrer' : 'marketing',
-                             id: identifiant }),
+      body: JSON.stringify({ action: action, id: identifiant }),
     });
     d = await reponse.json();
   } catch (e) {
@@ -259,10 +299,22 @@ async function suivreKit(travail, identifiant, dire, rendre) {
   }
   rendre();
   if (t.statut === 'echec') { dire(echapper(t.erreur)); return; }
-  dire(t.resultat.fichiers.filter(Boolean).map((f) =>
-    `<a href="${echapper(f)}" target="_blank" rel="noopener">${
-      echapper(f.split('/').pop())}</a>`).join(' &middot; ')
-    || 'kit de vente ecrit.');
+  /* Deux formes de resultat passent par ici : le kit de vente rend des
+     fichiers, la reprise rend l'etat du produit. Lire « fichiers » sans
+     verifier laissait la reprise sur une erreur de script, bouton rendu et
+     rien affiche — alors que la reprise, elle, avait reussi. */
+  const r = t.resultat || {};
+  if (r.fichiers) {
+    dire(r.fichiers.filter(Boolean).map((f) =>
+      `<a href="${echapper(f)}" target="_blank" rel="noopener">${
+        echapper(f.split('/').pop())}</a>`).join(' &middot; ')
+      || 'kit de vente ecrit.');
+    return;
+  }
+  const reste = (r.manquants || []).length;
+  dire(reste ? `${reste} section(s) manquent encore.` : 'produit termine.');
+  etat.produitsCharges = '';
+  chargerProduits();
 }
 
 /* ------------------------------------------------------------- diagnostic */

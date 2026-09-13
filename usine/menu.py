@@ -735,13 +735,31 @@ def menu_produits(executer: Callable[[List[str]], int]) -> None:
     if index == 0:
         return
     produit = produits[index - 1]
-    action = choisir("« {} »".format(produit["titre"][:38]), [
+    # La reprise n'est proposee que si elle a un sens : un produit fini n'a
+    # rien a reprendre, et une entree morte dans un menu fait douter de tout
+    # le menu.
+    inacheve = produit["statut"] == "en_cours"
+    actions = [
         ("Voir le detail", "fichiers et etapes de fabrication"),
         ("Generer le kit de vente", "fiche, page de vente, sequence"),
         ("Creer l'archive ZIP", "fichier livrable pour la boutique"),
         ("Ouvrir sur le telephone", "le PDF, dans votre lecteur habituel"),
         ("Partager l'archive", "vers Drive, un courriel, Telegram..."),
-    ])
+    ]
+    # Les numeros ne sont pas fixes : « Reprendre » n'apparait que pour un
+    # produit inacheve. On les retient au moment ou on les ajoute, plutot que
+    # de les recalculer plus bas — c'est la que le decalage se glisse.
+    rang_reprendre = 0
+    if inacheve:
+        manquants = (produit.get("meta") or {}).get("manquants") or []
+        actions.append(("Reprendre la fabrication",
+                        "{} section(s) a finir, sans repayer le reste"
+                        .format(len(manquants)) if manquants
+                        else "finir ce qui manque"))
+        rang_reprendre = len(actions)
+    actions.append(("Effacer ce produit", "la fiche et le dossier, definitivement"))
+    rang_effacer = len(actions)
+    action = choisir("« {} »".format(produit["titre"][:38]), actions)
     if action == 1:
         entete(produit["titre"][:44])
         dossier = Path(produit["dossier"])
@@ -768,6 +786,33 @@ def menu_produits(executer: Callable[[List[str]], int]) -> None:
     elif action == 5:
         _partager_produit(produit, executer)
         demander("\n  Appuyez sur Entree")
+    elif action == rang_reprendre:
+        executer(["reprendre", produit["id"]])
+        demander("\n  Appuyez sur Entree")
+    elif action == rang_effacer:
+        _effacer_produit(produit, executer)
+
+
+def _effacer_produit(produit: Dict[str, Any],
+                     executer: Callable[[List[str]], int]) -> None:
+    """Demande confirmation ici plutot que de laisser la CLI la demander.
+
+    La CLI lit la reponse sur l'entree standard ; le menu aussi. Enchainer les
+    deux ferait poser la question deux fois, et la seconde mangerait la touche
+    Entree de la premiere.
+    """
+    entete("Effacer « {} »".format(produit["titre"][:40]))
+    print("  Type   : {}".format(produit["type"]))
+    print("  Statut : {}".format(produit["statut"]))
+    print("  Dossier: {}".format(produit["dossier"]))
+    print()
+    print(c("  Cette suppression est definitive.", "33"))
+    if demander("  Taper EFFACER pour confirmer").strip() != "EFFACER":
+        print("  Annule.")
+        demander("\n  Appuyez sur Entree")
+        return
+    executer(["supprimer", produit["id"], "--oui"])
+    demander("\n  Appuyez sur Entree")
 
 
 def _fichier_a_ouvrir(dossier: Path) -> Optional[Path]:

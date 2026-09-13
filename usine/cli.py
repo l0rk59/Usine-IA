@@ -83,7 +83,10 @@ def contexte_depuis(args: argparse.Namespace) -> Contexte:
         valeur = getattr(args, nom, None)
         return valeur if valeur else profil.get(defaut_profil, "")
 
-    return Contexte(
+    # « --reprendre-id » fait ecrire la fabrication dans le dossier d'un
+    # produit existant au lieu d'en creer un neuf. C'est tout ce qui separe
+    # une reprise d'une relance : le carnet qui s'y trouve fait le reste.
+    contexte = Contexte(
         sujet=args.sujet,
         audience=choisir("audience", "audience"),
         langue=choisir("langue", "langue"),
@@ -100,6 +103,11 @@ def contexte_depuis(args: argparse.Namespace) -> Contexte:
         sans_image=args.sans_image or args.hors_ligne or not profil.get("images", True),
         journal=lambda message: print("  " + message),
     )
+    reprise = getattr(args, "reprendre_id", "") or ""
+    if reprise:
+        contexte.produit_id = reprise
+        contexte.dossier = config.PRODUITS_DIR / reprise
+    return contexte
 
 
 def _avertir_sujet(sujet: str) -> None:
@@ -1633,6 +1641,106 @@ def cmd_livrer(args: argparse.Namespace) -> int:
     return 0
 
 
+def _produit_vise(reference: str, statut: str = "") -> Optional[Dict[str, Any]]:
+    """Le produit designe, ou le dernier du genre demande.
+
+    Taper un identifiant de quarante caracteres sur un clavier de telephone
+    est le genre de detail qui fait abandonner une fonction. « dernier » — ou
+    rien du tout — designe le plus recent.
+    """
+    reference = (reference or "").strip()
+    if reference and reference != "dernier":
+        produit = store.lire_produit(reference)
+        if produit:
+            return produit
+        # Un identifiant partiel suffit : la fin d'un identifiant est ce qu'on
+        # lit a l'ecran, et c'est la partie qui distingue deux produits.
+        candidats = [p for p in store.lister_produits(200)
+                     if reference in p["id"]]
+        return candidats[0] if len(candidats) == 1 else None
+    for produit in store.lister_produits(200):
+        if not statut or produit["statut"] == statut:
+            return produit
+    return None
+
+
+def cmd_reprendre(args: argparse.Namespace) -> int:
+    """Refait les sections manquantes d'un produit, et elles seules.
+
+    Ce qui rendait cette commande necessaire : une fabrication coupee — quota,
+    reseau, batterie — laissait le travail deja paye sur le disque sans aucun
+    moyen de le reprendre. La seule issue etait de tout relancer, donc de tout
+    repayer.
+    """
+    produit = _produit_vise(getattr(args, "produit_id", ""), statut="en_cours")
+    if not produit:
+        erreur("Aucun produit inacheve a reprendre.")
+        print("  Liste : " + _c("usine liste", "1"))
+        return 1
+    dossier = Path(produit["dossier"] or "")
+    from .pipelines import carnet
+
+    commande = carnet.commande(dossier)
+    if not commande:
+        erreur("Ce produit n'a pas garde la commande qui l'a fabrique.")
+        print("  Il date d'avant le carnet de reprise. Relancez la commande "
+              "d'origine : les reponses deja obtenues sont en cache.")
+        return 1
+    manquants = (produit.get("meta") or {}).get("manquants") or []
+    titre_console("Reprise — {}".format(produit["titre"]))
+    print("  {} section(s) a refaire : {}".format(
+        len(manquants), ", ".join(str(m) for m in manquants[:8]) or "inconnues"))
+    print("  {} deja au carnet, elles ne seront pas repayees."
+          .format(carnet.compte(dossier)))
+    print("  Commande : usine " + " ".join(commande))
+    return principal(list(commande) + ["--reprendre-id", produit["id"]])
+
+
+def cmd_supprimer(args: argparse.Namespace) -> int:
+    """Efface un produit : sa fiche au catalogue ET son dossier.
+
+    Effacer la fiche seule laissait des megaoctets sur un telephone sans que
+    rien ne les montre ; effacer le dossier seul laissait une fiche qui
+    pointait vers le vide, et « usine livrer » echouait dessus.
+    """
+    produit = _produit_vise(getattr(args, "produit_id", ""))
+    if not produit:
+        erreur("Produit inconnu : {}".format(
+            getattr(args, "produit_id", "") or "(aucun)"))
+        print("  Liste des produits : " + _c("usine liste", "1"))
+        return 1
+    dossier = Path(produit["dossier"] or "")
+    poids = 0
+    if dossier.exists():
+        poids = sum(f.stat().st_size for f in dossier.rglob("*") if f.is_file())
+    print("  {} — {} ({})".format(
+        produit["titre"], produit["type"], produit["id"]))
+    print("  Dossier : {} ({} Ko)".format(dossier, poids // 1024))
+    if not getattr(args, "oui", False):
+        # Une suppression ne se devine pas : on la fait confirmer, sauf
+        # demande explicite. Le produit n'est pas recuperable ensuite.
+        reponse = input("  Effacer definitivement ? [o/N] ").strip().lower()
+        if reponse not in ("o", "oui", "y", "yes"):
+            print("  Annule.")
+            return 0
+    import shutil
+
+    if dossier.exists() and dossier.is_dir():
+        # Garde-fou : on n'efface que sous le dossier des produits. Une fiche
+        # dont le chemin a ete modifie a la main ne doit pas pouvoir faire
+        # effacer autre chose.
+        try:
+            dossier.resolve().relative_to(config.PRODUITS_DIR.resolve())
+        except ValueError:
+            erreur("Dossier hors de l'atelier, rien n'a ete efface : {}"
+                   .format(dossier))
+            return 1
+        shutil.rmtree(dossier, ignore_errors=True)
+    store.supprimer_produit(produit["id"])
+    ok("Produit efface ({} Ko liberes).".format(poids // 1024))
+    return 0
+
+
 def cmd_liste(args: argparse.Namespace) -> int:
     produits = store.lister_produits(args.nombre)
     if not produits:
@@ -1933,6 +2041,10 @@ def _options_communes(sous: argparse.ArgumentParser, avec_sujet: bool = True) ->
     sous.add_argument("--dedicace", default="",
                       help="page de dedicace de l'EPUB, ex: \"Pour Julie\"")
     sous.add_argument("--contact", default="", help="e-mail de support dans la notice")
+    # Pose par « usine reprendre », jamais tapee a la main : elle fait ecrire
+    # la fabrication dans le dossier d'un produit existant.
+    sous.add_argument("--reprendre-id", dest="reprendre_id", default="",
+                      help=argparse.SUPPRESS)
     sous.add_argument("-q", "--qualite", default="",
                       choices=["", "rapide", "standard", "exigeant"],
                       help="rapide (sans relecture) | standard (1) | exigeant (2)")
@@ -2076,6 +2188,20 @@ def construire_parseur() -> argparse.ArgumentParser:
     p = sous_parseurs.add_parser("liste", help="lister les produits fabriques")
     p.add_argument("-n", "--nombre", type=int, default=25)
     p.set_defaults(fonction=cmd_liste)
+
+    p = sous_parseurs.add_parser(
+        "reprendre", help="finir un produit interrompu, sans repayer le reste")
+    p.add_argument("produit_id", nargs="?", default="dernier",
+                   help="identifiant, fin d'identifiant, ou « dernier »")
+    p.set_defaults(fonction=cmd_reprendre)
+
+    p = sous_parseurs.add_parser(
+        "supprimer", help="effacer un produit et son dossier")
+    p.add_argument("produit_id", nargs="?", default="dernier",
+                   help="identifiant, fin d'identifiant, ou « dernier »")
+    p.add_argument("--oui", action="store_true",
+                   help="ne pas demander confirmation")
+    p.set_defaults(fonction=cmd_supprimer)
 
     p = sous_parseurs.add_parser("ab", help="tester des titres et des couvertures")
     p.add_argument("action",
@@ -2361,6 +2487,11 @@ def _expliquer_base(defaut: str) -> str:
 def principal(argv: Optional[List[str]] = None) -> int:
     config.load_env()
     config.ensure_dirs()
+    # Retenue avant tout le reste : c'est ici, et seulement ici, qu'on connait
+    # la commande telle qu'elle a ete tapee. « usine reprendre » la rejouera.
+    from .pipelines import carnet
+
+    carnet.retenir_commande(list(argv) if argv is not None else sys.argv[1:])
     parseur = construire_parseur()
     args = parseur.parse_args(argv)
     if not getattr(args, "commande", None):

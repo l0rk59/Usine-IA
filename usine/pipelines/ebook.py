@@ -13,13 +13,13 @@ from typing import Any, Dict, List, Tuple
 
 from ..agents import equipe
 from ..agents.base import Critique
-from ..core import budget
 from ..core import controle as ctrl
 from ..core import evenements, securite
 from ..render import document as D
 from ..render import livraison
-from .base import (Contexte, elaguer_markdown, jetons_pour, nettoyer_titre,
-                   preparer, terminer)
+from . import carnet
+from .base import (PLUS_RIEN_A_DEMANDER, Contexte, elaguer_markdown,
+                   jetons_pour, nettoyer_titre, preparer, terminer)
 
 ROLE = "un auteur de guides pratiques qui se vendent, editeur exigeant"
 
@@ -157,15 +157,23 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False) -> Dict[str, Any]:
     un long texte : c'est pourquoi elle se demande.
     """
     ctx.journal("Etape 1/5 — construction du plan...")
-    plan = construire_plan(ctx)
+    # Une reprise DOIT repartir du meme plan. Un plan reconstruit differe —
+    # le modele n'est pas deterministe — et les chapitres deja ecrits se
+    # retrouveraient ranges sous des titres qui ne sont plus les leurs.
+    repris = carnet.plan(ctx.dossier) if ctx.dossier and ctx.dossier.name else None
+    plan = repris or construire_plan(ctx)
     titre = plan["titre"]
     sous_titre = plan.get("sous_titre", "")
     dossier = preparer(ctx, "ebook", titre)
+    if repris:
+        ctx.journal("  Reprise : plan et {} section(s) deja au carnet."
+                    .format(carnet.compte(dossier)))
     ctx.etape("plan", "ok", "{} chapitres".format(len(plan["chapitres"])))
     ctx.journal('  Titre retenu : « {} »'.format(titre))
     (dossier / "plan.json").write_text(
         json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+    carnet.noter_plan(dossier, plan)
 
     total = len(plan["chapitres"])
     sections: List[Tuple[str, str]] = []
@@ -179,15 +187,24 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False) -> Dict[str, Any]:
 
     budget_epuise = False
 
+    manquants: List[str] = []
+
     ctx.journal("Etape 2/5 — avant-propos...")
-    try:
-        titre_intro, corps_intro = rediger_annexe(ctx, plan, "introduction")
-        sections.append((titre_intro, corps_intro))
-        ctx.etape("introduction")
-    except budget.BudgetEpuise as exc:
-        budget_epuise = True
-        ctx.journal("  {} — avant-propos ignore".format(exc))
-        ctx.etape("introduction", "echec", str(exc))
+    deja = carnet.section(dossier, "introduction")
+    if deja:
+        sections.append(deja)
+        ctx.journal("  deja ecrit — repris du carnet")
+    else:
+        try:
+            titre_intro, corps_intro = rediger_annexe(ctx, plan, "introduction")
+            sections.append((titre_intro, corps_intro))
+            carnet.noter_section(dossier, "introduction", titre_intro, corps_intro)
+            ctx.etape("introduction")
+        except PLUS_RIEN_A_DEMANDER as exc:
+            budget_epuise = True
+            manquants.append("avant-propos")
+            ctx.journal("  {} — avant-propos ignore".format(exc))
+            ctx.etape("introduction", "echec", str(exc))
 
     ctx.journal("Etape 3/5 — redaction des {} chapitres...".format(total))
     passes = ctx.nb_passes
@@ -198,18 +215,29 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False) -> Dict[str, Any]:
         ctx.journal("  [{}/{}] {}".format(index + 1, total, chapitre["titre"]))
         evenements.publier("section", etape="redaction", index=index + 1,
                            total=total, titre=chapitre["titre"])
+        repere = "chapitre-{}".format(index + 1)
+        fait = carnet.section(dossier, repere)
+        if fait:
+            sections.append(fait)
+            ctx.journal("     deja ecrit — repris du carnet")
+            ctx.etape(repere, "ok", fait[0])
+            continue
         if budget_epuise:
             # Inutile de tenter les chapitres suivants : chaque appel serait
-            # refuse. On les remplace par leur plan et on va a l'export.
+            # refuse. On les remplace par leur plan et on va a l'export. Le
+            # carnet ne les recoit PAS : un repli n'est pas un chapitre, et
+            # une reprise doit encore les ecrire.
             sections.append((chapitre["titre"], _repli(chapitre)))
-            ctx.etape("chapitre-{}".format(index + 1), "echec", "budget epuise")
+            manquants.append(repere)
+            ctx.etape(repere, "echec", "plus rien a demander")
             continue
         try:
             corps, auteur = rediger_chapitre(ctx, plan, index, chapitre)
-        except budget.BudgetEpuise as exc:
+        except PLUS_RIEN_A_DEMANDER as exc:
             budget_epuise = True
+            manquants.append(repere)
             ctx.journal("     {} — chapitres restants reduits a leur plan".format(exc))
-            ctx.etape("chapitre-{}".format(index + 1), "echec", str(exc))
+            ctx.etape(repere, "echec", str(exc))
             sections.append((chapitre["titre"], _repli(chapitre)))
             continue
         except Exception as exc:
@@ -227,7 +255,7 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False) -> Dict[str, Any]:
                 )
                 local[chapitre["titre"]] = controles
                 ctx.journal("     controle : " + controles[-1].resume())
-            except budget.BudgetEpuise as exc:
+            except PLUS_RIEN_A_DEMANDER as exc:
                 budget_epuise = True
                 ctx.journal("     {} — corrections interrompues".format(exc))
 
@@ -248,23 +276,33 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False) -> Dict[str, Any]:
                     if passes >= 2:
                         corps = equipe.polir(ctx, corps, auteur)
                         ctx.journal("     style : resserre par le styliste")
-                except budget.BudgetEpuise as exc:
+                except PLUS_RIEN_A_DEMANDER as exc:
                     budget_epuise = True
                     ctx.journal("     {} — relecture interrompue".format(exc))
         sections.append((chapitre["titre"], corps))
-        ctx.etape("chapitre-{}".format(index + 1), "ok", chapitre["titre"])
+        # Au carnet MAINTENANT, pas a la fin de la boucle : le seul moment ou
+        # l'on est sur de pouvoir ecrire, c'est celui-ci.
+        carnet.noter_section(dossier, repere, chapitre["titre"], corps)
+        ctx.etape(repere, "ok", chapitre["titre"])
 
     ctx.journal("Etape 4/5 — conclusion...")
-    if budget_epuise:
-        ctx.journal("  ignoree : budget epuise")
-        ctx.etape("conclusion", "echec", "budget epuise")
+    finie = carnet.section(dossier, "conclusion")
+    if finie:
+        sections.append(finie)
+        ctx.journal("  deja ecrite — reprise du carnet")
+    elif budget_epuise:
+        manquants.append("conclusion")
+        ctx.journal("  ignoree : plus rien a demander")
+        ctx.etape("conclusion", "echec", "plus rien a demander")
     else:
         try:
             titre_fin, corps_fin = rediger_annexe(ctx, plan, "conclusion")
             sections.append((titre_fin, corps_fin))
+            carnet.noter_section(dossier, "conclusion", titre_fin, corps_fin)
             ctx.etape("conclusion")
-        except budget.BudgetEpuise as exc:
+        except PLUS_RIEN_A_DEMANDER as exc:
             budget_epuise = True
+            manquants.append("conclusion")
             ctx.journal("  {} — conclusion ignoree".format(exc))
             ctx.etape("conclusion", "echec", str(exc))
 
@@ -274,7 +312,7 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False) -> Dict[str, Any]:
         try:
             ensemble = equipe.relire_l_ensemble(
                 ctx, sections, plan.get("promesse", ""))
-        except budget.BudgetEpuise as exc:
+        except PLUS_RIEN_A_DEMANDER as exc:
             budget_epuise = True
             ctx.journal("  {} — relecture d'ensemble ignoree".format(exc))
         except Exception as exc:
@@ -353,6 +391,7 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False) -> Dict[str, Any]:
         "note_avant": (rapport.get("controle_local") or {}).get(
             "note_moyenne_initiale"),
         "defauts": defauts,
+        "manquants": manquants,
     })
     (dossier / "produit.json").write_text(
         json.dumps(resume, ensure_ascii=False, indent=2), encoding="utf-8"

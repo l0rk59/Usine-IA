@@ -736,6 +736,20 @@ def lire_produit(produit_id: str) -> Optional[Dict[str, Any]]:
         return _produit(row) if row else None
 
 
+def supprimer_produit(produit_id: str) -> None:
+    """Efface la fiche d'un produit et ce qui y renvoie.
+
+    Les etapes et l'empreinte partent avec. Les laisser derriere faisait deux
+    degats invisibles : le journal d'etapes gonflait sans jamais etre lu, et
+    l'empreinte d'un produit efface faisait refuser un nouveau produit sur le
+    meme sujet comme un doublon de quelque chose qui n'existe plus.
+    """
+    with cursor() as cur:
+        cur.execute("DELETE FROM etapes WHERE produit_id=?", (produit_id,))
+        cur.execute("DELETE FROM empreintes WHERE produit_id=?", (produit_id,))
+        cur.execute("DELETE FROM produits WHERE id=?", (produit_id,))
+
+
 def lister_produits(limite: int = 50) -> List[Dict[str, Any]]:
     with cursor() as cur:
         cur.execute("SELECT * FROM produits ORDER BY cree_le DESC LIMIT ?", (limite,))

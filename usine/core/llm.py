@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from . import budget as budget_module
 from . import cles as pool_cles
+from . import texte as module_texte
 from . import config, evenements, store
 from .http import HttpErreur, post_json
 
@@ -305,9 +306,29 @@ def _appel(
 
     choix = (data.get("choices") or [{}])[0]
     message = choix.get("message") or {}
-    texte = (message.get("content") or "").strip()
+    brut = (message.get("content") or "").strip()
+
+    # On assainit AVANT tout le reste. Un modele de raisonnement rend son
+    # brouillon entre « <think> » et « </think> » : sans ce passage, le
+    # brouillon entrait dans le chapitre, etait note par le controle qualite,
+    # mis en page dans le PDF, et lu par l'acheteur. Le faire ici plutot que
+    # dans un pipeline evite d'avoir a se souvenir de le faire dix fois.
+    texte = module_texte.assainir(brut)
     if not texte:
         raise HttpErreur(502, "reponse vide de {}".format(p.name))
+
+    # Puis on lit ce que le service a VRAIMENT repondu. Mesure du 13/09/2026 :
+    # pollinations rend HTTP 200, finish_reason « stop », usage renseigne — et
+    # pour contenu « The API key ... has reached its budget ». Tous les signaux
+    # disent « reponse valide ». Le routeur l'acceptait donc, la mettait en
+    # cache, et l'ecrivait dans un chapitre : un quota epuise qui ne ressemble
+    # pas a un quota epuise, et une usine qui ne bascule pas puisque rien n'a
+    # echoue. On leve, et le fournisseur sort du jeu comme pour un vrai 402.
+    refus = module_texte.refus_deguise(texte, attend_francais=not json_mode)
+    if refus:
+        statut = 402 if module_texte.ressemble_a_un_quota(texte) else 503
+        raise HttpErreur(statut, "{} : {}".format(p.name, refus),
+                         corps=texte[:300])
     tokens = int((data.get("usage") or {}).get("total_tokens") or 0)
     # « length » signifie : le modele n'avait pas fini, il a ete coupe au
     # plafond. Ne pas le lire faisait passer un chapitre tranche au milieu
