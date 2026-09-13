@@ -960,6 +960,15 @@ retour en arrière.
 
 ---
 
+## Ce que l'audit a mesuré
+
+Quatorze invariants mesurés sur tout le code, et non supposés :
+[docs/AUDIT-INVARIANTS.md](docs/AUDIT-INVARIANTS.md). Onze ont trouvé quelque
+chose — dont un pool de clés qui ne multipliait aucun quota, six leviers de
+fabrication inaccessibles depuis un téléphone, et un tableau de bord qui
+pouvait effacer le mot de passe qui le protège. Les sept autres disent que les
+garde-fous existants tiennent, ce qui est l'autre moitié de l'information.
+
 ## Ce que l'usine vaut face aux autres
 
 Quatre projets ouverts couvrent le même besoin. Comparaison mesurée sur leurs
