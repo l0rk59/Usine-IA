@@ -40,7 +40,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from ..agents import equipe
 from ..core import budget
 from ..core import controle as ctrl
-from ..core import evenements, llm, securite
+from ..core import evenements, securite
 from ..core import serie as module_serie
 from ..render import document as D
 from ..render import livraison

@@ -13,14 +13,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from . import __version__
-from .core import cles as pool_cles
 from .core import apprentissage, budget, config, experience, images
 from .core import file as file_prod
 from .core import llm, marche
 from .core import prompts as registre_prompts
 from .core import empreinte, reglages, securite, store, telephone, ventes
 from .core import verification
-from .core.http import en_ligne
 from .marketing import vente
 from .packaging import livraison
 from .pipelines import (boite_outils, catalogue, ebook, formation, idees,

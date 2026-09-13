@@ -11,7 +11,7 @@ import itertools
 import queue
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from .securite import expurger
 

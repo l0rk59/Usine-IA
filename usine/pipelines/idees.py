@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import csv
 import json
-from pathlib import Path
 from typing import Any, Dict, List
 
 from ..core import config, llm, marche, veille, ventes

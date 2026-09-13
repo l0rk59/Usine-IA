@@ -15,7 +15,7 @@ from ..agents import equipe
 from ..agents.base import Critique
 from ..core import budget
 from ..core import controle as ctrl
-from ..core import evenements, llm, securite
+from ..core import evenements, securite
 from ..render import document as D
 from ..render import livraison
 from .base import (Contexte, elaguer_markdown, jetons_pour, nettoyer_titre,

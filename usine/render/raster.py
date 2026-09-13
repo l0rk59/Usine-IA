@@ -21,7 +21,7 @@ from __future__ import annotations
 import binascii
 import struct
 import zlib
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Sequence, Tuple
 
 Couleur = Tuple[int, int, int]
 Point = Tuple[float, float]

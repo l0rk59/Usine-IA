@@ -34,7 +34,7 @@ import statistics
 import unicodedata
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from .faits import _plat, nommes, phrases
+from .faits import _plat, nommes
 
 # Verbes qui introduisent une replique dans une incise. La liste est fermee et
 # se lit sans accent : c'est ce qui permet de rattacher « dit Camille » sans

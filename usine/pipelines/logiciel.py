@@ -23,7 +23,7 @@ import json
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from ..agents import equipe
 from ..core import evenements, verification

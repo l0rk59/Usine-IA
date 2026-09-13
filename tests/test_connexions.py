@@ -178,6 +178,57 @@ class TestAucuneFonctionSansAppelant(unittest.TestCase):
             self.assertEqual(self.orphelines(racine), [])
 
 
+class TestAucunImportInutile(unittest.TestCase):
+    """Un import declare et jamais employe est du poids mort.
+
+    Peu de chose sur un serveur, davantage sur un telephone : chaque import
+    est un fichier ouvert, lu et compile au demarrage. Dix-sept trainaient,
+    dont trois nes d'un refactor de la veille — c'est la qu'ils apparaissent,
+    et personne ne les voit jamais si rien ne les cherche.
+    """
+
+    @staticmethod
+    def inutiles(racine):
+        import ast
+        import re
+
+        trouves = []
+        for fichier in (sorted(racine.glob("usine/**/*.py"))
+                        + sorted(racine.glob("tests/*.py"))
+                        + sorted(racine.glob("scripts/*.py"))):
+            texte = fichier.read_text(encoding="utf-8")
+            lignes = texte.splitlines()
+            for noeud in ast.walk(ast.parse(texte)):
+                if not isinstance(noeud, (ast.Import, ast.ImportFrom)):
+                    continue
+                # Le corps SANS la ligne d'import : sinon l'import se
+                # justifierait lui-meme.
+                corps = "\n".join(l for i, l in enumerate(lignes, 1)
+                                  if i != noeud.lineno)
+                for alias in noeud.names:
+                    if alias.name == "annotations":
+                        continue
+                    nom = alias.asname or alias.name.split(".")[0]
+                    if not re.search(r"\b" + re.escape(nom) + r"\b", corps):
+                        trouves.append("{}:{} {}".format(
+                            fichier.relative_to(racine), noeud.lineno, nom))
+        return trouves
+
+    def test_aucun_import_ne_traine(self):
+        self.assertEqual(self.inutiles(RACINE), [])
+
+    def test_le_detecteur_voit_un_import_inutile(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as brut:
+            racine = pathlib.Path(brut)
+            (racine / "usine").mkdir()
+            (racine / "usine" / "m.py").write_text(
+                "import json\nimport re\n\n\ndef f():\n    return re\n",
+                encoding="utf-8")
+            self.assertEqual(self.inutiles(racine), ["usine/m.py:1 json"])
+
+
 class TestEvenementsEtRoutesConsommes(unittest.TestCase):
     """Publier sans destinataire, servir sans appelant : deux orphelins.
 
