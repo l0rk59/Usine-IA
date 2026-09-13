@@ -38,17 +38,17 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..agents import equipe
-from ..core import budget
 from ..core import controle as ctrl
 from ..core import evenements, securite
 from ..core import serie as module_serie
 from ..render import document as D
 from ..render import livraison
+from . import carnet
 from . import faits
 from . import memoire as M
 from . import voix
-from .base import (Contexte, elaguer_markdown, jetons_pour, nettoyer_titre,
-                   preparer, terminer)
+from .base import (PLUS_RIEN_A_DEMANDER, Contexte, elaguer_markdown,
+                   jetons_pour, nettoyer_titre, preparer, terminer)
 
 ROLE = ("un auteur de fiction courte publie en revue, qui tient la continuite "
         "et montre plutot que de raconter")
@@ -1070,7 +1070,45 @@ def controler_continuite(bible: Dict[str, Any], grille: Dict[str, Any],
 # --------------------------------------------------------------------------
 
 
-def produire(ctx: Contexte, serie: str = "") -> Dict[str, Any]:
+# Ce qu'un roman demande et qu'une nouvelle ne demande pas. Ce ne sont pas des
+# valeurs arbitraires : en dessous de 40 000 mots, le marche ne parle plus de
+# roman (voir FORMATS_FICTION), et 30 scenes de 1 400 mots y arrivent tout
+# juste. La memoire hierarchique s'enclenche d'elle-meme a cette longueur — un
+# resume plat ne porte pas trente scenes.
+ROMAN_SCENES, ROMAN_MOTS = 30, 1400
+
+
+def produire_roman(ctx: Contexte, serie: str = "",
+                   chapitres: int = 0) -> Dict[str, Any]:
+    """Un roman : la meme chaine, une autre echelle.
+
+    Le roman etait deja fabricable — « usine nouvelle --chapitres 40 » — et
+    donc invisible : il ne figurait ni au catalogue, ni au menu, ni au tableau
+    de bord. Personne ne devine une fonctionnalite qui n'a pas de nom.
+
+    Ce n'est pas une chaine de plus : ce serait deux chaines de fiction a
+    maintenir, et elles divergeraient. C'est la meme, avec l'echelle que le
+    format demande quand l'utilisateur ne l'a pas fixee lui-meme.
+    """
+    # « chapitres » arrive du catalogue (la question posee par le menu et par
+    # le tableau de bord) ; « ctx.chapitres » arrive de la ligne de commande.
+    # Le premier des deux qui est renseigne gagne, et a defaut le format
+    # decide — un roman n'a pas a se declarer en nombre de scenes.
+    if chapitres:
+        ctx.chapitres = int(chapitres)
+    if not ctx.chapitres:
+        ctx.chapitres = ROMAN_SCENES
+    if not ctx.mots_section:
+        ctx.mots_section = ROMAN_MOTS
+    # Le genre suit jusqu'au bout : sans lui, le roman s'enregistrait au
+    # catalogue comme une nouvelle, s'affichait comme une nouvelle dans
+    # « usine liste », et son dossier s'appelait « nouvelle-... ». Ce qu'on
+    # demande et ce qu'on retrouve doivent porter le meme nom.
+    return produire(ctx, serie=serie, genre="roman")
+
+
+def produire(ctx: Contexte, serie: str = "",
+             genre: str = "nouvelle") -> Dict[str, Any]:
     """Produit la nouvelle complete et renvoie un resume des fichiers generes.
 
     « serie » range le recit dans une suite. Le tome recoit alors ce que les
@@ -1089,16 +1127,26 @@ def produire(ctx: Contexte, serie: str = "") -> Dict[str, Any]:
             serie, rang_prevu,
             "" if rang_prevu == 1 else " (le monde et la distribution sont repris)"))
     ctx.journal("Etape 1/5 — la bible : distribution, cadre, enjeu...")
-    bible = construire_bible(ctx, rappel)
+    # Une reprise repart de la bible et de la grille du carnet. Les
+    # reconstruire changerait la distribution, le cadre et l'ordre des beats
+    # sous les scenes deja ecrites — c'est-a-dire exactement la continuite que
+    # cette chaine existe pour tenir.
+    repris = carnet.plan(ctx.dossier) if ctx.dossier and ctx.dossier.name else None
+    bible = (repris or {}).get("bible") or construire_bible(ctx, rappel)
     titre = bible["titre"]
-    dossier = preparer(ctx, "nouvelle", titre)
+    dossier = preparer(ctx, genre, titre)
     ctx.etape("bible", "ok", "{} personnage(s)".format(len(bible["personnages"])))
     ctx.journal('  Titre retenu : « {} »'.format(titre))
     ctx.journal("  Distribution : {}".format(
         ", ".join(p["nom"] for p in bible["personnages"])))
 
     ctx.journal("Etape 2/5 — la grille de beats...")
-    grille = construire_grille(ctx, bible)
+    grille = (repris or {}).get("grille") or construire_grille(ctx, bible)
+    if repris:
+        ctx.journal("  Reprise : bible, grille et {} scene(s) deja au carnet."
+                    .format(carnet.compte(dossier)))
+    carnet.noter_plan(dossier, {"bible": bible, "grille": grille,
+                                "chapitres": grille.get("scenes") or []})
     scenes_prevues = grille["scenes"]
     total = len(scenes_prevues)
     ctx.etape("grille", "ok", "{} scene(s)".format(total))
@@ -1126,31 +1174,48 @@ def produire(ctx: Contexte, serie: str = "") -> Dict[str, Any]:
                     "(un resume plat n'en porte que {})".format(
                         memoire.scenes_par_partie, M.capacite(MOTS_RESUME)))
     budget_epuise = False
+    manquants: List[str] = []
 
     for index, scene in enumerate(scenes_prevues):
         ctx.journal("  [{}/{}] {}".format(index + 1, total, scene["titre"]))
         evenements.publier("section", etape="redaction", index=index + 1,
                            total=total, titre=scene["titre"])
+        repere = "scene-{}".format(index + 1)
+        deja = carnet.section(dossier, repere)
+        if deja:
+            # La memoire doit quand meme avancer : c'est elle qui porte la
+            # continuite des scenes suivantes. On la nourrit du texte relu,
+            # sans repayer le resume.
+            sections.append(deja)
+            _replier_memoire(memoire, scene, index, total)
+            memoires.append(memoire.etat_courant())
+            redigees.append(True)
+            ctx.journal("     deja ecrite — reprise du carnet")
+            ctx.etape(repere, "ok", deja[0])
+            continue
         if budget_epuise:
             sections.append((scene["titre"], _repli(scene)))
             _replier_memoire(memoire, scene, index, total)
             memoires.append(memoire.etat_courant())
             redigees.append(False)
-            ctx.etape("scene-{}".format(index + 1), "echec", "budget epuise")
+            manquants.append(repere)
+            ctx.etape(repere, "echec", "plus rien a demander")
             continue
 
         fin_precedente = sections[-1][1][-320:] if sections else ""
         try:
             corps, auteur = rediger_scene(ctx, bible, grille, index, scene,
                                           memoire.pour_invite(), fin_precedente)
-        except budget.BudgetEpuise as exc:
+        except PLUS_RIEN_A_DEMANDER as exc:
             budget_epuise = True
+            manquants.append(repere)
             ctx.journal("     {} — scenes restantes reduites a leur fiche".format(exc))
-            ctx.etape("scene-{}".format(index + 1), "echec", str(exc))
+            ctx.etape(repere, "echec", str(exc))
             corps, auteur, ecrite = _repli(scene), "", False
         except Exception as exc:
+            manquants.append(repere)
             ctx.journal("     echec : {} — scene conservee en resume".format(exc))
-            ctx.etape("scene-{}".format(index + 1), "echec", str(exc))
+            ctx.etape(repere, "echec", str(exc))
             corps, auteur, ecrite = _repli(scene), "", False
         else:
             ecrite = True
@@ -1166,7 +1231,7 @@ def produire(ctx: Contexte, serie: str = "") -> Dict[str, Any]:
                 )
                 local[scene["titre"]] = controles
                 ctx.journal("     controle : " + controles[-1].resume())
-            except budget.BudgetEpuise as exc:
+            except PLUS_RIEN_A_DEMANDER as exc:
                 budget_epuise = True
                 ctx.journal("     {} — corrections interrompues".format(exc))
 
@@ -1178,7 +1243,7 @@ def produire(ctx: Contexte, serie: str = "") -> Dict[str, Any]:
                     if passes >= 2:
                         corps = equipe.polir(ctx, corps, auteur)
                         ctx.journal("     style : resserre par le styliste")
-                except budget.BudgetEpuise as exc:
+                except PLUS_RIEN_A_DEMANDER as exc:
                     budget_epuise = True
                     ctx.journal("     {} — relecture interrompue".format(exc))
 
@@ -1193,14 +1258,18 @@ def produire(ctx: Contexte, serie: str = "") -> Dict[str, Any]:
             try:
                 memoire.apres_scene(redacteur_pour(ctx, scene), corps,
                                     scene["titre"], index, total)
-            except budget.BudgetEpuise as exc:
+            except PLUS_RIEN_A_DEMANDER as exc:
                 budget_epuise = True
                 ctx.journal("     {} — memoire figee sur les pivots".format(exc))
                 _replier_memoire(memoire, scene, index, total)
             except Exception:
                 _replier_memoire(memoire, scene, index, total)
         memoires.append(memoire.etat_courant())
-        ctx.etape("scene-{}".format(index + 1), "ok", scene["titre"])
+        # Au carnet seulement si la scene a VRAIMENT ete ecrite : une fiche de
+        # repli n'est pas une scene, et une reprise doit encore l'ecrire.
+        if ecrite:
+            carnet.noter_section(dossier, repere, scene["titre"], corps)
+        ctx.etape(repere, "ok" if ecrite else "echec", scene["titre"])
 
     ctx.journal("Etape 4/5 — controle de continuite...")
     continuite = controler_continuite(bible, grille, sections, memoires,
@@ -1221,7 +1290,8 @@ def produire(ctx: Contexte, serie: str = "") -> Dict[str, Any]:
                    ensure_ascii=False, indent=2), encoding="utf-8")
 
     ctx.journal("Etape 5/5 — mise en forme et export...")
-    fichiers = exporter(ctx, bible, sections, serie=serie, rang=rang_prevu)
+    fichiers = exporter(ctx, bible, sections, serie=serie, rang=rang_prevu,
+                        genre=genre)
 
     rapport: Dict[str, Any] = {"continuite": continuite}
     if local:
@@ -1285,7 +1355,8 @@ def produire(ctx: Contexte, serie: str = "") -> Dict[str, Any]:
         "note": (rapport.get("mesure_finale") or {}).get("note_moyenne"),
         "continuite": continuite["resume"],
         "defauts": [a["detail"] for a in continuite["anomalies"]],
-    })
+        "manquants": manquants,
+    }, type_produit=genre)
     (dossier / "produit.json").write_text(
         json.dumps(resume, ensure_ascii=False, indent=2), encoding="utf-8")
     return resume
@@ -1323,7 +1394,8 @@ def _repli(scene: Dict[str, Any]) -> str:
 def exporter(ctx: Contexte, bible: Dict[str, Any],
              sections: List[Tuple[str, str]],
              serie: str = "", rang: int = 0,
-             reutiliser_couverture: bool = False) -> List[Path]:
+             reutiliser_couverture: bool = False,
+             genre: str = "nouvelle") -> List[Path]:
     """Confie l'histoire a l'assemblage commun.
 
     Une nouvelle est de la prose sans mise en page particuliere : tout est le
@@ -1341,7 +1413,7 @@ def exporter(ctx: Contexte, bible: Dict[str, Any],
             titre=module_serie.TITRE_PAGE_DE_SUITE, corps=suite))
 
     produit = livraison.Produit(
-        type="nouvelle",
+        type=genre,
         titre=bible["titre"],
         sous_titre=bible.get("genre", ""),
         promesse=bible.get("premisse", ""),
@@ -1417,7 +1489,8 @@ def rafraichir_serie(nom: str, journal=print) -> List[Dict[str, Any]]:
                  "genre": "", "premisse": ""}
         fichiers = exporter(ctx, bible, sections, serie=nom,
                             rang=tome.get("rang") or 0,
-                            reutiliser_couverture=True)
+                            reutiliser_couverture=True,
+                            genre=str(fiche.get("type") or "nouvelle"))
         journal("  tome {} — « {} » : {} fichier(s) refaits".format(
             tome.get("rang"), bible["titre"], len(fichiers)))
         refaits.append({"rang": tome.get("rang"), "titre": bible["titre"],

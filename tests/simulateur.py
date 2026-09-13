@@ -115,6 +115,21 @@ def simulateur(messages, role):
     invite = messages[-1]["content"]
     bas = invite.lower()
 
+    # --- brief automatique : ce que l'usine decide quand on ne dit rien -----
+    # En premier, et avant le plan : le brief demande lui aussi des
+    # « sections », et une branche posee plus bas ne serait jamais atteinte.
+    if '"mots_par_section"' in invite and '"niche"' in invite:
+        return json.dumps({
+            "audience": "Freelance en portage qui facture moins de 40 k par an",
+            "ton": "pedagogue",
+            "sections": _combien(invite, 9),
+            "mots_par_section": 1000,
+            "niche": "facturation des independants",
+            "promesse": "Fixer un tarif qui tient et le defendre.",
+            "pourquoi": "Sujet technique et anxiogene : ton pedagogue, "
+                        "sections courtes.",
+        }, ensure_ascii=False)
+
     # --- ebook : plan -----------------------------------------------------
     if '"chapitres"' in invite:
         n = _combien(invite, 8)

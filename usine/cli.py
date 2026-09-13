@@ -107,6 +107,15 @@ def contexte_depuis(args: argparse.Namespace) -> Contexte:
     if reprise:
         contexte.produit_id = reprise
         contexte.dossier = config.PRODUITS_DIR / reprise
+        # Une reprise ne rebriefe pas : le brief a deja decide, et redecider
+        # donnerait au second tiers du livre un autre ton que le premier.
+        return contexte
+    # Ce que l'utilisateur n'a pas choisi, l'usine le decide en lisant le
+    # sujet — ici, en un seul endroit, pour les dix chaines a la fois.
+    from .pipelines import brief
+
+    contexte.meta["brief"] = brief.appliquer(
+        contexte, getattr(args, "commande", "produit"))
     return contexte
 
 
@@ -245,6 +254,28 @@ def cmd_nouvelle(args: argparse.Namespace) -> int:
     if resume.get("rang"):
         description = "Tome {} de « {} ». ".format(
             resume["rang"], args.serie) + description
+    _resume_console(_apres_production(args, ctx, resume, description))
+    return 0
+
+
+def cmd_roman(args: argparse.Namespace) -> int:
+    """Un roman : la meme chaine que la nouvelle, a l'echelle du format.
+
+    Il etait deja fabricable et invisible — « usine nouvelle --chapitres 40 » —
+    donc inexistant pour qui ne lit pas le code.
+    """
+    if not _verifier_fournisseurs():
+        return 2
+    _avertir_sujet(args.sujet)
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication d'un roman")
+    print("  Trente scenes relues et controlees : comptez une a trois heures.")
+    print("  Une coupure ne perd rien : " + _c("usine reprendre", "1")
+          + " finit ce qui manque.")
+    resume = nouvelle.produire_roman(ctx, serie=getattr(args, "serie", "") or "")
+    description = "Roman{}, {} scenes, {} mots.".format(
+        " — " + resume["sous_titre"] if resume.get("sous_titre") else "",
+        resume["scenes"], resume["mots"])
     _resume_console(_apres_production(args, ctx, resume, description))
     return 0
 
@@ -2106,6 +2137,14 @@ def construire_parseur() -> argparse.ArgumentParser:
                         "monde, la distribution et les faits des precedents, "
                         "et la continuite est verifiee contre eux")
     p.set_defaults(fonction=cmd_nouvelle)
+
+    p = sous_parseurs.add_parser(
+        "roman", help="un roman : fiction longue, en parties, continuite tenue")
+    _options_communes(p)
+    p.add_argument("--serie", default="",
+                   help="ranger ce roman dans une suite (le monde et la "
+                        "distribution sont repris du tome precedent)")
+    p.set_defaults(fonction=cmd_roman)
 
     p = sous_parseurs.add_parser(
         "journal", help="ce que l'usine a fait pendant qu'on ne regardait pas")

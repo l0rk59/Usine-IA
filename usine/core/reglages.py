@@ -18,9 +18,15 @@ DEFAUTS: Dict[str, Any] = {
     "contact": "",
     "site": "",
     "langue": "francais",
-    "ton": "pro",
-    "taille": "standard",
-    "audience": "un public francophone motive",
+    # « auto » : l'usine decide en lisant le sujet. Un reglage par defaut
+    # n'est pas neutre, il est juste invisible — « pro / standard / un public
+    # francophone motive » donnait la meme voix, la meme longueur et la meme
+    # audience imaginaire a un guide de fiscalite et a un carnet de recettes.
+    # Ces trois-la restent modifiables : y mettre une valeur la rend
+    # definitive, et le brief ne la touche plus.
+    "ton": "auto",
+    "taille": "auto",
+    "audience": "auto",
     "plateforme": "gumroad",
     "devise": "EUR",
     "images": True,
@@ -51,9 +57,11 @@ DESCRIPTIONS: Dict[str, str] = {
     "contact": "Adresse e-mail de support, inscrite dans la notice",
     "site": "Adresse de votre site ou de votre boutique",
     "langue": "Langue de redaction",
-    "ton": "Ton par defaut : expert, amical, pro, punchy, pedagogue",
-    "taille": "Volume par defaut : mini, court, standard, long",
-    "audience": "Audience par defaut",
+    "ton": "Ton par defaut : auto (l'usine lit le sujet), expert, amical, "
+           "pro, punchy, pedagogue, ou une description libre",
+    "taille": "Volume par defaut : auto, mini, court, standard, long",
+    "audience": "Audience par defaut : auto (deduite du sujet), ou une "
+                "description precise (metier, niveau, situation)",
     "plateforme": "Plateforme de vente visee : gumroad, etsy, payhip, site",
     "devise": "Devise des prix conseilles",
     "images": "Generer les couvertures et visuels (oui/non)",

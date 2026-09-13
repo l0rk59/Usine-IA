@@ -40,6 +40,12 @@ SCENARIOS = [
     ("nouvelle", ["nouvelle", "un gardien de phare et le dernier hiver",
                   "-T", "mini", "--sans-image",
                   "--dedicace", "Pour ceux qui restent"]),
+    # Le roman partage la chaine de la nouvelle, mais pas son echelle : c'est
+    # la seule qui declenche la memoire hierarchique (des parties closes, pas
+    # un resume plat). Huit scenes suffisent a la faire basculer sans que le
+    # test de fumee dure une heure.
+    ("roman", ["roman", "une disparition dans les Cevennes", "--chapitres", "8",
+               "--mots", "400", "--sans-image"]),
     ("prompts", ["prompts", "la gestion de projet", "-n", "8", "--sans-image"]),
     ("formation", ["formation", "le copywriting", "-m", "4", "--sans-image"]),
     ("outils", ["outils", "la facturation", "-n", "5", "--sans-image"]),

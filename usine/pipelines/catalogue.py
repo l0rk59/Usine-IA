@@ -22,6 +22,17 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
+def nouvelle_scenes() -> int:
+    """Le nombre de scenes d'un roman, lu la ou il est decide.
+
+    Le recopier ici en ferait deux chiffres qui divergent — et celui du menu
+    finirait par promettre une longueur que la chaine ne fabrique pas.
+    """
+    from .nouvelle import ROMAN_SCENES
+
+    return ROMAN_SCENES
+
+
 @dataclass
 class TypeProduit:
     """Un type de produit reellement fabricable."""
@@ -90,6 +101,7 @@ def _chaines() -> Dict[str, Callable]:
     return {
         "ebook": ebook.produire,
         "nouvelle": nouvelle.produire,
+        "roman": nouvelle.produire_roman,
         "prompts": pack_prompts.produire,
         "formation": formation.produire,
         "outils": boite_outils.produire,
@@ -123,6 +135,19 @@ TYPES: List[TypeProduit] = [
         # marche. Un mot-cle trop large enverrait des guides a la fiction.
         mots_cles=("fiction", "recit", "roman", "conte", "intrigue"),
         # Une serie fait du tome suivant une vente au lecteur du precedent.
+        options={"serie": None},
+    ),
+    TypeProduit(
+        cle="roman", nom="Roman (fiction longue)",
+        resume="Un roman : trente scenes en parties, continuite tenue",
+        detail="PDF + EPUB + HTML + Markdown + couverture",
+        formats=("pdf", "epub", "html", "md", "txt"),
+        # Trente scenes relues et controlees : c'est long, et le dire evite
+        # qu'on croie l'usine bloquee au bout d'un quart d'heure.
+        minutes=(60, 180),
+        quantite=("chapitres", "Combien de scenes", str(nouvelle_scenes())),
+        mots_cles=("roman", "fiction longue", "saga", "polar", "thriller",
+                   "fantasy", "romance"),
         options={"serie": None},
     ),
     TypeProduit(
