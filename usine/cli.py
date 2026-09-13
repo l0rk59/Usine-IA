@@ -2050,6 +2050,108 @@ def cmd_cache(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_specs(args: argparse.Namespace) -> int:
+    """Ecrit la fiche technique de l'appareil, prete a etre poussee.
+
+    « usine docteur » dit si l'usine peut produire maintenant. Cette
+    fiche-la repond a l'autre question : ce qui devrait etre dans install.sh
+    pour que CET appareil marche sans bricolage. Aucune cle n'y figure.
+    """
+    from .core import maj as module_maj
+    from .core import specs as module_specs
+
+    titre_console("Fiche technique de l'appareil")
+    releve = module_specs.relever()
+    texte = module_specs.en_markdown(releve)
+
+    # A la racine du depot par defaut : c'est de la que la fiche part sur
+    # GitHub, et la chercher ailleurs ferait perdre du temps a chaque fois.
+    cible = Path(args.vers) if args.vers else module_maj.racine() / "SPECS-APPAREIL.md"
+    try:
+        cible.write_text(texte, encoding="utf-8")
+    except OSError as exc:
+        erreur(_expliquer_ecriture(exc) or str(exc))
+        return 1
+
+    manques = [m for m in module_specs._manques(releve)]
+    bloquants = [m for m in manques if m["gravite"] == "bloquant"]
+    for manque in manques:
+        (erreur if manque["gravite"] == "bloquant" else alerte)(
+            "{} — {}".format(manque["quoi"], manque["pourquoi"]))
+        print("      " + _c(manque["commande"], "1"))
+    if not manques:
+        ok("Rien ne manque sur cet appareil.")
+    ok("Fiche ecrite : {}".format(cible))
+
+    if module_maj.est_un_clone():
+        print("\n  La pousser sur le depot :")
+        print("    " + _c("git add {} && git commit -m \"fiche technique\""
+                          " && git push".format(cible.name), "1"))
+    return 1 if bloquants else 0
+
+
+def cmd_maj(args: argparse.Namespace) -> int:
+    """Met a jour le code depuis le depot, sans toucher a l'atelier."""
+    from .core import maj as module_maj
+
+    titre_console("Mise a jour de l'usine")
+    dossier = module_maj.racine()
+    print("  Installation : {}".format(dossier))
+    print("  Version      : {}".format(module_maj.version_installee()))
+    print("  L'atelier et le fichier .env ne sont jamais touches.")
+
+    par_git = module_maj.est_un_clone() and module_maj.git_disponible()
+    if getattr(args, "archive", False):
+        par_git = False
+    sales = module_maj.modifications_locales() if par_git else []
+    if sales and not getattr(args, "oui", False):
+        alerte("{} fichier(s) modifie(s) ici seraient perdus :".format(len(sales)))
+        for nom in sales[:8]:
+            print("      " + nom)
+        print("  Relancez avec " + _c("--oui", "1") + " si vous les abandonnez.")
+        return 1
+
+    if par_git:
+        print("\n  Depot git detecte : mise a jour par « git pull --ff-only ».")
+        resultat = module_maj.par_git(getattr(args, "branche", "") or "")
+    else:
+        branche = getattr(args, "branche", "") or module_maj.BRANCHE_DEFAUT
+        print("\n  Pas de depot git ici : telechargement de l'archive « {} »."
+              .format(branche))
+        resultat = module_maj.par_archive(branche)
+
+    if not resultat.get("ok"):
+        erreur(str(resultat.get("erreur") or "mise a jour impossible"))
+        if par_git:
+            # « ff-only » refuse quand l'historique local a diverge. Le dire
+            # evite de chercher une panne de reseau la ou il y a un commit
+            # local.
+            print("  Si votre depot a diverge, l'archive ignore l'historique : "
+                  + _c("usine maj --archive", "1"))
+        return 1
+
+    if not resultat.get("change"):
+        ok("Deja a jour ({}).".format(resultat.get("apres") or ""))
+        return 0
+
+    # On verifie dans un processus NEUF : les modules deja charges ici sont
+    # l'ancienne version et repondraient « tout va bien » quoi qu'on installe.
+    controle = module_maj.verifier()
+    if not controle.get("ok"):
+        erreur("L'usine mise a jour ne demarre pas : {}".format(
+            controle.get("erreur")))
+        if par_git:
+            print("  Revenir en arriere : "
+                  + _c("git -C {} reset --hard {}".format(
+                      dossier, resultat.get("avant", "HEAD@{1}")), "1"))
+        return 1
+    ok("Mise a jour faite — {}".format(controle.get("version") or ""))
+    if resultat.get("remplaces"):
+        print("  Remplaces : " + ", ".join(str(n) for n in resultat["remplaces"]))
+    print("\n  Verifier l'installation : " + _c("usine docteur", "1"))
+    return 0
+
+
 def cmd_web(args: argparse.Namespace) -> int:
     from .web.serveur import demarrer
 
@@ -2447,6 +2549,24 @@ def construire_parseur() -> argparse.ArgumentParser:
                    help="oublier la liste des modeles servis par chaque "
                         "fournisseur, sans toucher aux reponses")
     p.set_defaults(fonction=cmd_cache)
+
+    p = sous_parseurs.add_parser(
+        "specs", help="fiche technique de l'appareil, a pousser sur le depot")
+    p.add_argument("--vers", default="",
+                   help="ou ecrire la fiche (defaut : SPECS-APPAREIL.md a la "
+                        "racine de l'installation)")
+    p.set_defaults(fonction=cmd_specs)
+
+    p = sous_parseurs.add_parser(
+        "maj", help="mettre a jour l'usine depuis le depot")
+    p.add_argument("--branche", default="",
+                   help="branche a suivre (defaut : celle du clone, ou « {} »)"
+                        .format("main"))
+    p.add_argument("--archive", action="store_true",
+                   help="telecharger l'archive meme si git est disponible")
+    p.add_argument("--oui", action="store_true",
+                   help="accepter de perdre les modifications locales")
+    p.set_defaults(fonction=cmd_maj)
 
     p = sous_parseurs.add_parser("web", help="tableau de bord dans le navigateur")
     p.add_argument("-p", "--port", type=int, default=8777)

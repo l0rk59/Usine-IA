@@ -381,80 +381,112 @@ class TestMenuSeries(unittest.TestCase):
 
 
 class TestMenuPrincipal(unittest.TestCase):
-    """Chaque entree du menu principal lance la commande qu'elle annonce.
+    """Chaque entree, a tous les niveaux, ouvre vraiment quelque chose.
 
-    Le menu principal est la plus longue table numero -> branche du projet.
-    Y inserer une entree decale toutes les suivantes en silence : c'est
-    exactement ce qui vient d'arriver en ajoutant « Mesurer un marche » et
-    « Ce que l'usine a appris » au milieu.
+    Le menu principal a compte jusqu'a dix-sept entrees a plat, et c'etait la
+    plus longue table numero -> branche du projet : y inserer une ligne
+    decalait toutes les suivantes en silence. Il compte maintenant six
+    sections, et le decalage est devenu possible a DEUX niveaux au lieu d'un.
+
+    Ce test descend donc dans chaque section et verifie que chacune de ses
+    entrees fait quelque chose d'observable : une commande partie, ou un
+    ecran dont le texte ne peut venir que de lui. « Ne rien lancer » est vrai
+    d'un sous-menu comme d'une branche vide, et c'est precisement ce que ce
+    test existe pour distinguer.
     """
 
-    # Les entrees qui ouvrent un sous-menu ne lancent rien : elles sont
-    # absentes de cette table, et le test verifie alors qu'aucune commande
-    # ne part.
-    # Table mise a jour a l'insertion de « Mes series » en 5 : tout ce qui
-    # suivait « Mes produits » a recule d'un cran. C'est exactement le
-    # decalage que ce test existe pour attraper.
-    ATTENDU = {
-        7: "doublons", 8: "veille", 9: "marche", 10: "bilan",
-        11: "sauvegarde", 14: "prompts-systeme", 15: "cache",
-        16: "web", 17: "docteur",
+    # Pour chaque section : son numero, et par entree ce qui prouve qu'elle a
+    # ouvert quelque chose — soit la commande attendue, soit un texte que
+    # SEUL cet ecran imprime. L'etiquette du menu ne convient pas : elle
+    # s'affiche que la branche soit cablee ou vide.
+    SECTIONS = {
+        1: {1: ("ecran", "Que voulez-vous fabriquer"),
+            2: ("ecran", "Usine continue"),
+            3: ("commande", "idees")},
+        2: {1: ("ecran", "Generer le kit de vente"),
+            2: ("ecran", "Aucune serie pour l'instant"),
+            3: ("ecran", "Tests A/B")},
+        3: {1: ("commande", "veille"),
+            2: ("commande", "marche"),
+            3: ("ecran", "Ventes"),
+            4: ("commande", "doublons"),
+            5: ("commande", "bilan")},
+        4: {1: ("ecran", "Tout reinitialiser"),
+            2: ("ecran", "pollinations"),
+            3: ("ecran", "Prompts"),
+            4: ("ecran", "Voir ce qu'il contient")},
+        5: {1: ("commande", "docteur"),
+            2: ("commande", "specs"),
+            3: ("commande", "maj"),
+            4: ("commande", "sauvegarde")},
+        6: {},          # « Tableau de bord » lance directement une commande
     }
-    SOUS_MENUS = (1, 2, 4, 5, 12, 13)
 
-    def _lancer(self, numero):
-        frappes = [str(numero), "un sujet quelconque", "1", "", "0", "0", "0"]
-        return deroule(menu.menu_principal, frappes)
+    def _derouler(self, frappes):
+        """Lance le menu avec ces frappes, et rend (commandes, texte affiche)."""
+        lancees = []
+        entrees = iter(frappes)
+        texte = io.StringIO()
+        with redirect_stdout(texte):
+            with mock.patch("builtins.input",
+                            lambda invite="": next(entrees, "0")):
+                menu.menu_principal(lambda a: lancees.append(a) or 0)
+        return lancees, texte.getvalue()
 
-    def test_chaque_entree_lance_ce_qu_elle_annonce(self):
-        for numero, commande in sorted(self.ATTENDU.items()):
-            with self.subTest(entree=numero, commande=commande):
-                lancees = self._lancer(numero)
-                self.assertTrue(lancees, "l'entree {} ne lance rien".format(numero))
-                self.assertEqual(lancees[0][0], commande)
+    def test_le_tableau_de_bord_part_directement(self):
+        lancees, _ = self._derouler(["6"])
+        self.assertTrue(lancees)
+        self.assertEqual(lancees[0][0], "web")
 
-    def test_les_entrees_de_sous_menu_ne_lancent_rien_toutes_seules(self):
-        for numero in self.SOUS_MENUS:
-            with self.subTest(entree=numero):
-                self.assertEqual(self._lancer(numero), [])
-
-    def test_les_sous_menus_ouvrent_vraiment_leur_ecran(self):
-        """« ne lance aucune commande » est vrai d'un sous-menu comme d'une
-        branche vide. Il faut donc regarder ce qui s'affiche : une entree
-        cablee sur rien laisse l'utilisateur croire qu'il s'est passe
-        quelque chose.
-        """
-        # Des textes que SEUL l'ecran vise imprime. L'etiquette du menu ne
-        # convient pas : elle s'affiche que la branche soit cablee ou vide,
-        # ce qui rendait une premiere version de ce test complaisante.
-        reperes = {5: "Aucune serie pour l'instant",
-                   12: "pollinations",
-                   13: "Tout reinitialiser"}
-        for numero, attendu in sorted(reperes.items()):
-            texte = io.StringIO()
-            entrees = iter([str(numero)])
-            with self.subTest(entree=numero):
-                with redirect_stdout(texte):
-                    with mock.patch("builtins.input",
-                                    lambda invite="": next(entrees, "0")):
-                        menu.menu_principal(lambda a: 0)
-                self.assertIn(attendu, texte.getvalue())
+    def test_chaque_entree_de_chaque_section_ouvre_quelque_chose(self):
+        for section, entrees in sorted(self.SECTIONS.items()):
+            for numero, (genre, repere) in sorted(entrees.items()):
+                with self.subTest(section=section, entree=numero, attendu=repere):
+                    frappes = [str(section), str(numero),
+                               "un sujet quelconque", "1", "", "0", "0", "0"]
+                    lancees, texte = self._derouler(frappes)
+                    if genre == "commande":
+                        self.assertTrue(
+                            lancees,
+                            "section {} entree {} ne lance rien".format(
+                                section, numero))
+                        self.assertEqual(lancees[0][0], repere)
+                    else:
+                        self.assertIn(repere, texte)
 
     def test_aucune_entree_affichee_ne_tombe_dans_le_vide(self):
-        """Une entree sans branche ne provoque rien : l'utilisateur croit
-        que l'usine a fait quelque chose."""
-        couvertes = set(self.ATTENDU) | set(self.SOUS_MENUS)
-        couvertes.add(3)                      # Tests A/B, couvert plus haut
-        couvertes.add(6)                      # Ventes, sous-menu avec commande
-        affichees = set(range(1, _entrees_du_menu() + 1))
-        self.assertEqual(affichees - couvertes, set(),
-                         "entrees sans branche verifiee")
+        """Une entree sans branche ne provoque rien : l'utilisateur croit que
+        l'usine a fait quelque chose, et recommence."""
+        for section, attendues in sorted(self.SECTIONS.items()):
+            affichees = _entrees_de_section(section)
+            with self.subTest(section=section):
+                self.assertEqual(
+                    affichees, len(attendues) or affichees,
+                    "la section {} affiche {} entrees et ce test en verifie {}"
+                    .format(section, affichees, len(attendues)))
+
+    def test_le_menu_principal_reste_court(self):
+        """Sur un ecran de telephone, dix-sept entrees font deux ecrans et
+        demi a faire defiler pour trouver « Reglages »."""
+        self.assertLessEqual(_entrees_du_menu(), 8)
 
 
-def _entrees_du_menu():
+def _entrees_du_menu() -> int:
     """Combien d'entrees le menu principal affiche, lues dans sa source."""
-    source = (Path(menu.__file__)).read_text(encoding="utf-8")
+    source = Path(menu.__file__).read_text(encoding="utf-8")
     bloc = source.split('choisir("Menu principal", [')[1].split("], defaut=")[0]
+    return bloc.count('("')
+
+
+def _entrees_de_section(numero: int) -> int:
+    """Combien d'entrees une section affiche, lues dans sa source."""
+    source = Path(menu.__file__).read_text(encoding="utf-8")
+    titres = {1: "Fabriquer", 2: "Mes produits", 3: "Comprendre le marche",
+              4: "Reglages", 5: "La machine", 6: ""}
+    titre = titres[numero]
+    if not titre:
+        return 0
+    bloc = source.split('choisir("{}", ['.format(titre))[1].split("])")[0]
     return bloc.count('("')
 
 

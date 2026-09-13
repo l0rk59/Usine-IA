@@ -1146,6 +1146,139 @@ def _menu_cache(executer: Callable[[List[str]], int]) -> None:
     demander("\n  Appuyez sur Entree")
 
 
+# --------------------------------------------------------------------------
+# Les cinq sections du menu
+# --------------------------------------------------------------------------
+#
+# Le menu principal a compte jusqu'a dix-sept entrees a plat. Sur un ecran de
+# telephone, cela fait deux ecrans et demi a faire defiler pour trouver
+# « Reglages » — et surtout, rien n'y disait ce qui allait avec quoi : la
+# veille de niche et le cache IA se suivaient sans avoir le moindre rapport.
+#
+# Cinq sections, donc, et le critere est le MOMENT ou l'on s'en sert :
+# fabriquer, regarder ce qu'on a fabrique, comprendre le marche, regler,
+# entretenir la machine. Une entree qui n'entre dans aucune de ces cinq n'a
+# probablement rien a faire dans le menu principal.
+
+
+def _menu_fabrication(executer: Callable[[List[str]], int]) -> None:
+    while True:
+        compte = file_prod.compter()
+        en_file = compte["en_attente"] + compte["en_cours"]
+        choix = choisir("Fabriquer", [
+            ("Un produit", "ebook, roman, formation, imprimable, logiciel..."),
+            ("L'usine en continu", "{} niche(s) en file, budget, boucle"
+             .format(en_file) if en_file else "file de niches, budget, boucle"),
+            ("Trouver des idees", "explorer une niche et en tirer des sujets"),
+        ])
+        if choix == 0:
+            return
+        if choix == 1:
+            menu_fabriquer(executer)
+        elif choix == 2:
+            menu_usine(executer)
+        elif choix == 3:
+            sujet = demander("Quelle niche explorer", obligatoire=True)
+            if sujet:
+                executer(["idees", sujet])
+            demander("\n  Appuyez sur Entree")
+
+
+def _menu_mes_produits(executer: Callable[[List[str]], int]) -> None:
+    while True:
+        produits = [p for p in store.lister_produits(50)
+                    if p["statut"] != "bonus_integre"]
+        inacheves = [p for p in produits if p["statut"] == "en_cours"]
+        choix = choisir("Mes produits", [
+            ("La liste", "{} produit(s){}".format(
+                len(produits),
+                ", dont {} inacheve(s)".format(len(inacheves))
+                if inacheves else "")),
+            ("Mes series", "suites en cours, et leur derniere page"),
+            ("Tests A/B", "titres et couvertures : comparer et decider"),
+        ])
+        if choix == 0:
+            return
+        if choix == 1:
+            menu_produits(executer)
+        elif choix == 2:
+            menu_series(executer)
+        elif choix == 3:
+            menu_ab(executer)
+
+
+def _menu_marche(executer: Callable[[List[str]], int]) -> None:
+    while True:
+        choix = choisir("Comprendre le marche", [
+            ("Veille de niche", "ce que les gens disent vraiment d'un sujet"),
+            ("Mesurer un marche", "volumes reels sur quatre sources publiques"),
+            ("Mes ventes", "importer un export, voir ce qui rapporte"),
+            ("Doublons", "les produits qui se recouvrent"),
+            ("Ce que l'usine a appris", "quel type, quel ton, quelle qualite"),
+        ])
+        if choix == 0:
+            return
+        if choix == 1:
+            sujet = demander("Quelle niche explorer", obligatoire=True)
+            if sujet:
+                executer(["veille", sujet])
+            demander("\n  Appuyez sur Entree")
+        elif choix == 2:
+            sujet = demander("Quel marche mesurer", obligatoire=True)
+            if sujet:
+                executer(["marche", sujet])
+            demander("\n  Appuyez sur Entree")
+        elif choix == 3:
+            menu_ventes(executer)
+        elif choix == 4:
+            executer(["doublons"])
+            demander("\n  Appuyez sur Entree")
+        elif choix == 5:
+            executer(["bilan"])
+            demander("\n  Appuyez sur Entree")
+
+
+def _menu_reglages_general(executer: Callable[[List[str]], int]) -> None:
+    while True:
+        choix = choisir("Reglages", [
+            ("Vos reglages", "auteur, marque, ton, qualite, budget"),
+            ("Cles et quotas", "etat des fournisseurs et du pool de cles"),
+            ("Prompts et agents", "personnaliser les voix de l'equipe"),
+            ("Cache IA", "reponses gardees, catalogues des fournisseurs"),
+        ])
+        if choix == 0:
+            return
+        if choix == 1:
+            menu_reglages()
+        elif choix == 2:
+            menu_cles()
+        elif choix == 3:
+            _menu_prompts(executer)
+        elif choix == 4:
+            _menu_cache(executer)
+
+
+def _menu_machine(executer: Callable[[List[str]], int]) -> None:
+    while True:
+        choix = choisir("La machine", [
+            ("Diagnostic complet", "verifier toute l'installation"),
+            ("Fiche technique", "ce qui manque a CET appareil, en Markdown"),
+            ("Mettre a jour", "recuperer la derniere version du depot"),
+            ("Sauvegarder l'atelier", "ventes et historique dans une archive"),
+        ])
+        if choix == 0:
+            return
+        if choix == 1:
+            executer(["docteur"])
+        elif choix == 2:
+            executer(["specs"])
+        elif choix == 3:
+            executer(["maj"])
+        elif choix == 4:
+            executer(["sauvegarde"])
+        demander("\n  Appuyez sur Entree")
+
+
 def menu_principal(executer: Callable[[List[str]], int]) -> int:
     while True:
         effacer()
@@ -1170,69 +1303,27 @@ def menu_principal(executer: Callable[[List[str]], int]) -> int:
                 compte["en_attente"] + compte["en_cours"]))
 
         choix = choisir("Menu principal", [
-            ("Fabriquer un produit", "ebook, prompts, formation, imprimables..."),
-            ("Usine continue", "file de niches, budget, production en boucle"),
-            ("Tests A/B", "titres et couvertures : comparer et decider"),
-            ("Mes produits", "consulter, vendre, empaqueter"),
-            ("Mes series", "suites en cours, et leur derniere page"),
-            ("Ventes", "importer un export, voir ce qui rapporte vraiment"),
-            ("Doublons", "les produits qui se recouvrent"),
-            ("Veille de niche", "ce que les gens disent vraiment d'un sujet"),
-            ("Mesurer un marche", "volumes reels sur quatre sources publiques"),
-            ("Ce que l'usine a appris", "quel type, quel ton, quelle qualite"),
-            ("Sauvegarder l'atelier", "ventes et historique dans une archive"),
-            ("Cles et quotas", "etat des fournisseurs et du pool de cles"),
-            ("Reglages", "auteur, marque, ton et qualite par defaut"),
-            ("Prompts et agents", "personnaliser les voix de l'equipe"),
-            ("Cache IA", "consulter ou vider les reponses gardees"),
-            ("Tableau de bord 3D", "interface visuelle dans le navigateur"),
-            ("Diagnostic complet", "verifier toute l'installation"),
+            ("Fabriquer", "un produit, ou l'usine en continu"),
+            ("Mes produits", "consulter, reprendre, vendre, effacer"),
+            ("Comprendre le marche", "veille, volumes reels, ventes, doublons"),
+            ("Reglages", "auteur, ton, qualite, cles, agents"),
+            ("La machine", "diagnostic, sauvegarde, mise a jour, fiche technique"),
+            ("Tableau de bord", "l'interface visuelle, dans le navigateur"),
         ], defaut=1, retour="Quitter")
 
         if choix == 0:
             print("\n  A bientot.\n")
             return 0
         if choix == 1:
-            menu_fabriquer(executer)
+            _menu_fabrication(executer)
         elif choix == 2:
-            menu_usine(executer)
+            _menu_mes_produits(executer)
         elif choix == 3:
-            menu_ab(executer)
+            _menu_marche(executer)
         elif choix == 4:
-            menu_produits(executer)
+            _menu_reglages_general(executer)
         elif choix == 5:
-            menu_series(executer)
+            _menu_machine(executer)
         elif choix == 6:
-            menu_ventes(executer)
-        elif choix == 7:
-            executer(["doublons"])
-            demander("\n  Appuyez sur Entree")
-        elif choix == 8:
-            sujet = demander("Quelle niche explorer", obligatoire=True)
-            if sujet:
-                executer(["veille", sujet])
-            demander("\n  Appuyez sur Entree")
-        elif choix == 9:
-            sujet = demander("Quel marche mesurer", obligatoire=True)
-            if sujet:
-                executer(["marche", sujet])
-            demander("\n  Appuyez sur Entree")
-        elif choix == 10:
-            executer(["bilan"])
-            demander("\n  Appuyez sur Entree")
-        elif choix == 11:
-            executer(["sauvegarde"])
-            demander("\n  Appuyez sur Entree")
-        elif choix == 12:
-            menu_cles()
-        elif choix == 13:
-            menu_reglages()
-        elif choix == 14:
-            _menu_prompts(executer)
-        elif choix == 15:
-            _menu_cache(executer)
-        elif choix == 16:
             executer(["web"])
-        elif choix == 17:
-            executer(["docteur"])
-            demander("\n  Appuyez sur Entree")
+
