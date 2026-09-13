@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from . import budget as budget_module
 from . import cles as pool_cles
+from . import modeles as module_modeles
 from . import texte as module_texte
 from . import config, evenements, store
 from .http import HttpErreur, post_json
@@ -147,7 +148,11 @@ def _compte_pour(p: config.Provider, role: str) -> str:
     Google compte par modele : flash-lite garde ses mille requetes du jour
     meme quand flash a epuise ses deux cent cinquante.
     """
-    return p.model_for(role) if p.quota(role).portee == "modele" else ""
+    # Le modele effectif, sinon une substitution ferait compter le quota sur
+    # un identifiant que plus personne n'appelle — et le vrai passerait sans
+    # plafond.
+    return (module_modeles.modele_effectif(p, role)
+            if p.quota(role).portee == "modele" else "")
 
 
 # --------------------------------------------------------------------------
@@ -281,7 +286,10 @@ def _appel(
     timeout: int,
     cle: Optional[pool_cles.Cle] = None,
 ) -> Reponse:
-    modele = p.model_for(role)
+    # Le modele EFFECTIF, pas celui qui est ecrit dans config.py : un
+    # identifiant retire du catalogue a ete remplace par son equivalent, une
+    # fois, et la substitution vaut pour la suite.
+    modele = module_modeles.modele_effectif(p, role)
     charge: Dict[str, Any] = {
         "model": modele,
         "messages": list(messages),
@@ -450,11 +458,13 @@ def generer(
                                         rep.modele)
                     return rep
                 except HttpErreur as exc:
-                    store.enregistrer_appel(p.name, p.model_for(role), False, 0, 0,
+                    store.enregistrer_appel(p.name,
+                                            module_modeles.modele_effectif(p, role),
+                                            False, 0, 0,
                                             str(exc), cle_id=cle.id if cle else "")
                     erreurs.append("{}{} : {}".format(
                         p.name, "/" + cle.affichage if cle else "",
-                        _expliquer(p, exc, p.model_for(role))))
+                        _expliquer(p, exc, module_modeles.modele_effectif(p, role))))
 
                     if exc.statut in (401, 403):
                         # Cle refusee : on ecarte la cle, pas le fournisseur.
@@ -482,7 +492,27 @@ def generer(
                             _reposer(p.name, 1800, "credit epuise")
                         break
                     if exc.statut == 404:
-                        # Modele inconnu : changer de cle n'y changerait rien.
+                        # Modele inconnu. Avant de mettre le fournisseur au
+                        # repos une demi-heure, on lui demande ce qu'il sert.
+                        #
+                        # Mesure du 13/09/2026 : les deux modeles NVIDIA
+                        # configures ne figuraient plus dans les 82 servis.
+                        # Chaque appel rendait donc 404, NVIDIA passait au
+                        # repos, et une cle valide ne servait a rien sans que
+                        # rien ne le dise. Un catalogue de fournisseur bouge
+                        # toutes les quelques semaines : recopier le bon
+                        # identifiant reparait la panne du jour, pas la
+                        # suivante.
+                        refuse = module_modeles.modele_effectif(p, role)
+                        remplacant = module_modeles.substituer(p, role, refuse)
+                        if remplacant:
+                            erreurs.append(
+                                "{} : « {} » n'est plus servi, l'usine passe a "
+                                "« {} »".format(p.name, refuse, remplacant))
+                            evenements.publier(
+                                "substitution", fournisseur=p.name, role=role,
+                                avant=refuse, apres=remplacant)
+                            continue
                         _reposer(p.name, 1800, "modele inconnu")
                         fournisseur_hors_jeu = True
                         break
@@ -490,10 +520,12 @@ def generer(
                         break
                     time.sleep(min(8.0, 1.5 * (essai + 1)) + random.random())
                 except Exception as exc:
-                    store.enregistrer_appel(p.name, p.model_for(role), False, 0, 0,
+                    store.enregistrer_appel(p.name,
+                                            module_modeles.modele_effectif(p, role),
+                                            False, 0, 0,
                                             repr(exc), cle_id=cle.id if cle else "")
                     erreurs.append("{} : {}".format(
-                        p.name, _expliquer(p, exc, p.model_for(role))))
+                        p.name, _expliquer(p, exc, module_modeles.modele_effectif(p, role))))
                     break
 
     raise PlusDeFournisseur(

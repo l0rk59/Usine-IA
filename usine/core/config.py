@@ -171,15 +171,26 @@ class Provider:
         return self.models.get(role) or self.models.get("standard") or ""
 
 
-# Roles logiques :
-#   rapide   -> brouillons, titres, variations (petit modele, gros quota)
-#   standard -> redaction courante
-#   costaud  -> plan detaille, revision finale (meilleur modele dispo)
-#   long     -> condenser beaucoup de texte d'un coup (fermeture d'une partie
-#               de roman, relecture d'ensemble). « model_for » retombe sur
-#               « standard » quand un fournisseur n'a rien de mieux a offrir,
-#               ce qui est le cas de la plupart : declarer le role ne coute
-#               donc rien la ou il n'apporte rien.
+# Roles logiques. L'usine ne demande jamais un modele par son nom : elle
+# demande un role, et « core.modeles » le resout sur le catalogue que le
+# fournisseur sert REELLEMENT ce jour-la.
+#
+#   rapide       -> titres, JSON courts, classement (petit modele, gros quota)
+#   standard     -> redaction courante
+#   costaud      -> plan detaille, edition, controle (le meilleur disponible)
+#   long         -> condenser beaucoup de texte d'un coup (relecture d'ensemble,
+#                   fermeture d'une partie de roman) : c'est le contexte qui
+#                   compte, pas la finesse
+#   creatif      -> fiction. Un modele entraine pour ecrire, pas pour resumer ;
+#                   NVIDIA sert « writer/palmyra-creative-122b », qui existe
+#                   exactement pour cela, et le roman le demande
+#   code         -> la chaine logicielle, dont le code doit compiler
+#   raisonnement -> structure et arbitrage entre agents. Reflechir coute des
+#                   jetons, donc on ne le demande que la ou cela se justifie —
+#                   et le brouillon est retire par « core.texte »
+#
+# « model_for » retombe sur « standard » quand un fournisseur n'a rien de mieux
+# a offrir : declarer un role ne coute rien la ou il n'apporte rien.
 
 PROVIDERS: List[Provider] = [
     Provider(
@@ -283,15 +294,24 @@ PROVIDERS: List[Provider] = [
         name="openrouter",
         base_url="https://openrouter.ai/api/v1",
         api_key_env="OPENROUTER_API_KEY",
+        # Releve sur « GET /api/v1/models » le 13/09/2026 : 19 modeles « :free »
+        # sur 445, et ni « llama-3.3-70b:free » ni « deepseek-chat-v3:free »
+        # n'en font plus partie. Les identifiants « :free » sont les plus
+        # volatils du depot — un modele y passe payant du jour au lendemain.
         models={
-            "rapide": "meta-llama/llama-3.3-70b-instruct:free",
-            "standard": "meta-llama/llama-3.3-70b-instruct:free",
-            "costaud": "deepseek/deepseek-chat-v3-0324:free",
+            "rapide": "nex-agi/nex-n2.5-mini:free",
+            "standard": "google/gemma-4-31b-it:free",
+            "costaud": "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "long": "nvidia/nemotron-3.5-lightning:free",
+            "creatif": "google/gemma-4-31b-it:free",
+            "code": "cohere/north-mini-code:free",
+            "raisonnement": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
         },
-        rpm=18,
-        rpd=45,
+        rpm=20,
+        rpd=50,
         signup="https://openrouter.ai/keys",
-        notes="Beaucoup de modeles :free mais seulement ~50 requetes/jour.",
+        notes="19 modeles « :free », 20 requetes/minute et 50 par jour "
+              "(1000 apres un rechargement unique de 10 USD).",
         extra_headers={
             "HTTP-Referer": "https://github.com/l0rk59/usine-ia",
             "X-Title": "Usine-IA",
@@ -315,15 +335,27 @@ PROVIDERS: List[Provider] = [
         name="nvidia",
         base_url="https://integrate.api.nvidia.com/v1",
         api_key_env="NVIDIA_API_KEY",
+        # Releve sur « GET /v1/models » le 13/09/2026 : 82 modeles servis, et
+        # AUCUN des deux « meta/llama » configures jusque-la. Chaque appel
+        # rendait 404, le routeur mettait NVIDIA au repos une demi-heure, et
+        # une cle valide ne servait a rien sans que rien ne le dise. C'est le
+        # catalogue le plus fourni des fournisseurs gratuits : un modele par
+        # role y a un sens, et « core.modeles » rattrape le prochain
+        # renommage tout seul.
         models={
-            "rapide": "meta/llama-3.1-8b-instruct",
-            "standard": "meta/llama-3.3-70b-instruct",
-            "costaud": "meta/llama-3.3-70b-instruct",
+            "rapide": "nvidia/nemotron-nano-3-30b-a3b",
+            "standard": "nvidia/nemotron-3-super-120b-a12b",
+            "costaud": "nvidia/nemotron-3-ultra-550b-a55b",
+            "long": "nvidia/nemotron-3.5-lightning-30b-a3b",
+            "creatif": "writer/palmyra-creative-122b",
+            "code": "mistralai/codestral-22b-instruct-v0.1",
+            "raisonnement": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
         },
-        rpm=20,
+        rpm=40,
         rpd=800,
         signup="https://build.nvidia.com/",
-        notes="NVIDIA NIM, credits gratuits renouveles.",
+        notes="NVIDIA NIM : 82 modeles, 40 requetes/minute. Le catalogue le "
+              "plus fourni du palier gratuit — un modele par role.",
     ),
     Provider(
         name="pollinations",

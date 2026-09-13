@@ -577,7 +577,10 @@ def mettre_a_jour_resume(ctx: Contexte, etat: str, intitule: str,
     # entieres. Les fournisseurs sans modele dedie retombent sur « standard ».
     reponse = equipe.REDACTEUR.travailler(
         ctx, invite, max_tokens=320,
-        role_modele="long" if long_contexte else None)
+        # « creatif » quand il s'agit d'ecrire la scene, « long » quand il
+        # s'agit de fermer une partie entiere : ce ne sont pas les memes
+        # qualites, et les fournisseurs bien pourvus servent les deux.
+        role_modele="long" if long_contexte else "creatif")
     propre = elaguer_markdown(reponse.texte).strip()
     return propre if len(propre) >= 40 else ""
 

@@ -649,6 +649,43 @@ def cache_set(cle: str, contenu: str, fournisseur: str = "", modele: str = "") -
         )
 
 
+def cache_par_prefixe(prefixe: str) -> Dict[str, str]:
+    """Les entrees de cache dont la cle commence par « prefixe »."""
+    with cursor() as cur:
+        cur.execute("SELECT cle, contenu FROM cache WHERE cle LIKE ?",
+                    (prefixe + "%",))
+        return {row["cle"]: row["contenu"] for row in cur.fetchall()}
+
+
+def compter_reponses_cachees() -> int:
+    """Reponses de modele en cache — sans ce qui n'en est pas.
+
+    La table sert aussi a garder le catalogue des fournisseurs et les
+    substitutions de modeles. Les compter comme des reponses faisait annoncer
+    un cache non vide a qui n'avait encore rien fabrique.
+    """
+    with cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM cache WHERE cle NOT LIKE ?"
+                    " AND cle NOT LIKE ?",
+                    ("catalogue-modeles:%", "substitution:%"))
+        return int(cur.fetchone()[0])
+
+
+def cache_oublier_prefixe(prefixe: str) -> int:
+    """Efface les entrees de cache dont la cle commence par « prefixe ».
+
+    Le cache sert a deux choses qui n'ont rien a voir : garder les reponses du
+    modele, et garder le catalogue des fournisseurs. Oublier le second sans
+    jeter le premier evite de faire repayer une fabrication entiere parce
+    qu'on a change de cle API.
+    """
+    with cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM cache WHERE cle LIKE ?", (prefixe + "%",))
+        n = int(cur.fetchone()[0])
+        cur.execute("DELETE FROM cache WHERE cle LIKE ?", (prefixe + "%",))
+        return n
+
+
 def cache_vider() -> int:
     with cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM cache")

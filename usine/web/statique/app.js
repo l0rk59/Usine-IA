@@ -591,6 +591,14 @@ function traiter(evenement) {
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
       `reponse coupee au plafond (${echapper(evenement.fournisseur)}, ` +
       `${evenement.plafond} jetons) : le texte s'arrete avant sa fin`, 'souci');
+  } else if (evenement.type === 'substitution') {
+    /* Une reparation silencieuse est le genre de chose qui fait perdre une
+       journee le jour ou elle cesse de suffire : l'usine dit quand elle
+       change de modele, et pourquoi. */
+    ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
+      `${echapper(evenement.fournisseur)} ne sert plus ` +
+      `« ${echapper(evenement.avant)} » : l'usine passe a ` +
+      `« ${echapper(evenement.apres)} » (${echapper(evenement.role)})`, 'souci');
   } else if (evenement.type === 'controle') {
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
       `controle « ${echapper(evenement.intitule)} » : ${evenement.note}/10, ` +

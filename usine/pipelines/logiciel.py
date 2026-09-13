@@ -130,8 +130,13 @@ def _generer_fichier(ctx: Contexte, specification: Dict[str, Any], cible: str,
              contrainte=fiche["contrainte"], existant=contexte_existant,
              chemin=chemin, role=role)
 
+    # Role « code » : ce texte-la doit compiler, pas se lire agreablement.
+    # Chez NVIDIA, cela envoie sur Codestral plutot que sur un modele de
+    # redaction ; chez un fournisseur qui n'a rien de tel, « model_for »
+    # retombe sur « standard » et rien ne change.
     reponse = equipe.REDACTEUR.travailler(ctx, invite, max_tokens=4096,
-                                          temperature=0.35)
+                                          temperature=0.35,
+                                          role_modele="code")
     return _nettoyer_code(reponse.texte)
 
 

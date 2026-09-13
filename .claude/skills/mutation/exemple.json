@@ -2,7 +2,7 @@
   {
     "titre": "le quota se compte par modele",
     "fichier": "usine/core/llm.py",
-    "avant": "return p.model_for(role) if p.quota(role).portee == \"modele\" else \"\"",
+    "avant": "return (module_modeles.modele_effectif(p, role)\n            if p.quota(role).portee == \"modele\" else \"\")",
     "apres": "return \"\"",
     "tests": [
       "tests.test_routeur"

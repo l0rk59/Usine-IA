@@ -1989,14 +1989,33 @@ def cmd_cles(args: argparse.Namespace) -> int:
 
 
 def cmd_cache(args: argparse.Namespace) -> int:
+    from .core import modeles as module_modeles
+
+    if getattr(args, "catalogues", False):
+        # Le catalogue des fournisseurs est garde a part du cache des
+        # reponses : le premier vieillit en quelques semaines, le second vaut
+        # de l'argent. Les jeter ensemble ferait repayer une fabrication
+        # entiere pour rafraichir une liste de modeles.
+        module_modeles.oublier()
+        ok("Catalogues et substitutions oublies : ils seront redemandes aux "
+           "fournisseurs au prochain appel.")
+        return 0
     if args.vider:
         nombre = store.cache_vider()
+        module_modeles.oublier()
         ok("{} reponses supprimees du cache".format(nombre))
     else:
-        with store.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM cache")
-            print("  {} reponses en cache".format(cur.fetchone()[0]))
-        print("  Vider : usine cache --vider")
+        print("  {} reponses en cache".format(store.compter_reponses_cachees()))
+        remplaces = module_modeles.substitutions()
+        if remplaces:
+            # Une substitution silencieuse est le genre de reparation qui fait
+            # perdre une journee le jour ou elle cesse de suffire.
+            print("\n  Modeles remplaces (l'identifiant configure n'est plus servi) :")
+            for ou, modele in sorted(remplaces.items()):
+                print("    {:26} -> {}".format(ou, modele))
+        print("\n  Vider les reponses : " + _c("usine cache --vider", "1"))
+        print("  Rafraichir les catalogues : "
+              + _c("usine cache --catalogues", "1"))
     return 0
 
 
@@ -2383,7 +2402,11 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.set_defaults(fonction=cmd_cles)
 
     p = sous_parseurs.add_parser("cache", help="consulter ou vider le cache IA")
-    p.add_argument("--vider", action="store_true")
+    p.add_argument("--vider", action="store_true",
+                   help="supprimer les reponses gardees (elles seront repayees)")
+    p.add_argument("--catalogues", action="store_true",
+                   help="oublier la liste des modeles servis par chaque "
+                        "fournisseur, sans toucher aux reponses")
     p.set_defaults(fonction=cmd_cache)
 
     p = sous_parseurs.add_parser("web", help="tableau de bord dans le navigateur")

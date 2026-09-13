@@ -176,6 +176,22 @@ class BaseIllisible(unittest.TestCase):
         self.assertEqual(etat["verdict"]["etat"], "bloque")
         self.assertIn("sauvegarde", etat["verdict"]["remede"])
 
+    def test_le_choix_des_modeles_survit_a_une_base_illisible(self):
+        """Ce chemin a deja ete repare une fois, et une addition l'a recasse.
+
+        « docteur » demande a chaque fournisseur son modele du jour. Ce choix
+        consulte les substitutions retenues, qui sont dans la base. Laisser
+        remonter la « DatabaseError » de la faisait mourir exactement comme
+        avant — et le seul ecran qui savait nommer la panne redevenait muet.
+        """
+        from usine.core import modeles as module_modeles
+
+        self._casser("entete")
+        fournisseur = config.PROVIDERS_BY_NAME["nvidia"]
+        self.assertEqual(module_modeles.modele_effectif(fournisseur, "creatif"),
+                         fournisseur.models["creatif"])
+        self.assertEqual(module_modeles.substitutions(), {})
+
     def test_les_compteurs_inconnus_ne_deviennent_pas_zero(self):
         """Un chiffre sans source est pire que pas de chiffre.
 
