@@ -468,3 +468,56 @@ class TestTelephonePendantLaProduction(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestVerrouAtomique(unittest.TestCase):
+    """Deux usines ne doivent jamais tourner ensemble.
+
+    Le verrou etait pris en deux temps — verifier qu'il est libre, puis
+    l'ecrire — avec un intervalle entre les deux. Deux « usine usine
+    demarrer » lancees dans la meme seconde le voyaient toutes deux libre, et
+    la seconde ecrasait le PID de la premiere : « arreter » n'en arretait donc
+    qu'une, pendant que l'autre continuait a consommer le budget et a tirer
+    sur la meme file.
+    """
+
+    def setUp(self):
+        production._lever_verrou()
+
+    def tearDown(self):
+        production._lever_verrou()
+
+    def test_la_seconde_prise_echoue(self):
+        self.assertTrue(production._poser_verrou())
+        self.assertFalse(production._poser_verrou())
+
+    def test_le_verrou_se_reprend_apres_liberation(self):
+        self.assertTrue(production._poser_verrou())
+        production._lever_verrou()
+        self.assertTrue(production._poser_verrou())
+
+    def test_le_pid_de_la_premiere_n_est_pas_ecrase(self):
+        """Le vrai degat : « arreter » visait le mauvais processus."""
+        production._poser_verrou()
+        pid = production.chemin_verrou().read_text(encoding="utf-8").strip()
+        production._poser_verrou()
+        self.assertEqual(
+            production.chemin_verrou().read_text(encoding="utf-8").strip(), pid)
+
+    def test_un_verrou_orphelin_est_repris(self):
+        """Android tue les processus sans preavis : un verrou qui ment ne
+        doit pas interdire toute production jusqu'au prochain redemarrage."""
+        production.chemin_verrou().write_text("999999", encoding="utf-8")
+        self.assertTrue(production._poser_verrou())
+
+    def test_un_verrou_illisible_est_repris(self):
+        production.chemin_verrou().write_text("ce n'est pas un pid",
+                                              encoding="utf-8")
+        self.assertTrue(production._poser_verrou())
+
+    def test_l_usine_refuse_de_demarrer_si_le_verrou_est_pris(self):
+        production._poser_verrou()
+        dits = []
+        code = production.UsineContinue(journal=dits.append).tourner()
+        self.assertEqual(code, 1)
+        self.assertTrue(any("tourne deja" in d for d in dits))

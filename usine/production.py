@@ -76,9 +76,39 @@ def verrou_actif() -> Optional[int]:
     return None
 
 
-def _poser_verrou() -> None:
+def _poser_verrou() -> bool:
+    """Prend le verrou. Rend False si une autre usine le detient deja.
+
+    « verrou_actif() puis ecrire » etait un controle suivi d'un geste, avec
+    un intervalle entre les deux : deux usines lancees dans la meme seconde
+    voyaient toutes deux le verrou libre, et toutes deux l'ecrivaient. La
+    seconde ecrasait le PID de la premiere — « usine usine arreter » n'en
+    arretait donc qu'une, et l'autre continuait a consommer le budget et a
+    tirer sur la meme file.
+
+    La creation exclusive est atomique : c'est le systeme de fichiers qui
+    tranche, pas nous.
+    """
     config.ensure_dirs()
-    chemin_verrou().write_text(str(os.getpid()), encoding="utf-8")
+    chemin = chemin_verrou()
+    if _creer_exclusif(chemin):
+        return True
+    # Le fichier existe. Peut-etre ment-il : Android tue les processus sans
+    # preavis, et un verrou orphelin interdirait toute production jusqu'au
+    # prochain redemarrage. « verrou_actif » le nettoie dans ce cas.
+    if verrou_actif() is not None:
+        return False
+    return _creer_exclusif(chemin)
+
+
+def _creer_exclusif(chemin: Path) -> bool:
+    """Cree le fichier et y met notre PID, ou rend False s'il existe deja."""
+    try:
+        with open(chemin, "x", encoding="utf-8") as sortie:
+            sortie.write(str(os.getpid()))
+        return True
+    except (FileExistsError, OSError):
+        return False
 
 
 def _lever_verrou() -> None:
@@ -404,15 +434,13 @@ class UsineContinue:
 
     # -- boucle principale ---------------------------------------------------
     def tourner(self) -> int:
-        if verrou_actif() is not None:
+        config.ensure_dirs()
+        if not _poser_verrou():
             self.journal("Une usine tourne deja (pid {}). "
                          "Arretez-la avec « usine usine arreter ».".format(
                              verrou_actif()))
             return 1
-
-        config.ensure_dirs()
         (config.WORKDIR / "usine.stop").unlink(missing_ok=True)
-        _poser_verrou()
         self._installer_signaux()
 
         # Sans ce verrou, Android suspend Termux quelques minutes apres

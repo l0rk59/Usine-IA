@@ -217,3 +217,21 @@ arrêter, régler le budget.
 
 Le tableau de bord (`usine web`) affiche la file en direct, permet d'ajouter
 ou retirer une niche, et de démarrer ou arrêter l'usine depuis le navigateur.
+
+## Deux usines ne tournent jamais ensemble
+
+Le verrou était pris en deux temps — vérifier qu'il est libre, puis l'écrire —
+avec un intervalle entre les deux. **Deux `usine usine demarrer` lancées dans
+la même seconde le voyaient toutes deux libre**, et la seconde écrasait le PID
+de la première.
+
+Le dégât n'est pas théorique : `usine usine arreter` ne visait plus qu'un des
+deux processus, et l'autre continuait à consommer le budget d'appels et à
+tirer sur la même file — deux produits pour la même niche, et un plafond
+d'appels franchi sans que personne l'ait demandé.
+
+La prise est maintenant une **création exclusive** : c'est le système de
+fichiers qui tranche, pas nous. Un verrou orphelin — Android tue les processus
+sans préavis — est toujours repris, sinon la moindre coupure interdirait toute
+production jusqu'au prochain redémarrage.
+
