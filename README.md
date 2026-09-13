@@ -969,6 +969,23 @@ fabrication inaccessibles depuis un téléphone, et un tableau de bord qui
 pouvait effacer le mot de passe qui le protège. Les sept autres disent que les
 garde-fous existants tiennent, ce qui est l'autre moitié de l'information.
 
+## Ce qu'un utilisateur a trouvé en dix minutes
+
+Dix minutes sur un vrai téléphone, avec de vraies clés, ont fait remonter plus
+de défauts que l'audit de la veille — et **aucun ne faisait échouer quoi que ce
+soit** : [docs/ERGONOMIE.md](docs/ERGONOMIE.md).
+
+Un fournisseur qui répond `HTTP 200`, `finish_reason: stop`, et pour contenu
+« votre clé a épuisé son budget » — écrit tel quel dans un chapitre. Deux
+fournisseurs sur deux ne servant **aucun** des modèles configurés, donc une clé
+valide qui ne sert à rien. Une coupure réseau qui emportait le plan, l'avant-
+propos et le premier chapitre déjà payés. Un roman fabricable depuis toujours
+et qui n'avait de nom nulle part. Dix-huit réglages sur vingt-six qui ne se
+changeaient qu'en éditant un fichier JSON.
+
+Et trois garde-fous verts qui auraient dû attraper tout cela : ils cherchaient
+un nom **quelque part** dans le code, et un nom se trouve partout.
+
 ## Quand la machine lâche
 
 Le disque se remplit au milieu d'une fabrication, la base de l'atelier est

@@ -84,8 +84,33 @@ pourquoi c'etait invisible**, pas la liste des fichiers touches.
 | `usine/core/llm.py` | routeur multi-fournisseurs : quotas, bascule, cache, repli local |
 | `usine/core/config.py` | fournisseurs, modeles, quotas — donnees recopiees, donc perissables |
 | `usine/core/controle.py` | controle qualite deterministe, sans appel de modele |
-| `usine/agents/equipe.py` | les sept agents et la relecture croisee |
+| `usine/core/texte.py` | ce que le modele ajoute et qu'on retire ; refus deguises en reponse |
+| `usine/core/modeles.py` | le catalogue vivant d'un fournisseur, et le choix par role |
+| `usine/pipelines/carnet.py` | ce qui est deja ecrit, sur le disque : la reprise |
+| `usine/pipelines/brief.py` | ce que l'usine decide quand on ne lui dit rien |
+| `usine/agents/equipe.py` | les sept agents, la relecture croisee et la deliberation |
 | `docs/` | une note par sujet, chacune expliquant un defaut mesure et sa correction |
+
+## Trois regles qui reviennent
+
+Elles ne sont pas nouvelles, mais chaque audit les retrouve, et toujours sous
+la meme forme.
+
+**Un garde-fou satisfait par une homonymie ne garde rien.** Chercher un nom
+« quelque part dans le code » a laisse passer une fonction sans appelant
+(`http.en_ligne`, dont le nom servait ailleurs de parametre) puis deux
+reglages orphelins (`plateforme`, `devise`, dont les noms servent partout ou
+l'on parle de vente). Un detecteur lit la STRUCTURE — l'arbre syntaxique, ou
+au minimum la ligne et son contexte.
+
+**Ne pas croire le code de retour, lire le contenu.** Un fournisseur peut
+rendre HTTP 200, `finish_reason: stop`, un `usage` renseigne, et pour tout
+contenu « votre cle a epuise son budget ». Tous les signaux disent « reponse
+valide ».
+
+**Un reglage par defaut n'est pas neutre, il est juste invisible.** « pro,
+douze chapitres, un public motive » donnait la meme voix a un guide de
+fiscalite et a un carnet de recettes, sans que rien n'echoue.
 
 ## Skills du projet
 
