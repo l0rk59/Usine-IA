@@ -29,6 +29,14 @@ DEFAUTS: Dict[str, Any] = {
     "audience": "auto",
     "plateforme": "gumroad",
     "devise": "EUR",
+    # Ce qu'on demandait en option a CHAQUE commande, faute de pouvoir le
+    # declarer une fois. Un vendeur qui empaquette toujours ses produits
+    # retapait « --zip » cent fois ; celui qui ne le fait jamais n'avait pas
+    # a le voir.
+    "marketing_auto": False,      # produire le kit de vente sans le demander
+    "archive_auto": False,        # ecrire l'archive ZIP livrable
+    "relecture_ensemble": False,  # une lecture du produit entier, en plus
+    "extrait_offert": 0,          # chapitres offerts en edition gratuite
     "images": True,
     "couverture": "atelier",       # atelier (composee localement) | ia
     "qualite": "standard",        # rapide | standard | exigeant
@@ -63,6 +71,12 @@ DESCRIPTIONS: Dict[str, str] = {
     "audience": "Audience par defaut : auto (deduite du sujet), ou une "
                 "description precise (metier, niveau, situation)",
     "plateforme": "Plateforme de vente visee : gumroad, etsy, payhip, site",
+    "couverture": "Couverture : atelier (composee ici, gratuite) ou ia (generee)",
+    "marketing_auto": "Produire le kit de vente a chaque produit, sans le demander",
+    "archive_auto": "Ecrire l'archive ZIP livrable a chaque produit",
+    "relecture_ensemble": "Relire le produit ENTIER a la recherche des "
+                          "contradictions (un appel de plus par produit)",
+    "extrait_offert": "Chapitres offerts dans une edition gratuite (0 = aucune)",
     "devise": "Devise des prix conseilles",
     "images": "Generer les couvertures et visuels (oui/non)",
     "qualite": "rapide (1 passe) | standard (relecture) | exigeant (2 relectures)",
@@ -171,14 +185,73 @@ def relectures_pour(qualite: str) -> int:
     return QUALITES.get(qualite, QUALITES["standard"])["relectures"]
 
 
+# Les reglages, ranges par ce qu'ils decident. Vingt-six reglages a plat
+# etaient illisibles partout — et surtout dans le tableau de bord, qui n'en
+# montrait que huit : les dix-huit autres n'existaient que dans un fichier
+# JSON que personne n'ouvre. Le critere de regroupement est la QUESTION a
+# laquelle le reglage repond, pas le module qui le lit.
+GROUPES: List[Dict[str, Any]] = [
+    {"cle": "identite", "titre": "Qui vend",
+     "aide": "Ce qui apparait sur vos produits et dans la notice de l'acheteur.",
+     "reglages": ["auteur", "marque", "contact", "site", "signature_ia"]},
+    {"cle": "fabrication", "titre": "Comment l'usine ecrit",
+     "aide": "« auto » laisse l'usine decider en lisant le sujet.",
+     "reglages": ["langue", "ton", "taille", "audience", "qualite",
+                  "relecture_ensemble", "images", "couverture"]},
+    {"cle": "vente", "titre": "Ce qui part avec le produit",
+     "aide": "Produit a chaque fabrication, sans avoir a le demander.",
+     "reglages": ["plateforme", "devise", "marketing_auto", "archive_auto",
+                  "extrait_offert"]},
+    {"cle": "budget", "titre": "Ce que l'usine a le droit de depenser",
+     "aide": "Zero veut dire : pas de plafond. Ces limites arretent l'usine "
+             "continue, pas une fabrication lancee a la main.",
+     "reglages": ["budget_appels_jour", "budget_appels_produit",
+                  "budget_produits_jour", "budget_minutes_produit",
+                  "budget_jetons_jour", "pause_entre_produits"]},
+    {"cle": "telephone", "titre": "Le telephone",
+     "aide": "Tout est facultatif et demande termux-api.",
+     "reglages": ["notifications", "batterie_minimum", "verrou_veille"]},
+    {"cle": "interface", "titre": "L'affichage",
+     "aide": "Le tableau de bord et le menu.",
+     "reglages": ["theme", "effets_3d", "jeton_web"]},
+]
+
+# Ce qui ne se change PAS depuis le navigateur. « jeton_web » est le mot de
+# passe qui protege ce navigateur-la : le laisser modifier depuis la page
+# qu'il garde permettrait de s'y enfermer, ou d'en sortir.
+HORS_WEB = frozenset({"jeton_web"})
+
+
+def non_groupes() -> List[str]:
+    """Les reglages qu'aucun groupe ne montre.
+
+    Un reglage hors groupe est INVISIBLE dans les interfaces qui affichent
+    par groupe — c'est-a-dire un reglage sauvegarde, lu par le code, et que
+    personne ne peut changer. Un test garde ce point.
+    """
+    places = {nom for groupe in GROUPES for nom in groupe["reglages"]}
+    return [nom for nom in DEFAUTS if nom not in places]
+
+
 def lignes_affichables() -> List[Dict[str, str]]:
+    """Les reglages a montrer, DANS L'ORDRE DES GROUPES.
+
+    L'ordre compte : c'est lui qui donne leur numero dans le menu. Le laisser
+    suivre l'ordre de declaration pendant que le menu affichait par groupe
+    ferait pointer chaque numero sur un autre reglage — l'utilisateur croirait
+    changer le ton et changerait la devise.
+    """
     valeurs = charger()
-    return [
-        {
-            "nom": nom,
-            "valeur": "(non defini)" if valeurs.get(nom) in ("", None)
-                      else str(valeurs.get(nom)),
-            "description": DESCRIPTIONS.get(nom, ""),
-        }
-        for nom in DEFAUTS
-    ]
+    lignes = []
+    for groupe in GROUPES:
+        for nom in groupe["reglages"]:
+            lignes.append({
+                "nom": nom,
+                "groupe": groupe["cle"],
+                "titre_groupe": groupe["titre"],
+                "aide_groupe": groupe["aide"],
+                "valeur": "(non defini)" if valeurs.get(nom) in ("", None)
+                          else str(valeurs.get(nom)),
+                "description": DESCRIPTIONS.get(nom, ""),
+            })
+    return lignes

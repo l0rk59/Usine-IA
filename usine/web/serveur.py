@@ -313,7 +313,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 return
             self._json({"reglages": reglages.ecrire(
                 {k: v for k, v in options.items()
-                 if k in reglages.DEFAUTS and k not in REGLAGES_HORS_WEB})})
+                 if k in reglages.DEFAUTS and k not in reglages.HORS_WEB})})
         elif chemin == "/api/veille":
             options = self._corps_json()
             if options is None:
@@ -1318,7 +1318,6 @@ def _commerce() -> Dict[str, Any]:
 # qui atteint la page peut s'y enfermer en posant un jeton, ou l'ouvrir a tous
 # en l'effacant. Un identifiant ne se change jamais par la surface qu'il garde
 # — il se change depuis la machine, par « usine reglages » ou le menu.
-REGLAGES_HORS_WEB = frozenset({"jeton_web"})
 
 
 def _etat() -> Dict[str, Any]:
@@ -1364,9 +1363,25 @@ def _etat() -> Dict[str, Any]:
         "tailles": sorted(TAILLES, key=lambda t: TAILLES[t][0]),
         "qualites": ["rapide", "standard", "exigeant"],
         "reseaux": sorted(social.RESEAUX),
-        "reglages": {k: profil[k] for k in
-                     ("auteur", "audience", "ton", "taille", "qualite", "images",
-                      "theme", "effets_3d")},
+        # TOUS les reglages, moins les secrets. Le tableau de bord n'en
+        # montrait que huit sur vingt-six : les dix-huit autres — le contact
+        # imprime dans la notice de l'acheteur, la marque, les budgets qui
+        # arretent l'usine continue — n'existaient que dans un fichier JSON
+        # que personne n'ouvre.
+        "reglages": {k: v for k, v in profil.items()
+                     if k in reglages.DEFAUTS and k not in reglages.HORS_WEB},
+        # La structure, pour que la page range comme le menu Termux range.
+        "groupes_reglages": [
+            {"cle": g["cle"], "titre": g["titre"], "aide": g["aide"],
+             "reglages": [
+                 {"nom": nom, "description": reglages.DESCRIPTIONS.get(nom, ""),
+                  "genre": ("booleen" if isinstance(reglages.DEFAUTS[nom], bool)
+                            else "entier"
+                            if isinstance(reglages.DEFAUTS[nom], int)
+                            else "texte"),
+                  "choix": list(reglages.FERMES.get(nom, ()))}
+                 for nom in g["reglages"] if nom not in reglages.HORS_WEB]}
+            for g in reglages.GROUPES],
         "file": file_prod.compter(),
         # Volontairement absent : _commerce() compare toutes les paires de
         # produits, ce qui coute pres d'une seconde a quatre cents produits.

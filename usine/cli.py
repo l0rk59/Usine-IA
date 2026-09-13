@@ -156,6 +156,22 @@ def _verifier_fournisseurs() -> bool:
 # --------------------------------------------------------------------------
 
 
+def _reglage_ou_option(args: argparse.Namespace, option: str,
+                       reglage: str) -> bool:
+    """Le reglage decide, l'option tranche — dans les deux sens.
+
+    « --marketing » force, « --sans-marketing » empeche, et sans l'une ni
+    l'autre on applique ce qui a ete declare une fois pour toutes. Sans la
+    forme negative, un reglage active ne pourrait plus jamais etre annule
+    pour un seul produit, ce qui en ferait un piege plutot qu'un confort.
+    """
+    if getattr(args, "sans_" + option, False):
+        return False
+    if getattr(args, option, False):
+        return True
+    return bool(reglages.lire(reglage, False))
+
+
 def _apres_production(args: argparse.Namespace, ctx: Contexte,
                       resume: Dict[str, Any], description: str) -> Dict[str, Any]:
     """Kit de vente + archive, si demandes."""
@@ -169,7 +185,14 @@ def _apres_production(args: argparse.Namespace, ctx: Contexte,
                "pas de version adaptee aux lecteurs qui en auraient besoin.")
         print("      " + _c("usine reglages", "1")
               + "  ou  " + _c("--contact vous@exemple.fr", "1"))
-    if getattr(args, "marketing", False):
+    # Le reglage decide, l'option tranche. « --marketing » force,
+    # « --sans-marketing » empeche, et sans les deux on fait ce qui a ete
+    # declare une fois pour toutes. Un vendeur qui empaquette toujours ses
+    # produits retapait « --zip » cent fois ; celui qui ne le fait jamais
+    # n'avait pas a le voir.
+    veut_kit = _reglage_ou_option(args, "marketing", "marketing_auto")
+    veut_zip = _reglage_ou_option(args, "zip", "archive_auto")
+    if veut_kit:
         titre_console("Kit de vente")
         try:
             kit = vente.produire_kit(
@@ -181,7 +204,8 @@ def _apres_production(args: argparse.Namespace, ctx: Contexte,
                 # Le nom de la commande EST la cle du catalogue : c'est
                 # l'invariant du projet, autant s'y appuyer.
                 type_produit=getattr(args, "commande", "ebook"),
-                chapitres_offerts=getattr(args, "extrait", 0) or 0,
+                chapitres_offerts=(getattr(args, "extrait", 0)
+                                   or int(reglages.lire("extrait_offert", 0) or 0)),
             )
             resume["marketing"] = kit["fichiers"]
             if kit.get("extrait"):
@@ -193,14 +217,15 @@ def _apres_production(args: argparse.Namespace, ctx: Contexte,
         except Exception as exc:
             alerte("Kit de vente non genere : {}".format(exc))
 
-    if getattr(args, "zip", False):
+    if veut_zip:
         titre_console("Mise en carton")
         from .pipelines.base import slug
 
         archive = livraison.empaqueter(
             dossier, slug(resume["titre"], 46), resume["titre"], ctx.auteur,
             promesse=description[:200],
-            contact=getattr(args, "contact", "") or "",
+            contact=(getattr(args, "contact", "")
+                     or str(reglages.lire("contact", "") or "")),
         )
         resume["archive"] = str(archive)
         ok("Archive : {} ({} Ko)".format(archive.name, archive.stat().st_size // 1024))
@@ -233,7 +258,9 @@ def cmd_ebook(args: argparse.Namespace) -> int:
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un ebook")
     resume = ebook.produire(
-        ctx, relecture_ensemble=getattr(args, "relecture_ensemble", False))
+        ctx, relecture_ensemble=(getattr(args, "relecture_ensemble", False)
+                                 or bool(reglages.lire("relecture_ensemble",
+                                                       False))))
     description = "Ebook de {} chapitres, {} mots. {}".format(
         resume["chapitres"], resume["mots"], resume.get("sous_titre", "")
     )
@@ -494,7 +521,7 @@ def _ajouter_vente(args: argparse.Namespace) -> int:
         "date": args.date or time.strftime("%Y-%m-%d"),
         "reference": args.reference or args.ajouter,
         "unites": max(1, args.unites), "brut": args.brut, "net": args.net,
-        "devise": (args.devise or "EUR").upper(),
+        "devise": (args.devise or reglages.lire("devise", "EUR")).upper(),
         "remboursement": 1 if args.remboursement else 0,
         "plateforme": args.plateforme_vente, "source": "manuel",
     }
@@ -2200,12 +2227,27 @@ def _options_communes(sous: argparse.ArgumentParser, avec_sujet: bool = True) ->
     sous.add_argument("-q", "--qualite", default="",
                       choices=["", "rapide", "standard", "exigeant"],
                       help="rapide (sans relecture) | standard (1) | exigeant (2)")
+    # « action="store_true" » et defaut None : on distingue « non demande »
+    # de « refuse », sans quoi le reglage ne pourrait jamais etre actif.
+    sous.add_argument("--sans-marketing", dest="sans_marketing",
+                      action="store_true",
+                      help="ne pas produire le kit de vente, meme si le "
+                           "reglage « marketing_auto » le demande")
+    sous.add_argument("--sans-zip", dest="sans_zip", action="store_true",
+                      help="ne pas ecrire l'archive, meme si le reglage "
+                           "« archive_auto » la demande")
     sous.add_argument("--marketing", action="store_true",
                       help="generer aussi le kit de vente")
     sous.add_argument("--extrait", type=int, default=0, metavar="N",
                       help="chapitres de l'edition courte offerte "
                            "(defaut : un quart du livre)")
-    sous.add_argument("--plateforme", default="gumroad",
+    # Le defaut vient du REGLAGE, pas d'une constante. « gumroad » etait ecrit
+    # en dur ici : le reglage « plateforme » etait affiche dans les trois
+    # interfaces, enregistre sur disque, et lu par personne. Un reglage
+    # orphelin est un mensonge fait a l'utilisateur — il croit avoir regle
+    # quelque chose.
+    sous.add_argument("--plateforme",
+                      default=str(reglages.lire("plateforme", "gumroad")),
                       choices=sorted(vente.PLATEFORMES), help="plateforme de vente visee")
     sous.add_argument("--zip", action="store_true", help="produire l'archive livrable")
     sous.add_argument("--hors-ligne", dest="hors_ligne", action="store_true",
@@ -2334,7 +2376,9 @@ def construire_parseur() -> argparse.ArgumentParser:
 
     p = sous_parseurs.add_parser("marketing", help="kit de vente d'un produit existant")
     p.add_argument("produit_id", help="identifiant du produit (voir : usine liste)")
-    p.add_argument("--plateforme", default="gumroad", choices=sorted(vente.PLATEFORMES))
+    p.add_argument("--plateforme",
+                   default=str(reglages.lire("plateforme", "gumroad")),
+                   choices=sorted(vente.PLATEFORMES))
     p.add_argument("--prix", default="", help="prix affiche")
     p.add_argument("--extrait", type=int, default=0, metavar="N",
                    help="chapitres de l'edition courte offerte")
@@ -2465,7 +2509,9 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.add_argument("--net", type=float, default=None,
                    help="ce qui reste apres commission, si vous le connaissez")
     p.add_argument("--unites", type=int, default=1)
-    p.add_argument("--devise", default="EUR")
+    # Meme defaut orphelin que « plateforme » : qui vend en francs suisses
+    # reglait sa devise et voyait « EUR » a chaque import.
+    p.add_argument("--devise", default=str(reglages.lire("devise", "EUR")))
     p.add_argument("--date", default="", help="AAAA-MM-JJ (defaut : aujourd'hui)")
     p.add_argument("--reference", default="",
                    help="nom du produit tel qu'il apparait sur la plateforme")

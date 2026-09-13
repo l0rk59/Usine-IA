@@ -155,6 +155,8 @@ async function chargerEtat() {
     : "Aucune cle API : quota tres limite. Lancez « usine cles » dans Termux.";
 
   appliquerReglagesInterface(donnees.reglages);
+  etat.groupesReglages = donnees.groupes_reglages || [];
+  dessinerReglages(etat.groupesReglages, donnees.reglages || {});
   if (!$('ton').options.length) {
     etat.types = donnees.types;
     remplirListe($('type'), donnees.types.map((t) => [t.cle, t.nom]), 'ebook');
@@ -1360,6 +1362,71 @@ async function chargerBilan() {
 }
 
 /* --------------------------------------------- reglages -> interface */
+/* Les reglages, tous, ranges comme le menu Termux les range. Le tableau de
+   bord n'en montrait que huit sur vingt-six : les dix-huit autres — le
+   contact imprime dans la notice de l'acheteur, la marque, les budgets qui
+   arretent l'usine continue — n'existaient que dans un fichier JSON que
+   personne n'ouvre. */
+function dessinerReglages(groupes, valeurs) {
+  if (!groupes || !groupes.length) return;
+  $('reglages-groupes').innerHTML = groupes.map((g) => `
+    <div class="groupe-reglages">
+      <h3 class="sous">${echapper(g.titre)}</h3>
+      <p class="aide">${echapper(g.aide)}</p>
+      ${g.reglages.map((r) => champReglage(r, valeurs[r.nom])).join('')}
+    </div>`).join('');
+}
+
+function champReglage(reglage, valeur) {
+  const id = 'reglage-' + reglage.nom;
+  const etiquette = `<span class="nom-reglage">${echapper(reglage.nom)}</span>
+    <small>${echapper(reglage.description)}</small>`;
+  if (reglage.genre === 'booleen') {
+    return `<label class="case" for="${id}">
+      <input type="checkbox" id="${id}" data-reglage="${echapper(reglage.nom)}"
+        ${valeur ? 'checked' : ''}/> ${etiquette}</label>`;
+  }
+  if (reglage.choix && reglage.choix.length) {
+    const options = reglage.choix.map((c) =>
+      `<option value="${echapper(c)}"${c === valeur ? ' selected' : ''}>${
+        echapper(c)}</option>`).join('');
+    return `<label class="champ" for="${id}">${etiquette}
+      <select id="${id}" data-reglage="${echapper(reglage.nom)}">${options}</select>
+      </label>`;
+  }
+  const type = reglage.genre === 'entier' ? 'number' : 'text';
+  return `<label class="champ" for="${id}">${etiquette}
+    <input type="${type}" id="${id}" data-reglage="${echapper(reglage.nom)}"
+      value="${echapper(String(valeur === null || valeur === undefined ? '' : valeur))}"/>
+    </label>`;
+}
+
+$('reglages-enregistrer').addEventListener('click', async () => {
+  const envoi = {};
+  document.querySelectorAll('[data-reglage]').forEach((champ) => {
+    envoi[champ.dataset.reglage] = champ.type === 'checkbox'
+      ? champ.checked
+      : (champ.type === 'number' ? Number(champ.value) : champ.value);
+  });
+  $('reglages-etat').textContent = 'enregistrement...';
+  try {
+    const reponse = await fetch('/api/reglages', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(envoi),
+    });
+    const d = await reponse.json();
+    if (d.erreur) { $('reglages-etat').textContent = d.erreur; return; }
+    /* On redessine avec ce que le SERVEUR a retenu, pas avec ce qu'on lui a
+       envoye : « qualite: rapidos » y devient « standard », et l'afficher tel
+       qu'on l'a tape ferait croire a un reglage qui n'existe pas. */
+    dessinerReglages(etat.groupesReglages, d.reglages || {});
+    appliquerReglagesInterface(d.reglages || {});
+    $('reglages-etat').textContent = 'enregistre.';
+  } catch (e) {
+    $('reglages-etat').textContent = "l'usine n'a pas repondu.";
+  }
+});
+
 function appliquerReglagesInterface(reglages) {
   if (!reglages) return;
   // Theme : le choix local (bouton) prime ; sinon on suit le reglage.

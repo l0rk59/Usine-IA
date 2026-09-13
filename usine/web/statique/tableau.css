@@ -538,3 +538,17 @@ button.danger { border-radius: 2px; box-shadow: var(--neon-mag); }
 .onglets button:focus-visible { outline: 2px solid var(--accent);
                                 outline-offset: 2px; }
 .onglet[hidden] { display: none; }
+
+/* Les reglages, groupe par groupe. Trente champs a la suite seraient aussi
+   illisibles que la liste a plat qu'ils remplacent. */
+.groupe-reglages { margin: 0 0 1.1rem; padding: 0 0 0.8rem;
+                   border-bottom: 1px solid var(--bord); }
+.groupe-reglages:last-child { border-bottom: none; }
+.groupe-reglages .champ { display: block; margin: 0.5rem 0; }
+.groupe-reglages .case { display: flex; gap: 0.5rem; align-items: flex-start;
+                         margin: 0.5rem 0; }
+.nom-reglage { font-weight: 600; }
+.groupe-reglages small { display: block; color: var(--doux);
+                         font-size: 0.78rem; }
+.groupe-reglages input[type=text], .groupe-reglages input[type=number],
+.groupe-reglages select { width: 100%; margin-top: 0.2rem; }

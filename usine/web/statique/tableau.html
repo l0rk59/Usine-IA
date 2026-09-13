@@ -49,6 +49,7 @@
   <button role="tab" data-onglet="fabriquer" aria-selected="false">Fabriquer</button>
   <button role="tab" data-onglet="produits" aria-selected="false">Mes produits</button>
   <button role="tab" data-onglet="marche" aria-selected="false">Marche</button>
+  <button role="tab" data-onglet="reglages" aria-selected="false">Reglages</button>
   <button role="tab" data-onglet="machine" aria-selected="false">La machine</button>
 </nav>
 
@@ -222,6 +223,20 @@
 <div class="carte">
   <h2>Ce que l'usine a appris</h2>
   <div id="bilan"><span class="vide">chargement...</span></div>
+</div>
+</section>
+
+<section class="onglet" id="onglet-reglages" data-section="reglages" role="tabpanel" aria-label="Reglages" hidden>
+<div class="carte">
+  <h2>Reglages</h2>
+  <p class="aide">Ce qui s'applique a chaque fabrication, sans avoir a le
+    retaper. Les options de la ligne de commande l'emportent, produit par
+    produit.</p>
+  <div id="reglages-groupes"><span class="vide">chargement...</span></div>
+  <div class="rangee">
+    <button id="reglages-enregistrer">Enregistrer</button>
+    <span class="aide" id="reglages-etat" role="status"></span>
+  </div>
 </div>
 </section>
 

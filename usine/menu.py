@@ -985,11 +985,20 @@ def menu_series(executer: Callable[[List[str]], int]) -> None:
 def menu_reglages() -> None:
     while True:
         entete("Reglages")
+        # Par groupe, et dans l'ordre du module : trente reglages a plat
+        # etaient illisibles sur un ecran de telephone, et rien ne disait
+        # lesquels allaient ensemble. Les groupes viennent de « reglages »,
+        # pas d'ici : le tableau de bord montre exactement les memes.
         lignes = reglages.lignes_affichables()
+        groupe_courant = ""
         for numero, ligne in enumerate(lignes, 1):
-            print("  {:>2}. {:<14} {}".format(
-                numero, ligne["nom"], c(ligne["valeur"][:28], "1")))
-            print("      " + c(ligne["description"][:58], "2"))
+            if ligne["groupe"] != groupe_courant:
+                groupe_courant = ligne["groupe"]
+                print()
+                print("  " + c(ligne["titre_groupe"], "1;36"))
+                print("  " + c(ligne["aide_groupe"], "2"))
+            print("  {:>2}. {:<22} {}".format(
+                numero, ligne["nom"], c(ligne["valeur"][:24], "1")))
         print()
         print("  {}. Tout reinitialiser".format(c("99", "33")))
         print("  {}. Retour".format(c(" 0", "2")))

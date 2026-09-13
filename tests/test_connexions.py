@@ -607,25 +607,86 @@ class TestReglagesTousBranches(unittest.TestCase):
     # Ce que le nom d'un reglage peut traverser avant d'agir.
     EXTENSIONS = (".py", ".js", ".html")
 
+    # Les mots qui font d'une ligne une LECTURE de reglage. Chercher le nom
+    # n'importe ou dans un fichier ne suffisait pas : « couverture » apparait
+    # comme classe CSS dans le moteur EPUB et comme sujet de test A/B, ce qui
+    # suffisait a le declarer branche. Il ne l'etait pas — reglage affiche,
+    # enregistre, lu par personne.
+    #
+    # Deux autres dormaient derriere la meme homonymie : « plateforme » et
+    # « devise », dont les valeurs par defaut etaient ecrites en dur dans la
+    # CLI. Qui vend en francs suisses reglait sa devise et voyait « EUR » a
+    # chaque import.
+    VERBES = ("lire(", "profil", "reglages", "charger()", "DEFAUTS",
+              "_reglage_ou_option")
+
+    @classmethod
+    def orphelins(cls, lignes, noms):
+        """Ceux dont aucune ligne DE LECTURE ne cite le nom.
+
+        Le detecteur est separe de sa source pour pouvoir etre eprouve sur des
+        lignes choisies : sinon il pourrait passer parce qu'il ne trouve
+        jamais rien, et non parce qu'il n'y a rien a trouver.
+        """
+        import re
+
+        utiles = [ligne for ligne in lignes
+                  if any(verbe in ligne for verbe in cls.VERBES)]
+        manquants = []
+        for nom in noms:
+            cite = any(
+                '"{}"'.format(nom) in ligne or "'{}'".format(nom) in ligne
+                or re.search(r"\breglages\.{}\b".format(nom), ligne)
+                for ligne in utiles)
+            if not cite:
+                manquants.append(nom)
+        return manquants
+
+    @classmethod
+    def _lignes_du_depot(cls):
+        lignes = []
+        for chemin in (RACINE / "usine").rglob("*"):
+            if chemin.suffix not in cls.EXTENSIONS or chemin.name == "reglages.py":
+                continue
+            lignes.extend(chemin.read_text(encoding="utf-8").splitlines())
+        return lignes
+
     def test_aucun_reglage_orphelin(self):
         from usine.core import reglages as module_reglages
 
-        sources = [chemin for chemin in (RACINE / "usine").rglob("*")
-                   if chemin.suffix in self.EXTENSIONS
-                   and chemin.name != "reglages.py"]
-        textes = [chemin.read_text(encoding="utf-8") for chemin in sources]
-        orphelins = [
-            nom for nom in module_reglages.DEFAUTS
-            # Un reglage se lit par son nom, entre guillemets : « lire("x") »,
-            # « profil["x"] », « d.x » cote navigateur. Chercher le mot nu
-            # ferait passer « marque » pour branche des qu'un commentaire
-            # parle de marque.
-            if not any('"{}"'.format(nom) in texte or "'{}'".format(nom) in texte
-                       for texte in textes)
-        ]
-        self.assertEqual(orphelins, [],
-                         "reglage(s) affiche(s) mais lu(s) par personne : "
-                         "les brancher, ou les retirer")
+        self.assertEqual(
+            self.orphelins(self._lignes_du_depot(), module_reglages.DEFAUTS),
+            [], "reglage(s) affiche(s) mais lu(s) par personne : "
+                "les brancher, ou les retirer")
+
+    def test_le_detecteur_voit_un_reglage_seulement_homonyme(self):
+        """Le defaut exact qui a laisse passer « plateforme » et « devise ».
+
+        Un nom cite hors de tout contexte de lecture — une classe CSS, un
+        sujet de test A/B, une colonne de ventes — ne prouve pas qu'un
+        reglage pilote quoi que ce soit.
+        """
+        lignes = ['if sujet == "couverture":',
+                  '<img class="couverture" src="x"/>',
+                  'total = ligne["devise"] + ligne["brut"]']
+        self.assertEqual(self.orphelins(lignes, ["couverture", "devise"]),
+                         ["couverture", "devise"])
+
+    def test_le_detecteur_laisse_tranquille_un_reglage_vraiment_lu(self):
+        """L'autre direction : un detecteur qui accuse tout finit ignore."""
+        lignes = ['contact = reglages.lire("contact", "")',
+                  'if profil.get("images", True):',
+                  'const veut = donnees.reglages.effets_3d !== false;']
+        self.assertEqual(
+            self.orphelins(lignes, ["contact", "images", "effets_3d"]), [])
+
+    def test_chaque_reglage_appartient_a_un_groupe(self):
+        """Un reglage hors groupe est INVISIBLE dans les interfaces qui
+        affichent par groupe : sauvegarde, lu par le code, et impossible a
+        changer."""
+        from usine.core import reglages as module_reglages
+
+        self.assertEqual(module_reglages.non_groupes(), [])
 
 
 class TestSignatureIA(unittest.TestCase):
