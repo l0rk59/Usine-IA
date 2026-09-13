@@ -8,7 +8,6 @@ Trois risques traites :
 
 from __future__ import annotations
 
-import hashlib
 import hmac
 import re
 import secrets
@@ -81,10 +80,6 @@ def jeton_valide(attendu: str, fourni: str) -> bool:
     if not attendu:
         return True  # aucun jeton configure : acces local libre
     return hmac.compare_digest(attendu.encode("utf-8"), (fourni or "").encode("utf-8"))
-
-
-def empreinte_courte(valeur: str) -> str:
-    return hashlib.sha256(valeur.encode("utf-8")).hexdigest()[:12]
 
 
 # --------------------------------------------------------------------------

@@ -169,13 +169,3 @@ def empaqueter(
     return archive
 
 
-def inventaire(dossier: Path) -> Dict[str, Any]:
-    fichiers = [f for f in sorted(dossier.rglob("*")) if f.is_file()]
-    return {
-        "nombre": len(fichiers),
-        "octets": sum(f.stat().st_size for f in fichiers),
-        "fichiers": [
-            {"nom": str(f.relative_to(dossier)), "octets": f.stat().st_size}
-            for f in fichiers
-        ],
-    }

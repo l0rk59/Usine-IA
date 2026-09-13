@@ -92,6 +92,92 @@ class TestAgentsRelies(unittest.TestCase):
                     "l'agent {} n'est presque jamais reference".format(nom))
 
 
+class TestAucuneFonctionSansAppelant(unittest.TestCase):
+    """« Une fonction que personne n'appelle ne protege personne. »
+
+    La regle est dans CLAUDE.md, et rien ne la verifiait. La mesure en a
+    trouve six : deux doublons d'utilitaires existants, un compteur rendu
+    inutile par un refactor, trois restes d'une fonctionnalite abandonnee.
+    Aucun test n'a casse en les retirant — ce qui est precisement la preuve
+    qu'elles ne protegeaient personne.
+
+    L'exemption est possible, mais elle se NOMME ici. Un ensemble vide est le
+    bon etat par defaut : une fonction qu'on garde « au cas ou » est une
+    fonction qu'on ne supprimera jamais, parce que le « cas » n'arrive pas et
+    que personne n'osera decider.
+    """
+
+    # Vide, et c'est voulu. Ajouter un nom ici demande d'ecrire pourquoi.
+    TOLEREES = frozenset()
+
+    @staticmethod
+    def orphelines(racine):
+        import ast
+        import re
+
+        fichiers = sorted(racine.glob("usine/**/*.py"))
+        corpus = "\n".join(
+            f.read_text(encoding="utf-8")
+            for f in fichiers + sorted(racine.glob("tests/*.py"))
+            + sorted(racine.glob("scripts/*.py")))
+        seules = []
+        for fichier in fichiers:
+            arbre = ast.parse(fichier.read_text(encoding="utf-8"))
+            for noeud in arbre.body:
+                if not isinstance(noeud, ast.FunctionDef):
+                    continue
+                if noeud.name.startswith("_") or noeud.name == "main":
+                    continue
+                # Une seule occurrence dans tout le depot : sa definition.
+                if len(re.findall(r"\b" + re.escape(noeud.name) + r"\b",
+                                  corpus)) <= 1:
+                    seules.append("{}:{}".format(
+                        fichier.relative_to(racine), noeud.name))
+        return seules
+
+    def test_aucune_fonction_publique_n_est_sans_emploi(self):
+        restantes = [o for o in self.orphelines(RACINE)
+                     if o.rsplit(":", 1)[-1] not in self.TOLEREES]
+        self.assertEqual(restantes, [])
+
+    # Les deux suivants portent sur le DETECTEUR lui-meme. Sans eux, le
+    # controle ci-dessus pourrait passer parce qu'il ne trouve jamais rien,
+    # et non parce qu'il n'y a rien a trouver — la difference ne se voit pas
+    # depuis un depot en bon etat.
+    @staticmethod
+    def _depot(racine, contenu):
+        (racine / "usine").mkdir(parents=True, exist_ok=True)
+        (racine / "usine" / "module.py").write_text(contenu, encoding="utf-8")
+        return racine
+
+    def test_le_detecteur_trouve_une_fonction_sans_appelant(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as brut:
+            racine = self._depot(pathlib.Path(brut),
+                                 "def seule():\n    return 1\n")
+            self.assertEqual(self.orphelines(racine), ["usine/module.py:seule"])
+
+    def test_le_detecteur_laisse_tranquille_une_fonction_appelee(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as brut:
+            racine = self._depot(
+                pathlib.Path(brut),
+                "def utile():\n    return 1\n\n\ndef autre():\n"
+                "    return utile()\n")
+            # « autre » n'est pas appelee non plus : seule « utile » l'est.
+            self.assertEqual(self.orphelines(racine), ["usine/module.py:autre"])
+
+    def test_le_detecteur_ignore_les_fonctions_privees(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as brut:
+            racine = self._depot(pathlib.Path(brut),
+                                 "def _interne():\n    return 1\n")
+            self.assertEqual(self.orphelines(racine), [])
+
+
 class TestEvenementsEtRoutesConsommes(unittest.TestCase):
     """Publier sans destinataire, servir sans appelant : deux orphelins.
 

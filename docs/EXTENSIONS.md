@@ -460,7 +460,15 @@ Cette troisième liste est close. Ce qui reste ouvert, en une phrase chacun :
   [FICTION.md](FICTION.md)) ;
 - les **cadres de référence** des boîtes à outils, qui attendent une source
   plutôt qu'un développement (§4) ;
-- les **utilitaires sans appelant** hérités (`inventaire`, `env_int`,
-  `nb_abonnes`), laissés pour éviter du brassage.
+- ~~les **utilitaires sans appelant** hérités~~ **retirés.** La mesure en a
+  trouvé six, pas trois : `inventaire`, `env_int`, `nb_abonnes`,
+  `empreinte_courte` (doublon de `cles.empreinte`), `compteur_minute_cle`
+  (rendu inutile par le comptage par clé) et `ecrire_dictionnaires`. **Aucun
+  test n'a cassé en les retirant** — ce qui est précisément la preuve qu'elles
+  ne protégeaient personne. « Laissés pour éviter du brassage » était un
+  mauvais motif : une fonction gardée « au cas où » est une fonction qu'on ne
+  supprimera jamais, parce que le cas n'arrive pas et que personne n'osera
+  décider. `tests/test_connexions.py` refuse désormais la récidive, avec une
+  liste d'exemptions **vide** : y ajouter un nom demande d'écrire pourquoi.
 *(L'ancien item « profil audit local » est retiré : la direction outillage de
 sécurité a été abandonnée.)*

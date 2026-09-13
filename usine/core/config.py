@@ -73,13 +73,6 @@ def env(key: str, default: str = "") -> str:
     return os.environ.get(key, default).strip()
 
 
-def env_int(key: str, default: int) -> int:
-    try:
-        return int(env(key, str(default)))
-    except ValueError:
-        return default
-
-
 def env_bool(key: str, default: bool = False) -> bool:
     value = env(key, "1" if default else "0").lower()
     return value in ("1", "true", "yes", "oui", "on")

@@ -64,11 +64,6 @@ def historique(depuis_id: int = 0) -> List[Dict[str, Any]]:
         return [e for e in _historique if e["id"] > depuis_id]
 
 
-def nb_abonnes() -> int:
-    with _verrou:
-        return len(_abonnes)
-
-
 def vider() -> None:
     with _verrou:
         _historique.clear()

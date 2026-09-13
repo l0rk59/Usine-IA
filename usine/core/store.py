@@ -415,15 +415,6 @@ def compteur_jour_cle(fournisseur: str, cle_id: str, modele: str = "") -> int:
         return int(cur.fetchone()[0])
 
 
-def compteur_minute_cle(fournisseur: str, cle_id: str) -> int:
-    with cursor() as cur:
-        cur.execute(
-            "SELECT COUNT(*) FROM appels WHERE fournisseur=? AND cle_id=? AND ts > ?",
-            (fournisseur, cle_id, time.time() - 60),
-        )
-        return int(cur.fetchone()[0])
-
-
 def journal_cle(fournisseur: str, cle_id: str, raison: str, repos: float) -> None:
     with cursor() as cur:
         cur.execute(
