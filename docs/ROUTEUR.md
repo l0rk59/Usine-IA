@@ -166,3 +166,27 @@ neuf tombent. Deux ne tombaient pas au premier essai, et c'étaient de vrais
 trous de couverture : le `Retry-After` n'était testé qu'en isolation, jamais
 dans le routeur ; et le filtre des sections inventées n'était jamais exercé,
 parce que le simulateur renvoyait un cas que l'autre filtre écartait avant.
+
+## 10. Un modèle qui ne sait pas répondre en JSON coûtait la production
+
+Trouvé en provoquant la panne plutôt qu'en la supposant : un simulateur qui
+répond en prose à chaque appel, et l'on regarde ce que l'utilisateur obtient.
+
+`generer_json` réessayait trois fois **avec la même liste d'exclusions** — donc
+chez le même fournisseur. Or un modèle qui répond en prose à une consigne
+« JSON uniquement » recommencera : c'est presque toujours un modèle trop petit
+pour tenir un format. Trois appels brûlés, puis la chaîne mourait sur son
+premier pas, la construction du plan.
+
+Le mécanisme pour l'éviter existait déjà — `generer(eviter=...)`, écrit pour la
+relecture croisée. Le fournisseur qui échoue est maintenant écarté au fur et à
+mesure, et il reste neuf candidats.
+
+Quand tous ont échoué, `generer` refuse d'écarter tout le monde et le premier
+revient, à température plus haute : mieux vaut un essai de plus que pas
+d'essai du tout.
+
+Le message d'échec a changé aussi. *« JSON introuvable dans la réponse du
+modèle »* n'apprend rien à qui produit depuis un téléphone ; il nomme
+désormais les fournisseurs tentés et dit quoi faire.
+

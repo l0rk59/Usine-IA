@@ -518,6 +518,13 @@ def generer_json(
         " sans bloc de code markdown."
     )
     derniere = None
+    # Un fournisseur qui repond en prose a une consigne « JSON uniquement »
+    # recommencera : c'est presque toujours un modele trop petit pour tenir
+    # un format. Reessayer chez lui brulait trois appels pour rien, puis tuait
+    # la production — alors que « generer » sait deja ecarter un fournisseur,
+    # et qu'il en reste neuf autres. On l'ecarte donc au fur et a mesure.
+    ecartes = list(eviter or [])
+    tentes: List[str] = []
     for tentative in range(essais):
         rep = generer(
             invite + consigne,
@@ -527,15 +534,26 @@ def generer_json(
             max_tokens=max_tokens,
             json_mode=True,
             cache=(tentative == 0),
-            eviter=eviter,
+            eviter=ecartes,
         )
         try:
             decode = extraire_json(rep.texte)
         except ValueError as exc:
             derniere = exc
+            if rep.fournisseur not in tentes:
+                tentes.append(rep.fournisseur)
+            if rep.fournisseur not in ecartes:
+                ecartes.append(rep.fournisseur)
             continue
         return (decode, rep.fournisseur) if avec_fournisseur else decode
-    raise ValueError("Impossible d'obtenir du JSON exploitable : {}".format(derniere))
+    # Le message dit quoi faire, pas seulement ce qui a echoue : « JSON
+    # introuvable » n'apprend rien a qui produit depuis un telephone.
+    raise ValueError(
+        "Aucun modele n'a su repondre en JSON apres {} essais ({}). C'est "
+        "presque toujours un modele trop petit pour tenir un format : "
+        "essayez un autre fournisseur, ou un modele plus grand si vous etes "
+        "en IA locale. Detail : {}".format(
+            essais, ", ".join(tentes) or "aucun fournisseur", derniere))
 
 
 def diagnostic() -> List[Dict[str, Any]]:

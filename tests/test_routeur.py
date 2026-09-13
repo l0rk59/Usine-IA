@@ -561,3 +561,80 @@ class TestQuotaParCle(unittest.TestCase):
                     rep = llm.generer("court", cache=False)
         self.assertEqual(rep.fournisseur, "groq")
         self.assertEqual(rep.cle, seconde.affichage)
+
+
+class TestJsonEtRotationDeFournisseur(unittest.TestCase):
+    """Un fournisseur qui ne sait pas tenir un format ne doit pas couter
+    trois appels puis la production entiere.
+
+    « generer_json » reessayait trois fois avec la meme liste d'exclusions,
+    donc chez le meme fournisseur : un modele qui repond en prose a une
+    consigne « JSON uniquement » recommence, et la chaine mourait sur son
+    premier appel — la construction du plan.
+    """
+
+    def setUp(self):
+        _vider_appels()
+
+    def _providers(self):
+        return [config.PROVIDERS_BY_NAME["groq"],
+                config.PROVIDERS_BY_NAME["mistral"]]
+
+    def test_le_second_essai_change_de_fournisseur(self):
+        vus = []
+
+        def bavard(url, charge, entetes, timeout=0):
+            vus.append(url)
+            # Le premier fournisseur repond en prose, le second en JSON.
+            if "groq" in url:
+                return _reponse("Bonjour, je suis un modele.")
+            return _reponse('{"ok": true}')
+
+        with mock.patch.object(llm, "post_json", side_effect=bavard):
+            with mock.patch.object(config, "active_providers",
+                                   return_value=self._providers()):
+                obtenu = llm.generer_json("donne du json")
+        self.assertEqual(obtenu, {"ok": True})
+        self.assertIn("groq", vus[0])
+        self.assertIn("mistral", vus[1])
+
+    def test_un_fournisseur_ecarte_ne_revient_pas(self):
+        """Sinon l'essai suivant retombe dessus et brule un appel de plus."""
+        vus = []
+
+        def muet(url, charge, entetes, timeout=0):
+            vus.append(url)
+            return _reponse("toujours de la prose")
+
+        with mock.patch.object(llm, "post_json", side_effect=muet):
+            with mock.patch.object(config, "active_providers",
+                                   return_value=self._providers()):
+                with self.assertRaises(ValueError):
+                    llm.generer_json("donne du json")
+        # Ce qui compte : aucun fournisseur n'est resollicite tant qu'il en
+        # reste un qui n'a pas essaye. Au troisieme essai les deux ont
+        # echoue, et « generer » refuse d'ecarter tout le monde — mieux vaut
+        # un nouvel essai chez le premier, a temperature plus haute, que pas
+        # d'essai du tout.
+        self.assertEqual(len(vus), 3)
+        self.assertNotEqual(vus[0], vus[1])
+
+    def test_le_message_dit_quoi_faire(self):
+        """« JSON introuvable » n'apprend rien a qui produit depuis un
+        telephone."""
+        with mock.patch.object(llm, "post_json",
+                               return_value=_reponse("de la prose")):
+            with mock.patch.object(config, "active_providers",
+                                   return_value=self._providers()):
+                with self.assertRaises(ValueError) as capture:
+                    llm.generer_json("donne du json")
+        message = str(capture.exception)
+        self.assertIn("modele trop petit", message)
+        self.assertIn("groq", message)
+
+    def test_une_reponse_json_du_premier_coup_ne_change_rien(self):
+        with mock.patch.object(llm, "post_json",
+                               return_value=_reponse('{"ok": 1}')):
+            with mock.patch.object(config, "active_providers",
+                                   return_value=self._providers()):
+                self.assertEqual(llm.generer_json("donne du json"), {"ok": 1})
