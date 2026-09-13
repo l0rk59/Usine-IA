@@ -130,7 +130,18 @@ def par_archive(branche: str = BRANCHE_DEFAUT,
     try:
         brut = get_bytes(url_archive(branche), timeout=180)
     except Exception as exc:
-        return {"ok": False, "erreur": "telechargement impossible : {}".format(exc)}
+        # Un depot PRIVE repond 404 a une requete sans jeton, exactement comme
+        # une branche qui n'existe pas. On ne peut pas distinguer les deux
+        # d'ici, alors on nomme les deux : chercher une panne de reseau pendant
+        # une heure parce que le depot est prive est un temps entierement
+        # perdu.
+        return {"ok": False,
+                "erreur": "archive introuvable pour « {} » ({}). Deux causes "
+                          "possibles : la branche n'existe pas, ou le depot "
+                          "est prive — l'archive ne marche que sur un depot "
+                          "public. Dans ce cas, installez git (pkg install "
+                          "git) et clonez : « usine maj » passera par lui."
+                          .format(branche, exc)}
     if len(brut) > TAILLE_MAX:
         return {"ok": False,
                 "erreur": "archive inattendue ({} Mo)".format(len(brut) // 1048576)}

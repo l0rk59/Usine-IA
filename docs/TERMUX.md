@@ -180,6 +180,27 @@ Un appel IA peut prendre 60 à 150 secondes sur un modèle chargé. Le journal
 affiche chaque chapitre terminé. En cas de doute : `Ctrl+C`, puis relancez —
 le cache reprendra où vous en étiez.
 
+**Mettre l'usine à jour**
+```bash
+usine maj
+```
+Elle ne touche ni à `atelier/` ni à `.env` : vos produits, votre historique et
+votre clé restent en place. Avec `git` installé, elle tire la dernière version
+du dépôt ; sans lui, elle télécharge une archive — ce qui ne marche que sur un
+dépôt **public**. Si le vôtre est privé :
+```bash
+pkg install git
+```
+et clonez-le une fois ; `usine maj` passera par git ensuite.
+
+**Savoir ce qui manque à cet appareil**
+```bash
+usine specs
+```
+Écrit `SPECS-APPAREIL.md` : ce qui manque, la commande qui le pose, et ce que
+son absence coûte. Aucune clé API n'y figure — c'est fait pour être poussé sur
+le dépôt.
+
 **`no space left on device`**
 Le message vous dit combien il reste et que le travail déjà fait n'est pas
 perdu. Les produits pèsent quelques mégaoctets, mais le cache grossit :

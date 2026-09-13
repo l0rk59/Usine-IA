@@ -229,6 +229,24 @@ class MiseAJour(unittest.TestCase):
         source = Path(maj.__file__).read_text(encoding="utf-8")
         self.assertIn("subprocess.run", source.split("def verifier")[1])
 
+    def test_un_depot_prive_est_nomme_comme_cause_possible(self):
+        """Un depot prive repond 404 sans jeton, comme une branche inconnue.
+
+        On ne peut pas distinguer les deux depuis l'appareil. Nommer les deux
+        evite de chercher une panne de reseau pendant une heure parce que le
+        depot est simplement prive — ce qui est le cas du depot de
+        l'utilisateur.
+        """
+        from unittest import mock
+
+        with mock.patch("usine.core.http.get_bytes",
+                        side_effect=Exception("HTTP 404")):
+            resultat = maj.par_archive("main", dossier=config.WORKDIR)
+        self.assertFalse(resultat["ok"])
+        message = str(resultat["erreur"])
+        self.assertIn("prive", message)
+        self.assertIn("git", message)
+
     def test_les_modifications_locales_sont_signalees_avant_d_ecraser(self):
         from unittest import mock
 
