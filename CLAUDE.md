@@ -89,6 +89,7 @@ pourquoi c'etait invisible**, pas la liste des fichiers touches.
 | `usine/pipelines/carnet.py` | ce qui est deja ecrit, sur le disque : la reprise |
 | `usine/pipelines/brief.py` | ce que l'usine decide quand on ne lui dit rien |
 | `usine/agents/equipe.py` | les treize agents, la relecture croisee, la deliberation et la lecture en acheteur |
+| `usine/core/reglages.py` | les reglages, leurs groupes, et les six peaux du tableau de bord |
 | `docs/` | une note par sujet, chacune expliquant un defaut mesure et sa correction |
 
 ## Trois regles qui reviennent

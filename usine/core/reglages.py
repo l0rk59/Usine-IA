@@ -100,6 +100,52 @@ DESCRIPTIONS: Dict[str, str] = {
                      "fabrication",
 }
 
+# Les peaux du tableau de bord. Declarees ici, et nulle part ailleurs : la
+# CLI, le menu et la page les lisent toutes les trois. Une liste recopiee dans
+# le CSS et une autre dans le menu finiraient par ne plus proposer les memes.
+#
+# « nuit » et « jour » sont les deux peaux d'origine. Les quatre autres ne
+# changent pas que les couleurs — c'est le point : une peau qui ne change que
+# la teinte ne sert qu'a soi-meme, alors qu'un ecran de telephone au soleil,
+# un vieil appareil qui rame et un lecteur d'ecran demandent trois interfaces
+# differentes.
+THEMES: List[Dict[str, Any]] = [
+    {"cle": "nuit", "nom": "Nuit",
+     "description": "Cyberpunk sombre : neon sur noir, grille en fuite.",
+     "anime": True, "police": "sans"},
+    {"cle": "jour", "nom": "Jour",
+     "description": "Le meme, en clair. Lisible dehors.",
+     "anime": True, "police": "sans"},
+    {"cle": "papier", "nom": "Papier",
+     "description": "Atelier d'edition : serif sur creme, aucune animation, "
+                    "tout au calme. Pour travailler longtemps.",
+     "anime": False, "police": "serif"},
+    {"cle": "console", "nom": "Console",
+     "description": "Terminal : tout en chasse fixe, dense, sans arrondi. "
+                    "La meme peau que Termux.",
+     "anime": False, "police": "mono"},
+    {"cle": "ambre", "nom": "Ambre",
+     "description": "Ecran monochrome ambre, comme un terminal de 1981.",
+     "anime": True, "police": "mono"},
+    {"cle": "contraste", "nom": "Contraste",
+     "description": "Noir et blanc francs, texte plus grand, aucune "
+                    "animation. Pour voir de loin ou voir mal.",
+     "anime": False, "police": "sans"},
+]
+
+THEMES_PAR_CLE: Dict[str, Dict[str, Any]] = {t["cle"]: t for t in THEMES}
+
+
+def theme(cle: str = "") -> Dict[str, Any]:
+    """La fiche d'un theme, ou celle de « nuit » si le nom est inconnu.
+
+    Un theme inconnu ne doit pas rendre la page illisible : un reglage
+    recopie a la main, ou une peau retiree entre deux versions, se rattrape
+    ici plutot que de laisser une page sans couleurs.
+    """
+    return THEMES_PAR_CLE.get(cle or lire("theme", "nuit"), THEMES_PAR_CLE["nuit"])
+
+
 QUALITES = {
     "rapide": {"relectures": 0, "role_plan": "standard"},
     "standard": {"relectures": 1, "role_plan": "costaud"},
@@ -153,6 +199,10 @@ def ecrire(modifications: Dict[str, Any]) -> Dict[str, Any]:
 # pour personne et vaut silencieusement « standard » partout.
 FERMES: Dict[str, Tuple[str, ...]] = {
     "qualite": tuple(QUALITES),
+    # Un theme tape a la main qui n'existe pas laissait la page sans
+    # couleurs : le navigateur ne trouve aucune regle et affiche du noir sur
+    # du noir. Liste fermee, donc, et le champ devient une liste deroulante.
+    "theme": tuple(t["cle"] for t in THEMES),
 }
 
 

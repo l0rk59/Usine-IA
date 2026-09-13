@@ -923,11 +923,25 @@ def _choisir_qualite(actuelle: str) -> Optional[str]:
     return qualites[index - 1] if index else None
 
 
-# Ces trois reglages ont des valeurs qui veulent dire quelque chose ailleurs
+def _choisir_theme(actuelle: str) -> Optional[str]:
+    """Les peaux du tableau de bord, lues la ou elles sont declarees.
+
+    Les recopier ici en ferait une seconde liste — et c'est celle du menu qui
+    proposerait encore une peau retiree six mois plus tot.
+    """
+    cles = [t["cle"] for t in reglages.THEMES]
+    index = choisir("Peau du tableau de bord", [
+        (t["nom"], t["description"]) for t in reglages.THEMES
+    ], defaut=rang(cles, actuelle, 1))
+    return cles[index - 1] if index else None
+
+
+# Ces quatre reglages ont des valeurs qui veulent dire quelque chose ailleurs
 # dans l'usine. Les faire taper au clavier laissait enregistrer « rapidos »,
-# qui vaut « standard » partout sans que rien ne le dise.
+# qui vaut « standard » partout sans que rien ne le dise — ou un theme qui
+# n'existe pas, et la page s'affichait alors sans aucune couleur.
 _A_CHOISIR = {"ton": _choisir_ton, "taille": _choisir_taille,
-              "qualite": _choisir_qualite}
+              "qualite": _choisir_qualite, "theme": _choisir_theme}
 
 
 def menu_series(executer: Callable[[List[str]], int]) -> None:

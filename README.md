@@ -1028,6 +1028,24 @@ deux règles étaient justes séparément ; ensemble elles coûtaient trois appe
 par chapitre, et le résultat final était correct — donc personne ne pouvait le
 remarquer.
 
+## Six peaux, dont quatre qui changent l'interface
+
+« Nuit » et « jour » étaient la même page en deux teintes. Une peau qui ne
+change que la couleur ne sert qu'à elle-même :
+[docs/PEAUX.md](docs/PEAUX.md).
+
+`papier` (serif, sans animation) pour travailler longtemps, `console` (chasse
+fixe, dense) qui est la peau de Termux, `ambre` pour un terminal de 1981, et
+`contraste` — texte à 18 px, bords de 2 px, noir et blanc francs — qui n'est
+pas une variante esthétique mais la peau qui rend le tableau de bord utilisable
+à qui voit mal. Les quatre coupent le canvas animé, ce qu'aucune nuance ne
+faisait pour un vieil appareil qui rame.
+
+Le défaut que cela a montré ne pouvait se voir qu'en ouvrant un vrai
+navigateur : revenir d'une peau calme à `nuit` laissait la scène 3D éteinte
+jusqu'au rechargement. Le CSS était juste, le JavaScript était juste ligne à
+ligne — c'était le retour qui manquait.
+
 ## Ce que l'usine vaut face aux autres
 
 Quatre projets ouverts couvrent le même besoin. Comparaison mesurée sur leurs

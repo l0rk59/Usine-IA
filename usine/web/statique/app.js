@@ -18,6 +18,7 @@ if (!effets3dActifs()) $('scene').hidden = true;
 const etat = {
   types: [],
   travail: null, agents: {}, fournisseurs: [], avancement: 0, objectif: 0,
+  peaux: [],
   dernierEvenement: 0, produitsCharges: null, produits: [],
   abOuvert: 0, abProduits: -1,
 };
@@ -154,6 +155,10 @@ async function chargerEtat() {
     ? `${donnees.avec_cle} fournisseur(s) avec cle — rotation automatique active.`
     : "Aucune cle API : quota tres limite. Lancez « usine cles » dans Termux.";
 
+  remplirPeaux(donnees.peaux, (function () {
+    try { return localStorage.getItem('usine-theme'); } catch (e) { return null; }
+  })() || (donnees.reglages || {}).theme || 'nuit');
+  appliquerPeau($('theme').value || 'nuit');
   appliquerReglagesInterface(donnees.reglages);
   etat.groupesReglages = donnees.groupes_reglages || [];
   dessinerReglages(etat.groupesReglages, donnees.reglages || {});
@@ -779,11 +784,9 @@ $('sujet').addEventListener('input', () => {
   }, 600);
 });
 
-$('theme').addEventListener('click', () => {
-  const jour = document.documentElement.dataset.theme === 'jour';
-  document.documentElement.dataset.theme = jour ? 'nuit' : 'jour';
-  $('theme').textContent = jour ? 'Jour' : 'Nuit';
-  try { localStorage.setItem('usine-theme', jour ? 'nuit' : 'jour'); } catch (e) {}
+$('theme').addEventListener('change', () => {
+  appliquerPeau($('theme').value);
+  try { localStorage.setItem('usine-theme', $('theme').value); } catch (e) {}
 });
 
 $('lancer').addEventListener('click', async () => {
@@ -1435,13 +1438,48 @@ $('reglages-enregistrer').addEventListener('click', async () => {
   }
 });
 
+/* Les peaux viennent du serveur, qui les tient de usine/core/reglages.py.
+   Les recopier ici en ferait une seconde liste, et c'est celle du navigateur
+   qui vieillirait sans que rien ne le dise. */
+function remplirPeaux(peaux, choisie) {
+  if (!peaux || !peaux.length) return;
+  etat.peaux = peaux;
+  $('theme').innerHTML = peaux.map((p) =>
+    `<option value="${echapper(p.cle)}" title="${echapper(p.description)}"${
+      p.cle === choisie ? ' selected' : ''}>${echapper(p.nom)}</option>`).join('');
+}
+
+/* Une peau ne change pas que les couleurs. « papier », « console » et
+   « contraste » coupent le fond anime et la scene 3D : le CSS seul ne peut
+   pas arreter un canvas qui tourne, il faut le dire au script. */
+function appliquerPeau(cle) {
+  const racine = document.documentElement;
+  racine.dataset.theme = cle;
+  const fiche = (etat.peaux || []).find((p) => p.cle === cle);
+  /* Le systeme d'exploitation a le dernier mot : quelqu'un qui a demande
+     moins d'animations ne doit pas en recevoir parce qu'une peau en prevoit. */
+  let anime = fiche ? fiche.anime !== false : true;
+  try {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) anime = false;
+  } catch (e) { /* vieux navigateur */ }
+  racine.dataset.anime = anime ? 'oui' : 'non';
+  const fond = document.getElementById('fond-cyber');
+  if (fond) fond.hidden = !anime;
+  /* Dans les DEUX sens. Une premiere version ne faisait que cacher : revenir
+     d'une peau calme a « nuit » laissait la scene 3D eteinte jusqu'au
+     rechargement, et on croyait la peau cassee. Le reglage « effets_3d »
+     garde le dernier mot : une peau animee ne doit pas rallumer la 3D chez
+     quelqu'un qui l'a coupee parce que son telephone rame. */
+  $('scene').hidden = !(anime && scene.actif && effets3dActifs());
+  if ($('theme').value !== cle) $('theme').value = cle;
+}
+
 function appliquerReglagesInterface(reglages) {
   if (!reglages) return;
-  // Theme : le choix local (bouton) prime ; sinon on suit le reglage.
+  // Peau : le choix local prime ; sinon on suit le reglage.
   try {
     if (!localStorage.getItem('usine-theme') && reglages.theme) {
-      document.documentElement.dataset.theme = reglages.theme;
-      $('theme').textContent = reglages.theme === 'jour' ? 'Nuit' : 'Jour';
+      appliquerPeau(reglages.theme);
     }
   } catch (e) { /* navigation privee */ }
   // Effets 3D : on persiste le choix pour les chargements suivants (pas de
@@ -1458,10 +1496,7 @@ function appliquerReglagesInterface(reglages) {
 /* ---------------------------------------------------------------- demarrage */
 try {
   const theme = localStorage.getItem('usine-theme');
-  if (theme) {
-    document.documentElement.dataset.theme = theme;
-    $('theme').textContent = theme === 'jour' ? 'Nuit' : 'Jour';
-  }
+  if (theme) document.documentElement.dataset.theme = theme;
 } catch (e) { /* stockage indisponible en navigation privee */ }
 
 function boucle(t) { scene.rendre(t); requestAnimationFrame(boucle); }

@@ -21,6 +21,25 @@
   --coupe: polygon(0 12px, 12px 0, 100% 0, 100% calc(100% - 12px),
                    calc(100% - 12px) 100%, 0 100%);
 }
+/* --------------------------------------------------------------- peaux ---
+   Les six peaux sont declarees dans usine/core/reglages.py — la CLI, le menu
+   et cette feuille les connaissent donc par le meme nom.
+
+   Deux d'entre elles ne changent pas que la teinte, et c'est le point : une
+   peau qui ne change que les couleurs ne sert qu'a soi-meme. Un ecran de
+   telephone au soleil, un vieil appareil qui rame et un lecteur d'ecran
+   demandent trois interfaces differentes, pas trois nuances de la meme.
+
+   Les variables de forme — police, arrondi, densite, taille de base — sont
+   declarees ici une fois, et chaque peau les redefinit. Sans elles, changer
+   de police demandait de toucher quarante regles. */
+:root {
+  --police-titre: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --police-corps: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --taille-base: 15px;
+  --densite: 1;
+  --graisse-titre: 700;
+}
 :root[data-theme="jour"] {
   /* Variante « jour » : cyberpunk clair, moins de nuit, meme neon. */
   --fond: #e7ecf5; --fond2: #f4f7fc; --carte: rgba(255,255,255,0.72);
@@ -30,6 +49,94 @@
   --neon-mag: 0 0 4px rgba(192,26,160,0.3);
   --ombre: 0 12px 34px rgba(20,40,80,0.12);
 }
+/* --- Papier : atelier d'edition ----------------------------------------
+   Serif sur creme, aucun neon, aucune animation. C'est la peau pour ecrire
+   une heure d'affilee sans mal aux yeux — l'inverse exact de la peau
+   d'origine, qui est faite pour impressionner en trente secondes. */
+:root[data-theme="papier"] {
+  --fond: #f4f1e8; --fond2: #efeade; --carte: rgba(255,253,247,0.92);
+  --bord: rgba(60,50,35,0.22); --encre: #221e18; --doux: #6b6053;
+  --accent: #8a5a2b; --magenta: #7a3b52; --vert: #3f6b45;
+  --ambre: #9a6b1f; --rouge: #9c3025;
+  --neon: none; --neon-mag: none;
+  --ombre: 0 2px 10px rgba(60,50,35,0.10);
+  --rayon: 2px;
+  --coupe: none;
+  --police-titre: Georgia, 'Times New Roman', serif;
+  --police-corps: Georgia, 'Times New Roman', serif;
+  --taille-base: 16px;
+  --graisse-titre: 600;
+}
+
+/* --- Console : la meme peau que Termux ---------------------------------
+   Chasse fixe partout, aucun arrondi, densite maximale. Sur un telephone,
+   elle fait tenir deux fois plus de lignes a l'ecran. */
+:root[data-theme="console"] {
+  --fond: #0b0e0b; --fond2: #0f130f; --carte: rgba(18,24,18,0.92);
+  --bord: rgba(120,220,120,0.30); --encre: #c8f5c8; --doux: #6f9a6f;
+  --accent: #58e06a; --magenta: #d7d75a; --vert: #58e06a;
+  --ambre: #d7d75a; --rouge: #ff6b5a;
+  --neon: none; --neon-mag: none;
+  --ombre: none;
+  --rayon: 0;
+  --coupe: none;
+  --police-titre: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --police-corps: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --taille-base: 14px;
+  --densite: 0.72;
+  --graisse-titre: 700;
+}
+
+/* --- Ambre : terminal monochrome ---------------------------------------- */
+:root[data-theme="ambre"] {
+  --fond: #120c02; --fond2: #180f03; --carte: rgba(34,22,4,0.78);
+  --bord: rgba(255,176,42,0.30); --encre: #ffc65c; --doux: #b07f2e;
+  --accent: #ffb02a; --magenta: #ff8c1a; --vert: #ffc65c;
+  --ambre: #ffb02a; --rouge: #ff6a3d;
+  --neon: 0 0 6px rgba(255,176,42,0.45), 0 0 20px rgba(255,176,42,0.20);
+  --neon-mag: 0 0 6px rgba(255,140,26,0.4);
+  --ombre: 0 14px 40px rgba(0,0,0,0.55);
+  --rayon: 3px;
+  --police-titre: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --police-corps: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+}
+
+/* --- Contraste : voir de loin, ou voir mal ------------------------------
+   Noir et blanc francs, texte plus grand, cadres epais, aucune animation.
+   Ce n'est pas une variante esthetique : c'est la peau qui rend le tableau
+   de bord utilisable a quelqu'un qui ne distingue pas un cyan sur du noir. */
+:root[data-theme="contraste"] {
+  --fond: #000000; --fond2: #000000; --carte: #0a0a0a;
+  --bord: #ffffff; --encre: #ffffff; --doux: #d0d0d0;
+  --accent: #ffff00; --magenta: #ff80ff; --vert: #00ff80;
+  --ambre: #ffd000; --rouge: #ff5050;
+  --neon: none; --neon-mag: none;
+  --ombre: none;
+  --rayon: 0;
+  --coupe: none;
+  --taille-base: 18px;
+  --densite: 1.15;
+}
+:root[data-theme="contraste"] .carte,
+:root[data-theme="contraste"] .onglets button,
+:root[data-theme="contraste"] input,
+:root[data-theme="contraste"] select,
+:root[data-theme="contraste"] button { border-width: 2px !important; }
+:root[data-theme="contraste"] .aide,
+:root[data-theme="contraste"] small { color: var(--doux); }
+/* Le focus doit se voir a un metre : c'est tout l'interet de cette peau. */
+:root[data-theme="contraste"] :focus-visible {
+  outline: 4px solid var(--accent) !important; outline-offset: 3px !important;
+}
+
+/* Les peaux calmes coupent le fond anime, la scene 3D et les lueurs. Le
+   drapeau est pose par le script sur <html> : le CSS seul ne peut pas
+   arreter un canvas qui tourne. */
+:root[data-anime="non"] #fond-cyber,
+:root[data-anime="non"] body:after { display: none !important; }
+:root[data-anime="non"] * { animation: none !important; transition: none !important; }
+:root[data-anime="non"] .scene { display: none; }
+
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; min-height: 100%; }
 body {
@@ -39,7 +146,7 @@ body {
     linear-gradient(180deg, var(--fond), var(--fond2));
   background-attachment: fixed;
   color: var(--encre);
-  font: 15px/1.55 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font: var(--taille-base)/1.55 var(--police-corps);
   padding-bottom: calc(2rem + env(safe-area-inset-bottom));
 }
 
@@ -552,3 +659,19 @@ button.danger { border-radius: 2px; box-shadow: var(--neon-mag); }
                          font-size: 0.78rem; }
 .groupe-reglages input[type=text], .groupe-reglages input[type=number],
 .groupe-reglages select { width: 100%; margin-top: 0.2rem; }
+
+/* Le selecteur de peau, dans la barre. Il remplace un bouton qui basculait
+   entre deux etats : a six peaux, un bouton demanderait six clics pour
+   revenir a la premiere. */
+.peau select { font: inherit; padding: 0.3rem 0.5rem; border-radius: var(--rayon);
+               border: 1px solid var(--bord); background: var(--carte);
+               color: var(--encre); max-width: 9rem; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden;
+      clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* La densite pilote les marges : « console » fait tenir deux fois plus de
+   lignes sur un ecran de telephone, « contraste » en fait tenir moins et
+   c'est voulu. */
+.carte { padding: calc(1rem * var(--densite)) calc(1.1rem * var(--densite)); }
+h1, h2, h3, .sous { font-family: var(--police-titre);
+                    font-weight: var(--graisse-titre); }

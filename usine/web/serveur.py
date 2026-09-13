@@ -1370,6 +1370,12 @@ def _etat() -> Dict[str, Any]:
         # que personne n'ouvre.
         "reglages": {k: v for k, v in profil.items()
                      if k in reglages.DEFAUTS and k not in reglages.HORS_WEB},
+        # Les peaux viennent d'ici, pas du navigateur : les recopier dans le
+        # script en ferait une seconde liste, et c'est celle du navigateur qui
+        # vieillirait sans que rien ne le dise.
+        "peaux": [{"cle": t["cle"], "nom": t["nom"],
+                   "description": t["description"], "anime": t["anime"]}
+                  for t in reglages.THEMES],
         # La structure, pour que la page range comme le menu Termux range.
         "groupes_reglages": [
             {"cle": g["cle"], "titre": g["titre"], "aide": g["aide"],
