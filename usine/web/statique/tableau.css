@@ -522,3 +522,19 @@ button.danger { border-radius: 2px; box-shadow: var(--neon-mag); }
 .produit .inacheve { color: var(--ambre); font-weight: 600; }
 .produit .reprendre { color: var(--ambre); }
 .produit .refaire { color: var(--ambre); opacity: 0.75; }
+
+/* Les onglets du tableau de bord. Collants en haut : sur un telephone, on
+   defile a l'interieur d'une section et on doit pouvoir en changer sans
+   remonter. */
+.onglets { display: flex; gap: 0.35rem; flex-wrap: wrap; margin: 0 0 1rem;
+           position: sticky; top: 0; z-index: 20; padding: 0.4rem 0;
+           background: var(--fond); }
+.onglets button { flex: 1 1 auto; min-width: 7rem; padding: 0.55rem 0.8rem;
+                  border: 1px solid var(--bord); border-radius: 0.5rem;
+                  background: transparent; color: var(--encre);
+                  font: inherit; cursor: pointer; }
+.onglets button.actif { border-color: var(--accent); color: var(--accent);
+                        box-shadow: inset 0 -2px 0 var(--accent); }
+.onglets button:focus-visible { outline: 2px solid var(--accent);
+                                outline-offset: 2px; }
+.onglet[hidden] { display: none; }

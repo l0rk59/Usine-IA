@@ -70,6 +70,49 @@ function ajouterLigne(html, classe) {
   journal.scrollTop = journal.scrollHeight;
 }
 
+/* ------------------------------------------------------------- sections */
+/* Le tableau de bord empilait treize cartes sur une seule page : il fallait
+   faire defiler tout « Veille de niche » pour atteindre ses produits, et rien
+   ne disait ce qui allait avec quoi. Les sections sont les MEMES que celles du
+   menu Termux, dans le meme ordre — deux interfaces qui rangent les memes
+   choses differemment obligent a apprendre deux fois.
+
+   Le choix est retenu : on revient presque toujours sur la meme section, et
+   la rouvrir a chaque rafraichissement serait le genre de petite friction
+   qu'on ne signale jamais et qui fait abandonner. */
+const SECTION_DEFAUT = 'fabriquer';
+
+function sectionRetenue() {
+  try { return localStorage.getItem('usine-section') || SECTION_DEFAUT; }
+  catch (e) { return SECTION_DEFAUT; }
+}
+
+function montrerSection(cle) {
+  const sections = document.querySelectorAll('.onglet');
+  let connue = false;
+  sections.forEach((s) => {
+    const sien = s.dataset.section === cle;
+    /* « hidden » et non « display:none » : une feuille de style qui ne charge
+       pas laisserait les quatre sections empilees, c'est-a-dire exactement
+       l'etat qu'on vient de corriger. */
+    s.hidden = !sien;
+    if (sien) connue = true;
+  });
+  if (!connue && cle !== SECTION_DEFAUT) { montrerSection(SECTION_DEFAUT); return; }
+  document.querySelectorAll('#onglets button').forEach((b) => {
+    const actif = b.dataset.onglet === cle;
+    b.setAttribute('aria-selected', actif ? 'true' : 'false');
+    b.classList.toggle('actif', actif);
+  });
+  try { localStorage.setItem('usine-section', cle); } catch (e) { /* prive */ }
+}
+
+$('onglets').addEventListener('click', (evenement) => {
+  const cle = evenement.target.dataset && evenement.target.dataset.onglet;
+  if (cle) montrerSection(cle);
+});
+montrerSection(sectionRetenue());
+
 /* --------------------------------------------------------------- chargement */
 async function chargerEtat() {
   const reponse = await fetch('/api/etat');
@@ -591,6 +634,16 @@ function traiter(evenement) {
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
       `reponse coupee au plafond (${echapper(evenement.fournisseur)}, ` +
       `${evenement.plafond} jetons) : le texte s'arrete avant sa fin`, 'souci');
+  } else if (evenement.type === 'deliberation') {
+    /* Les sept agents ne se parlaient pas : l'editeur critiquait, le reviseur
+       appliquait. Quand l'auteur conteste et qu'un tiers tranche, c'est la
+       seule trace visible de l'echange — et la plus interessante, parce
+       qu'une correction ECARTEE est une invention evitee. */
+    ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
+      `deliberation — « ${echapper(evenement.probleme)} » : ` +
+      `${evenement.retenue ? 'correction maintenue' : 'ecartee'} ` +
+      `(l'auteur objecte : ${echapper(evenement.objection)})`,
+      evenement.retenue ? '' : 'succes');
   } else if (evenement.type === 'substitution') {
     /* Une reparation silencieuse est le genre de chose qui fait perdre une
        journee le jour ou elle cesse de suffire : l'usine dit quand elle

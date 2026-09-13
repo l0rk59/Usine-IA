@@ -45,13 +45,14 @@
 </div>
 
 <main>
+<nav class="onglets" id="onglets" role="tablist" aria-label="Sections du tableau de bord">
+  <button role="tab" data-onglet="fabriquer" aria-selected="false">Fabriquer</button>
+  <button role="tab" data-onglet="produits" aria-selected="false">Mes produits</button>
+  <button role="tab" data-onglet="marche" aria-selected="false">Marche</button>
+  <button role="tab" data-onglet="machine" aria-selected="false">La machine</button>
+</nav>
 
-<div class="carte">
-  <h2>Equipe d'agents</h2>
-  <div class="agents" id="agents"></div>
-  <p class="aide" id="qualite-resume"></p>
-</div>
-
+<section class="onglet" id="onglet-fabriquer" data-section="fabriquer" role="tabpanel" aria-label="Fabriquer" hidden>
 <div class="carte">
   <h2>Fabriquer</h2>
   <label for="type">Type de produit</label>
@@ -104,7 +105,71 @@
     <span id="retenu" hidden>enregistre</span>
   </p>
 </div>
+<div class="carte">
+  <h2>Equipe d'agents</h2>
+  <div class="agents" id="agents"></div>
+  <p class="aide" id="qualite-resume"></p>
+</div>
+<div class="carte">
+  <h2>Journal en direct</h2>
+  <pre class="journal" id="journal" role="log" aria-live="polite"><span class="ligne vide">En attente d'activite...</span></pre>
+</div>
+<div class="carte">
+  <h2>Usine continue</h2>
+  <p class="etat" id="usine-etat" role="status">chargement...</p>
+  <div class="rangee">
+    <button class="discret" id="usine-demarrer">Demarrer</button>
+    <button class="discret" id="usine-arreter">Arreter</button>
+    <label class="case"><input type="checkbox" id="usine-auto"/> remplir seule</label>
+  </div>
+  <div id="file-liste" class="file"></div>
+  <div class="rangee">
+    <button class="discret" id="file-ajouter">Mettre le sujet ci-dessus en file</button>
+    <button class="discret" id="file-rejouer">Relancer les echecs</button>
+  </div>
+  <p class="aide" id="usine-budget"></p>
+</div>
+</section>
 
+<section class="onglet" id="onglet-produits" data-section="produits" role="tabpanel" aria-label="Mes produits" hidden>
+<div class="carte">
+  <h2>Produits</h2>
+  <div id="produits"><span class="vide">chargement...</span></div>
+</div>
+<div class="carte">
+  <h2>Tests A/B</h2>
+  <p class="aide">Comparer des titres, ou des couvertures. Les couvertures
+    sont des images : c'est ici qu'on peut enfin les regarder cote a cote.</p>
+  <div class="duo">
+    <div><label for="ab-sur">Comparer</label>
+      <select id="ab-sur">
+        <option value="titre">des titres</option>
+        <option value="couverture">des couvertures</option>
+        <option value="accroche">des accroches</option>
+        <option value="prix">des prix</option>
+      </select></div>
+    <div><label for="ab-produit">A partir de</label>
+      <select id="ab-produit"></select></div>
+  </div>
+  <div class="rangee">
+    <button class="discret" id="ab-creer">Creer le test</button>
+    <span class="aide" id="ab-etat" role="status"></span>
+  </div>
+  <div id="ab-liste"><span class="vide">chargement...</span></div>
+  <div id="ab-detail" hidden></div>
+</div>
+<div class="carte">
+  <h2>Produits qui se recouvrent</h2>
+  <div class="alerte" id="doublons-manquants" hidden></div>
+  <div id="doublons"><span class="vide">chargement...</span></div>
+  <div class="rangee">
+    <button class="discret" id="doublons-reconstruire">Reconstruire les empreintes</button>
+    <span class="aide" id="doublons-etat" role="status"></span>
+  </div>
+</div>
+</section>
+
+<section class="onglet" id="onglet-marche" data-section="marche" role="tabpanel" aria-label="Marche" hidden>
 <div class="carte">
   <h2>Veille de niche</h2>
   <p class="aide">Ce que les gens disent d'un sujet, sur Reddit. Un signal de
@@ -143,34 +208,6 @@
       marche.</p>
   </div>
 </div>
-
-<div class="carte">
-  <h2>Usine continue</h2>
-  <p class="etat" id="usine-etat" role="status">chargement...</p>
-  <div class="rangee">
-    <button class="discret" id="usine-demarrer">Demarrer</button>
-    <button class="discret" id="usine-arreter">Arreter</button>
-    <label class="case"><input type="checkbox" id="usine-auto"/> remplir seule</label>
-  </div>
-  <div id="file-liste" class="file"></div>
-  <div class="rangee">
-    <button class="discret" id="file-ajouter">Mettre le sujet ci-dessus en file</button>
-    <button class="discret" id="file-rejouer">Relancer les echecs</button>
-  </div>
-  <p class="aide" id="usine-budget"></p>
-</div>
-
-<div class="carte">
-  <h2>Journal en direct</h2>
-  <pre class="journal" id="journal" role="log" aria-live="polite"><span class="ligne vide">En attente d'activite...</span></pre>
-</div>
-
-<div class="carte">
-  <h2>Fournisseurs et quotas</h2>
-  <div class="jauges" id="jauges"></div>
-  <p class="aide" id="conseil"></p>
-</div>
-
 <div class="carte">
   <h2>Ce qui rapporte</h2>
   <div id="commerce-vide" class="vide">
@@ -182,50 +219,18 @@
   <div id="commerce-produits" class="barres" hidden></div>
   <p class="aide" id="commerce-prix" hidden></p>
 </div>
-
-<div class="carte">
-  <h2>Tests A/B</h2>
-  <p class="aide">Comparer des titres, ou des couvertures. Les couvertures
-    sont des images : c'est ici qu'on peut enfin les regarder cote a cote.</p>
-  <div class="duo">
-    <div><label for="ab-sur">Comparer</label>
-      <select id="ab-sur">
-        <option value="titre">des titres</option>
-        <option value="couverture">des couvertures</option>
-        <option value="accroche">des accroches</option>
-        <option value="prix">des prix</option>
-      </select></div>
-    <div><label for="ab-produit">A partir de</label>
-      <select id="ab-produit"></select></div>
-  </div>
-  <div class="rangee">
-    <button class="discret" id="ab-creer">Creer le test</button>
-    <span class="aide" id="ab-etat" role="status"></span>
-  </div>
-  <div id="ab-liste"><span class="vide">chargement...</span></div>
-  <div id="ab-detail" hidden></div>
-</div>
-
 <div class="carte">
   <h2>Ce que l'usine a appris</h2>
   <div id="bilan"><span class="vide">chargement...</span></div>
 </div>
+</section>
 
+<section class="onglet" id="onglet-machine" data-section="machine" role="tabpanel" aria-label="La machine" hidden>
 <div class="carte">
-  <h2>Produits qui se recouvrent</h2>
-  <div class="alerte" id="doublons-manquants" hidden></div>
-  <div id="doublons"><span class="vide">chargement...</span></div>
-  <div class="rangee">
-    <button class="discret" id="doublons-reconstruire">Reconstruire les empreintes</button>
-    <span class="aide" id="doublons-etat" role="status"></span>
-  </div>
+  <h2>Fournisseurs et quotas</h2>
+  <div class="jauges" id="jauges"></div>
+  <p class="aide" id="conseil"></p>
 </div>
-
-<div class="carte">
-  <h2>Produits</h2>
-  <div id="produits"><span class="vide">chargement...</span></div>
-</div>
-
 <div class="carte">
   <h2>Diagnostic</h2>
   <p class="aide">Le bouton « pourquoi ca ne marche pas ». Les memes controles
@@ -235,7 +240,6 @@
   </div>
   <div id="docteur"><span class="vide">non verifie.</span></div>
 </div>
-
 <div class="carte">
   <h2>Sauvegarder l'atelier</h2>
   <p class="aide">Les produits se refabriquent. Une annee de ventes importees,
@@ -280,6 +284,7 @@
     l'appareil ne protege de rien. La restauration est refusee tant qu'une
     fabrication, une veille ou l'usine continue tourne.</p>
 </div>
+</section>
 
 </main>
 

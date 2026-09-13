@@ -259,6 +259,207 @@ def controler_et_corriger(
     return courant, historique
 
 
+# --------------------------------------------------------------------------
+# La deliberation : l'auteur peut contester, un tiers tranche
+# --------------------------------------------------------------------------
+#
+# Ce que la chaine faisait jusqu'ici n'etait pas un echange : l'editeur
+# critiquait, le reviseur appliquait. Sept agents, et aucune conversation —
+# une file d'attente, chacun corrigeant le precedent sans jamais lui repondre.
+#
+# Le defaut que cela produit est mesurable et connu : une critique
+# d'editeur peut etre FAUSSE. « Ajoute un chiffre pour appuyer cette
+# affirmation » fait inventer une statistique ; « developpe ce passage » fait
+# ajouter du remplissage a un texte volontairement dense ; « donne un exemple
+# concret » fait fabriquer un temoignage. Le reviseur applique tout, parce
+# qu'il n'a pas mandat pour discuter — et le controle qualite deterministe
+# signale ensuite un chiffre sans source que PERSONNE n'avait demande.
+#
+# La deliberation ajoute les deux tours qui manquaient : l'auteur repond aux
+# points qu'il juge errones, et le controleur tranche point par point. Seules
+# les corrections retenues sont appliquees.
+#
+# Elle coute deux appels par section. C'est pourquoi elle n'existe qu'au
+# niveau « exigeant » : ailleurs, on continue d'appliquer tout, ce qui reste
+# le bon compromis quand on paie chaque appel.
+
+# Nombre de points contestables retenus pour l'arbitrage. Au-dela, ce n'est
+# plus une contestation, c'est un refus de relecture.
+CONTESTATIONS_MAX = 4
+
+
+def deliberation_active(contexte: Any) -> bool:
+    """La deliberation n'a lieu qu'au niveau « exigeant ».
+
+    Deux appels de plus par section, sur un quota gratuit, se paient
+    immediatement : a douze chapitres, c'est vingt-quatre appels. Le niveau de
+    qualite est deja l'endroit ou l'utilisateur declare ce qu'il accepte de
+    depenser — on n'ajoute pas un second reglage pour dire la meme chose.
+    """
+    return getattr(contexte, "qualite", "standard") == "exigeant"
+
+
+def contester(contexte: Any, texte: str, critique: Critique,
+              intitule: str) -> List[Dict[str, str]]:
+    """L'auteur repond aux critiques qu'il juge errones. Rend ses objections.
+
+    Rend une liste vide des que quelque chose se passe mal — pas de reponse,
+    JSON illisible, plus de fournisseur. Sans objection, l'arbitrage n'a rien
+    a trancher et la chaine se comporte comme avant : la deliberation est un
+    supplement, jamais un passage oblige.
+    """
+    if not critique.problemes:
+        return []
+    points = "\n".join(
+        "{}. [{}] {} — correction demandee : {}".format(
+            i + 1, p.get("gravite", "mineur"), p.get("probleme", ""),
+            p.get("correction", ""))
+        for i, p in enumerate(critique.problemes[:6]))
+    invite = (
+        "Tu as ecrit ce texte. Un editeur le critique. Certaines critiques "
+        "sont justes, d'autres non — reponds honnetement.\n\n"
+        "--- TON TEXTE (« {intitule} ») ---\n{texte}\n--- FIN ---\n\n"
+        "--- CRITIQUES ---\n{points}\n--- FIN ---\n\n"
+        "Conteste UNIQUEMENT ce qui te parait errone, et dis pourquoi en une "
+        "phrase. Conteste en particulier :\n"
+        "- une correction qui t'obligerait a inventer un chiffre, une etude "
+        "ou un temoignage ;\n"
+        "- une demande de developpement sur un passage volontairement dense ;\n"
+        "- une critique qui contredit la promesse ou le public vise.\n"
+        "N'invente pas d'objection : si toutes les critiques sont justes, "
+        "renvoie une liste vide.\n\n"
+        "JSON exact :\n"
+        '{{"objections": [{{"numero": 1, "raison": "une phrase"}}]}}'
+    ).format(intitule=intitule, texte=texte[:9000], points=points)
+    try:
+        donnees = REDACTEUR.travailler_json(contexte, invite, max_tokens=900,
+                                            temperature=0.3)
+    except Exception as exc:
+        evenements.publier("qualite", etat="contestation_indisponible",
+                           detail=str(exc))
+        return []
+    if not isinstance(donnees, dict):
+        return []
+    objections = []
+    for brut in (donnees.get("objections") or [])[:CONTESTATIONS_MAX]:
+        if not isinstance(brut, dict):
+            continue
+        try:
+            numero = int(brut.get("numero"))
+        except (TypeError, ValueError):
+            continue
+        if 1 <= numero <= len(critique.problemes) and brut.get("raison"):
+            objections.append({"numero": numero,
+                               "raison": str(brut["raison"])[:300]})
+    return objections
+
+
+def arbitrer(contexte: Any, critique: Critique,
+             objections: List[Dict[str, str]],
+             intitule: str) -> Dict[int, bool]:
+    """Le controleur tranche chaque point conteste. Rend {numero: appliquer}.
+
+    En cas de doute — pas de reponse, JSON illisible, numero inconnu — la
+    correction est APPLIQUEE. C'est le choix conservateur : sans arbitrage, on
+    retombe exactement sur le comportement d'avant, alors qu'ecarter par
+    defaut ferait de chaque panne d'arbitrage une relecture silencieusement
+    annulee.
+    """
+    # Un numero vient du modele : rien ne garantit qu'il designe un point qui
+    # existe. Sans ce filtre, un numero fantaisiste faisait tomber la
+    # fabrication entiere sur un « list index out of range », au milieu d'un
+    # chapitre — et l'appelant n'avait aucun moyen de comprendre pourquoi.
+    valides = [o for o in objections
+               if 1 <= int(o.get("numero", 0)) <= len(critique.problemes)]
+    if not valides:
+        return {}
+    resume = "\n".join(
+        "{}. CRITIQUE : {} — CORRECTION : {}\n   OBJECTION DE L'AUTEUR : {}".format(
+            o["numero"],
+            critique.problemes[o["numero"] - 1].get("probleme", ""),
+            critique.problemes[o["numero"] - 1].get("correction", ""),
+            o["raison"])
+        for o in valides)
+    invite = (
+        "Un editeur a critique un texte. L'auteur conteste certains points. "
+        "Tranche, point par point.\n\n"
+        "SECTION : « {intitule} »\n"
+        "PUBLIC : {audience}\n\n"
+        "--- POINTS CONTESTES ---\n{resume}\n--- FIN ---\n\n"
+        "Pour chacun, decide si la correction doit etre APPLIQUEE ou ECARTEE. "
+        "Ecarte-la si l'auteur a raison — notamment si l'appliquer obligerait "
+        "a inventer un fait, un chiffre ou un temoignage. Applique-la si "
+        "l'objection est une simple resistance au changement.\n\n"
+        "JSON exact :\n"
+        '{{"decisions": [{{"numero": 1, "appliquer": false, '
+        '"motif": "une phrase"}}]}}'
+    ).format(intitule=intitule, resume=resume,
+             audience=getattr(contexte, "audience", "un public francophone"))
+    try:
+        donnees = CONTROLEUR.travailler_json(contexte, invite, max_tokens=900,
+                                             temperature=0.2)
+    except Exception as exc:
+        evenements.publier("qualite", etat="arbitrage_indisponible",
+                           detail=str(exc))
+        return {}
+    if not isinstance(donnees, dict):
+        return {}
+    decisions: Dict[int, bool] = {}
+    for brut in (donnees.get("decisions") or []):
+        if not isinstance(brut, dict):
+            continue
+        try:
+            numero = int(brut.get("numero"))
+        except (TypeError, ValueError):
+            continue
+        if 1 <= numero <= len(critique.problemes):
+            decisions[numero] = bool(brut.get("appliquer", True))
+    return decisions
+
+
+def deliberer(contexte: Any, texte: str, critique: Critique,
+              intitule: str) -> Tuple[Critique, List[Dict[str, str]]]:
+    """Fait repondre l'auteur, fait trancher le controleur, et rend la
+    critique REDUITE aux corrections retenues.
+
+    Rend aussi le compte rendu de la deliberation : qui a conteste quoi, et
+    ce qui a ete decide. Il entre dans le rapport qualite — une decision
+    qu'on ne retrouve plus six mois apres n'aide pas a comprendre le texte.
+    """
+    objections = contester(contexte, texte, critique, intitule)
+    if not objections:
+        return critique, []
+    decisions = arbitrer(contexte, critique, objections, intitule)
+
+    compte_rendu = []
+    ecartes = set()
+    for objection in objections:
+        numero = objection["numero"]
+        applique = decisions.get(numero, True)
+        if not applique:
+            ecartes.add(numero)
+        probleme = critique.problemes[numero - 1]
+        compte_rendu.append({
+            "probleme": str(probleme.get("probleme", ""))[:200],
+            "objection": objection["raison"],
+            "retenue": applique,
+        })
+        evenements.publier("deliberation", intitule=intitule,
+                           probleme=str(probleme.get("probleme", ""))[:120],
+                           objection=objection["raison"][:120],
+                           retenue=applique)
+
+    if not ecartes:
+        return critique, compte_rendu
+    retenus = [p for i, p in enumerate(critique.problemes, 1) if i not in ecartes]
+    reduite = Critique(
+        note=critique.note, problemes=retenus,
+        points_forts=critique.points_forts, verdict=critique.verdict,
+        fournisseur_auteur=critique.fournisseur_auteur,
+        fournisseur_relecteur=critique.fournisseur_relecteur)
+    return reduite, compte_rendu
+
+
 def affiner(
     contexte: Any,
     texte: str,
@@ -273,6 +474,7 @@ def affiner(
     qualite montre l'evolution reelle plutot qu'une affirmation.
     """
     historique: List[Critique] = []
+    deliberations: List[Dict[str, Any]] = []
     courant = texte
     for passe in range(max(0, passes)):
         critique = critiquer(contexte, courant, intitule, promesse, fournisseur_auteur)
@@ -284,9 +486,26 @@ def affiner(
             break
         if not critique.problemes:
             break
+        if deliberation_active(contexte):
+            # Deux appels de plus par section : c'est pourquoi cela n'existe
+            # qu'au niveau « exigeant ». Ailleurs, on applique tout, ce qui
+            # reste le bon compromis quand on paie chaque appel.
+            critique, rendu = deliberer(contexte, courant, critique, intitule)
+            if rendu:
+                deliberations.append({"passe": passe + 1, "points": rendu})
+                ecartees = sum(1 for p in rendu if not p["retenue"])
+                if ecartees:
+                    contexte.journal(
+                        "     deliberation : {} correction(s) ecartee(s) apres "
+                        "objection de l'auteur".format(ecartees))
+            if not critique.problemes:
+                break
         courant = reviser(contexte, courant, critique, intitule)
         evenements.publier("qualite", etat="revision", intitule=intitule,
                            passe=passe + 1)
+    if deliberations and hasattr(contexte, "meta"):
+        contexte.meta.setdefault("deliberations", []).append(
+            {"section": intitule, "passes": deliberations})
     return courant, historique
 
 

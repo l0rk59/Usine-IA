@@ -16,6 +16,26 @@ CORPS = (
 )
 
 
+# Combien de critiques editoriales ont deja ete rendues, par section. Remis a
+# zero par « atelier.isoler » : un module de test qui herite du compteur d'un
+# autre verrait une premiere critique deja clemente.
+_CRITIQUES: dict = {}
+
+
+def reinitialiser() -> None:
+    _CRITIQUES.clear()
+
+
+def _premiere_critique(invite: str) -> bool:
+    """Vrai la premiere fois qu'on critique CETTE section."""
+    intitule = ""
+    if "intitule : «" in invite:
+        intitule = invite.split("intitule : «", 1)[1].split("»", 1)[0].strip()
+    compte = _CRITIQUES.get(intitule, 0)
+    _CRITIQUES[intitule] = compte + 1
+    return compte == 0
+
+
 def _combien(invite: str, defaut: int) -> int:
     for motif in (r"LONGUEUR\s*:\s*(\d+)",
                   r"de\s+(\d+)\s+(?:prompts|publications|outils|idees|fiches|bases)",
@@ -114,6 +134,21 @@ def simulateur(messages, role):
     """Signature attendue par llm.definir_simulateur : (messages, role) -> texte."""
     invite = messages[-1]["content"]
     bas = invite.lower()
+
+    # --- deliberation : l'auteur conteste, le controleur tranche ------------
+    if '"objections"' in invite:
+        # L'auteur conteste le premier point, jamais les autres : un
+        # simulateur qui contesterait tout empecherait de distinguer
+        # « la deliberation marche » de « la relecture est annulee ».
+        return json.dumps({"objections": [
+            {"numero": 1, "raison": "cette correction demande d'inventer un "
+                                    "chiffre que je ne peux pas sourcer"}]},
+            ensure_ascii=False)
+    if '"decisions"' in invite:
+        return json.dumps({"decisions": [
+            {"numero": 1, "appliquer": False,
+             "motif": "l'auteur a raison : la correction ferait fabriquer une "
+                      "statistique"}]}, ensure_ascii=False)
 
     # --- brief automatique : ce que l'usine decide quand on ne dit rien -----
     # En premier, et avant le plan : le brief demande lui aussi des
@@ -393,7 +428,15 @@ def simulateur(messages, role):
     if '"points_forts"' in invite:
         # Premiere passe severe, passes suivantes clementes : la boucle doit
         # pouvoir converger et s'arreter d'elle-meme.
-        severe = "deja corrige" not in invite
+        #
+        # On compte les critiques par section plutot que de chercher une
+        # marque dans le texte. La marque etait posee par le RESIVEUR, or le
+        # controle local passe par lui AVANT la relecture editoriale : la
+        # toute premiere critique d'une section voyait donc deja un texte
+        # « corrige » et sortait clemente. Consequence : la deliberation
+        # entre agents n'etait jamais atteinte, et aucun test de bout en
+        # bout ne pouvait la voir.
+        severe = _premiere_critique(invite)
         if severe:
             return json.dumps({
                 "note": 6.0,

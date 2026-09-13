@@ -865,6 +865,93 @@ class TestActionsProduit(BaseServeur):
             self.assertEqual(self.appeler(lien)[0], 200, lien)
 
 
+class TestSectionsDuTableau(unittest.TestCase):
+    """Le tableau de bord empilait treize cartes sur une seule page.
+
+    Il fallait faire defiler tout « Veille de niche » pour atteindre ses
+    produits, et rien n'y disait ce qui allait avec quoi. Ces controles
+    gardent trois choses : qu'aucune carte ne se retrouve hors section (elle
+    serait invisible, ce qui est pire qu'une page trop longue), qu'aucun
+    onglet ne pointe vers rien, et que les sections restent les MEMES que
+    celles du menu Termux.
+
+    Cette derniere regle est la moins evidente et la plus utile : deux
+    interfaces qui rangent les memes choses differemment obligent a apprendre
+    deux fois.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.page = (RACINE / "usine" / "web" / "statique"
+                    / "tableau.html").read_text(encoding="utf-8")
+        cls.script = (RACINE / "usine" / "web" / "statique"
+                      / "app.js").read_text(encoding="utf-8")
+
+    def _sections(self):
+        import re
+
+        return re.findall(r'<section class="onglet"[^>]*data-section="(\w+)"',
+                          self.page)
+
+    def _onglets(self):
+        import re
+
+        return re.findall(r'<button role="tab" data-onglet="(\w+)"', self.page)
+
+    def test_chaque_onglet_a_sa_section_et_reciproquement(self):
+        """Un onglet sans section n'affiche rien et ne dit pas pourquoi."""
+        self.assertEqual(self._onglets(), self._sections())
+        self.assertTrue(self._sections())
+
+    def test_aucune_carte_ne_reste_hors_section(self):
+        """Une carte hors section est CACHEE, pas mal rangee.
+
+        C'est le defaut que cette refonte pouvait introduire, et il est pire
+        que celui qu'elle corrige : une page trop longue se parcourt, une
+        fonction invisible n'existe pas.
+        """
+        import re
+
+        corps = self.page.split("<main>")[1].split("</main>")[0]
+        dehors = re.sub(r'<section class="onglet".*?</section>', "", corps,
+                        flags=re.DOTALL)
+        self.assertNotIn('<div class="carte">', dehors)
+
+    def test_toutes_les_cartes_sont_rangees(self):
+        """Le compte, pour que supprimer une carte se voie."""
+        self.assertEqual(self.page.count('<div class="carte">'), 13)
+
+    def test_une_seule_section_s_affiche_a_la_fois(self):
+        """Toutes portent « hidden » dans le HTML : si le script ne tourne
+        pas, on retombe sur une page vide plutot que sur les quatre sections
+        empilees — c'est-a-dire exactement l'etat qu'on vient de corriger."""
+        import re
+
+        for section in re.findall(r'<section class="onglet"[^>]*>', self.page):
+            with self.subTest(section=section[:60]):
+                self.assertIn("hidden", section)
+        self.assertIn("montrerSection", self.script)
+
+    def test_les_sections_du_web_et_du_menu_termux_se_correspondent(self):
+        """Deux interfaces qui rangent differemment obligent a apprendre deux fois.
+
+        Le menu Termux et le tableau de bord partent du meme critere : le
+        moment ou l'on s'en sert. Ce test ne compare pas les libelles mot pour
+        mot, mais le fait que chaque section du web ait son equivalent.
+        """
+        source_menu = (RACINE / "usine" / "menu.py").read_text(encoding="utf-8")
+        bloc = source_menu.split('choisir("Menu principal", [')[1].split("], defaut=")[0]
+        libelles = [ligne.split('("')[1].split('"')[0]
+                    for ligne in bloc.splitlines() if '("' in ligne]
+        attendus = {"fabriquer": "Fabriquer", "produits": "Mes produits",
+                    "marche": "Comprendre le marche", "machine": "La machine"}
+        for section in self._sections():
+            with self.subTest(section=section):
+                self.assertIn(attendus.get(section, "?"), libelles,
+                              "la section « {} » du tableau de bord n'a pas "
+                              "d'equivalent dans le menu Termux".format(section))
+
+
 class TestDocteur(BaseServeur):
     """Le bouton « pourquoi ca ne marche pas », dans le navigateur."""
 

@@ -82,5 +82,15 @@ def isoler(nom: str) -> Path:
     prompts._cache_agents = None
     prompts._cache_modeles = None
 
+    # Le simulateur compte les relectures deja rendues pour savoir si la
+    # premiere passe doit etre severe. Ce compteur parle de l'atelier
+    # precedent, comme les caches ci-dessus.
+    try:
+        from tests import simulateur
+
+        simulateur.reinitialiser()
+    except ImportError:      # atelier utilise hors de la suite
+        pass
+
     _COURANT = nom
     return dossier
