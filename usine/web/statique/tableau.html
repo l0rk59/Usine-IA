@@ -50,6 +50,7 @@
 <main>
 <nav class="onglets" id="onglets" role="tablist" aria-label="Sections du tableau de bord">
   <button role="tab" data-onglet="fabriquer" aria-selected="false">Fabriquer</button>
+  <button role="tab" data-onglet="continue" aria-selected="false">Produire en boucle</button>
   <button role="tab" data-onglet="produits" aria-selected="false">Mes produits</button>
   <button role="tab" data-onglet="marche" aria-selected="false">Marche</button>
   <button role="tab" data-onglet="reglages" aria-selected="false">Reglages</button>
@@ -65,8 +66,11 @@
   <select id="type"></select>
   <p class="aide" id="type-detail"></p>
 
-  <label for="sujet">Sujet</label>
+  <label for="sujet">Sujet <span class="facultatif">facultatif</span></label>
   <textarea id="sujet" placeholder="ex : la prospection pour freelances debutants"></textarea>
+  <p class="aide">Laissez vide et l'usine cherche la niche elle-meme : elle
+    propose des domaines, les mesure sur des sources publiques, et garde ceux
+    ou la demande se voit.</p>
   <div class="alerte" id="alerte-sujet" hidden></div>
 
   <label for="audience">Audience</label>
@@ -118,20 +122,35 @@
   <h2>Journal en direct</h2>
   <pre class="journal" id="journal" role="log" aria-live="polite"><span class="ligne vide">En attente d'activite...</span></pre>
 </div>
+</section>
+
+<section class="onglet" id="onglet-continue" data-section="continue" role="tabpanel" aria-label="Produire en boucle" hidden>
 <div class="carte">
-  <h2>Usine continue</h2>
+  <h2>Produire en boucle</h2>
+  <p class="aide">L'usine enchaine les produits toute seule, sous budget,
+    jusqu'a ce que vous l'arretiez ou que le plafond du jour soit atteint.</p>
   <p class="etat" id="usine-etat" role="status">chargement...</p>
   <div class="rangee">
-    <button class="discret" id="usine-demarrer">Demarrer</button>
+    <button class="principal" id="usine-demarrer">Demarrer</button>
     <button class="discret" id="usine-arreter">Arreter</button>
-    <label class="case"><input type="checkbox" id="usine-auto"/> remplir seule</label>
   </div>
+  <label class="case" for="usine-auto">
+    <input type="checkbox" id="usine-auto"/>
+    <span><span class="nom-reglage">Trouver les niches toute seule</span>
+      <small>Quand la file se vide, l'usine explore autour de ce qui a le mieux
+        marche — et, si vous n'avez encore rien produit, elle propose des
+        domaines de depart puis les mesure avant d'en retenir un.</small></span>
+  </label>
+  <p class="aide" id="usine-budget"></p>
+</div>
+<div class="carte">
+  <h2>File d'attente</h2>
   <div id="file-liste" class="file"></div>
   <div class="rangee">
-    <button class="discret" id="file-ajouter">Mettre le sujet ci-dessus en file</button>
+    <button class="discret" id="file-prospecter">Trouver des niches maintenant</button>
+    <button class="discret" id="file-ajouter">Mettre en file le sujet saisi dans « Fabriquer »</button>
     <button class="discret" id="file-rejouer">Relancer les echecs</button>
   </div>
-  <p class="aide" id="usine-budget"></p>
 </div>
 </section>
 
@@ -236,7 +255,7 @@
     retaper. Les options de la ligne de commande l'emportent, produit par
     produit.</p>
   <div id="reglages-groupes"><span class="vide">chargement...</span></div>
-  <div class="rangee">
+  <div class="rangee barre-enregistrer">
     <button id="reglages-enregistrer">Enregistrer</button>
     <span class="aide" id="reglages-etat" role="status"></span>
   </div>

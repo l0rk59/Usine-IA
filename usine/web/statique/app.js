@@ -104,8 +104,43 @@ function montrerSection(cle) {
     const actif = b.dataset.onglet === cle;
     b.setAttribute('aria-selected', actif ? 'true' : 'false');
     b.classList.toggle('actif', actif);
+    /* La barre defile maintenant sur une seule ligne : un onglet choisi au
+       clavier, ou retenu du chargement precedent, peut se trouver hors du
+       cadre — actif et invisible, ce qui se lit comme une page vide. */
+    if (actif && b.scrollIntoView) {
+      try { b.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
+      catch (e) { /* vieux navigateur */ }
+    }
   });
+  /* La scene 3D ne dit qu'une chose : l'avancement d'une fabrication. Sur
+     « Reglages » ou « La machine » elle ne dit rien, et elle mangeait 370px
+     du haut de chaque onglet — sur un ecran de 915px, avant meme le premier
+     champ. Elle reste la ou elle informe. */
+  majVisibiliteScene();
   try { localStorage.setItem('usine-section', cle); } catch (e) { /* prive */ }
+}
+
+/* Les sections ou l'avancement d'une fabrication veut dire quelque chose. */
+const SECTIONS_AVEC_SCENE = ['fabriquer', 'continue'];
+
+function sceneAttendue() {
+  let cle = '';
+  try { cle = localStorage.getItem('usine-section') || SECTION_DEFAUT; }
+  catch (e) { cle = SECTION_DEFAUT; }
+  const active = document.querySelector('.onglet:not([hidden])');
+  if (active && active.dataset.section) cle = active.dataset.section;
+  return SECTIONS_AVEC_SCENE.indexOf(cle) !== -1;
+}
+
+/* Quatre conditions, et toutes doivent tenir : la section, la peau, le
+   reglage « effets_3d » et le support WebGL. Une premiere version ne
+   regardait que la derniere, et changer de peau ou d'onglet laissait la
+   scene dans l'etat ou elle etait. */
+function majVisibiliteScene() {
+  const racine = document.documentElement;
+  const anime = racine.dataset.anime !== 'non';
+  $('scene').hidden = !(anime && scene.actif && effets3dActifs()
+                        && sceneAttendue());
 }
 
 $('onglets').addEventListener('click', (evenement) => {
@@ -556,9 +591,31 @@ async function envoyerFile(charge) {
   return donnees;
 }
 
+$('file-prospecter').addEventListener('click', async () => {
+  /* Le jumeau manuel de « trouver les niches toute seule » : sans lui, la
+     seule facon de remplir la file sans rien taper etait de lancer la boucle
+     continue — donc de produire, alors qu'on voulait juste voir ce que
+     l'usine propose. */
+  $('file-prospecter').disabled = true;
+  $('file-prospecter').textContent = 'recherche...';
+  const donnees = await envoyerFile({ action: 'prospecter' });
+  if (donnees.travail) surveiller(donnees.travail);
+  $('file-prospecter').disabled = false;
+  $('file-prospecter').textContent = 'Trouver des niches maintenant';
+});
+
 $('file-ajouter').addEventListener('click', async () => {
   const sujet = $('sujet').value.trim();
-  if (!sujet) { $('sujet').focus(); return; }
+  /* Le champ « sujet » vit dans l'onglet « Fabriquer ». Y faire « focus() »
+     depuis ici mettait le curseur dans une section CACHEE : le bouton
+     semblait mort. On le dit, et on y emmene. */
+  if (!sujet) {
+    ajouterLigne('donnez un sujet dans l\'onglet « Fabriquer », ou utilisez '
+      + '« Trouver des niches maintenant »', 'souci');
+    montrerSection('fabriquer');
+    $('sujet').focus();
+    return;
+  }
   const donnees = await envoyerFile({
     action: 'ajouter', sujet, type: $('type').value,
     nombre: $('nombre').value, audience: $('audience').value.trim(),
@@ -641,6 +698,15 @@ function traiter(evenement) {
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
       `reponse coupee au plafond (${echapper(evenement.fournisseur)}, ` +
       `${evenement.plafond} jetons) : le texte s'arrete avant sa fin`, 'souci');
+  } else if (evenement.type === 'niche') {
+    /* La niche que l'usine vient de choisir seule. Sans cette ligne,
+       l'evenement partait dans le vide : on voyait « (l'usine choisit) »
+       puis, d'un coup, un plan sur un sujet qu'on n'avait jamais lu. */
+    ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
+      `niche choisie : <strong>${echapper(evenement.sujet)}</strong>` +
+      (evenement.source === 'file' ? ' (elle attendait en file)'
+        : evenement.source === 'froid' ? ' (premiere niche de cet atelier)'
+        : ''), 'succes');
   } else if (evenement.type === 'lecteur') {
     /* Tout le reste de l'usine juge le texte. Le lecteur dit s'il a compris,
        ce qui est la seule question a laquelle un acheteur repond vraiment. */
@@ -790,10 +856,14 @@ $('theme').addEventListener('change', () => {
 });
 
 $('lancer').addEventListener('click', async () => {
+  /* Un sujet vide n'est plus un refus, c'est une demande : « trouve-la ».
+     L'ancienne version faisait « focus() » sur le champ et s'arretait la —
+     aucun message, aucune erreur, rien dans le journal. On recliquait sur le
+     bouton en croyant qu'il ne marchait pas. */
   const sujet = $('sujet').value.trim();
-  if (!sujet) { $('sujet').focus(); return; }
   $('lancer').disabled = true;
-  $('lancer').textContent = 'Fabrication en cours...';
+  $('lancer').textContent = sujet ? 'Fabrication en cours...'
+                                  : 'Recherche de la niche...';
   etat.avancement = 0;
   scene.majEtat({ dalles: 0, objectif: 0 });
   animerVers($('avancement'), 0);
@@ -843,7 +913,14 @@ async function surveiller(identifiant) {
 /* ------------------------------------------------------- veille de niche */
 $('veille-lancer').addEventListener('click', async () => {
   const niche = $('veille-niche').value.trim() || $('sujet').value.trim();
-  if (!niche) { $('veille-niche').focus(); return; }
+  if (!niche) {
+    /* Muet auparavant : le bouton ne faisait rien et ne disait
+       rien. Un champ vide a cote d'un bouton mort se lit comme
+       une panne, pas comme une consigne. */
+    $('veille-etat').textContent = 'donnez une niche a mesurer.';
+    $('veille-niche').focus();
+    return;
+  }
   $('veille-niche').value = niche;
   $('veille-lancer').disabled = true;
   $('veille-etat').textContent = 'consultation en cours — deux appels espaces...';
@@ -1114,7 +1191,14 @@ $('archive-fichier').addEventListener('change', async () => {
 /* ------------------------------------------------------------- marche */
 $('marche-lancer').addEventListener('click', async () => {
   const sujet = $('veille-niche').value.trim() || $('sujet').value.trim();
-  if (!sujet) { $('veille-niche').focus(); return; }
+  if (!sujet) {
+    /* Muet auparavant : le bouton ne faisait rien et ne disait
+       rien. Un champ vide a cote d'un bouton mort se lit comme
+       une panne, pas comme une consigne. */
+    $('veille-etat').textContent = 'donnez une niche a mesurer.';
+    $('veille-niche').focus();
+    return;
+  }
   $('veille-niche').value = sujet;
   $('marche-lancer').disabled = true;
   $('veille-etat').textContent = 'mesure de quatre sources publiques...';
@@ -1378,14 +1462,28 @@ async function chargerBilan() {
    contact imprime dans la notice de l'acheteur, la marque, les budgets qui
    arretent l'usine continue — n'existaient que dans un fichier JSON que
    personne n'ouvre. */
+/* Repliables, et FERMES au depart sauf le premier. Les six groupes existaient
+   deja, mais tous ouverts en meme temps : trente champs d'affilee dans une
+   seule carte de 3900px. Un titre qui ne replie rien n'organise rien. */
 function dessinerReglages(groupes, valeurs) {
   if (!groupes || !groupes.length) return;
+  /* Ce que l'utilisateur a ouvert survit a un rafraichissement : la liste se
+     redessine a chaque chargement d'etat, et refermer sous ses doigts le
+     groupe qu'il etait en train de remplir serait pire que le mur. */
+  const ouverts = new Set(
+    Array.from(document.querySelectorAll('.groupe-reglages[open]'))
+      .map((d) => d.dataset.groupe));
+  const premier = ouverts.size ? null : (groupes[0] || {}).cle;
   $('reglages-groupes').innerHTML = groupes.map((g) => `
-    <div class="groupe-reglages">
-      <h3 class="sous">${echapper(g.titre)}</h3>
-      <p class="aide">${echapper(g.aide)}</p>
-      ${g.reglages.map((r) => champReglage(r, valeurs[r.nom])).join('')}
-    </div>`).join('');
+    <details class="groupe-reglages" data-groupe="${echapper(g.cle)}"${
+      ouverts.has(g.cle) || g.cle === premier ? ' open' : ''}>
+      <summary>${echapper(g.titre)}
+        <span class="compte">${g.reglages.length}</span></summary>
+      <div class="corps-groupe">
+        <p class="aide">${echapper(g.aide)}</p>
+        ${g.reglages.map((r) => champReglage(r, valeurs[r.nom])).join('')}
+      </div>
+    </details>`).join('');
 }
 
 function champReglage(reglage, valeur) {
@@ -1470,7 +1568,7 @@ function appliquerPeau(cle) {
      rechargement, et on croyait la peau cassee. Le reglage « effets_3d »
      garde le dernier mot : une peau animee ne doit pas rallumer la 3D chez
      quelqu'un qui l'a coupee parce que son telephone rame. */
-  $('scene').hidden = !(anime && scene.actif && effets3dActifs());
+  majVisibiliteScene();
   if ($('theme').value !== cle) $('theme').value = cle;
 }
 

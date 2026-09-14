@@ -205,19 +205,39 @@ class LeChoixSeFaitPartout(unittest.TestCase):
         parce qu'une peau en prevoit."""
         self.assertIn("prefers-reduced-motion", JS)
 
-    def test_revenir_a_une_peau_animee_rallume_la_scene(self):
-        """Une premiere version ne faisait que cacher : revenir d'une peau
+    def test_la_scene_se_recalcule_au_lieu_de_se_cacher(self):
+        """Une premiere version ne faisait que CACHER : revenir d'une peau
         calme a « nuit » laissait la scene 3D eteinte jusqu'au rechargement,
         et on croyait la peau cassee.
-        """
-        self.assertIn("$('scene').hidden = !(anime", JS)
 
-    def test_le_reglage_effets_3d_garde_le_dernier_mot(self):
-        """Une peau animee ne doit pas rallumer la 3D chez quelqu'un qui l'a
-        coupee parce que son telephone rame."""
-        bloc = JS[JS.index("function appliquerPeau"):]
+        On ne cherche plus une ligne precise — elle a deja bouge une fois —
+        mais le point unique qui decide, et le fait que les deux entrees
+        (changer de peau, changer d'onglet) y passent toutes les deux. Deux
+        calculs separes divergeraient, et c'est exactement le defaut d'origine.
+        """
+        self.assertIn("function majVisibiliteScene", JS)
+        for fonction in ("appliquerPeau", "montrerSection"):
+            with self.subTest(entree=fonction):
+                bloc = JS[JS.index("function {}(".format(fonction)):]
+                bloc = bloc[:bloc.index("\n}")]
+                self.assertIn("majVisibiliteScene()", bloc,
+                              "« {} » decide de la scene dans son coin"
+                              .format(fonction))
+
+    def test_les_quatre_conditions_pesent_sur_la_scene(self):
+        """La peau, le reglage « effets_3d », le support WebGL et la section.
+
+        Chacune a son motif : une peau calme sur un vieil appareil, quelqu'un
+        qui a coupe la 3D, un navigateur sans WebGL, et un onglet ou
+        l'avancement d'une fabrication ne veut rien dire. En oublier une
+        rallume la scene chez quelqu'un qui l'avait eteinte.
+        """
+        bloc = JS[JS.index("function majVisibiliteScene"):]
         bloc = bloc[:bloc.index("\n}")]
-        self.assertIn("effets3dActifs()", bloc)
+        for condition in ("anime", "scene.actif", "effets3dActifs()",
+                          "sceneAttendue()"):
+            with self.subTest(condition=condition):
+                self.assertIn(condition, bloc)
 
 
 if __name__ == "__main__":

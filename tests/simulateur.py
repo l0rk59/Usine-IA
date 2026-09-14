@@ -135,6 +135,20 @@ def simulateur(messages, role):
     invite = messages[-1]["content"]
     bas = invite.lower()
 
+    # --- demarrage a froid : par ou commencer quand l'atelier est vide -----
+    if '"pourquoi_maintenant"' in invite:
+        return json.dumps({"domaines": [
+            {"domaine": "la facturation des independants",
+             "acheteur": "un freelance qui vient de depasser le seuil",
+             "pourquoi_maintenant": "le regime a change en janvier"},
+            {"domaine": "le potager en bac sur balcon",
+             "acheteur": "un citadin sans jardin",
+             "pourquoi_maintenant": "la saison commence"},
+            {"domaine": "la reprise de course a pied apres 40 ans",
+             "acheteur": "quelqu'un qui a arrete dix ans",
+             "pourquoi_maintenant": "la rentree"},
+        ]}, ensure_ascii=False)
+
     # --- lecture par l'audience --------------------------------------------
     if '"ce_que_je_ne_sais_toujours_pas_faire"' in invite:
         return json.dumps({

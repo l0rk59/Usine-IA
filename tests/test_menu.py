@@ -399,27 +399,33 @@ class TestMenuPrincipal(unittest.TestCase):
     # ouvert quelque chose — soit la commande attendue, soit un texte que
     # SEUL cet ecran imprime. L'etiquette du menu ne convient pas : elle
     # s'affiche que la branche soit cablee ou vide.
+    # « Produire en boucle » est entree 2 depuis le 14/09/2026 : elle etait la
+    # deuxieme ligne du sous-menu « Fabriquer », c'est-a-dire l'endroit le
+    # moins visible pour la seule fonction qui produit sans qu'on dicte quoi
+    # que ce soit. Le tableau de bord l'a sortie au meme moment, et les deux
+    # interfaces doivent ranger pareil — un test le garde.
     SECTIONS = {
         1: {1: ("ecran", "Que voulez-vous fabriquer"),
-            2: ("ecran", "Usine continue"),
-            3: ("commande", "idees")},
-        2: {1: ("ecran", "Generer le kit de vente"),
+            2: ("commande", "idees"),
+            3: ("ecran", "Usine continue")},
+        2: {},          # « Produire en boucle » ouvre directement son ecran
+        3: {1: ("ecran", "Generer le kit de vente"),
             2: ("ecran", "Aucune serie pour l'instant"),
             3: ("ecran", "Tests A/B")},
-        3: {1: ("commande", "veille"),
+        4: {1: ("commande", "veille"),
             2: ("commande", "marche"),
             3: ("ecran", "Ventes"),
             4: ("commande", "doublons"),
             5: ("commande", "bilan")},
-        4: {1: ("ecran", "Tout reinitialiser"),
+        5: {1: ("ecran", "Tout reinitialiser"),
             2: ("ecran", "pollinations"),
             3: ("ecran", "Prompts"),
             4: ("ecran", "Voir ce qu'il contient")},
-        5: {1: ("commande", "docteur"),
+        6: {1: ("commande", "docteur"),
             2: ("commande", "specs"),
             3: ("commande", "maj"),
             4: ("commande", "sauvegarde")},
-        6: {},          # « Tableau de bord » lance directement une commande
+        7: {},          # « Tableau de bord » lance directement une commande
     }
 
     def _derouler(self, frappes):
@@ -434,7 +440,7 @@ class TestMenuPrincipal(unittest.TestCase):
         return lancees, texte.getvalue()
 
     def test_le_tableau_de_bord_part_directement(self):
-        lancees, _ = self._derouler(["6"])
+        lancees, _ = self._derouler(["7"])
         self.assertTrue(lancees)
         self.assertEqual(lancees[0][0], "web")
 
@@ -470,6 +476,14 @@ class TestMenuPrincipal(unittest.TestCase):
         demi a faire defiler pour trouver « Reglages »."""
         self.assertLessEqual(_entrees_du_menu(), 8)
 
+    def test_produire_en_boucle_est_au_premier_niveau(self):
+        """Elle etait la deuxieme ligne d'un sous-menu : pour l'atteindre il
+        fallait deja savoir qu'elle existait, et qu'elle vivait sous
+        « Fabriquer ». Le tableau de bord l'a sortie le meme jour."""
+        source = Path(menu.__file__).read_text(encoding="utf-8")
+        bloc = source.split('choisir("Menu principal", [')[1].split("], defaut=")[0]
+        self.assertIn("Produire en boucle", bloc)
+
 
 def _entrees_du_menu() -> int:
     """Combien d'entrees le menu principal affiche, lues dans sa source."""
@@ -481,8 +495,9 @@ def _entrees_du_menu() -> int:
 def _entrees_de_section(numero: int) -> int:
     """Combien d'entrees une section affiche, lues dans sa source."""
     source = Path(menu.__file__).read_text(encoding="utf-8")
-    titres = {1: "Fabriquer", 2: "Mes produits", 3: "Comprendre le marche",
-              4: "Reglages", 5: "La machine", 6: ""}
+    titres = {1: "Fabriquer", 2: "", 3: "Mes produits",
+              4: "Comprendre le marche", 5: "Reglages", 6: "La machine",
+              7: ""}
     titre = titres[numero]
     if not titre:
         return 0

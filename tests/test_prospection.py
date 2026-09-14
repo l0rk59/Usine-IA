@@ -97,13 +97,50 @@ class TestProspection(unittest.TestCase):
                               for t in titres]}
         production.idees.produire = faux
 
-    def test_sans_graine_rien_n_est_mis_en_file(self):
-        self._pistes(["une piste"])
+    def test_sans_historique_l_usine_choisit_sa_premiere_niche(self):
+        """Le contraire de ce que ce test gardait jusqu'au 14/09/2026.
+
+        Il verifiait que, sans historique, l'usine ne met rien en file et
+        renvoie vers une saisie manuelle. C'etait le comportement observe,
+        donc il est passe pour le comportement voulu — alors que c'est l'etat
+        de TOUTE installation neuve, et que choisir la niche est justement ce
+        qu'on demande a l'usine.
+
+        Elle propose maintenant des domaines, les mesure, et part du mieux
+        place. Le detail : docs/NICHE.md.
+        """
+        from usine.core import llm, marche
+
+        from tests.simulateur import simulateur
+
+        self._pistes(["le jardinage sur balcon"])
+        vrai_interpreter, vrai_sonder = marche.interpreter, marche.sonder
+
+        def sonder_simule(sujet, **_kw):
+            rapport = {"sujet": sujet, "date": "2026-09-14", "sources": {},
+                       "sources_disponibles": ["reddit"],
+                       "sources_indisponibles": []}
+            rapport["lecture"] = vrai_interpreter(rapport)
+            return rapport
+
+        # « _pistes » remplace « idees.produire », mais le choix du domaine de
+        # depart passe par le PROSPECTEUR, qui est un autre chemin : sans le
+        # simulateur, il sortirait sur le reseau. Aucun test n'a le droit.
+        marche.sonder = sonder_simule
+        llm.definir_simulateur(simulateur)
         journal = []
-        rapport = production.prospecter(journal=journal.append)
-        self.assertEqual(rapport["ajoutees"], 0)
-        self.assertEqual(rapport["graine"], "")
-        self.assertTrue(any("a la main" in ligne for ligne in journal))
+        try:
+            rapport = production.prospecter(journal=journal.append,
+                                            avec_veille=False)
+        finally:
+            marche.sonder = vrai_sonder
+            llm.definir_simulateur(None)
+
+        self.assertTrue(rapport["froid"])
+        self.assertTrue(rapport["graine"],
+                        "l'usine ne sait toujours pas par ou commencer")
+        self.assertFalse(any("a la main" in ligne for ligne in journal),
+                         "l'usine renvoie encore vers une saisie manuelle")
 
     def test_les_pistes_nouvelles_entrent_en_file(self):
         _produire("la prospection pour freelances", note=8.0)

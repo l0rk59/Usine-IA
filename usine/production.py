@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from .core import (apprentissage, budget, config, empreinte, evenements,
-                   file, llm, reglages, store, telephone, trace)
+                   file, llm, marche, reglages, store, telephone, trace)
 from .pipelines import catalogue, idees
 from .pipelines.base import Contexte
 
@@ -189,6 +189,166 @@ def graine_de_depart() -> str:
     return meilleures[0]["sujet"] if meilleures else ""
 
 
+# Le catalogue de depart n'est pas ecrit ici : l'usine le DEMANDE, puis le
+# MESURE. Une liste de niches recopiee dans le code aurait deux defauts que
+# ce depot connait bien — elle vieillit sans que rien ne le dise, et elle
+# donne le meme premier produit a tous ceux qui installent l'usine.
+DOMAINES_A_MESURER = 8
+
+
+def domaines_de_depart(
+        journal: Optional[Callable[[str], None]] = None,
+        nombre: int = DOMAINES_A_MESURER) -> Dict[str, Any]:
+    """Par quoi commencer quand l'atelier est vide.
+
+    C'est le trou que personne ne voyait : « prospecter » cherche des niches
+    VOISINES d'une graine, et la graine vient de ce qui a deja rapporte. Sur
+    une installation neuve il n'y a rien, donc pas de graine, donc pas de
+    prospection — l'usine repondait « ajoutez-en une a la main ». La seule
+    fonction qui lui permet de choisir seule etait inatteignable depuis le
+    seul etat ou tout le monde commence.
+
+    Proposer suffit a demarrer, mais pas a etre honnete : un domaine sorti de
+    l'imagination d'un modele n'est pas une mesure. On propose donc large,
+    puis on SONDE chaque domaine sur les sources publiques, et on ne garde que
+    ceux ou la demande se voit. Ce qui n'a pas pu etre mesure est rendu
+    quand meme, dit comme tel, et jamais presente comme mesure.
+    """
+    dire = journal or (lambda message: None)
+    contexte = Contexte(sujet="", journal=lambda _m: None, sans_image=True)
+    invite = (
+        "Un vendeur installe l'usine et n'a encore rien produit : aucun "
+        "historique, aucune vente, aucune niche de depart.\n\n"
+        "Propose {n} DOMAINES de depart differents les uns des autres — pas "
+        "des titres de produits, des domaines ou un particulier peut vendre "
+        "un produit digital fait seul. Chacun en trois a six mots, tel qu'un "
+        "acheteur le taperait dans une recherche.\n\n"
+        "Evite ce qui exige une certification (medical, juridique, financier "
+        "reglemente) et ce qui demande un stock ou une equipe.\n\n"
+        'Schema JSON exact :\n'
+        '{{"domaines": [{{"domaine": "...", "acheteur": "qui paie et pourquoi", '
+        '"pourquoi_maintenant": "..."}}]}}'
+    ).format(n=nombre)
+    try:
+        donnees = idees.equipe.PROSPECTEUR.travailler_json(
+            contexte, invite, role_modele="raisonnement",
+            temperature=0.9, max_tokens=1600)
+    except Exception as exc:
+        dire("Impossible de proposer un domaine de depart : {}".format(exc))
+        return {"retenus": [], "mesures": [], "mesure": False}
+
+    proposes = donnees.get("domaines") if isinstance(donnees, dict) else donnees
+    propres = [d for d in (proposes or [])
+               if isinstance(d, dict) and (d.get("domaine") or "").strip()]
+    if not propres:
+        dire("Le prospecteur n'a propose aucun domaine exploitable.")
+        return {"retenus": [], "mesures": [], "mesure": False}
+
+    dire("{} domaines proposes — mesure sur les sources publiques..."
+         .format(len(propres)))
+    retenus: List[Dict[str, Any]] = []
+    mesures: List[Dict[str, Any]] = []
+    mesure_possible = False
+    for piste in propres:
+        nom = piste["domaine"].strip()
+        try:
+            rapport = marche.sonder(nom)
+        except Exception as exc:
+            # Le reseau peut tomber au milieu. On ne transforme pas une
+            # absence de mesure en mauvaise note : la piste reste candidate,
+            # et « mesure » dira que le classement n'en est pas un.
+            mesures.append({"domaine": nom, "demande": "", "erreur": str(exc)})
+            retenus.append({**piste, "demande": "", "fiabilite": ""})
+            continue
+        lecture = rapport.get("lecture", {})
+        demande = lecture.get("demande", "")
+        mesure_possible = mesure_possible or bool(rapport.get("sources_disponibles"))
+        mesures.append({"domaine": nom, "demande": demande,
+                        "fiabilite": lecture.get("fiabilite", ""),
+                        "verdict": lecture.get("verdict", "")})
+        if demande == "faible":
+            dire("  ecarte « {} » — {}".format(nom, lecture.get("fiabilite", "")))
+            continue
+        retenus.append({**piste, "demande": demande,
+                        "fiabilite": lecture.get("fiabilite", "")})
+
+    # Le plus demande d'abord. Les non mesures ferment la marche : ils
+    # servent de filet, pas de recommandation.
+    rang = {"forte": 0, "moyenne": 1, "": 2}
+    retenus.sort(key=lambda d: rang.get(d.get("demande", ""), 2))
+    if not mesure_possible:
+        dire("Aucune source de marche n'a repondu : ces domaines sont "
+             "PROPOSES, pas mesures.")
+    for piste in retenus[:3]:
+        dire("  {} — demande {} ({})".format(
+            piste["domaine"], piste.get("demande") or "non mesuree",
+            piste.get("fiabilite") or "hors ligne"))
+    return {"retenus": retenus, "mesures": mesures, "mesure": mesure_possible}
+
+
+def choisir_une_niche(
+        journal: Optional[Callable[[str], None]] = None,
+        type_produit: str = "ebook") -> Dict[str, Any]:
+    """Le sujet d'UN produit, choisi par l'usine plutot que dicte.
+
+    Repond a la question posee par quelqu'un qui lance « usine ebook » sans
+    rien derriere : les dix chaines exigeaient un sujet en positionnel, donc
+    la seule facon de ne pas en donner etait de ne pas produire. L'usine
+    savait deja chercher des niches — mais seulement dans la boucle continue,
+    et seulement une fois qu'il existait un historique.
+
+    Trois sources, dans cet ordre, parce qu'elles ne valent pas la meme chose :
+
+      1. une niche qui ATTEND DEJA en file — quelqu'un, ou l'usine, l'a
+         choisie avant ; la reprendre vaut mieux que d'en inventer une
+         onzieme pendant que dix patientent ;
+      2. l'exploration autour de ce qui a RAPPORTE, quand l'atelier a un
+         historique : c'est la seule source adossee aux ventes reelles ;
+      3. un domaine de depart mesure, quand il n'y a rien — le cas de toute
+         installation neuve.
+    """
+    dire = journal or (lambda message: None)
+
+    # 1. La file. On regarde sans prendre : « prochain() » marque l'entree en
+    # cours, et une commande unique qui vole une entree a l'usine continue
+    # laisserait celle-ci reprendre un sujet deja fabrique.
+    for entree in file.lister(statut="en_attente", limite=1):
+        dire("Une niche attendait en file : « {} ».".format(entree["sujet"]))
+        return {"sujet": entree["sujet"],
+                "type": entree.get("type") or type_produit,
+                "source": "file"}
+
+    graine = graine_de_depart()
+    if graine:
+        dire("Exploration autour de ce qui a le mieux marche : « {} »..."
+             .format(graine))
+        contexte = Contexte(sujet=graine, journal=lambda _m: None,
+                            sans_image=True)
+        try:
+            pistes = idees.explorer(contexte, nombre=6)
+        except Exception as exc:
+            dire("Exploration impossible : {}".format(exc))
+            pistes = []
+        for piste in pistes:
+            titre = (piste.get("titre") or "").strip()
+            # Le meme filtre que la file : une piste trop proche d'un produit
+            # deja fabrique coute un quota pour un doublon.
+            if titre and not empreinte.sujets_proches(titre, type_produit):
+                dire("Niche retenue : « {} ».".format(titre))
+                return {"sujet": titre, "type": piste.get("type") or type_produit,
+                        "source": "voisinage"}
+        dire("Toutes les pistes recouvrent un produit deja fait.")
+
+    froid = domaines_de_depart(journal=dire)
+    for piste in froid["retenus"]:
+        nom = piste["domaine"]
+        if not empreinte.sujets_proches(nom, type_produit):
+            dire("Premiere niche, choisie par l'usine : « {} ».".format(nom))
+            return {"sujet": nom, "type": type_produit,
+                    "source": "froid", "mesure": froid["mesure"]}
+    return {"sujet": "", "type": type_produit, "source": ""}
+
+
 def prospecter(nombre: int = 8, graine: str = "",
                journal: Optional[Callable[[str], None]] = None,
                avec_veille: bool = True) -> Dict[str, Any]:
@@ -208,19 +368,34 @@ def prospecter(nombre: int = 8, graine: str = "",
     """
     dire = journal or (lambda message: None)
     graine = graine or graine_de_depart()
+    depart_a_froid = False
     if not graine:
-        dire("Aucun historique pour choisir une niche : ajoutez-en une a la "
-             "main, l'usine partira de la.")
-        return {"graine": "", "ajoutees": 0, "ecartees": [], "pistes": 0}
+        # Le cas de TOUT LE MONDE le premier jour. Renvoyer l'utilisateur
+        # vers une saisie manuelle revenait a lui refuser la seule fonction
+        # pour laquelle il avait allume l'usine.
+        dire("Atelier vide : l'usine cherche elle-meme par ou commencer.")
+        froid = domaines_de_depart(journal=dire)
+        if not froid["retenus"]:
+            dire("Aucun domaine de depart n'a pu etre trouve. Donnez-en un "
+                 "et l'usine repartira de la.")
+            return {"graine": "", "ajoutees": 0, "ecartees": [], "pistes": 0,
+                    "froid": froid}
+        graine = froid["retenus"][0]["domaine"]
+        depart_a_froid = True
 
-    dire("Exploration a partir de « {} »...".format(graine))
+    dire("Exploration a partir de « {} »{}...".format(
+        graine, " (premiere niche, choisie par l'usine)" if depart_a_froid else ""))
     contexte = Contexte(sujet=graine, journal=lambda m: None, sans_image=True)
     try:
         resultat = idees.produire(contexte, nombre=nombre, avec_marche=True,
                                   avec_veille=avec_veille)
     except Exception as exc:
+        # « froid » doit survivre a l'echec : c'est justement quand
+        # l'exploration rate qu'on a besoin de savoir si la graine venait de
+        # l'historique ou d'un choix que l'usine vient de faire seule.
         dire("Exploration impossible : {}".format(exc))
-        return {"graine": graine, "ajoutees": 0, "ecartees": [], "pistes": 0}
+        return {"graine": graine, "ajoutees": 0, "ecartees": [], "pistes": 0,
+                "froid": depart_a_froid}
 
     pistes = resultat.get("idees", [])
     ajoutees, ecartees = 0, []
@@ -242,7 +417,7 @@ def prospecter(nombre: int = 8, graine: str = "",
         dire("  ecartee : « {} » recouvre « {} »".format(
             titre[:38], (deja or "")[:38]))
     return {"graine": graine, "ajoutees": ajoutees, "ecartees": ecartees,
-            "pistes": len(pistes)}
+            "pistes": len(pistes), "froid": depart_a_froid}
 
 
 class UsineContinue:

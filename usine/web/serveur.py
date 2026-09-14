@@ -129,8 +129,32 @@ def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None
         evenements.publier("journal", message=message, travail=travail_id)
 
     profil = reglages.charger()
+    sujet = str(options.get("sujet") or "").strip()
+    if not sujet:
+        # Le cas « je ne sais pas quoi vendre, trouve ». Il passe par le meme
+        # chemin que la ligne de commande : une seule facon de choisir une
+        # niche, sinon les deux divergent et l'une des deux vieillit.
+        from ..production import choisir_une_niche
+
+        journal("L'usine choisit la niche...")
+        choix = choisir_une_niche(journal=journal, type_produit=type_produit)
+        sujet = choix["sujet"]
+        if not sujet:
+            with _VERROU:
+                TRAVAUX[travail_id].update(
+                    statut="echec", erreur="aucune niche trouvee")
+            journal("Aucune niche trouvee : donnez-en une.")
+            return
+        if choix.get("source") == "froid" and not choix.get("mesure", True):
+            journal("Aucune source de marche n'a repondu : cette niche est "
+                    "proposee, pas mesuree.")
+        options["sujet"] = sujet
+        with _VERROU:
+            TRAVAUX[travail_id]["sujet"] = sujet[:300]
+        evenements.publier("niche", sujet=sujet, source=choix.get("source", ""))
+
     ctx = Contexte(
-        sujet=options.get("sujet", ""),
+        sujet=sujet,
         audience=options.get("audience") or profil["audience"],
         ton=options.get("ton") or profil["ton"],
         taille=options.get("taille") or profil["taille"],
@@ -153,6 +177,28 @@ def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None
             TRAVAUX[travail_id].update(statut="echec", erreur=message)
         journal("Echec : {}".format(message))
         evenements.publier("produit", etat="echec", detail=message)
+
+
+def _lancer_prospection(travail_id: str) -> None:
+    """Remplit la file de niches, hors du fil HTTP."""
+    def journal(message: str) -> None:
+        with _VERROU:
+            TRAVAUX[travail_id]["journal"].append(
+                {"ts": time.time(), "texte": securite.expurger(message)})
+        evenements.publier("journal", message=message, travail=travail_id)
+
+    from ..production import prospecter
+
+    try:
+        resultat = prospecter(nombre=8, journal=journal)
+        with _VERROU:
+            TRAVAUX[travail_id].update(statut="termine", resultat=resultat)
+        journal("{} niche(s) mise(s) en file.".format(resultat["ajoutees"]))
+    except Exception as exc:
+        message = securite.expurger(str(exc))
+        with _VERROU:
+            TRAVAUX[travail_id].update(statut="echec", erreur=message)
+        journal("Echec : {}".format(message))
 
 
 class Gestionnaire(BaseHTTPRequestHandler):
@@ -358,9 +404,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
         if catalogue.obtenir(type_produit) is None:
             self._json({"erreur": "type de produit inconnu"}, 400)
             return
-        if not str(options.get("sujet") or "").strip():
-            self._json({"erreur": "sujet manquant"}, 400)
-            return
+        # Un sujet vide n'est plus un refus : c'est une demande. Le choix
+        # coute un appel de modele et une mesure de marche, donc il se fait
+        # dans le fil de fabrication — refuser ici bloquait la requete HTTP
+        # le temps du sondage, et le navigateur voyait une page figee.
+        sujet = str(options.get("sujet") or "").strip()
+        options["sujet"] = sujet
         with _VERROU:
             en_cours = [t for t in TRAVAUX.values() if t["statut"] == "en_cours"]
         if len(en_cours) >= 2:
@@ -378,7 +427,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
         with _VERROU:
             TRAVAUX[travail_id] = {
                 "id": travail_id, "type": type_produit,
-                "sujet": str(options["sujet"])[:300], "statut": "en_cours",
+                "sujet": sujet[:300] or "(l'usine choisit)", "statut": "en_cours",
                 "debut": time.time(), "journal": [], "resultat": None, "erreur": "",
             }
         threading.Thread(target=_lancer, args=(travail_id, type_produit, options),
@@ -408,6 +457,24 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 priorite=5, source="web")
             return {"ajoute": identifiant, "doublon": identifiant is None,
                     "file": file_prod.compter()}
+        if action == "prospecter":
+            # Le jumeau manuel de « remplir seule » : la boucle continue sait
+            # deja chercher des niches, mais seulement quand elle tourne. On
+            # ne peut pas prospecter dans le fil HTTP — un sondage de marche
+            # par domaine met des dizaines de secondes et le navigateur
+            # verrait une page figee —, donc un fil dedie, comme une
+            # fabrication.
+            travail_id = uuid.uuid4().hex[:12]
+            with _VERROU:
+                TRAVAUX[travail_id] = {
+                    "id": travail_id, "type": "prospection",
+                    "sujet": "recherche de niches", "statut": "en_cours",
+                    "debut": time.time(), "journal": [], "resultat": None,
+                    "erreur": "",
+                }
+            threading.Thread(target=_lancer_prospection, args=(travail_id,),
+                             daemon=True).start()
+            return {"travail": travail_id}
         if action == "retirer":
             try:
                 identifiant = int(options.get("id") or 0)

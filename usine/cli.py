@@ -75,8 +75,44 @@ BANNIERE = r"""
 """
 
 
+def sujet_ou_choix(args: argparse.Namespace) -> str:
+    """Le sujet donne, ou celui que l'usine choisit quand on n'en donne pas.
+
+    Un seul endroit pour les dix chaines : le mettre dans chaque commande
+    aurait garanti qu'une d'elles l'oublie, et personne ne s'en apercevrait
+    avant de taper « usine social » sans rien derriere.
+    """
+    sujet = (getattr(args, "sujet", "") or "").strip()
+    if sujet:
+        return sujet
+    from .production import choisir_une_niche
+
+    titre_console("L'usine choisit la niche")
+    choix = choisir_une_niche(journal=lambda m: print("  " + m),
+                              type_produit=getattr(args, "_type", "ebook"))
+    if not choix["sujet"]:
+        erreur("L'usine n'a trouve aucune niche a proposer.")
+        print("  Donnez-en une : " + _c('usine ebook "votre sujet"', "1"))
+        return ""
+    if choix.get("source") == "froid" and not choix.get("mesure", True):
+        # Un domaine propose et non mesure reste un choix du modele. Le dire
+        # ici est le seul moment ou cela change quelque chose pour celui qui
+        # decide de continuer ou non.
+        alerte("Aucune source de marche n'a repondu : cette niche est "
+               "proposee, pas mesuree.")
+    args.sujet = choix["sujet"]
+    return choix["sujet"]
+
+
 def contexte_depuis(args: argparse.Namespace) -> Contexte:
     """Construit le contexte : options de la commande, puis reglages, puis defauts."""
+    # Le sujet d'abord, et ici plutot que dans chaque commande : les quatorze
+    # chaines passent toutes par cette fonction, et aucune autre ligne n'est
+    # commune aux quatorze. Une niche choisie par l'usine doit ensuite passer
+    # les memes controles qu'une niche tapee a la main — dont l'avertissement
+    # sur les domaines ou un produit genere expose son vendeur.
+    sujet_ou_choix(args)
+    _avertir_sujet(getattr(args, "sujet", "") or "")
     profil = reglages.charger()
 
     def choisir(nom: str, defaut_profil: str) -> str:
@@ -254,7 +290,6 @@ def _resume_console(resume: Dict[str, Any]) -> None:
 def cmd_ebook(args: argparse.Namespace) -> int:
     if not _verifier_fournisseurs():
         return 2
-    _avertir_sujet(args.sujet)
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un ebook")
     resume = ebook.produire(
@@ -271,7 +306,6 @@ def cmd_ebook(args: argparse.Namespace) -> int:
 def cmd_nouvelle(args: argparse.Namespace) -> int:
     if not _verifier_fournisseurs():
         return 2
-    _avertir_sujet(args.sujet)
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'une nouvelle")
     resume = nouvelle.produire(ctx, serie=getattr(args, "serie", "") or "")
@@ -293,7 +327,6 @@ def cmd_roman(args: argparse.Namespace) -> int:
     """
     if not _verifier_fournisseurs():
         return 2
-    _avertir_sujet(args.sujet)
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un roman")
     print("  Trente scenes relues et controlees : comptez une a trois heures.")
@@ -2192,7 +2225,14 @@ def cmd_web(args: argparse.Namespace) -> int:
 
 def _options_communes(sous: argparse.ArgumentParser, avec_sujet: bool = True) -> None:
     if avec_sujet:
-        sous.add_argument("sujet", help="le sujet du produit, entre guillemets")
+        # « nargs="?" » et non un positionnel obligatoire : sans sujet,
+        # l'usine en choisit un. Le rendre obligatoire faisait que la seule
+        # facon de ne pas dicter la niche etait de ne pas produire — alors
+        # que choisir la niche est precisement ce qu'on lui demande.
+        sous.add_argument("sujet", nargs="?", default="",
+                          help="le sujet du produit, entre guillemets. "
+                               "Omettez-le et l'usine choisit la niche "
+                               "elle-meme.")
     # Les valeurs par defaut sont vides : elles sont reprises des reglages
     # (usine reglages), ce qui evite de retaper --auteur a chaque commande.
     sous.add_argument("-a", "--audience", default="",

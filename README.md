@@ -1028,6 +1028,55 @@ deux règles étaient justes séparément ; ensemble elles coûtaient trois appe
 par chapitre, et le résultat final était correct — donc personne ne pouvait le
 remarquer.
 
+## « Trouve toi-meme quoi vendre »
+
+L'usine sait chercher des niches depuis longtemps. Mais elle cherchait des
+niches **voisines** d'une graine, et la graine venait de ce qui avait deja
+rapporte : [docs/NICHE.md](docs/NICHE.md).
+
+Sur une installation neuve il n'y a rien. Donc pas de graine, donc pas de
+prospection — l'usine repondait « ajoutez-en une a la main », poliment, sans
+echouer. **La seule fonction qui lui permet de choisir seule etait
+inatteignable depuis le seul etat ou tout le monde commence.** Un test gardait
+meme ce comportement : il avait ete observe, donc il est passe pour voulu.
+
+Le sujet etait par-dessus le marche obligatoire — un positionnel pour les dix
+chaines — et le tableau de bord refusait en silence, en deplacant le curseur
+dans le champ vide sans rien dire.
+
+```bash
+usine ebook          # sans rien derriere
+```
+
+L'usine propose des domaines, les **mesure** sur des sources publiques, ecarte
+ceux dont la demande ne se voit pas, et part du mieux place. Ce qui n'a pas pu
+etre mesure est rendu quand meme et dit comme tel : une panne de reseau
+n'empeche pas de demarrer, elle empeche de pretendre qu'on a mesure.
+
+## Ce qu'un ecran de telephone peut porter
+
+Mesure au navigateur, en 412px de large — la largeur d'un telephone courant :
+
+| | avant | apres |
+|---|---|---|
+| barre d'onglets | ~190px, cinq lignes | **56px**, une ligne |
+| onglet « Reglages » | **3077px**, 29 champs deroules | **997px**, groupes replies |
+| scene 3D | sur les cinq onglets | sur les deux ou elle informe |
+
+Les six groupes de reglages existaient deja — mais tous deroules d'un coup,
+dans une seule carte, avec le bouton « Enregistrer » a l'autre bout. Un titre
+qui ne replie rien n'est pas une section, c'est une ligne en gras.
+
+La cause de la barre empilee n'etait ni `flex-wrap` ni `min-width` : une regle
+groupee donne `width: 100%` a **tout** bouton de la page, donc chaque onglet
+occupait la largeur entiere. Trois reglages de flexbox n'y ont rien change
+avant qu'on mesure la largeur reelle des boutons dans un navigateur.
+
+Et « produire en boucle » — la seule fonction qui fabrique sans qu'on dicte
+quoi que ce soit — vivait en quatrieme bloc de l'onglet « Fabriquer », 1770px
+plus bas, et en deuxieme ligne d'un sous-menu sur Termux. Elle a son onglet et
+son entree de premier niveau dans les deux interfaces.
+
 ## Six peaux, dont quatre qui changent l'interface
 
 « Nuit » et « jour » étaient la même page en deux teintes. Une peau qui ne

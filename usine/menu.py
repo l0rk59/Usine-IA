@@ -156,9 +156,12 @@ def menu_fabriquer(executer: Callable[[List[str]], int]) -> None:
     valeurs = reglages.charger()
 
     entete(produit["nom"])
-    sujet = demander("Sujet du produit", obligatoire=True)
-    if not sujet:
-        return
+    # Plus « obligatoire » : une reponse vide veut dire « trouve-la ». C'etait
+    # la seule facon de ne pas dicter la niche depuis le telephone — et donc
+    # la seule facon de ne pas produire du tout. La ligne de commande et le
+    # tableau de bord se comportent desormais pareil.
+    print(c("  Laissez vide et l'usine cherche la niche elle-meme.", "2"))
+    sujet = demander("Sujet du produit (facultatif)", "")
 
     alertes = securite.analyser_sujet(sujet)
     for domaine, avertissement in alertes:
@@ -169,7 +172,12 @@ def menu_fabriquer(executer: Callable[[List[str]], int]) -> None:
         return
 
     audience = demander("Pour qui", valeurs["audience"])
-    arguments: List[str] = [produit["cle"], sujet, "-a", audience]
+    # Un sujet vide ne se passe PAS en argument : argparse le prendrait pour
+    # une chaine vide a fabriquer, et l'usine ne choisirait rien.
+    arguments: List[str] = [produit["cle"]]
+    if sujet:
+        arguments.append(sujet)
+    arguments += ["-a", audience]
 
     if produit["quantite"]:
         question, defaut = produit["quantite"]
@@ -1190,21 +1198,22 @@ def _menu_fabrication(executer: Callable[[List[str]], int]) -> None:
         en_file = compte["en_attente"] + compte["en_cours"]
         choix = choisir("Fabriquer", [
             ("Un produit", "ebook, roman, formation, imprimable, logiciel..."),
-            ("L'usine en continu", "{} niche(s) en file, budget, boucle"
-             .format(en_file) if en_file else "file de niches, budget, boucle"),
             ("Trouver des idees", "explorer une niche et en tirer des sujets"),
+            ("Produire en boucle", "{} niche(s) en file".format(en_file)
+             if en_file else "l'usine enchaine seule"),
         ])
         if choix == 0:
             return
         if choix == 1:
             menu_fabriquer(executer)
         elif choix == 2:
-            menu_usine(executer)
-        elif choix == 3:
-            sujet = demander("Quelle niche explorer", obligatoire=True)
-            if sujet:
-                executer(["idees", sujet])
+            # Facultatif ici aussi : sans niche, l'exploration part de ce que
+            # l'usine trouve elle-meme.
+            sujet = demander("Quelle niche explorer (facultatif)", "")
+            executer(["idees", sujet] if sujet else ["idees"])
             demander("\n  Appuyez sur Entree")
+        elif choix == 3:
+            menu_usine(executer)
 
 
 def _menu_mes_produits(executer: Callable[[List[str]], int]) -> None:
@@ -1326,7 +1335,12 @@ def menu_principal(executer: Callable[[List[str]], int]) -> int:
                 compte["en_attente"] + compte["en_cours"]))
 
         choix = choisir("Menu principal", [
-            ("Fabriquer", "un produit, ou l'usine en continu"),
+            ("Fabriquer", "un produit, tout de suite"),
+            # Separee de « Fabriquer » — comme dans le tableau de bord, et
+            # pour la meme raison : cachee en deuxieme ligne d'un sous-menu,
+            # la seule fonction qui produit sans qu'on dicte quoi que ce soit
+            # etait la moins visible de l'usine.
+            ("Produire en boucle", "l'usine enchaine seule, sous budget"),
             ("Mes produits", "consulter, reprendre, vendre, effacer"),
             ("Comprendre le marche", "veille, volumes reels, ventes, doublons"),
             ("Reglages", "auteur, ton, qualite, cles, agents"),
@@ -1340,13 +1354,15 @@ def menu_principal(executer: Callable[[List[str]], int]) -> int:
         if choix == 1:
             _menu_fabrication(executer)
         elif choix == 2:
-            _menu_mes_produits(executer)
+            menu_usine(executer)
         elif choix == 3:
-            _menu_marche(executer)
+            _menu_mes_produits(executer)
         elif choix == 4:
-            _menu_reglages_general(executer)
+            _menu_marche(executer)
         elif choix == 5:
-            _menu_machine(executer)
+            _menu_reglages_general(executer)
         elif choix == 6:
+            _menu_machine(executer)
+        elif choix == 7:
             executer(["web"])
 

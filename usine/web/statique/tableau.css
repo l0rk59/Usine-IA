@@ -633,10 +633,24 @@ button.danger { border-radius: 2px; box-shadow: var(--neon-mag); }
 /* Les onglets du tableau de bord. Collants en haut : sur un telephone, on
    defile a l'interieur d'une section et on doit pouvoir en changer sans
    remonter. */
-.onglets { display: flex; gap: 0.35rem; flex-wrap: wrap; margin: 0 0 1rem;
+/* Une seule ligne, qui defile. Enroules sur plusieurs lignes, les six
+   onglets prenaient 190px des 915px d'un ecran de telephone — mesure faite
+   au navigateur en 412px de large — et il fallait deja faire defiler pour
+   voir le premier champ du formulaire. Un onglet qui depasse a droite se
+   voit et s'attrape ; six lignes de boutons ne se voient pas comme une
+   navigation, elles se lisent comme un menu. */
+.onglets { display: flex; gap: 0.35rem; flex-wrap: nowrap; margin: 0 0 1rem;
            position: sticky; top: 0; z-index: 20; padding: 0.4rem 0;
-           background: var(--fond); }
-.onglets button { flex: 1 1 auto; min-width: 7rem; padding: 0.55rem 0.8rem;
+           background: var(--fond); overflow-x: auto;
+           scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.onglets::-webkit-scrollbar { display: none; }
+/* « width: auto » n'est pas decoratif : la regle groupee du dessus donne
+   « width: 100% » a TOUT bouton, et c'etait la vraie cause des six onglets
+   empiles — chacun occupait la largeur entiere, donc chacun passait a la
+   ligne. « flex-wrap » et « min-width » n'y pouvaient rien : une base de
+   100% deborde quoi qu'il arrive. */
+.onglets button { flex: 0 0 auto; width: auto; padding: 0.55rem 0.85rem;
+                  white-space: nowrap;
                   border: 1px solid var(--bord); border-radius: 0.5rem;
                   background: transparent; color: var(--encre);
                   font: inherit; cursor: pointer; }
@@ -647,10 +661,38 @@ button.danger { border-radius: 2px; box-shadow: var(--neon-mag); }
 .onglet[hidden] { display: none; }
 
 /* Les reglages, groupe par groupe. Trente champs a la suite seraient aussi
-   illisibles que la liste a plat qu'ils remplacent. */
-.groupe-reglages { margin: 0 0 1.1rem; padding: 0 0 0.8rem;
-                   border-bottom: 1px solid var(--bord); }
-.groupe-reglages:last-child { border-bottom: none; }
+   illisibles que la liste a plat qu'ils remplacent — et c'est exactement ce
+   qui s'est passe : les six groupes existaient, mais tous deroules d'un
+   coup, dans une seule carte de 3900px de haut. Mesure faite au navigateur
+   en 412px de large : quatre ecrans et demi de defilement, et le bouton
+   « Enregistrer » a l'autre bout. Un titre de groupe qui ne replie rien
+   n'est pas une section, c'est une ligne en gras. */
+.groupe-reglages { margin: 0 0 0.6rem; padding: 0;
+                   border: 1px solid var(--bord); border-radius: 0.6rem;
+                   overflow: hidden; }
+.groupe-reglages > summary { padding: 0.7rem 0.9rem; cursor: pointer;
+                             font-weight: 600; list-style: none;
+                             display: flex; align-items: baseline; gap: 0.5rem; }
+.groupe-reglages > summary::-webkit-details-marker { display: none; }
+.groupe-reglages > summary::after { content: '+'; margin-left: auto;
+                                    color: var(--doux); font-weight: 400; }
+.groupe-reglages[open] > summary::after { content: '\2212'; }
+.groupe-reglages[open] > summary { border-bottom: 1px solid var(--bord); }
+.groupe-reglages > summary .compte { color: var(--doux); font-weight: 400;
+                                     font-size: 0.8rem; }
+.groupe-reglages > summary:focus-visible { outline: 2px solid var(--accent);
+                                           outline-offset: -2px; }
+.corps-groupe { padding: 0.2rem 0.9rem 0.9rem; }
+/* Enregistrer doit rester atteignable sans remonter quatre ecrans. Le fond
+   est OPAQUE : « --carte » est translucide (backdrop-filter), et la barre
+   laissait lire le groupe qui defilait dessous — on croyait a un bug
+   d'affichage. Elle emprunte donc le fond de la page, qui, lui, est plein. */
+.barre-enregistrer { position: sticky; bottom: 0; z-index: 5;
+                     padding: 0.7rem 0.9rem; margin: 0.6rem -0.9rem -0.9rem;
+                     background: var(--fond2, var(--fond));
+                     box-shadow: 0 -8px 16px -8px rgba(0,0,0,0.45);
+                     border-top: 1px solid var(--bord); }
+.facultatif { color: var(--doux); font-weight: 400; font-size: 0.78rem; }
 .groupe-reglages .champ { display: block; margin: 0.5rem 0; }
 .groupe-reglages .case { display: flex; gap: 0.5rem; align-items: flex-start;
                          margin: 0.5rem 0; }

@@ -919,7 +919,7 @@ class TestSectionsDuTableau(unittest.TestCase):
 
     def test_toutes_les_cartes_sont_rangees(self):
         """Le compte, pour que supprimer une carte se voie."""
-        self.assertEqual(self.page.count('<div class="carte">'), 14)
+        self.assertEqual(self.page.count('<div class="carte">'), 15)
 
     def test_une_seule_section_s_affiche_a_la_fois(self):
         """Toutes portent « hidden » dans le HTML : si le script ne tourne
@@ -944,6 +944,7 @@ class TestSectionsDuTableau(unittest.TestCase):
         libelles = [ligne.split('("')[1].split('"')[0]
                     for ligne in bloc.splitlines() if '("' in ligne]
         attendus = {"fabriquer": "Fabriquer", "produits": "Mes produits",
+                    "continue": "Produire en boucle",
                     "marche": "Comprendre le marche", "reglages": "Reglages",
                     "machine": "La machine"}
         for section in self._sections():
