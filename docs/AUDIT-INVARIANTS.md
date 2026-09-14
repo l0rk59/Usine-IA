@@ -159,3 +159,53 @@ tort finit ignoré.
 
 Le vrai total est donc **sept**. Le détail de la panne qui l'a révélé est dans
 [PANNES.md](PANNES.md).
+
+---
+
+## Deuxième tour d'audit — 14/09/2026
+
+Sept invariants mesurés, **six sont revenus propres**. C'est l'autre moitié de
+l'information, et elle vaut d'être écrite : sans elle, le prochain audit
+recommence les mêmes mesures.
+
+| Ce qui a été mesuré | Comment | Résultat |
+|---|---|---|
+| Fuite de clé API | une fausse clé, dix commandes, tout l'atelier passé au peigne | rien, nulle part |
+| Traversée de répertoire | onze chemins hostiles sur le tableau de bord, dont une évasion par lien symbolique | tous refusés (400/403) |
+| Sujet hostile | `../../etc/passwd`, `$(rm -rf /)`, octets nuls | `slug()` les ramène à de l'alphanumérique |
+| `--hors-ligne` | sockets espionnées, connexions comptées | zéro connexion |
+| Conformité EPUB | huit EPUB cassés de huit façons précises | huit vus (sept erreurs, un avertissement) |
+| Sauvegarde | fabriquer, sauvegarder, tout effacer, restaurer | 3 produits, 27 fichiers, réglages : tout retrouvé |
+| Concurrence | cinq fabrications simultanées | dossiers distincts, compteur d'appels exact |
+| Budget du jour | plafonds de 5, 12 et 30 appels | **écart +0** ; sous un petit plafond, l'usine refuse de commencer |
+| Documentation | chemins et fonctions cités, liens entre notes | rien de mort |
+
+### Ce que le tour a quand même trouvé
+
+**Une limite, pas un défaut.** L'import des ventes ne reconnaissait ni la
+tabulation. Sur un téléphone on ne passe pas toujours par un fichier : on
+sélectionne les lignes dans l'application tableur et on colle, ce qui donne des
+tabulations. Le fichier ne formait alors qu'une colonne, et l'import refusait
+en affichant `Date<tab>Product<tab>Amount` comme un nom de colonne unique. Le
+message était juste — il demandait simplement à l'utilisateur de deviner.
+
+### Deux contrôles qui auraient crié à tort
+
+Écrits, mesurés, puis **abandonnés** — c'est le sens dans lequel ce dépôt se
+trompe.
+
+Le premier cherchait les chiffres sans marqueur de source dans `docs/`. Il en
+signalait cinq, et les cinq étaient justes : la source figure dans le titre de
+section (« Mesure du 14/09/2026 »), pas dans la phrase. Un détecteur à cette
+granularité aurait accusé les notes les plus soigneuses.
+
+Le second signalait un fichier absent du manifeste d'un EPUB comme une erreur.
+EPUBCheck le classe en avertissement, et le dépôt faisait déjà de même : c'est
+mon verdict de départ qui était faux, pas le contrôle.
+
+### Une garde morte, trouvée par la mutation
+
+La correction du séparateur s'écrivait `return signe if compte else ","`. La
+campagne a montré que la branche ne servait à rien : `max()` rend déjà le
+premier candidat quand tous valent zéro, et la virgule est en tête. Un `if` de
+plus pour dire la même chose est une branche que rien ne peut emprunter.

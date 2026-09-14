@@ -144,8 +144,25 @@ def _date(brut: str, convention: str = "jma") -> str:
 
 
 def _dialecte(entete: str) -> str:
-    """Virgule ou point-virgule : un tableur francais exporte en point-virgule."""
-    return ";" if entete.count(";") > entete.count(",") else ","
+    """Le separateur de l'entete : virgule, point-virgule ou tabulation.
+
+    Un tableur francais exporte en point-virgule. Et sur un telephone, on ne
+    passe pas toujours par un fichier : on selectionne les lignes dans
+    l'application tableur et on colle — ce qui donne des TABULATIONS. Le
+    fichier n'etait alors qu'une seule colonne, et l'import refusait
+    poliment, en affichant « Date<tab>Product<tab>Amount » comme un nom de
+    colonne unique. Le message etait juste ; il demandait juste a
+    l'utilisateur de deviner.
+
+    On prend le separateur le plus present. A nombre egal — y compris quand
+    aucun n'apparait — « max » rend le premier de la liste, donc la virgule :
+    c'est ce que les plateformes exportent, et c'est pourquoi elle est en
+    tete. Un « if » de plus pour dire la meme chose serait une branche que
+    rien ne peut emprunter.
+    """
+    candidats = ((",", entete.count(",")), (";", entete.count(";")),
+                 ("\t", entete.count("\t")))
+    return max(candidats, key=lambda paire: paire[1])[0]
 
 
 def reconnaitre(colonnes: Sequence[str]) -> Dict[str, str]:

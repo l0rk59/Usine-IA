@@ -68,6 +68,37 @@ class TestLectureDesExports(unittest.TestCase):
         self.assertEqual([l["brut"] for l in lecture.lignes], [12.5, 25.0, 12.5])
         self.assertEqual([l["unites"] for l in lecture.lignes], [1, 2, 1])
 
+    def test_un_collage_de_tableur_est_lu(self):
+        """Sur un telephone, on ne passe pas toujours par un fichier : on
+        selectionne les lignes dans l'application tableur et on colle, ce qui
+        donne des TABULATIONS. Le fichier ne formait alors qu'une colonne, et
+        l'import refusait en affichant « Date<tab>Product<tab>Amount » comme
+        un nom de colonne unique — message juste, qui demandait juste a
+        l'utilisateur de deviner.
+        """
+        colle = ("Date\tProduct\tQuantity\tAmount\tCurrency\n"
+                 "2026-08-22\tGuide fiscal\t1\t25.00\tEUR\n")
+        lecture = ventes.lire_export(colle, "tableur")
+        self.assertTrue(lecture.exploitable,
+                        "un collage de tableur reste illisible")
+        self.assertEqual(len(lecture.lignes), 1)
+        self.assertEqual(lecture.lignes[0]["brut"], 25.0)
+        self.assertEqual(lecture.lignes[0]["date"], "2026-08-22")
+
+    def test_la_virgule_reste_le_separateur_par_defaut(self):
+        """A nombre egal de separateurs — donc aucun —, on ne part pas dans
+        une lecture exotique : la virgule est ce que les plateformes
+        exportent."""
+        self.assertEqual(ventes._dialecte("une seule colonne"), ",")
+
+    def test_le_separateur_le_plus_present_l_emporte(self):
+        """Une reference de produit contenant une virgule ne doit pas faire
+        basculer la lecture d'un fichier a point-virgule."""
+        self.assertEqual(
+            ventes._dialecte("Date;Produit;Montant;Devise"), ";")
+        self.assertEqual(
+            ventes._dialecte("Date\tProduit\tMontant\tDevise"), "\t")
+
     def test_une_colonne_absente_est_nommee_plutot_que_devinee(self):
         lecture = ventes.lire_export("Colonne A,Colonne B\n1,2\n", "x")
         self.assertFalse(lecture.exploitable)
