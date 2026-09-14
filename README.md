@@ -1113,6 +1113,40 @@ accusait les gestionnaires qui sortent par `continue`, et il se laissait
 aveugler par un alias (`repere` valant `"chapitre-{}".format(index + 1)`) — il
 signalait le fichier correct et laissait passer le fautif.
 
+## Sept types de produits sortaient sans aucune mesure
+
+Un exemplaire de chaque type, mesure le 14/09/2026 : seuls l'ebook et le roman
+recevaient une note. Les sept autres n'avaient rien — pas meme un nombre de
+mots : [docs/MESURE.md](docs/MESURE.md).
+
+Apres quatre vraies fabrications, `usine bilan` affichait « **0 mots
+produits** », puis, sous le titre « Conseils tires de vos donnees », « aucun
+ecart significatif » — ce qui est vrai de n'importe quel ensemble vide. Et
+`graine_de_depart()`, qui classe par chiffre d'affaires puis par note, ne
+pouvait jamais retenir ces sept types.
+
+La correction est partagee : `terminer()` relit le texte LIVRE et en tire le
+volume, une fois, pour les dix chaines.
+
+Mais **tout ne se note pas**, et c'est la partie interessante. Le controle
+deterministe mesure de la prose. Applique ailleurs il rend un chiffre sans
+signification : 9,98/10 pour trente-et-un posts sociaux de deux lignes, 9,83
+pour un outil logiciel — note en fait sur sa notice et non sur son code.
+
+Pire, la note depend surtout de la longueur des sections. Le meme texte, coupe
+de plus en plus fin :
+
+```
+mots/section :  60   80  100  120  140  200  300  400
+note         : 10.0 10.0 8.69 8.56 7.56 7.19 6.93  6.5
+```
+
+Sous cent mots, elle vaut 10 quoi que dise le texte. Une boite a outils de
+vingt-cinq mots par fiche obtenait 9,91/10, et ce chiffre serait parti se
+comparer a un ebook note 4,33. Chaque produit dit donc son volume, et chaque
+note absente dit **pourquoi** — une case vide se lit comme un oubli, et
+quelqu'un finirait par la reparer en notant quand meme.
+
 ## Six peaux, dont quatre qui changent l'interface
 
 « Nuit » et « jour » étaient la même page en deux teintes. Une peau qui ne

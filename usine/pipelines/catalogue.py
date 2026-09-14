@@ -52,6 +52,21 @@ class TypeProduit:
     # outil logiciel, « les deux premiers chapitres » ne veut rien dire : ce
     # qu'on vend est un programme qui marche, pas un texte qu'on goute.
     extrait: bool = True
+    # Le controle qualite deterministe mesure de la PROSE : rythme des
+    # phrases, repetition de n-grammes, diversite lexicale, continuite d'une
+    # section a l'autre. Applique a autre chose, il rend un chiffre qui n'a
+    # pas de sens — et un chiffre sans sens est pire que pas de chiffre,
+    # parce qu'on le croit.
+    #
+    # Mesure du 14/09/2026, en faisant tourner le controle sur un produit de
+    # chaque type : 9,98/10 pour trente-et-un posts sociaux de deux lignes,
+    # 9,83 pour un outil logiciel — note en fait sur sa notice, pas sur son
+    # code —, et six signalements de « rythme » sur une liste de prompts, ou
+    # le rythme n'existe pas. Ces notes-la ne mesuraient rien.
+    #
+    # Le nombre de mots et de sections, lui, se compte pour tout le monde :
+    # c'est un decompte, pas un verdict.
+    prose: bool = True
     mots_cles: Tuple[str, ...] = ()   # aide l'explorateur de niches a choisir
     options: Dict[str, Any] = field(default_factory=dict)
 
@@ -158,6 +173,8 @@ TYPES: List[TypeProduit] = [
         minutes=(5, 12),
         quantite=("nombre", "Combien de prompts", "50"),
         mots_cles=("prompt", "ia", "chatgpt", "automatisation", "productivite"),
+        # Une liste de prompts : pas de rythme, pas de continuite, et la repetition y est voulue.
+        prose=False,
     ),
     TypeProduit(
         cle="formation", nom="Mini-formation",
@@ -199,6 +216,8 @@ TYPES: List[TypeProduit] = [
         options={"reliure": None},
         mots_cles=("planner", "imprimable", "cahier", "agenda", "fiche",
                    "planning", "journal"),
+        # Des pages a remplir : le PDF livre ne contient presque pas de texte suivi.
+        prose=False,
     ),
     TypeProduit(
         cle="social", nom="Pack de publications",
@@ -210,6 +229,8 @@ TYPES: List[TypeProduit] = [
         options={"reseau": "linkedin"},
         mots_cles=("reseaux", "linkedin", "instagram", "contenu", "post",
                    "calendrier editorial"),
+        # Trente posts de deux lignes. Le controle n'a rien a mordre et rend 9,98/10 quoi qu'il arrive.
+        prose=False,
     ),
     TypeProduit(
         cle="logiciel", nom="Outil logiciel", extrait=False,
@@ -221,6 +242,8 @@ TYPES: List[TypeProduit] = [
         mots_cles=("outil", "script", "application", "extension", "logiciel",
                    "automatisation", "convertisseur", "generateur",
                    "calculateur", "tableau de bord"),
+        # Ce qu'on vend est un programme qui marche. Le seul texte relisible est sa notice — noter l'un pour l'autre serait un verdict fabrique ; « usine logiciel » verifie deja le code.
+        prose=False,
     ),
     TypeProduit(
         cle="idees", nom="Etude de niche",

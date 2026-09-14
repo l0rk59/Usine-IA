@@ -206,6 +206,12 @@ def bilan() -> Dict[str, Any]:
         "note_moyenne": _moyenne(notes),
         "note_meilleure": max(notes) if notes else None,
         "note_pire": min(notes) if notes else None,
+        # Sur combien de produits cette moyenne repose. Tous les types ne sont
+        # pas notables : le controle mesure de la prose, et une liste de
+        # prompts ou du code n'en sont pas. Sans ce compte, « 4 production(s) »
+        # suivi de « Note moyenne : 8.5 » se lit comme la moyenne des quatre —
+        # alors qu'une seule etait mesurable.
+        "productions_notees": len(notes),
         "gain_moyen_relecture": _moyenne(progression),
         "mots_totaux": sum(l["mots"] or 0 for l in reussies),
         "appels_totaux": sum(l["appels"] or 0 for l in reussies),

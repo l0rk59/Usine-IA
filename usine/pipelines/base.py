@@ -11,7 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from ..core import apprentissage, budget, config, empreinte, llm, store
+from ..core import (apprentissage, budget, config, controle, empreinte,
+                    llm, store)
 from . import carnet
 
 TONS = {
@@ -391,6 +392,124 @@ def _verifier_doublon(ctx: Contexte, type_produit: str, fichiers: List[Path],
             "plan": round(proches[0].plan, 3)}
 
 
+def _mesurer_le_livre(ctx: Contexte, genre: str, fichiers: List[Path],
+                      deja: Dict[str, Any]) -> Dict[str, Any]:
+    """Volume et note du produit livre, quand la chaine ne les donne pas.
+
+    Le decompte vaut pour TOUS les types : c'est un decompte, pas un verdict.
+    La note, non — le controle deterministe mesure de la prose, et le
+    catalogue dit lesquels en sont. Applique a une liste de prompts ou a du
+    code, il rend un chiffre qui n'a pas de sens, et un chiffre sans sens est
+    pire que pas de chiffre parce qu'on le croit : mesure faite, trente-et-un
+    posts sociaux de deux lignes obtenaient 9,98/10.
+    """
+    from .catalogue import obtenir
+
+    mesure: Dict[str, Any] = {}
+    texte, titres = _matiere(fichiers)
+    if not texte.strip():
+        # Un cahier a remplir ne livre que des PDF : il n'y a pas de texte
+        # suivi a compter. Zero est alors un fait, pas un oubli.
+        return mesure
+    if not deja.get("mots"):
+        mesure["mots"] = len(texte.split())
+    if not deja.get("sections") and not deja.get("chapitres"):
+        mesure["sections"] = len(titres)
+    if deja.get("note") is not None:
+        return mesure
+
+    fiche = obtenir(genre)
+    if fiche is not None and not fiche.prose:
+        # Dit, plutot que laisse vide : une case vide se lit comme un oubli,
+        # et quelqu'un finirait par « reparer » en notant quand meme.
+        mesure["note_non_mesuree"] = (
+            "le controle deterministe mesure de la prose ; ce type n'en est "
+            "pas")
+        return mesure
+
+    sections = _decouper(texte)
+    if not sections:
+        return mesure
+
+    # Le controle mesure de la prose PAR SECTION, et il lui en faut assez
+    # pour mordre. Mesure du 14/09/2026, faite en coupant un meme texte de
+    # plus en plus fin :
+    #
+    #   mots/section :  60   80  100  120  140  200  300  400
+    #   note         : 10.0 10.0 8.69 8.56 7.56 7.19 6.93  6.5
+    #
+    # En dessous de cent mots, la note vaut 10 quoi que dise le texte : elle
+    # mesure le decoupage, pas l'ecriture. Une boite a outils de vingt-cinq
+    # mots par fiche obtenait ainsi 9,91/10, et ce chiffre serait parti se
+    # comparer dans « usine bilan » a un ebook note 4,33 sur des chapitres de
+    # deux cents mots. Un chiffre sans sens est pire que pas de chiffre,
+    # parce qu'on le croit.
+    tailles = sorted(len(corps.split()) for _titre, corps in sections)
+    median = tailles[len(tailles) // 2]
+    mesure["mots_par_section"] = median
+    if median < 100:
+        mesure["note_non_mesuree"] = (
+            "sections de {} mots en mediane : sous cent mots, le controle "
+            "rend 10/10 quel que soit le texte".format(median))
+        return mesure
+
+    rapport = controle.controler_ensemble(sections)
+    if rapport["note_moyenne"] is None:
+        return mesure
+    mesure["note"] = rapport["note_moyenne"]
+    mesure["defauts"] = sorted({
+        anomalie["genre"]
+        for section in rapport["sections"] for anomalie in section["anomalies"]})
+    chemin = ctx.dossier / "rapport-qualite.json"
+    try:
+        chemin.write_text(json.dumps(rapport, ensure_ascii=False, indent=2),
+                          encoding="utf-8")
+        fichiers.append(chemin)
+    except OSError as exc:
+        # Un disque plein ne doit pas emporter un produit deja ecrit : la
+        # note reste sur la fiche, seul le detail se perd.
+        ctx.journal("  rapport qualite non ecrit : {}".format(exc))
+    ctx.journal("  qualite mesuree : {}/10 sur {} section(s)".format(
+        rapport["note_moyenne"], len(sections)))
+    return mesure
+
+
+_NIVEAU = re.compile(r"^(#{1,3})\s+(.+?)\s*$", re.MULTILINE)
+
+
+def _decouper(texte: str) -> List[Tuple[str, str]]:
+    """Le texte livre, coupe a ses entetes de PREMIER niveau utile.
+
+    Couper a n'importe quel entete coupait trop fin : un module de formation
+    porte « ## Objectif » et « ## Notions » a l'interieur, et decouper la
+    donnait des sections de trente-quatre mots pour un module qui en fait cent
+    quarante. Or la note du controle depend fortement de la longueur des
+    sections — sous cent mots elle vaut 10/10 quoi qu'il arrive. Un mauvais
+    decoupage ne rendait donc pas une note imprecise : il rendait une note
+    inventee.
+
+    On prend le niveau de titre le PLUS HAUT present sous le titre du
+    document, c'est-a-dire l'unite que la chaine a elle-meme choisie.
+    """
+    entetes = list(_NIVEAU.finditer(texte))
+    if not entetes:
+        return [("", texte)] if texte.strip() else []
+    profondeurs = {len(m.group(1)) for m in entetes}
+    # Le « # » unique est le titre du document, pas une section : on ne
+    # coupe dessus que s'il n'y a rien d'autre.
+    utiles = sorted(d for d in profondeurs if d > 1) or sorted(profondeurs)
+    niveau = utiles[0]
+    coupes = [m for m in entetes if len(m.group(1)) == niveau]
+    morceaux: List[Tuple[str, str]] = []
+    for rang, marque in enumerate(coupes):
+        fin = (coupes[rang + 1].start() if rang + 1 < len(coupes)
+               else len(texte))
+        corps = texte[marque.end():fin]
+        if corps.strip():
+            morceaux.append((marque.group(2), corps))
+    return morceaux
+
+
 def terminer(ctx: Contexte, fichiers: List[Path], meta: Optional[Dict[str, Any]] = None,
              type_produit: str = "") -> None:
     infos = dict(meta or {})
@@ -458,6 +577,21 @@ def terminer(ctx: Contexte, fichiers: List[Path], meta: Optional[Dict[str, Any]]
             "[!] {} section(s) non ecrites : {}. Le produit reste inacheve — "
             "« usine reprendre » ne refera que celles-la."
             .format(len(manquants), ", ".join(manquants[:6])))
+    # Le volume et la note, pour les chaines qui ne les rendent pas elles-memes.
+    #
+    # Sept types sur neuf sortaient sans aucune mesure : ni note, ni rapport,
+    # ni meme un nombre de mots. « usine bilan » annoncait « 0 mots produits »
+    # apres quatre vraies fabrications, et « usine conseils » calculait des
+    # conseils « tires de vos donnees » sur rien. Plus loin encore :
+    # « graine_de_depart » classe par chiffre d'affaires PUIS par note, donc
+    # ces sept types ne pouvaient jamais servir de point de depart a la
+    # prospection.
+    #
+    # On relit le texte LIVRE plutot que de se faire passer un plan : toutes
+    # les chaines n'ont pas la meme structure interne, et c'est le fichier qui
+    # part chez l'acheteur qui compte.
+    infos.update(_mesurer_le_livre(ctx, genre, fichiers, infos))
+
     store.maj_produit(
         ctx.produit_id,
         statut="en_cours" if manquants else "pret",

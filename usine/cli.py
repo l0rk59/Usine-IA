@@ -1455,8 +1455,19 @@ def cmd_bilan(args: argparse.Namespace) -> int:
     print("  {} production(s), {} reussie(s), {} echec(s)".format(
         donnees["productions"], donnees["reussites"], donnees["echecs"]))
     if donnees["note_moyenne"] is not None:
+        notees = donnees.get("productions_notees") or 0
         print("  Note moyenne : {} /10   (meilleure {} — pire {})".format(
-            donnees["note_moyenne"], donnees["note_meilleure"], donnees["note_pire"]))
+            donnees["note_moyenne"], donnees["note_meilleure"],
+            donnees["note_pire"]))
+        # Dire sur combien : une moyenne affichee sous « 4 production(s) » se
+        # lit comme la moyenne des quatre, meme quand une seule etait
+        # mesurable. Le controle mesure de la prose ; un pack de prompts ou
+        # un outil logiciel n'en sont pas, et n'ont donc pas de note.
+        if notees and notees < donnees["reussites"]:
+            print("    " + _c("sur {} produit(s) sur {} : les autres ne sont "
+                              "pas de la prose, ou leurs sections sont trop "
+                              "courtes pour etre mesurees"
+                              .format(notees, donnees["reussites"]), "2"))
     if donnees["gain_moyen_relecture"] is not None:
         print("  Gain moyen de la relecture : {:+.2f} point".format(
             donnees["gain_moyen_relecture"]))
