@@ -188,6 +188,71 @@ def par_archive(branche: str = BRANCHE_DEFAUT,
             "remplaces": remplaces, "change": True}
 
 
+def variables_manquantes(dossier: Optional[Path] = None) -> List[str]:
+    """Variables de fournisseur absentes du « .env » de l'utilisateur.
+
+    On compare au CATALOGUE des fournisseurs, pas a « .env.exemple » : c'est
+    le catalogue qui fait foi, et le modele pourrait lui-meme avoir du retard.
+    """
+    from . import config
+
+    fichier = Path(dossier or racine()) / ".env"
+    if not fichier.exists():
+        return []
+    try:
+        present = fichier.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    attendues = [p.api_key_env for p in config.PROVIDERS
+                 if p.api_key_env and not p.local]
+    # Une ligne commentee compte comme presente : l'utilisateur l'a vue et a
+    # choisi de ne pas s'en servir. La completer reviendrait a la lui remettre
+    # sous le nez a chaque mise a jour.
+    lignes = [l.strip().lstrip("#").strip() for l in present.splitlines()]
+    deja = {l.split("=", 1)[0].strip() for l in lignes if "=" in l}
+    return [v for v in attendues if v not in deja]
+
+
+def completer_env(dossier: Optional[Path] = None) -> List[str]:
+    """Ajoute au « .env » les variables de fournisseur qui n'y sont pas.
+
+    Le defaut que cela corrige n'a rien de spectaculaire, et c'est pour cela
+    qu'il a dure : « install.sh » ne cree « .env » que s'il n'existe pas, et
+    « usine maj » ne le touche jamais — a raison, il contient les cles. Donc
+    tout fournisseur ajoute APRES la premiere installation n'apparait jamais
+    chez quelqu'un qui a deja installe. Il ouvre « nano .env », ne voit pas la
+    variable, et en conclut que l'integration n'existe pas.
+
+    L'ecart grandit a chaque fournisseur ajoute, sans que rien ne le dise.
+
+    AJOUT SEUL. Aucune ligne existante n'est lue, modifiee ni reordonnee : le
+    fichier contient des cles, et un outil qui les reecrit est un outil qu'on
+    n'ose plus lancer. En cas de doute, on n'ecrit rien.
+    """
+    from . import config
+
+    manquantes = variables_manquantes(dossier)
+    if not manquantes:
+        return []
+    fichier = Path(dossier or racine()) / ".env"
+    fiches = {p.api_key_env: p for p in config.PROVIDERS}
+    morceaux = ["", "",
+                "# --- Ajoute par « usine maj » : fournisseurs apparus depuis",
+                "#     votre installation. Vos cles existantes n'ont pas ete",
+                "#     touchees. -------------------------------------------"]
+    for variable in manquantes:
+        fiche = fiches.get(variable)
+        if fiche is not None and fiche.signup:
+            morceaux.append("# {} — {}".format(fiche.name, fiche.signup))
+        morceaux.append("{}=".format(variable))
+    try:
+        with fichier.open("a", encoding="utf-8") as flux:
+            flux.write("\n".join(morceaux) + "\n")
+    except OSError:
+        return []
+    return manquantes
+
+
 def version_installee() -> str:
     from .. import __version__
 

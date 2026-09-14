@@ -75,6 +75,18 @@ BANNIERE = r"""
 """
 
 
+class SujetIntrouvable(Exception):
+    """L'usine devait choisir une niche et n'a pas pu.
+
+    Rendre une chaine vide etait la premiere version, et c'etait un defaut :
+    la fabrication CONTINUAIT avec un sujet vide. Elle annoncait « aucune
+    niche a proposer », puis sondait un marche pour «  », lancait une veille
+    pour «  », et mourait une minute plus tard sur un message sans rapport.
+    Quatre appels reseau et beaucoup de confusion apres avoir deja dit qu'elle
+    s'arretait.
+    """
+
+
 def sujet_ou_choix(args: argparse.Namespace) -> str:
     """Le sujet donne, ou celui que l'usine choisit quand on n'en donne pas.
 
@@ -91,9 +103,8 @@ def sujet_ou_choix(args: argparse.Namespace) -> str:
     choix = choisir_une_niche(journal=lambda m: print("  " + m),
                               type_produit=getattr(args, "_type", "ebook"))
     if not choix["sujet"]:
-        erreur("L'usine n'a trouve aucune niche a proposer.")
-        print("  Donnez-en une : " + _c('usine ebook "votre sujet"', "1"))
-        return ""
+        raise SujetIntrouvable(
+            "L'usine devait choisir une niche et n'a pas pu.")
     if choix.get("source") == "froid" and not choix.get("mesure", True):
         # Un domaine propose et non mesure reste un choix du modele. Le dire
         # ici est le seul moment ou cela change quelque chose pour celui qui
@@ -2220,6 +2231,16 @@ def cmd_maj(args: argparse.Namespace) -> int:
                       dossier, resultat.get("avant", "HEAD@{1}")), "1"))
         return 1
     ok("Mise a jour faite — {}".format(controle.get("version") or ""))
+    # Les fournisseurs apparus depuis l'installation n'existent pas dans le
+    # « .env » de quelqu'un qui a deja installe : « install.sh » ne le cree
+    # qu'une fois, et la mise a jour n'y touche pas. Il ouvre « nano .env », ne
+    # voit pas la variable, et conclut que l'integration n'existe pas.
+    ajoutees = module_maj.completer_env(dossier)
+    if ajoutees:
+        ok("{} fournisseur(s) ajoute(s) a votre .env : {}".format(
+            len(ajoutees), ", ".join(ajoutees)))
+        print("  Vos cles existantes n'ont pas ete touchees. Pour coller les "
+              "nouvelles : " + _c("nano {}/.env".format(dossier), "1"))
     if resultat.get("remplaces"):
         print("  Remplaces : " + ", ".join(str(n) for n in resultat["remplaces"]))
     print("\n  Verifier l'installation : " + _c("usine docteur", "1"))
@@ -2797,6 +2818,23 @@ def principal(argv: Optional[List[str]] = None) -> int:
         alerte("Interrompu. Le travail deja produit est conserve dans " +
                str(config.PRODUITS_DIR))
         return 130
+    except SujetIntrouvable as exc:
+        erreur(str(exc))
+        # La cause est presque toujours la meme, et elle est verifiable : sans
+        # fournisseur joignable, le prospecteur ne peut rien proposer. Le dire
+        # ici evite de renvoyer vers « usine cles » quelqu'un dont le wifi est
+        # simplement coupe.
+        print()
+        if not config.active_providers():
+            print("  Aucun fournisseur n'est configure.")
+            print("  Obtenir une cle gratuite : " + _c("usine cles", "1"))
+        else:
+            print("  Les fournisseurs configures n'ont pas repondu.")
+            print("  Diagnostic : " + _c("usine docteur", "1"))
+        print("\n  Vous pouvez aussi donner la niche vous-meme :")
+        print("    " + _c('usine {} "votre sujet"'.format(
+            getattr(args, "commande", "ebook")), "1"))
+        return 3
     except llm.PlusDeFournisseur as exc:
         erreur(str(exc))
         # Le geste depend de la cause, et la cause se mesure : « usine cles »
