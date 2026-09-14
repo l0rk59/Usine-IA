@@ -23,7 +23,8 @@ from .core import verification
 from .marketing import vente
 from .packaging import livraison
 from .pipelines import (boite_outils, catalogue, ebook, formation, idees,
-                        impression, logiciel, modeles, nouvelle, pack_prompts,
+                        emails, impression, logiciel, memo, modeles,
+                        nouvelle, pack_prompts, quiz,
                         social)
 from .pipelines.base import (CHAPITRES_MAX, CHAPITRES_MIN, Contexte, MOTS_MAX,
                              MOTS_MIN, TAILLES, TONS)
@@ -522,6 +523,49 @@ def cmd_prompts(args: argparse.Namespace) -> int:
     _resume_console(_apres_production(
         args, ctx, resume, "Pack de {} prompts professionnels.".format(resume["prompts"])
     ))
+    return 0
+
+
+def cmd_emails(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication d'une sequence e-mail")
+    resume = emails.produire(ctx, nombre=args.nombre,
+                             intention=getattr(args, "intention", "bienvenue"),
+                             rythme=getattr(args, "rythme", 2))
+    _resume_console(_apres_production(
+        args, ctx, resume,
+        "Sequence de {} messages, etalee sur {} jours.".format(
+            resume["messages"], resume["jours"])))
+    return 0
+
+
+def cmd_memo(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication d'un memo")
+    resume = memo.produire(ctx, nombre=args.nombre,
+                           recto_verso=getattr(args, "recto_verso", False))
+    _resume_console(_apres_production(
+        args, ctx, resume,
+        "Memo de {} blocs, {} reperes.".format(
+            resume["blocs"], resume["entrees"])))
+    return 0
+
+
+def cmd_quiz(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication d'un quiz")
+    resume = quiz.produire(ctx, nombre=args.nombre,
+                           niveau=getattr(args, "niveau", "intermediaire"),
+                           sans_bareme=getattr(args, "sans_bareme", False))
+    _resume_console(_apres_production(
+        args, ctx, resume,
+        "Quiz de {} questions, corrige explique.".format(resume["questions"])))
     return 0
 
 
@@ -2541,6 +2585,24 @@ def construire_parseur() -> argparse.ArgumentParser:
     _options_communes(p)
     _options_du_type(p, "social")
     p.set_defaults(fonction=cmd_social)
+
+    p = sous_parseurs.add_parser(
+        "emails", help="fabriquer une sequence e-mail")
+    _options_communes(p)
+    _options_du_type(p, "emails")
+    p.set_defaults(fonction=cmd_emails, _type="emails")
+
+    p = sous_parseurs.add_parser(
+        "memo", help="fabriquer un memo / une antiseche")
+    _options_communes(p)
+    _options_du_type(p, "memo")
+    p.set_defaults(fonction=cmd_memo, _type="memo")
+
+    p = sous_parseurs.add_parser(
+        "quiz", help="fabriquer un quiz avec corrige")
+    _options_communes(p)
+    _options_du_type(p, "quiz")
+    p.set_defaults(fonction=cmd_quiz, _type="quiz")
 
     p = sous_parseurs.add_parser("logiciel",
                                  help="fabriquer un outil logiciel verifie")

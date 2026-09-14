@@ -158,8 +158,22 @@ def _exporter(ctx: Contexte, titre: str, categories: List[Dict[str, Any]]) -> Li
             "activite, meilleurs sont les resultats. Collez d'abord un descriptif de votre "
             "activite, puis enchainez les prompts du pack.")
 
-    blocs = [livraison.Bloc(titre="Comment utiliser ce pack", rendu_pdf=mode_emploi,
-                            rendu_html="")]
+    # Sans « corps », ce bloc n'existe que dans le PDF : la page HTML livree
+    # s'ouvrait sur la premiere categorie, sans mode d'emploi. Le defaut est
+    # muet — un bloc vide ne rend rien et ne se plaint pas.
+    blocs = [livraison.Bloc(
+        titre="Comment utiliser ce pack",
+        corps="Chaque prompt est autonome. Remplacez les variables entre "
+              "crochets par vos informations, puis collez le texte dans "
+              "l'IA de votre choix (Claude, ChatGPT, Gemini, Mistral ou un "
+              "modele local). Les prompts sont classes par intention : "
+              "commencez par la categorie qui correspond a votre tache du "
+              "jour.\n\n"
+              "**Conseil** — gardez le contexte d'une conversation a "
+              "l'autre : plus l'IA connait votre activite, meilleurs sont "
+              "les resultats. Collez d'abord un descriptif de votre "
+              "activite, puis enchainez les prompts du pack.",
+        rendu_pdf=mode_emploi)]
     for categorie in categories:
         blocs.append(livraison.Bloc(
             titre=categorie["nom"],

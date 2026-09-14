@@ -54,6 +54,12 @@ SCENARIOS = [
     ("modeles", ["modeles", "le suivi client", "-n", "3", "--sans-image"]),
     ("impression", ["impression", "la planification hebdomadaire", "-n", "6",
                     "--sans-image"]),
+    ("emails", ["emails", "la prospection pour freelances", "-n", "5",
+                "-o", "vente", "--rythme", "3", "--sans-image"]),
+    ("memo", ["memo", "les regles de TVA pour independants", "-n", "6",
+              "--recto-verso", "--sans-image"]),
+    ("quiz", ["quiz", "les bases de la comptabilite", "-n", "8",
+              "--niveau", "avance", "--sans-image"]),
     ("complet", ["complet", "la meditation au bureau", "-T", "mini", "--sans-image"]),
     ("logiciel-cli", ["logiciel", "le nettoyage de fichiers en double", "-c", "cli",
                       "--sans-image"]),
@@ -118,6 +124,13 @@ ATTENDUS = {
                 "bonus-publications"],
     "modeles": [".pdf", "a-importer", "modeles.md", "systeme.json"],
     "impression": ["-A4.pdf", "-Lettre-US.pdf", "cahier.json"],
+    # Le CSV est ce qu'un vendeur importe dans son outil d'emailing : c'est
+    # la piece qui fait de cette sequence un produit utilisable, pas un texte.
+    "emails": [".pdf", "emails.md", "sequence.csv", "lire.html"],
+    "memo": [".pdf", "memo.md", "memo.csv", "lire.html"],
+    # « quiz.html » est la page qui se corrige seule, hors ligne : sans elle,
+    # l'acheteur a un corrige a lire, pas un quiz a passer.
+    "quiz": [".pdf", "quiz.md", "questions.csv", "quiz.html"],
     "qualite": ["rapport-qualite.json", ".pdf", ".epub"],
     "sur-mesure": [".pdf", ".epub", "livre.md"],
     "couverture-ebook": ["couverture.png", "couverture.svg", ".pdf", ".epub"],

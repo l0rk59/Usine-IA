@@ -331,6 +331,36 @@ def _options_du_type(cle: str) -> Dict[str, object]:
         return {} if demander_oui(
             "Interroger les sources de marche ? (plus lent, mais chiffre)",
             True) else {"avec_marche": False}
+    if cle == "emails":
+        from .pipelines.emails import OBJECTIFS
+
+        buts = list(OBJECTIFS)
+        index = choisir("Ce que la sequence cherche",
+                        [(b, OBJECTIFS[b]) for b in buts], defaut=1)
+        choisies: Dict[str, object] = (
+            {"intention": buts[index - 1]} if index else {})
+        jours = demander("Un message tous les combien de jours ?", "2")
+        try:
+            rythme = int(jours)
+        except ValueError:
+            rythme = 0
+        if rythme > 0:
+            choisies["rythme"] = rythme
+        return choisies
+    if cle == "memo":
+        # La marge de reliure n'a de sens qu'imprime en recto-verso : posee
+        # sur une simple face, elle decale le texte sans rien servir.
+        return {"recto_verso": True} if demander_oui(
+            "Impression recto-verso ? (ajoute une marge de reliure)",
+            False) else {}
+    if cle == "quiz":
+        from .pipelines.quiz import NIVEAUX
+
+        index = choisir("Niveau vise", [(n, "") for n in NIVEAUX], defaut=2)
+        choisies = {"niveau": NIVEAUX[index - 1]} if index else {}
+        if not demander_oui("Inclure un bareme de correction ?", True):
+            choisies["sans_bareme"] = True
+        return choisies
     return {}
 
 
@@ -346,6 +376,11 @@ _ARGUMENTS = {
     "reseau": lambda v: ["--reseau", str(v)],
     "cible": lambda v: ["--cible", str(v)],
     "avec_marche": lambda v: [] if v else ["--sans-marche"],
+    "intention": lambda v: ["--intention", str(v)],
+    "rythme": lambda v: ["--rythme", str(v)],
+    "recto_verso": lambda v: ["--recto-verso"] if v else [],
+    "niveau": lambda v: ["--niveau", str(v)],
+    "sans_bareme": lambda v: ["--sans-bareme"] if v else [],
 }
 
 

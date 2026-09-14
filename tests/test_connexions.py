@@ -535,9 +535,23 @@ class TestOptionsDuCatalogueAtteignables(unittest.TestCase):
         from usine import menu
 
         couvertes = set()
-        for cle in ("ebook", "formation", "impression", "social", "logiciel",
-                    "idees", "nouvelle"):
-            for reponses in (["o"], ["n"], ["1"], ["5"], ["x"]):
+        # Les types viennent du CATALOGUE, pas d'une liste recopiee ici. La
+        # premiere version en tenait une : trois types ajoutes plus tard —
+        # sequence e-mail, memo, quiz — n'auraient pas ete interroges, et
+        # leurs options auraient ete declarees « couvertes » sans que le menu
+        # ne pose la moindre question. Un garde-fou dont la liste est a jour
+        # a la main garde jusqu'au jour ou on l'oublie.
+        from usine.pipelines import catalogue as _catalogue
+
+        for cle in _catalogue.cles(fabricables=True):
+            # Les jeux a DEUX reponses ne sont pas decoratifs : un type qui
+            # pose deux questions — le quiz demande son niveau, puis s'il
+            # faut un bareme — ne peut pas atteindre la seconde avec une
+            # reponse unique. Le garde-fou declarait alors « sans_bareme »
+            # couverte alors que le menu ne la proposait nulle part.
+            for reponses in (["o"], ["n"], ["1"], ["5"], ["x"],
+                             ["n", "n"], ["1", "n"], ["o", "n"],
+                             ["1", "5"], ["2", "o"]):
                 couvertes |= set(self._repondre(
                     lambda: menu._options_du_type(cle), reponses))
         for cle, nom in sorted(self._options_declarees()):

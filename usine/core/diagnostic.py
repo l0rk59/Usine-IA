@@ -191,8 +191,16 @@ def essayer_modeles(timeout: int = 30) -> Dict[str, Any]:
                 ligne["detail"] = reponse[:60]
             except HttpErreur as exc:
                 ligne["etat"] = _nommer_le_refus(exc)
+                # « HttpErreur » ecrit deja « HTTP 402 : ... » dans son
+                # message : le repeter donnait « HTTP 402 — HTTP 402 : ... »
+                # sur chaque ligne, et la moitie de la largeur d'un ecran de
+                # telephone partait en doublon.
+                message = str(exc)
+                prefixe = "HTTP {} : ".format(exc.statut)
+                if message.startswith(prefixe):
+                    message = message[len(prefixe):]
                 ligne["detail"] = "HTTP {} — {}".format(
-                    exc.statut, str(exc)[:90])
+                    exc.statut, message[:88])
             except Exception as exc:  # reseau coupe, DNS, TLS
                 ligne["etat"] = "injoignable"
                 ligne["detail"] = "{} : {}".format(type(exc).__name__,

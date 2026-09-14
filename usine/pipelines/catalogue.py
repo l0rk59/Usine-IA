@@ -33,6 +33,24 @@ def reseaux_sociaux() -> Tuple[str, ...]:
     return tuple(sorted(RESEAUX))
 
 
+def objectifs_email() -> Tuple[str, ...]:
+    """Ce qu'une sequence e-mail cherche a obtenir.
+
+    Lus la ou ils sont declares : les recopier ici en ferait deux listes, et
+    c'est celle du formulaire qui proposerait un objectif retire.
+    """
+    from .emails import OBJECTIFS
+
+    return tuple(OBJECTIFS)
+
+
+def niveaux_quiz() -> Tuple[str, ...]:
+    """Les trois niveaux qu'un quiz sait viser."""
+    from .quiz import NIVEAUX
+
+    return tuple(NIVEAUX)
+
+
 def cibles_logiciel() -> Tuple[str, ...]:
     """Ce qu'un produit logiciel peut etre : outil, page web, extension."""
     from .logiciel import CIBLES
@@ -172,8 +190,9 @@ class TypeProduit:
 
 def _chaines() -> Dict[str, Callable]:
     """Import tardif : le catalogue est lu par des modules que les chaines importent."""
-    from . import (boite_outils, ebook, formation, idees, impression, logiciel,
-                   modeles, nouvelle, pack_prompts, social)
+    from . import (boite_outils, ebook, emails, formation, idees, impression,
+                   logiciel, memo, modeles, nouvelle, pack_prompts, quiz,
+                   social)
 
     return {
         "ebook": ebook.produire,
@@ -186,6 +205,9 @@ def _chaines() -> Dict[str, Callable]:
         "impression": impression.produire,
         "social": social.produire,
         "logiciel": logiciel.produire,
+        "emails": emails.produire,
+        "memo": memo.produire,
+        "quiz": quiz.produire,
         "idees": idees.produire,
     }
 
@@ -369,6 +391,77 @@ TYPES: List[TypeProduit] = [
                        "prudent, mais elle ne saura pas s'il démarre."),
         ),
     ),
+    TypeProduit(
+        cle="emails", nom="Sequence e-mail",
+        resume="La serie de messages qui suit une inscription",
+        detail="PDF + HTML + Markdown + CSV pret a importer",
+        formats=("pdf", "html", "md", "csv"),
+        minutes=(6, 14),
+        quantite=("nombre", "Combien de messages", "7"),
+        mots_cles=("email", "e-mail", "mail", "newsletter", "sequence",
+                   "infolettre", "autorepondeur", "nurturing"),
+        options={"intention": "bienvenue", "rythme": 2},
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre de messages",
+                  genre="entier", defaut=7),
+            Champ("intention", "-o/--intention", "Ce que la sequence cherche",
+                  genre="choix", defaut="bienvenue", choix=objectifs_email(),
+                  aide="Une sequence de bienvenue ne demande presque rien ; "
+                       "une sequence de vente construit vers un achat."),
+            Champ("rythme", "--rythme", "Un message tous les", genre="entier",
+                  defaut=2, unite="jours",
+                  aide="Sert a ecrire les rappels et a calculer le "
+                       "calendrier d'envoi livre avec la sequence."),
+        )),
+    TypeProduit(
+        cle="memo", nom="Memo / antiseche",
+        resume="L'essentiel d'un sujet, sur une page qu'on garde",
+        detail="PDF + HTML + Markdown + CSV",
+        formats=("pdf", "html", "md", "csv"),
+        minutes=(4, 9),
+        quantite=("nombre", "Combien de blocs", "8"),
+        # Un memo n'est pas de la prose : trois mots par ligne. Le controle
+        # de rythme et de diversite lexicale y rendrait un chiffre sans sens,
+        # et un chiffre sans sens est pire que pas de chiffre.
+        prose=False,
+        # « Les deux premieres pages » d'un memo d'une page ne veut rien dire.
+        extrait=False,
+        mots_cles=("memo", "antiseche", "cheatsheet", "aide-memoire",
+                   "reference", "fiche", "recapitulatif"),
+        options={"recto_verso": False},
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre de blocs",
+                  genre="entier", defaut=8),
+            Champ("recto_verso", "--recto-verso", "Impression recto-verso",
+                  genre="booleen", defaut=False,
+                  aide="Ajoute une marge de reliure. Inutile — et genante — "
+                       "pour une impression simple face."),
+        )),
+    TypeProduit(
+        cle="quiz", nom="Quiz avec corrige",
+        resume="Des questions, leurs reponses, et pourquoi",
+        detail="PDF + HTML + Markdown + CSV",
+        formats=("pdf", "html", "md", "csv"),
+        minutes=(7, 16),
+        quantite=("nombre", "Combien de questions", "20"),
+        # Une question et quatre propositions ne se mesurent pas comme un
+        # chapitre. Seules les explications sont de la prose, et elles font
+        # le quart du produit.
+        prose=False,
+        mots_cles=("quiz", "qcm", "test", "evaluation", "examen",
+                   "auto-evaluation", "questionnaire", "revision"),
+        options={"niveau": "intermediaire", "sans_bareme": False},
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre de questions",
+                  genre="entier", defaut=20),
+            Champ("niveau", "--niveau", "Niveau vise", genre="choix",
+                  defaut="intermediaire", choix=niveaux_quiz()),
+            Champ("sans_bareme", "--sans-bareme", "Ne pas inclure de bareme",
+                  genre="booleen", defaut=False,
+                  aide="Le bareme donne des seuils en nombre de bonnes "
+                       "reponses, calcules sur les questions reellement "
+                       "retenues."),
+        )),
     TypeProduit(
         cle="idees", nom="Etude de niche",
         resume="Des pistes chiffrees, appuyees sur des mesures de marche",

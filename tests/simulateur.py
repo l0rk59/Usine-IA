@@ -41,7 +41,10 @@ def _combien(invite: str, defaut: int) -> int:
                   r"de\s+(\d+)\s+(?:prompts|publications|outils|idees|fiches|bases)",
                   r"en\s+(\d+)\s+modules", r"calendrier editorial de (\d+)",
                   r"(\d+)\s+scenes qui livrent",
-                  r"systeme de (\d+) bases"):
+                  r"systeme de (\d+) bases",
+                  r"sequence de\s+(\d+)\s+e-mails",
+                  r"en\s+(\d+)\s+blocs courts",
+                  r"Ecris\s+(\d+)\s+questions"):
         trouve = re.search(motif, invite, re.IGNORECASE)
         if trouve:
             return int(trouve.group(1))
@@ -148,6 +151,68 @@ def simulateur(messages, role):
              "acheteur": "quelqu'un qui a arrete dix ans",
              "pourquoi_maintenant": "la rentree"},
         ]}, ensure_ascii=False)
+
+    # --- sequence e-mail : le plan, puis chaque message --------------------
+    if '"messages"' in invite and '"angle"' in invite:
+        combien = _combien(invite, 7)
+        return json.dumps({"messages": [
+            {"objet": "Ce que personne ne vous dit au depart",
+             "angle": "poser le probleme avant de proposer quoi que ce soit",
+             "action": "aucune" if rang == 1 else "repondre a ce message"}
+            for rang in range(1, combien + 1)]}, ensure_ascii=False)
+    if '"post_scriptum"' in invite:
+        return json.dumps({
+            "objet": "Ce que personne ne vous dit au depart",
+            "apercu": "trois minutes de lecture, une idee a garder",
+            "corps": _texte_markdown().replace("#", "").strip(),
+            "post_scriptum": "Repondez-moi : je lis tout.",
+        }, ensure_ascii=False)
+
+    # --- memo : des blocs courts, pas de la prose --------------------------
+    if '"blocs"' in invite and '"lignes"' in invite:
+        combien = _combien(invite, 8)
+        genres = ("liste", "etapes", "reperes", "tableau")
+        return json.dumps({"blocs": [
+            {"titre": "Repere {}".format(rang),
+             "genre": genres[(rang - 1) % len(genres)],
+             "lignes": ["Verifier le seuil avant de facturer",
+                        "Garder une trace datee de chaque envoi",
+                        "Relancer au huitieme jour, pas avant"]}
+            for rang in range(1, combien + 1)]}, ensure_ascii=False)
+
+    # --- quiz autonome : questions, propositions, corrige ------------------
+    # La formation produit DEJA un quiz, avec la meme cle « propositions ».
+    # Sans ce discriminant, cette branche repondait a sa place et la chaine
+    # « formation » livrait zero question — deux cas qui partagent une invite
+    # partagent aussi la reponse du simulateur.
+    if '"propositions"' in invite and "ne suit aucune formation" in bas:
+        combien = _combien(invite, 20)
+        questions = []
+        for rang in range(1, combien + 1):
+            questions.append({
+                "question": "Question {} : que verifier en premier ?".format(rang),
+                "propositions": ["Le seuil legal", "La date d'envoi",
+                                 "Le taux applique", "Le mode de paiement"],
+                "reponse": rang % 4,
+                "explication": "Le seuil conditionne tout le reste : les "
+                               "trois autres reponses en decoulent, et les "
+                               "verifier d'abord fait refaire le calcul.",
+                "module": "Bases",
+            })
+        # Une question dont l'indice de bonne reponse sort du tableau : la
+        # chaine doit l'ecarter plutot que livrer un corrige faux. Sans ce
+        # cas, le controle qui l'ecarte ne s'executerait jamais sous test.
+        questions.append({
+            "question": "Question au corrige incoherent",
+            "propositions": ["a", "b", "c", "d"], "reponse": 9,
+            "explication": "", "module": "Bases"})
+        return json.dumps({"questions": questions}, ensure_ascii=False)
+
+    # --- le type de produit que l'usine choisit pour un sujet --------------
+    if '"pourquoi"' in invite and '"type"' in invite and "se vend le mieux" in bas:
+        return json.dumps({"type": "memo",
+                           "pourquoi": "le sujet se consulte plus qu'il ne se lit"},
+                          ensure_ascii=False)
 
     # --- lecture par l'audience --------------------------------------------
     if '"ce_que_je_ne_sais_toujours_pas_faire"' in invite:

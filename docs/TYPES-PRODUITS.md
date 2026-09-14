@@ -134,3 +134,100 @@ produits avant et après.
 
 Le test parcourt désormais chaque type déclaré. Retirer l'import à nouveau fait
 échouer la suite, en nommant le type fautif.
+
+---
+
+# Trois produits que l'usine ne savait pas fabriquer
+
+*Ajoutés le 14/09/2026.*
+
+Elle écrivait un livre de deux cents pages et trente posts LinkedIn, mais pas
+les sept messages qui séparent une inscription d'un premier achat, pas la page
+qu'on garde à côté de soi, pas le quiz qui dit **pourquoi** on s'est trompé.
+
+| Type | Ce qu'il est, et ce qu'il n'est pas |
+|---|---|
+| `emails` | Une **séquence**, pas une suite d'articles : elle se lit dans l'ordre, à jours d'intervalle, par quelqu'un qui a oublié le message précédent |
+| `memo` | L'**inverse de l'ebook** : un ebook se lit une fois, un mémo se consulte vingt fois, debout, en cherchant une ligne |
+| `quiz` | Ce qui a de la valeur n'est pas la question, c'est l'**explication** |
+
+## Ce que chacun a demandé au code, et pourquoi
+
+**La séquence e-mail.** Le plan est établi en un seul appel, puis les messages
+sont rédigés un par un. Ce n'est pas une économie d'appels : la progression
+*est* le produit. Demander les messages indépendamment donnerait sept bons
+messages qui ne vont nulle part. Chaque rédaction reçoit donc l'objet du
+message précédent et celui du suivant.
+
+Le plan peut répondre `"aucune"` à la question « que demande ce message ? », et
+c'est le cas de la plupart des messages d'accueil. Cette réponse est gardée
+telle quelle : la transformer en appel à l'action fabriquerait une demande que
+personne n'a voulue.
+
+Le CSV livré porte un marqueur d'encodage (`utf-8-sig`). Les outils d'emailing
+français l'ouvrent dans Excel avant de l'importer, et sans ce marqueur les
+accents des lignes d'objet arrivent cassés **jusque dans la boîte du
+destinataire**.
+
+**Le mémo.** Deux conséquences dans le code, toutes deux dictées par ce qu'un
+mémo est :
+
+- le contrôle qualité de prose est coupé (`prose=False` au catalogue). Il
+  mesure le rythme des phrases et la diversité lexicale ; sur des lignes de
+  trois mots il rend un chiffre qui n'a aucun sens, et un chiffre sans sens est
+  pire que pas de chiffre parce qu'on le croit ;
+- la longueur est une **contrainte**, pas une conséquence. Deux bornes, et ce
+  ne sont pas les mêmes : la **demande** est ramenée à quatorze blocs, et la
+  **réponse** l'est aussi. Un modèle répond volontiers dix-neuf blocs quand on
+  en demande huit. Une première version du test demandait quarante blocs en
+  croyant exercer la coupe ; la demande était ramenée à quatorze avant l'appel,
+  et la ligne qui tranche ne s'exécutait jamais. La mutation l'a montré.
+
+**Le quiz.** La validation est plus sévère que pour les autres chaînes, parce
+qu'un corrigé faux se découvre après la vente, par l'acheteur, et qu'il n'a
+aucun moyen de savoir si c'est lui ou le quiz. Sont écartées : une réponse dont
+l'indice sort du tableau, un indice écrit en toutes lettres, et deux
+propositions identiques — deux réponses justes pour un seul indice.
+
+Il **réutilise** `usine/render/quiz.py`, écrit pour la formation : une page qui
+se corrige seule, hors ligne. D'où le nom `reponse` pour l'indice de la bonne
+proposition, et non `bonne` : deux formes pour la même chose auraient rendu la
+page muette. C'est la règle du dépôt — avant d'écrire, vérifier que ce n'est
+pas déjà là.
+
+Le barème compte en **nombre de bonnes réponses sur les questions retenues**,
+pas sur celles demandées. Un barème sur vingt annoncerait des seuils
+inatteignables quand huit questions ont été écartées.
+
+## Un bloc sans corps ne rend rien, et ne le dit pas
+
+Trouvé en écrivant ces chaînes, et présent avant elles.
+
+Un `Bloc` livré porte trois rendus possibles : `corps` (markdown, qui sert
+**tous** les formats), `rendu_pdf` (mise en page fine) et `rendu_html`. Trois
+chaînes ne donnaient que le rendu PDF, en passant `rendu_html=""` — et un bloc
+sans corps ni rendu HTML ne rend **rien du tout**, en silence.
+
+Mesure du 14/09/2026, en relisant `lire.html` : le mode d'emploi du pack de
+prompts, les consignes et le barème du quiz, le calendrier d'envoi de la
+séquence e-mail manquaient tous les trois pour qui ouvre la page — c'est-à-dire
+pour la plupart des acheteurs sur téléphone.
+
+Le garde-fou (`tests/test_types_neufs.py`) ne cherche pas `rendu_html=""` dans
+le source : il **intercepte l'assemblage** et regarde les blocs réellement
+remis à la livraison. La même faute écrite autrement serait passée.
+
+## Quand on ne sait pas encore quoi fabriquer
+
+Les quatorze commandes de fabrication demandent le type d'abord. Or le choisir
+suppose de savoir ce qui se vend dans une niche qu'on n'a pas encore cherchée :
+c'est l'ordre inverse de celui dans lequel la question se pose.
+
+```bash
+usine auto                      # l'usine choisit la niche ET le type
+usine auto "votre sujet"        # vous donnez le sujet, elle choisit le type
+```
+
+Le tableau de bord propose le même choix, en tête de la liste des types. Il ne
+porte aucun réglage, et c'est normal : les réglages d'un type ne peuvent pas
+être demandés avant que le type soit connu.

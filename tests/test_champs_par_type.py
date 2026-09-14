@@ -104,7 +104,17 @@ class UneDeclarationTroisLecteurs(unittest.TestCase):
         propres = {c.nom for t in catalogue.tous() for c in t.champs}
         for nom in sorted(propres):
             with self.subTest(champ=nom):
-                self.assertNotIn('id="{}"'.format(nom), HTML)
+                # Seuls les CHAMPS comptent. Une premiere version refusait
+                # l'identifiant ou qu'il soit, et a accuse le compteur de la
+                # scene 3D — « <small id="objectif"> » — le jour ou une
+                # sequence e-mail a declare un reglage du meme nom. Un
+                # garde-fou qui signale a tort finit ignore, ce qui est pire
+                # que se taire : il cherche donc une balise de saisie.
+                for balise in ("input", "select", "textarea"):
+                    motif = '<{} id="{}"'.format(balise, nom)
+                    self.assertNotIn(motif, HTML)
+                    self.assertNotIn(
+                        '<{} '.format(balise) + 'id="{}"'.format(nom), HTML)
 
     def test_les_champs_declares_sont_reellement_rendus(self):
         """La declaration peut etre juste, le serveur peut la servir, et la
