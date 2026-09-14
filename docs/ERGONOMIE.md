@@ -121,3 +121,84 @@ ligne et son contexte pour les réglages.
 Voir aussi `docs/PANNES.md` (disque, base, réseau) et
 `docs/AUDIT-INVARIANTS.md` (la méthode : mesurer un invariant sur tout le code,
 corriger, puis poser le garde-fou).
+
+---
+
+# La moitié du tableau de bord était invisible
+
+*Mesure du 14/09/2026, sur un écran de 412 × 915 — un téléphone.*
+
+L'utilisateur disait « je n'aime pas les menus, c'est mal organisé ». Il avait
+raison, et la mesure dit pourquoi.
+
+## Ce qui remplissait le premier écran
+
+| | avant | après |
+|---|---|---|
+| en-tête | 78 px | 78 px |
+| scène 3D | **420 px** | 238 px |
+| décoration avant le premier réglage | **54 %** | 35 % |
+| premier contrôle touchable | y = 658 | y = 548 |
+
+On ouvrait le tableau de bord sur une animation, pas sur ce qu'on venait
+faire. La scène **répète** ce que le journal et les compteurs disent en toutes
+lettres — elle peut rétrécir sur un téléphone sans rien coûter à personne.
+
+## Trois onglets sur six hors du cadre
+
+La barre faisait **670 px de large dans une fenêtre de 412**. `Marché`,
+`Réglages` et `La machine` tombaient hors du cadre, et une barre qui défile
+horizontalement n'a ni ombre ni flèche : rien ne disait qu'ils existaient.
+
+C'est un défaut **né de la correction du précédent**. La barre a connu les
+deux excès :
+
+1. six **lignes** empilées, 190 px de haut → corrigé en `nowrap` ;
+2. une **ligne** qui défile, trois onglets invisibles.
+
+Deux rangées de trois coûtent 44 px et suppriment le choix entre les deux.
+Vérifié à huit largeurs, de 320 à 1024 px : **aucun onglet caché, aucun
+débordement horizontal**. Le seuil de retour à la ligne unique est 700 px et
+non 560 — les six onglets en demandent 670, et 560 recachait le dernier.
+
+## Ce que la nouvelle mise en page a révélé
+
+Des éléments jusque-là inatteignables le sont devenus, et la mesure de
+contraste les a vus :
+
+- **`jour` ne déclarait ni `--ambre` ni `--rouge`.** Elle héritait donc de
+  ceux de `nuit`, conçus pour du texte lumineux sur du noir. Ils ne servent
+  pas qu'aux jauges : `.journal .souci`, `.alerte` et l'étiquette d'une entrée
+  en cours les emploient comme couleur de **texte**. Mesure : **1,41** pour
+  l'ambre sur un fond clair. Du jaune vif sur du blanc, sur un avertissement —
+  c'est-à-dire précisément la ligne qu'il faut pouvoir lire.
+- Assombrir ce rouge pour qu'il se lise **en texte** a cassé son autre emploi :
+  **fond** du bouton « supprimer », où l'encre sombre commune ne rendait plus
+  que 2,90. Les deux emplois d'une même couleur tirent en sens inverse, et il
+  faut déclarer les deux.
+
+### Le garde-fou nommait sa liste
+
+Il vérifiait `--encre`, `--doux` et `--accent`. C'était trois sur cinq. Une
+liste tenue à la main garde jusqu'au jour où quelqu'un emploie une sixième
+variable — et ce jour-là personne ne le sait.
+
+Il **déduit** désormais la liste de la feuille de style : toute variable qui
+apparaît dans un `color:` y entre d'office. Réécrit ainsi, il a trouvé
+sur-le-champ `jour --vert` à **4,04**, que la relecture humaine avait laissé
+passer.
+
+## Ce que la chasse aux bugs a trouvé, et n'a pas trouvé
+
+Soixante interactions pilotées dans un vrai navigateur — chaque bouton de
+chaque onglet — puis trois fabrications complètes de bout en bout :
+**zéro erreur JavaScript, zéro requête en échec**. Fabrication, liste des
+produits, téléchargements, persistance des réglages, file d'attente, mode
+« l'usine décide » : tout aboutit.
+
+Deux alertes de cette chasse étaient des **erreurs de ma propre sonde**, et
+elles méritent d'être nommées parce qu'elles se ressemblent : un bouton
+déclaré « incliquable » parce que la sonde ne faisait pas défiler la page, et
+une suppression déclarée sans effet parce que je comptais tous les boutons de
+l'onglet au lieu de l'entrée visée. Une mesure qui accuse est aussi une mesure
+à vérifier.

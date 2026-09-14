@@ -319,18 +319,58 @@ class ContrasteDeclare(unittest.TestCase):
                     rvba(resoudre(variables, nom)),
                     "{} : {} illisible ou absente".format(cle, nom))
 
-    def test_encre_doux_et_accent_se_lisent_sur_une_carte(self):
+    def test_toute_variable_qui_sert_de_texte_se_lit_sur_une_carte(self):
+        """La liste des variables n'est pas ecrite ici : elle est DEDUITE.
+
+        Une premiere version nommait « --encre », « --doux » et « --accent ».
+        C'etait trois sur cinq : « --ambre » et « --rouge » servent aussi de
+        couleur de texte — « .journal .souci », « .alerte », l'etiquette
+        d'une entree en cours — et « jour » ne les declarait pas, heritant
+        donc de ceux de « nuit », concus pour du texte lumineux sur du noir.
+        Mesure du 14/09/2026 : 1.41 pour l'ambre sur un fond clair. Du jaune
+        vif sur du blanc, sur un avertissement.
+
+        Une liste tenue a la main garde jusqu'au jour ou quelqu'un emploie
+        une sixieme variable. Celle-ci se relit dans la feuille de style :
+        toute variable qui apparait dans un « color: » y entre d'office.
+        """
+        employees = self._variables_de_texte()
+        self.assertGreaterEqual(len(employees), 4,
+                                "aucune variable de texte trouvee : le "
+                                "controle ne mesure plus rien")
         faibles = []
         for cle in self.peaux():
             variables = palette(cle)
             fond = self.fond_de_carte(variables)
-            for nom in ("--encre", "--doux", "--accent"):
-                encre = pose(rvba(resoudre(variables, nom)), fond)
-                mesure = contraste(encre, fond)
+            for nom in sorted(employees):
+                brut = rvba(resoudre(variables, nom))
+                if brut is None:
+                    continue
+                mesure = contraste(pose(brut, fond), fond)
                 if mesure < SEUIL:
                     faibles.append("{} {} : {:.2f}".format(cle, nom, mesure))
         self.assertEqual(faibles, [], "\n".join(
             ["Sous le seuil WCAG AA de {} :".format(SEUIL)] + faibles))
+
+    def _variables_de_texte(self):
+        """Les variables employees comme couleur de TEXTE, lues dans le CSS.
+
+        Une couleur de fond ou de bordure ne se mesure pas de la meme facon :
+        on ne retient que « color: var(--x) ».
+        """
+        trouvees = set()
+        for _selecteur, corps in blocs_css(CSS):
+            for declaration in _sans_commentaires(corps).split(";"):
+                if ":" not in declaration:
+                    continue
+                propriete, valeur = declaration.split(":", 1)
+                if propriete.strip().lower() != "color":
+                    continue
+                trouvees.update(re.findall(r"var\(\s*(--[a-z0-9-]+)", valeur))
+        # « --fond » sert d'encre sur un pave d'accent : il se mesure la, pas
+        # sur une carte, et le test suivant s'en charge.
+        return trouvees - {"--fond", "--fond2", "--danger-encre",
+                           "--bouton-encre"}
 
     def test_le_bouton_qui_detruit_se_lit_sur_son_rouge(self):
         """Le seul bouton qui supprime quelque chose doit etre le plus clair.

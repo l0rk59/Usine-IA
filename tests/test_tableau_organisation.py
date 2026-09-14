@@ -77,9 +77,51 @@ class LaBarreTientSurUneLigne(unittest.TestCase):
         return CSS[debut:CSS.index("}", debut)]
 
     def test_les_onglets_ne_s_empilent_plus(self):
+        """Le defaut d'origine : six LIGNES empilees, 190 points de haut."""
         regle = self._regle(".onglets")
-        self.assertIn("nowrap", regle)
-        self.assertIn("overflow-x: auto", regle)
+        self.assertNotIn("flex-direction: column", regle)
+        # Trois colonnes, donc deux rangees pour six onglets : la barre ne
+        # peut plus en faire six.
+        self.assertIn("repeat(3, 1fr)", regle)
+
+    def test_aucun_onglet_ne_tombe_hors_du_cadre(self):
+        """Le defaut SUIVANT, ne par la correction du precedent.
+
+        « nowrap » a remplace six lignes par une ligne qui defile. Mesure du
+        14/09/2026 sur un ecran de 412 points : la ligne en faisait 670, et
+        trois onglets sur six — « Marche », « Reglages », « La machine » —
+        tombaient hors du cadre. Une barre qui defile horizontalement n'a ni
+        ombre ni fleche : rien ne disait qu'ils existaient. La moitie du
+        tableau de bord etait invisible, ce qui se decrit en disant « je ne
+        trouve pas les menus ».
+
+        Ce que ce controle NE voit PAS : la largeur reelle des boutons, qui
+        depend de la police du telephone. Il verifie la forme — une grille,
+        et un libelle qui peut passer a la ligne — parce que c'est ce qui
+        rend le debordement impossible. La mesure au pixel a ete faite a
+        huit largeurs, de 320 a 1024 points, et ne tourne pas ici : elle
+        demande un navigateur.
+        """
+        regle = self._regle(".onglets")
+        self.assertIn("grid", regle)
+        self.assertNotIn("overflow-x: auto", regle,
+                         "une barre qui defile recache ce qu'elle ne montre pas")
+        bouton = self._regle(".onglets button")
+        self.assertIn("white-space: normal", bouton,
+                      "un libelle qui ne peut pas passer a la ligne elargit "
+                      "sa colonne et ramene le debordement")
+
+    def test_la_ligne_unique_ne_revient_qu_une_fois_qu_elle_tient(self):
+        """Les six onglets demandent 670 points. Basculer a 560 — la valeur
+        d'abord retenue — recachait le dernier : mesure faite, un onglet hors
+        cadre a exactement cette largeur."""
+        import re
+
+        seuils = [int(v) for v in re.findall(
+            r"@media \(min-width: (\d+)px\)[^{]*\{\s*\.onglets \{ display: flex",
+            CSS)]
+        self.assertTrue(seuils, "la bascule vers une ligne n'est plus declaree")
+        self.assertGreaterEqual(min(seuils), 700)
 
     def test_un_onglet_ne_prend_pas_toute_la_largeur(self):
         """La vraie cause, et la seule qui comptait : « input, select,
@@ -101,8 +143,23 @@ class LaBarreTientSurUneLigne(unittest.TestCase):
 
     def test_l_onglet_actif_est_ramene_dans_le_cadre(self):
         """Une barre qui defile peut garder l'onglet choisi hors du cadre :
-        actif et invisible, ce qui se lit comme une page vide."""
-        self.assertIn("scrollIntoView", JS)
+        actif et invisible, ce qui se lit comme une page vide. Elle ne defile
+        plus qu'au-dela de 700 points, mais elle defile encore.
+
+        La premiere version cherchait « scrollIntoView » n'importe ou dans le
+        script. Le mot y figure CINQ fois — le sujet, la restauration, le
+        detail d'un test A/B — et retirer celui qui ramene l'onglet laissait
+        le controle vert. C'est la regle que ce depot retrouve a chaque
+        audit : un garde-fou satisfait par une homonymie ne garde rien. Il
+        lit donc la fonction qui change d'onglet, et elle seule.
+        """
+        debut = JS.index("document.querySelectorAll('#onglets button')")
+        bloc = JS[debut:JS.index("});", debut)]
+        # L'APPEL, pas la mention : la ligne de garde « if (b.scrollIntoView) »
+        # contient le meme mot, et une deuxieme mutation l'a montre — remplacer
+        # l'appel seul laissait encore le controle vert.
+        self.assertIn("scrollIntoView({", bloc,
+                      "l'onglet actif n'est plus ramene dans le cadre")
 
 
 class LesReglagesNeSontPlusUnMur(unittest.TestCase):
