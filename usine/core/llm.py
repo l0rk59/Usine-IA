@@ -74,6 +74,48 @@ def _cle_cache(messages: Sequence[Dict[str, str]], role: str,
     return hashlib.sha256(brut.encode("utf-8")).hexdigest()
 
 
+# Ce qu'un fournisseur repond quand l'identifiant de modele ne lui dit rien.
+# Aucun ne le dit de la meme facon, et surtout : aucun ne s'accorde sur le
+# CODE. Mesure du 14/09/2026, en rejouant les quatre formes connues contre le
+# routeur : seul un 404 declenchait la substitution. Groq et Mistral rendent
+# 400, Cerebras 422 — pour eux, un identifiant perime mettait le fournisseur
+# entier au repos une demi-heure, sans substitution et sans un mot. Trois
+# fournisseurs sur onze ne pouvaient donc PAS se remettre d'un identifiant
+# vieilli, alors que la cle etait bonne et que le catalogue contenait de quoi
+# le remplacer.
+#
+# C'est la deuxieme des trois regles du depot, dans sa forme la plus nue : ne
+# pas croire le code de retour, lire le contenu.
+_AVEUX_DE_MODELE_INCONNU = (
+    "model_not_found", "model not found", "does not exist", "n'existe pas",
+    "invalid model", "modele inconnu", "unknown model", "invalid_model",
+    "no such model", "model is not available", "unsupported model",
+)
+
+
+def _modele_inconnu(exc: Exception) -> bool:
+    """Le fournisseur dit-il que l'identifiant de modele ne lui dit rien ?
+
+    Un 404 distant n'a pas d'autre cause, on le prend tel quel. Au-dela, on
+    lit le corps — et seulement pour les codes qui portent une demande mal
+    formee (4xx). Un 500 ou un 503 qui contiendrait ces mots par accident
+    parle d'une panne du service, pas d'un identifiant : substituer alors
+    changerait de modele pour rien et masquerait l'incident.
+
+    Ce controle rate un defaut plutot que d'en inventer un : un fournisseur
+    qui refuserait un modele sans le dire dans le corps ni rendre 404 passe
+    au travers, et le routeur reprend son cours normal.
+    """
+    if not isinstance(exc, HttpErreur):
+        return False
+    if exc.statut == 404:
+        return True
+    if not 400 <= exc.statut < 500:
+        return False
+    corps = (exc.corps or "").lower()
+    return any(aveu in corps for aveu in _AVEUX_DE_MODELE_INCONNU)
+
+
 def _expliquer(p: config.Provider, exc: Exception, modele: str = "") -> str:
     """Traduit un echec technique en geste a faire.
 
@@ -89,7 +131,7 @@ def _expliquer(p: config.Provider, exc: Exception, modele: str = "") -> str:
     """
     texte = str(exc)
     if not p.local:
-        if isinstance(exc, HttpErreur) and exc.statut == 404:
+        if _modele_inconnu(exc):
             return ("le modele « {} » n'existe plus chez {}. Les fournisseurs "
                     "retirent leurs modeles sans prevenir : verifiez avec "
                     "« usine docteur --modeles », puis corrigez "
@@ -491,7 +533,7 @@ def generer(
                         else:
                             _reposer(p.name, 1800, "credit epuise")
                         break
-                    if exc.statut == 404:
+                    if _modele_inconnu(exc):
                         # Modele inconnu. Avant de mettre le fournisseur au
                         # repos une demi-heure, on lui demande ce qu'il sert.
                         #
@@ -622,6 +664,44 @@ def generer_json(
         "essayez un autre fournisseur, ou un modele plus grand si vous etes "
         "en IA locale. Detail : {}".format(
             essais, ", ".join(tentes) or "aucun fournisseur", derniere))
+
+
+def essai_direct(p: config.Provider, modele: str, timeout: int = 30) -> str:
+    """Un appel minimal a UN modele nomme, sans routage ni cache.
+
+    Le routeur existe pour ne jamais s'arreter : il bascule, substitue,
+    patiente, reessaie. C'est exactement ce qu'il ne faut pas ici — on veut
+    savoir si CE modele-la repond, et une bascule silencieuse repondrait a la
+    place d'un autre. D'ou un chemin separe, volontairement bete.
+
+    Il passe tout de meme par « _reponse », qui lit le CONTENU : un service
+    peut rendre 200 avec « votre cle a epuise son budget » pour texte, et une
+    sonde qui ne regarderait que le code declarerait ce modele en bon etat.
+    """
+    charge: Dict[str, Any] = {
+        "model": modele,
+        "messages": [{"role": "user", "content": "Reponds exactement : OK"}],
+        "temperature": 0.0,
+        "max_tokens": min(16, p.max_sortie),
+    }
+    entetes = {"Content-Type": "application/json"}
+    entetes.update(p.extra_headers)
+    if p.api_key_env:
+        lot = pool_cles.pool(p.name, p.api_key_env)
+        candidates = lot.disponibles() or lot.cles
+        if candidates:
+            entetes["Authorization"] = "Bearer {}".format(candidates[0].valeur)
+    url = p.base_url.rstrip("/") + "/chat/completions"
+    data = post_json(url, charge, entetes, timeout=timeout)
+    brut = (((data.get("choices") or [{}])[0].get("message") or {})
+            .get("content") or "").strip()
+    texte = module_texte.assainir(brut)
+    refus = module_texte.refus_deguise(texte, attend_francais=False)
+    if refus:
+        statut = 402 if module_texte.ressemble_a_un_quota(texte) else 503
+        raise HttpErreur(statut, "{} : {}".format(p.name, refus),
+                         corps=texte[:300])
+    return texte
 
 
 def diagnostic(compteurs: bool = True) -> List[Dict[str, Any]]:

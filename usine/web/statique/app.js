@@ -731,6 +731,14 @@ function traiter(evenement) {
       `${evenement.retenue ? 'correction maintenue' : 'ecartee'} ` +
       `(l'auteur objecte : ${echapper(evenement.objection)})`,
       evenement.retenue ? '' : 'succes');
+  } else if (evenement.type === 'type_choisi') {
+    /* Quand on demande « L'usine decide », le type n'est connu qu'ici. Sans
+       cette ligne on voyait la fabrication demarrer sans jamais savoir de
+       quoi — et les reglages du type, absents du formulaire par definition,
+       ne pouvaient pas le dire non plus. */
+    ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
+      `type retenu par l'usine : <strong>${echapper(evenement.nom)}</strong>`,
+      'succes');
   } else if (evenement.type === 'substitution') {
     /* Une reparation silencieuse est le genre de chose qui fait perdre une
        journee le jour ou elle cesse de suffire : l'usine dit quand elle

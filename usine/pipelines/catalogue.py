@@ -478,6 +478,48 @@ def normaliser(cle: str, defaut: str = "ebook") -> str:
     return defaut
 
 
+def type_pour_sujet(contexte: Any, sujet: str, defaut: str = "ebook") -> str:
+    """Quel type de produit ce sujet appelle-t-il ?
+
+    « usine auto "la prospection pour freelances" » pose une question que les
+    dix commandes de fabrication ne savent pas poser : elles exigent le type
+    d'abord. Or choisir le type suppose de savoir ce qui se vend sur ce
+    sujet-la, ce qui vient apres.
+
+    Le modele choisit parmi les types REELLEMENT fabricables, lus au
+    catalogue plutot que recopies : un type ajoute arrive ici tout seul. Sa
+    reponse passe ensuite par « normaliser », qui rattrape les synonymes — un
+    modele ecrit volontiers « planner » ou « template ».
+
+    En cas d'echec (modele muet, JSON illisible, reseau coupe), on rend le
+    defaut : un type raisonnable vaut mieux qu'une fabrication qui s'arrete,
+    et l'appelant dit lequel il a retenu.
+    """
+    from ..agents import equipe
+
+    invite = (
+        "Un vendeur veut fabriquer UN produit digital sur ce sujet :\n"
+        "« {sujet} »\n\n"
+        "Quel type de produit se vend le mieux sur ce sujet, parmi ceux que "
+        "l'usine sait fabriquer ?\n{catalogue}\n\n"
+        "Choisis en pensant a l'acheteur : ce qu'il cherche, et sous quelle "
+        "forme il accepte de le payer. Un sujet tres pratique se vend mieux "
+        "en modeles ou en boite a outils qu'en livre ; un sujet narratif "
+        "appelle une fiction.\n\n"
+        'Schema JSON exact :\n{{"type": "{types}", "pourquoi": "une phrase"}}'
+    ).format(sujet=sujet[:300], catalogue=resume_pour_ia(),
+             types="|".join(cles(vendables=True)))
+    try:
+        donnees = equipe.PROSPECTEUR.travailler_json(
+            contexte, invite, role_modele="rapide",
+            temperature=0.2, max_tokens=300)
+    except Exception:
+        return defaut
+    if not isinstance(donnees, dict):
+        return defaut
+    return normaliser(str(donnees.get("type") or ""), defaut=defaut)
+
+
 def resume_pour_ia() -> str:
     """Description du catalogue a injecter dans une invite."""
     lignes = []

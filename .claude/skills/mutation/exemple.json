@@ -45,9 +45,9 @@
     ]
   },
   {
-    "titre": "un 404 distant nomme le modele disparu",
+    "titre": "un modele inconnu n'est plus nomme dans le message",
     "fichier": "usine/core/llm.py",
-    "avant": "if isinstance(exc, HttpErreur) and exc.statut == 404:\n            return (\"le modele",
+    "avant": "if _modele_inconnu(exc):\n            return (\"le modele",
     "apres": "if False:\n            return (\"le modele",
     "tests": [
       "tests.test_routeur"

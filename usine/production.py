@@ -286,6 +286,9 @@ def domaines_de_depart(
     return {"retenus": retenus, "mesures": mesures, "mesure": mesure_possible}
 
 
+AUTO = "auto"
+
+
 def choisir_une_niche(
         journal: Optional[Callable[[str], None]] = None,
         type_produit: str = "ebook") -> Dict[str, Any]:
@@ -308,14 +311,34 @@ def choisir_une_niche(
          installation neuve.
     """
     dire = journal or (lambda message: None)
+    # « auto » : l'usine choisit AUSSI le type. C'est le seul mode ou le type
+    # rendu peut differer de celui demande, et l'appelant doit alors le
+    # suivre. Partout ailleurs, le type demande est une contrainte, pas une
+    # preference.
+    libre = not type_produit or type_produit == AUTO
+    vise = "" if libre else type_produit
+
+    def convient(candidat: str) -> bool:
+        """Ce type fait-il l'affaire pour la demande en cours ?
+
+        Un sujet est concu POUR un type. « 30 posts LinkedIn pour freelances »
+        est un pack de publications ; en faire un ebook donne un ebook dont le
+        titre annonce trente posts. Mesure du 14/09/2026 : sur quatre demandes
+        de type different, trois repartaient avec un sujet concu pour un
+        autre — la file etait lue sans regarder le type, et le type rendu
+        etait ensuite jete par les deux appelants.
+        """
+        return libre or not candidat or candidat == vise
 
     # 1. La file. On regarde sans prendre : « prochain() » marque l'entree en
-    # cours, et une commande unique qui vole une entree a l'usine continue
+    # cours, et une commande unique qui volerait une entree a l'usine continue
     # laisserait celle-ci reprendre un sujet deja fabrique.
-    for entree in file.lister(statut="en_attente", limite=1):
+    for entree in file.lister(statut="en_attente", limite=40):
+        if not convient(entree.get("type") or ""):
+            continue
         dire("Une niche attendait en file : « {} ».".format(entree["sujet"]))
         return {"sujet": entree["sujet"],
-                "type": entree.get("type") or type_produit,
+                "type": entree.get("type") or type_produit or "ebook",
                 "source": "file"}
 
     graine = graine_de_depart()
@@ -331,22 +354,32 @@ def choisir_une_niche(
             pistes = []
         for piste in pistes:
             titre = (piste.get("titre") or "").strip()
+            propose = str(piste.get("type") or "")
+            if not convient(propose):
+                continue
             # Le meme filtre que la file : une piste trop proche d'un produit
             # deja fabrique coute un quota pour un doublon.
-            if titre and not empreinte.sujets_proches(titre, type_produit):
+            if titre and not empreinte.sujets_proches(
+                    titre, propose or type_produit or "ebook"):
                 dire("Niche retenue : « {} ».".format(titre))
-                return {"sujet": titre, "type": piste.get("type") or type_produit,
+                return {"sujet": titre,
+                        "type": propose or type_produit or "ebook",
                         "source": "voisinage"}
         dire("Toutes les pistes recouvrent un produit deja fait.")
 
     froid = domaines_de_depart(journal=dire)
+    # Un domaine de depart n'a pas de type : c'est un sujet, pas un produit.
+    # En mode libre il faut donc en choisir un, et l'ebook est le seul type
+    # que tout domaine supporte — les dix autres supposent quelque chose du
+    # sujet (une fiction, un logiciel, un reseau social).
+    defaut = type_produit if not libre else "ebook"
     for piste in froid["retenus"]:
         nom = piste["domaine"]
-        if not empreinte.sujets_proches(nom, type_produit):
+        if not empreinte.sujets_proches(nom, defaut):
             dire("Premiere niche, choisie par l'usine : « {} ».".format(nom))
-            return {"sujet": nom, "type": type_produit,
+            return {"sujet": nom, "type": defaut,
                     "source": "froid", "mesure": froid["mesure"]}
-    return {"sujet": "", "type": type_produit, "source": ""}
+    return {"sujet": "", "type": defaut, "source": ""}
 
 
 def prospecter(nombre: int = 8, graine: str = "",

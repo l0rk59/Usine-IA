@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import shutil
 import sys
+import time
 from typing import Any, Dict, List, Optional
 
 from . import config, llm, store, telephone
@@ -140,6 +141,90 @@ def modeles_disparus(timeout: int = 10) -> Dict[str, Any]:
             })
     return {"ecarts": ecarts, "consultes": consultes,
             "injoignables": injoignables}
+
+
+def essayer_modeles(timeout: int = 30) -> Dict[str, Any]:
+    """Appelle VRAIMENT chaque modele declare et dit lequel repond.
+
+    « modeles_disparus » compare des listes : l'identifiant figure-t-il au
+    catalogue du fournisseur ? C'est utile et cela ne coute rien, mais cela ne
+    repond pas a la question posee par quelqu'un dont la fabrication echoue.
+    Un modele peut etre LISTE et refuser de servir :
+
+      - il existe, mais pas pour le palier gratuit du compte ;
+      - il demande un credit que la cle n'a plus — et le service repond alors
+        HTTP 200, « finish_reason: stop », un « usage » renseigne, et pour
+        contenu « your key has reached its budget ». C'est la troisieme regle
+        du depot : ne pas croire le code de retour, lire le contenu ;
+      - il est servi mais expire avant de rendre quoi que ce soit.
+
+    Aucun de ces trois cas ne se voit dans un catalogue. Celui-ci fait donc un
+    vrai appel, le plus petit possible, et rapporte ce qui revient.
+
+    Ce que ce controle NE dit PAS : un modele qui repond ici peut tres bien
+    echouer sur une demande de quatre mille jetons, parce que le plafond par
+    minute n'est pas le meme. Il mesure « ce modele repond », pas « ce modele
+    suffit ».
+
+    Il consomme du quota — un appel par identifiant declare — et n'est donc
+    lance que sur demande explicite.
+    """
+    from . import llm
+    from .http import HttpErreur
+
+    lignes: List[Dict[str, Any]] = []
+    for fournisseur in config.active_providers():
+        # Un identifiant peut servir plusieurs roles : on ne l'essaie qu'une
+        # fois, et on dit quels roles en dependent.
+        par_modele: Dict[str, List[str]] = {}
+        for role, identifiant in sorted(fournisseur.models.items()):
+            if identifiant:
+                par_modele.setdefault(identifiant, []).append(role)
+        for identifiant, roles in sorted(par_modele.items()):
+            ligne = {"fournisseur": fournisseur.name, "modele": identifiant,
+                     "roles": roles, "etat": "", "detail": "", "latence": 0.0}
+            debut = time.time()
+            try:
+                reponse = llm.essai_direct(fournisseur, identifiant,
+                                           timeout=timeout)
+                ligne["etat"] = "repond" if reponse else "vide"
+                ligne["detail"] = reponse[:60]
+            except HttpErreur as exc:
+                ligne["etat"] = _nommer_le_refus(exc)
+                ligne["detail"] = "HTTP {} — {}".format(
+                    exc.statut, str(exc)[:90])
+            except Exception as exc:  # reseau coupe, DNS, TLS
+                ligne["etat"] = "injoignable"
+                ligne["detail"] = "{} : {}".format(type(exc).__name__,
+                                                   str(exc)[:80])
+            ligne["latence"] = round(time.time() - debut, 2)
+            lignes.append(ligne)
+    return {"essais": lignes,
+            "repondent": [l for l in lignes if l["etat"] == "repond"],
+            "muets": [l for l in lignes if l["etat"] != "repond"]}
+
+
+def _nommer_le_refus(exc: Any) -> str:
+    """Le genre de refus, en un mot, parce que le geste a faire en depend."""
+    from . import llm
+
+    if llm._modele_inconnu(exc):
+        return "inconnu"
+    statut = getattr(exc, "statut", 0)
+    # Statut 0 : la requete n'est jamais partie (serveur local eteint, DNS,
+    # TLS). Ce n'est pas un refus du modele, et le confondre avec un refus
+    # ferait chercher une cle la ou il faut demarrer un serveur.
+    if not statut:
+        return "injoignable"
+    if statut in (401, 403):
+        return "cle refusee"
+    if statut == 402:
+        return "credit epuise"
+    if statut == 429:
+        return "quota atteint"
+    if statut >= 500:
+        return "panne du service"
+    return "refus"
 
 
 def etat_installation(avec_reseau: bool = True,

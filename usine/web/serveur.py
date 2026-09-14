@@ -29,6 +29,7 @@ from ..core import config, empreinte, evenements, experience
 from ..core import file as file_prod, llm
 from ..core import reglages, securite, store, ventes
 from ..pipelines import catalogue, social
+from ..production import AUTO
 from ..pipelines.base import TAILLES, TONS, Contexte
 
 STATIQUE = Path(__file__).resolve().parent / "statique"
@@ -125,6 +126,29 @@ def _catalogue() -> List[Dict[str, Any]]:
     ]
 
 
+def _types_offerts() -> List[Dict[str, Any]]:
+    """Le catalogue, precede du choix « l'usine decide ».
+
+    Ce choix manquait, et son absence se voyait a l'envers : la chaine
+    « idees » trouve des pistes en leur donnant DEJA un type, et ce type
+    n'etait suivi nulle part parce que le formulaire obligeait a en imposer
+    un. Choisir le type d'abord suppose de savoir ce qui se vend sur une
+    niche qu'on n'a pas encore cherchee — c'est l'ordre inverse de celui dans
+    lequel la question se pose.
+
+    Il est en tete parce que c'est le choix le plus souvent juste quand on ne
+    sait pas encore. Il ne porte aucun champ : les reglages d'un type ne
+    peuvent pas etre demandes avant que le type soit connu.
+    """
+    return [{"cle": AUTO, "nom": "L'usine decide",
+             "resume": "l'usine choisit le type qui se vend le mieux",
+             "detail": "Elle lit le sujet, ou cherche une niche, puis choisit "
+                       "parmi les {} types qu'elle sait fabriquer".format(
+                           len(catalogue.tous(fabricables=True))),
+             "duree": "variable", "quantite": "", "defaut": 0,
+             "champs": []}] + _catalogue()
+
+
 def _entier(valeur: Any) -> int:
     """Un champ de formulaire vide vaut zero, pas une erreur."""
     try:
@@ -142,6 +166,17 @@ def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None
 
     profil = reglages.charger()
     sujet = str(options.get("sujet") or "").strip()
+    if type_produit == AUTO and sujet:
+        # Sujet donne, type a decider : la question la plus utile, et celle
+        # que le formulaire obligeait a trancher en premier.
+        journal("L'usine choisit le type de produit...")
+        ctx_choix = Contexte(sujet=sujet, journal=lambda _m: None,
+                             sans_image=True)
+        type_produit = catalogue.type_pour_sujet(ctx_choix, sujet)
+        fiche = catalogue.obtenir(type_produit)
+        journal("Type retenu : {}".format(fiche.nom if fiche else type_produit))
+        evenements.publier("type_choisi", type=type_produit,
+                           nom=fiche.nom if fiche else type_produit)
     if not sujet:
         # Le cas « je ne sais pas quoi vendre, trouve ». Il passe par le meme
         # chemin que la ligne de commande : une seule facon de choisir une
@@ -151,6 +186,17 @@ def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None
         journal("L'usine choisit la niche...")
         choix = choisir_une_niche(journal=journal, type_produit=type_produit)
         sujet = choix["sujet"]
+        # En mode « auto », le type vient avec la niche — une idee trouvee par
+        # la chaine « idees » porte deja le sien. Le jeter, comme le faisaient
+        # les deux appelants, fabriquait un ebook a partir d'un sujet intitule
+        # « 30 posts LinkedIn pour freelances ».
+        if type_produit == AUTO:
+            type_produit = choix.get("type") or "ebook"
+            fiche = catalogue.obtenir(type_produit)
+            journal("Type retenu : {}".format(
+                fiche.nom if fiche else type_produit))
+            evenements.publier("type_choisi", type=type_produit,
+                               nom=fiche.nom if fiche else type_produit)
         if not sujet:
             with _VERROU:
                 TRAVAUX[travail_id].update(
@@ -413,7 +459,10 @@ class Gestionnaire(BaseHTTPRequestHandler):
         if options is None:
             return
         type_produit = str(options.get("type") or "ebook")
-        if catalogue.obtenir(type_produit) is None:
+        # « auto » n'est pas un type du catalogue : c'est la demande de le
+        # faire choisir. Le choix coute un appel de modele, donc il a lieu
+        # dans le fil de fabrication, comme celui de la niche.
+        if type_produit != AUTO and catalogue.obtenir(type_produit) is None:
             self._json({"erreur": "type de produit inconnu"}, 400)
             return
         # Un sujet vide n'est plus un refus : c'est une demande. Le choix
@@ -1433,7 +1482,7 @@ def _etat() -> Dict[str, Any]:
                         if f["disponible"] and not f["local"] and not f["sans_cle"]),
         "cles": pool_cles.resume(),
         "travaux": travaux,
-        "types": _catalogue(),
+        "types": _types_offerts(),
         # La liste sert a proposer les suites en cours plutot qu'a faire
         # retaper leur nom : une faute de frappe cree une seconde serie vide,
         # et le tome repartirait de zero sans rien dire.

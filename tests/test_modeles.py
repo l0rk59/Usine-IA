@@ -350,3 +350,108 @@ class ComptageDuCache(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ModeleInconnuAutrementQueParUn404(unittest.TestCase):
+    """Un identifiant perime ne s'annonce pas partout par 404.
+
+    Le routeur savait deja remplacer un modele disparu — mais seulement quand
+    le fournisseur repondait 404. Or aucun ne s'accorde sur le code :
+
+        NVIDIA, OpenRouter   404
+        Groq                 400  {"code": "model_not_found"}
+        Mistral              400  {"type": "invalid_model"}
+        Cerebras             422  {"detail": [{"msg": "model not found"}]}
+
+    Mesure du 14/09/2026, en rejouant ces quatre formes contre le routeur :
+    seul le 404 declenchait la substitution. Pour les trois autres, le
+    fournisseur partait au repos une demi-heure, sans substitution et sans un
+    mot — alors que la cle etait bonne et que le catalogue contenait de quoi
+    remplacer. Trois fournisseurs sur onze ne pouvaient donc pas se remettre
+    d'un identifiant vieilli, ce qui est exactement ce que decrit quelqu'un
+    qui dit « beaucoup de modeles ne fonctionnent pas ».
+
+    C'est la deuxieme des trois regles du depot, dans sa forme la plus nue :
+    ne pas croire le code de retour, lire le contenu.
+    """
+
+    @staticmethod
+    def _reponse_ok(contenu="Un paragraphe en francais avec de la matiere."):
+        return {"choices": [{"message": {"content": contenu},
+                             "finish_reason": "stop"}],
+                "usage": {"total_tokens": 10}}
+
+    FORMES = [
+        (404, '{"error":{"message":"The model does not exist"}}'),
+        (400, '{"error":{"message":"The model `x` does not exist",'
+              '"code":"model_not_found"}}'),
+        (400, '{"message":"Invalid model: x","type":"invalid_model"}'),
+        (422, '{"detail":[{"msg":"model not found"}]}'),
+    ]
+
+    def test_les_quatre_formes_connues_sont_reconnues(self):
+        from usine.core import llm
+        from usine.core.http import HttpErreur
+
+        for statut, corps in self.FORMES:
+            self.assertTrue(
+                llm._modele_inconnu(HttpErreur(statut, "refus", corps=corps)),
+                "statut {} non reconnu : {}".format(statut, corps[:50]))
+
+    def test_les_quatre_formes_font_changer_de_modele(self):
+        from unittest import mock
+
+        from usine.core import llm
+        from usine.core.http import HttpErreur
+
+        # Le fournisseur importe peu : ce qui est teste, c'est la forme de
+        # la reponse. On prend celui dont le catalogue reel est en fixture.
+        fournisseur = config.PROVIDERS_BY_NAME["nvidia"]
+        servis = list(CATALOGUES["nvidia"])
+        for statut, corps in self.FORMES:
+            modeles.oublier()
+            vrai = modeles.interroger
+            modeles.interroger = lambda f, timeout=10: list(servis)
+
+            def poster(url, charge, entetes=None, timeout=60, _s=statut, _c=corps):
+                if charge["model"] == fournisseur.models["standard"]:
+                    raise HttpErreur(_s, "refus", corps=_c)
+                return self._reponse_ok()
+
+            try:
+                with mock.patch("usine.core.config.active_providers",
+                                return_value=[fournisseur]), \
+                     mock.patch("usine.core.llm.post_json", side_effect=poster):
+                    reponse = llm.generer("Ecris.", role="standard", cache=False)
+            finally:
+                modeles.interroger = vrai
+            self.assertNotEqual(
+                reponse.modele, fournisseur.models["standard"],
+                "statut {} : le routeur n'a pas substitue".format(statut))
+
+    def test_une_panne_du_service_ne_fait_pas_changer_de_modele(self):
+        """Le controle doit rater un defaut plutot que d'en inventer un.
+
+        Un 500 ou un 503 qui contiendrait ces mots par accident parle d'une
+        panne du service, pas d'un identifiant. Substituer alors changerait de
+        modele pour rien et masquerait l'incident — et le remplacant tomberait
+        sur la meme panne.
+        """
+        from usine.core import llm
+        from usine.core.http import HttpErreur
+
+        for statut in (500, 502, 503):
+            self.assertFalse(
+                llm._modele_inconnu(HttpErreur(
+                    statut, "panne", corps='{"error":"model not found"}')),
+                "un {} ne doit pas passer pour un identifiant perime".format(
+                    statut))
+
+    def test_un_refus_muet_ne_declenche_rien(self):
+        """Un 400 qui ne dit pas pourquoi n'est pas un modele inconnu."""
+        from usine.core import llm
+        from usine.core.http import HttpErreur
+
+        self.assertFalse(llm._modele_inconnu(
+            HttpErreur(400, "Bad Request", corps='{"error":"bad temperature"}')))
+        self.assertFalse(llm._modele_inconnu(HttpErreur(429, "trop vite")))

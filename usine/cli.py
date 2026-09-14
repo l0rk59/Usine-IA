@@ -447,6 +447,72 @@ def cmd_series(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_auto(args: argparse.Namespace) -> int:
+    """L'usine choisit la niche ET le type de produit.
+
+    Les dix commandes de fabrication demandent un type : « usine ebook »,
+    « usine social ». Choisir le type suppose deja de savoir ce qui se vend
+    dans une niche qu'on n'a pas encore cherchee — c'est l'ordre inverse de
+    celui dans lequel la question se pose.
+
+    Il manquait donc le point d'entree ou l'usine decide des deux. Une idee
+    trouvee par la chaine « idees » porte deja son type ; il n'etait suivi
+    nulle part, parce que rien ne savait quoi en faire.
+    """
+    if not _verifier_fournisseurs():
+        return 2
+    from .production import AUTO, choisir_une_niche
+
+    donne = (getattr(args, "sujet", "") or "").strip()
+    if donne:
+        # Sujet impose : il ne reste que le type a decider, et c'est la
+        # question la plus utile — celle que les dix autres commandes
+        # obligent a trancher AVANT de savoir ce qui se vend.
+        titre_console("L'usine choisit le type de produit")
+        args._type = "ebook"
+        ctx_choix = contexte_depuis(args)
+        cle = catalogue.type_pour_sujet(ctx_choix, donne)
+        choix = {"sujet": donne, "type": cle, "source": "sujet donne"}
+    else:
+        titre_console("L'usine choisit la niche et le type")
+        choix = choisir_une_niche(journal=lambda m: print("  " + m),
+                                  type_produit=AUTO)
+        if not choix["sujet"]:
+            raise SujetIntrouvable(
+                "L'usine devait choisir une niche et n'a pas pu.")
+    fiche = catalogue.obtenir(choix["type"]) or catalogue.obtenir("ebook")
+    ok("Type retenu : {} — « {} »".format(fiche.nom, choix["sujet"]))
+    if choix.get("source") == "froid" and not choix.get("mesure", True):
+        alerte("Aucune source de marche n'a repondu : cette niche est "
+               "proposee, pas mesuree.")
+    args.sujet = choix["sujet"]
+    args._type = fiche.cle
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication : {}".format(fiche.nom))
+    # Les options propres au type gardent leurs valeurs par defaut : personne
+    # n'a pu les donner, puisque le type vient d'etre decide.
+    resume = catalogue.executer(fiche.cle, ctx, _defauts_du_type(fiche))
+    _resume_console(_apres_production(args, ctx, resume, fiche.resume))
+    return 0
+
+
+def _defauts_du_type(fiche) -> Dict[str, Any]:
+    """Les valeurs par defaut declarees au catalogue pour ce type.
+
+    Elles sont lues sur la fiche plutot que recopiees : un champ ajoute au
+    catalogue arrive ici tout seul. Recopier la liste aurait garanti qu'un
+    champ ajoute un jour manque ici sans que rien n'echoue — le type serait
+    fabrique avec un zero a la place de sa quantite.
+    """
+    options: Dict[str, Any] = {}
+    if fiche.quantite:
+        options["nombre"] = fiche.defaut_quantite
+    for champ in fiche.champs:
+        if champ.defaut not in (None, ""):
+            options[champ.nom] = champ.defaut
+    return options
+
+
 def cmd_prompts(args: argparse.Namespace) -> int:
     if not _verifier_fournisseurs():
         return 2
@@ -1983,6 +2049,39 @@ def cmd_docteur(args: argparse.Namespace) -> int:
             alerte("Aucun fournisseur n'a pu etre interroge : ce controle ne "
                    "dit rien, ni dans un sens ni dans l'autre.")
 
+    if getattr(args, "essai", False):
+        from .core import diagnostic as _d
+
+        titre_console("Essai reel de chaque modele")
+        print("  Un appel minimal par identifiant declare. Un modele peut "
+              "figurer\n  au catalogue et refuser de servir : c'est "
+              "precisement ce qu'un\n  catalogue ne peut pas dire.\n")
+        essais = _d.essayer_modeles()
+        for ligne in essais["essais"]:
+            marque = _c("v", "32") if ligne["etat"] == "repond" else _c("x", "31")
+            print("  {} {:12} {:40} {:14} {:>6}s".format(
+                marque, ligne["fournisseur"], ligne["modele"][:40],
+                ligne["etat"], ligne["latence"]))
+            if ligne["etat"] != "repond" and ligne["detail"]:
+                print("      {}".format(_c(ligne["detail"][:86], "90")))
+        print()
+        if not essais["essais"]:
+            alerte("Aucun fournisseur disponible : rien n'a pu etre essaye.")
+        elif essais["muets"]:
+            alerte("{} modele(s) sur {} ne repondent pas.".format(
+                len(essais["muets"]), len(essais["essais"])))
+            # Un identifiant perime se corrige dans config.py ; un credit
+            # epuise ou un quota atteint ne se corrigent pas la, et envoyer
+            # tout le monde au meme endroit ferait perdre du temps.
+            inconnus = [l for l in essais["muets"] if l["etat"] == "inconnu"]
+            if inconnus:
+                print("      Identifiants a corriger dans usine/core/config.py :")
+                for ligne in inconnus:
+                    print("        {} : {}".format(ligne["fournisseur"],
+                                                   ligne["modele"]))
+        else:
+            ok("Les {} modeles declares repondent.".format(len(essais["essais"])))
+
     titre_console("Verdict")
     verdict = etat["verdict"]
     (alerte if verdict["etat"] == "bloque" else ok)(verdict["message"])
@@ -2455,6 +2554,11 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.add_argument("-r", "--reseau", default="linkedin", choices=sorted(social.RESEAUX))
     p.set_defaults(fonction=cmd_complet)
 
+    p = sous_parseurs.add_parser(
+        "auto", help="l'usine choisit la niche ET le type de produit")
+    _options_communes(p)
+    p.set_defaults(fonction=cmd_auto, _type="auto")
+
     p = sous_parseurs.add_parser("idees", help="trouver quoi vendre dans une niche")
     _options_communes(p)
     p.add_argument("-n", "--nombre", type=int, default=12, help="nombre d'idees")
@@ -2674,6 +2778,9 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.add_argument("--modeles", action="store_true",
                    help="verifier que les modeles configures existent encore "
                         "chez leur fournisseur (une requete par fournisseur)")
+    p.add_argument("--essai", action="store_true",
+                   help="appeler vraiment chaque modele declare et dire "
+                        "lequel repond (un appel par modele, consomme du quota)")
     p.set_defaults(fonction=cmd_docteur)
 
     p = sous_parseurs.add_parser("cles", help="obtenir des cles API gratuites")
