@@ -99,16 +99,25 @@ def produire(ctx: Contexte, nombre: int = 50) -> Dict[str, Any]:
     ctx.journal("Etape 2/3 — redaction des prompts...")
     for index, categorie in enumerate(categories, 1):
         ctx.journal("  [{}/{}] {}".format(index, len(categories), categorie["nom"]))
+        perdu = ""
         try:
             categorie["details"] = _rediger_lot(ctx, categorie)
         except Exception as exc:
+            perdu = str(exc)
             ctx.journal("     echec : {}".format(exc))
-            ctx.etape("categorie-{}".format(index), "echec", str(exc))
+            # Les prompts sont remplaces par leur seul intitule : une liste de
+            # titres la ou l'acheteur paie des prompts rediges.
             categorie["details"] = [
                 {"titre": p, "quand": "", "prompt": p, "astuce": ""}
                 for p in categorie["prompts"]
             ]
-        ctx.etape("categorie-{}".format(index), "ok", categorie["nom"])
+        # Un seul appel, apres coup, qui REGARDE ce qui vient de se passer.
+        # La version d'avant notait « echec » dans la branche d'erreur puis
+        # « ok » hors du « except » : le second ecrasait le premier, et un
+        # pack entierement remplace par ses intitules se livrait « pret ».
+        ctx.etape("categorie-{}".format(index),
+                  "echec" if perdu else "ok",
+                  perdu or categorie["nom"])
 
     ctx.journal("Etape 3/3 — export...")
     fichiers = _exporter(ctx, titre, categories)

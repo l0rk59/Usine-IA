@@ -1077,6 +1077,42 @@ quoi que ce soit — vivait en quatrieme bloc de l'onglet « Fabriquer », 1770p
 plus bas, et en deuxieme ligne d'un sous-menu sur Termux. Elle a son onglet et
 son entree de premier niveau dans les deux interfaces.
 
+## Cinq chaines livraient un produit troue en le disant « pret »
+
+Mesure du 14/09/2026, faite en coupant le reseau au milieu de chaque chaine —
+pas en lisant le code : [docs/TROUS.md](docs/TROUS.md).
+
+Une formation dont quatre modules sur dix avaient ete remplaces par leur plan
+etait livree **marquee « pret »**. `usine reprendre` repondait « aucun produit
+inacheve ». Le PDF partait chez l'acheteur avec des puces a la place des
+lecons, et rien nulle part ne le disait — le defaut que ce depot craint le
+plus : invisible partout en aval.
+
+Le garde-fou existait pourtant, et il etait juste : `terminer()` laisse le
+produit « en_cours » des qu'il lui manque quelque chose. **Mais seules deux
+chaines sur neuf le renseignaient.** Les autres notaient bien leurs echecs —
+dans une table que personne ne relisait au moment de conclure. Le mecanisme
+etait bon, c'est son alimentation qui manquait.
+
+Le meme defaut etait ecrit quatre fois de la meme facon :
+
+```python
+except Exception as exc:
+    ctx.etape("module-1", "echec", str(exc))   # note l'echec
+    corps = plan_de_repli()
+ctx.etape("module-1", "ok")                    # ... puis l'efface
+```
+
+Le second appel est HORS du « except » : il s'execute toujours, et le dernier
+statut gagne. Dans `ebook`, le chapitre de repli descendait meme jusqu'au
+carnet et s'y inscrivait comme un chapitre ecrit — `usine reprendre` ne le
+refaisait donc jamais.
+
+Un detecteur garde ce motif. Il s'est trompe deux fois avant d'etre juste : il
+accusait les gestionnaires qui sortent par `continue`, et il se laissait
+aveugler par un alias (`repere` valant `"chapitre-{}".format(index + 1)`) — il
+signalait le fichier correct et laissait passer le fautif.
+
 ## Six peaux, dont quatre qui changent l'interface
 
 « Nuit » et « jour » étaient la même page en deux teintes. Une peau qui ne

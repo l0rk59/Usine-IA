@@ -263,7 +263,10 @@ def produire(ctx: Contexte, cible: str = "cli",
     ctx.journal("Etape 2/4 — generation et verification du code...")
     fichiers, rapports = _ecrire_et_verifier(ctx, specification, cible)
     synthese = verification.synthese(rapports)
-    ctx.etape("code", "ok" if synthese["tout_valide"] else "echec",
+    # Le verificateur a tourne : c'est une anomalie, pas une etape perdue. La
+    # relancer ne regenererait pas le code — elle refait la meme verification
+    # sur les memes fichiers.
+    ctx.etape("code", "ok" if synthese["tout_valide"] else "anomalie",
               "{}/{} fichiers valides".format(synthese["valides"],
                                               synthese["fichiers"]))
 

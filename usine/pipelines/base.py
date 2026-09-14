@@ -227,7 +227,37 @@ class Contexte:
             audience=self.audience,
         )
 
-    def etape(self, nom: str, statut: str = "ok", detail: str = "") -> None:
+    def etape(self, nom: str, statut: str = "ok", detail: str = "",
+              essentiel: bool = True) -> None:
+        """Note une etape. Un echec ESSENTIEL rend le produit invendable.
+
+        « essentiel » vaut True par defaut, et c'est le sens qu'il faut :
+        une chaine qui oublie d'y penser fait du bruit plutot que du silence.
+        Le silence est le defaut qu'on corrige ici — sept chaines sur neuf
+        avalaient une etape perdue, ecrivaient une ligne de journal, et
+        livraient un produit marque « pret ».
+
+        Une illustration ratee, un quiz manquant, une sequence e-mail
+        indisponible ne rendent pas un produit invendable : ces etapes-la se
+        declarent « essentiel=False ». Elles restent notees et dites — mais
+        un garde-fou qui crie a tort finit ignore, et « usine reprendre »
+        n'aurait bientot plus signale que du bruit.
+
+        Trois statuts, et la difference compte :
+
+        | | |
+        |---|---|
+        | `ok` | l'etape a tourne, rien a signaler |
+        | `echec` | l'etape N'A PAS PU tourner : il manque son resultat |
+        | `anomalie` | l'etape a tourne et a TROUVE quelque chose |
+
+        Les deux derniers etaient confondus sous « echec », et le controle de
+        continuite d'un roman se retrouvait dans les sections a refaire — ou
+        « usine reprendre » serait alle reecrire une scene qui existe, sans
+        jamais corriger l'anomalie, qu'aucune reecriture ne corrige.
+        """
+        if statut == "echec" and not essentiel:
+            statut = "echec-optionnel"
         if self.produit_id:
             store.journal_etape(self.produit_id, nom, statut, detail)
 
@@ -388,7 +418,40 @@ def terminer(ctx: Contexte, fichiers: List[Path], meta: Optional[Dict[str, Any]]
     # comme les autres, et se presentait au catalogue, au tableau de bord et
     # a « usine livrer » sans rien signaler. On le laisse « en_cours », ce qui
     # le fait apparaitre « inacheve » et le rend reprenable.
+    # Les etapes perdues en cours de route, relues du journal. Chaque chaine
+    # les note deja par « ctx.etape(..., "echec") » ; personne ne les relisait,
+    # donc « terminer » ne voyait que le « manquants » que deux chaines sur
+    # neuf prenaient la peine de remplir. Le mecanisme etait juste, c'est son
+    # alimentation qui manquait.
+    #
+    # Le DERNIER statut de chaque etape gagne : une etape qui a echoue puis
+    # reussi a la reprise n'est pas un trou. Prendre n'importe quel echec
+    # aurait marque inacheve tout produit ayant connu une seule erreur
+    # rattrapee — un garde-fou qui crie a tort finit ignore.
+    dernier: Dict[str, str] = {}
+    for pas in store.etapes_produit(ctx.produit_id):
+        dernier[str(pas.get("nom") or "")] = str(pas.get("statut") or "")
+    perdues = sorted(n for n, s in dernier.items() if s == "echec")
+    facultatives = sorted(n for n, s in dernier.items() if s == "echec-optionnel")
+    # Un controle qui a TROUVE quelque chose : le produit est complet, et
+    # quelque chose cloche dedans. Ni un trou ni un silence — sans cette
+    # ligne, une anomalie de continuite ne vivait que dans le defilement du
+    # terminal, c'est-a-dire nulle part sur un telephone.
+    anomalies = sorted(n for n, s in dernier.items() if s == "anomalie")
+    if anomalies:
+        infos["anomalies"] = anomalies
+        ctx.journal("[!] {} controle(s) ont trouve quelque chose : {}. Le "
+                    "produit est complet — c'est son contenu qu'il faut "
+                    "regarder.".format(len(anomalies), ", ".join(anomalies[:6])))
+    if facultatives:
+        infos["incomplets"] = facultatives
+        ctx.journal(
+            "[!] {} etape(s) facultative(s) perdue(s) : {}. Le produit reste "
+            "vendable — relancez la commande pour les obtenir."
+            .format(len(facultatives), ", ".join(facultatives[:6])))
+
     manquants = [str(m) for m in (infos.get("manquants") or [])]
+    manquants += [n for n in perdues if n not in manquants]
     if manquants:
         infos["manquants"] = manquants
         ctx.journal(

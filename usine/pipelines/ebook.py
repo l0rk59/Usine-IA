@@ -241,9 +241,19 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False) -> Dict[str, Any]:
             sections.append((chapitre["titre"], _repli(chapitre)))
             continue
         except Exception as exc:
-            ctx.journal("     echec : {} — chapitre conserve en resume".format(exc))
-            ctx.etape("chapitre-{}".format(index + 1), "echec", str(exc))
-            corps, auteur = _repli(chapitre), ""
+            # Ce chapitre-ci est remplace par son plan, mais la fabrication
+            # continue : une panne passagere sur un chapitre ne doit pas
+            # emporter le livre. Il faut en revanche le traiter comme les
+            # deux cas au-dessus — sinon le repli descendait jusqu'au carnet
+            # et s'y inscrivait comme un chapitre ecrit, marque « ok » en
+            # sortie de boucle. Le livre se livrait « pret », et « usine
+            # reprendre » ne refaisait jamais ce chapitre-la : le plan
+            # partait chez l'acheteur a sa place, definitivement.
+            ctx.journal("     echec : {} — chapitre a refaire".format(exc))
+            manquants.append(repere)
+            ctx.etape(repere, "echec", str(exc))
+            sections.append((chapitre["titre"], _repli(chapitre)))
+            continue
         else:
             # 1. Controle local : gratuit, instantane, reproductible. Les defauts
             #    mesurables sont corriges ici, sans consulter de relecteur IA.
@@ -322,8 +332,12 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False) -> Dict[str, Any]:
             for souci in ensemble["incoherences"][:4]:
                 ctx.journal("    [{}] {}".format(souci["gravite"],
                                                  souci["probleme"][:90]))
+        # Une mesure, pas un chapitre : un livre dont la relecture d'ensemble
+        # n'a pas pu tourner reste un livre entier. Le marquer inacheve
+        # enverrait « usine reprendre » refaire un livre complet pour une
+        # mesure manquante.
         ctx.etape("ensemble", "ok" if ensemble.get("disponible") else "echec",
-                  ensemble.get("resume", ""))
+                  ensemble.get("resume", ""), essentiel=False)
 
     # Le lecteur : la seule voix qui ne juge pas le metier. Tout le reste de
     # l'usine juge le TEXTE ; personne ne demandait s'il est comprehensible
@@ -351,7 +365,7 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False) -> Dict[str, Any]:
                 ctx.journal("    jamais expliques : "
                             + ", ".join(lecture["mots_non_expliques"][:6]))
         ctx.etape("lecteur", "ok" if lecture.get("disponible") else "echec",
-                  lecture.get("resume", ""))
+                  lecture.get("resume", ""), essentiel=False)
 
     ctx.journal("Etape 5/5 — mise en forme et export...")
     fichiers = exporter(ctx, plan, sections)

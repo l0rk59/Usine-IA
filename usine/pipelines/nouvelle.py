@@ -1282,8 +1282,13 @@ def produire(ctx: Contexte, serie: str = "",
         for preuve in anomalie.get("preuves") or []:
             ctx.journal("        {} : « {} »".format(
                 preuve["section"], preuve["extrait"][:110]))
+    # « anomalie » et non « echec » : le controle a bien tourne, c'est son
+    # verdict qui est negatif. Sous « echec », il entrait dans les sections a
+    # refaire, et « usine reprendre » serait alle reecrire des scenes qui
+    # existent — sans jamais corriger la contradiction, qu'aucune reecriture
+    # ne corrige.
     ctx.etape("continuite",
-              "ok" if not continuite["majeures"] else "echec",
+              "ok" if not continuite["majeures"] else "anomalie",
               continuite["resume"])
     (dossier / "continuite.json").write_text(
         json.dumps({"continuite": continuite, "memoires": memoires},

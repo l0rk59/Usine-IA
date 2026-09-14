@@ -83,6 +83,7 @@ def produire(ctx: Contexte, nombre: int = 4) -> Dict[str, Any]:
                        total=len(systeme["bases"]))
 
     ctx.journal("Etape 2/3 — guide d'installation...")
+    perdu = ""
     try:
         guide = equipe.REDACTEUR.travailler(ctx, (
             "Systeme : « {titre} »\nBASES : {bases}\n\n"
@@ -94,10 +95,18 @@ def produire(ctx: Contexte, nombre: int = 4) -> Dict[str, Any]:
         ).format(titre=titre, bases=" ; ".join(b["nom"] for b in systeme["bases"])),
             max_tokens=2200).texte
     except Exception as exc:
+        perdu = str(exc)
         ctx.journal("  guide indisponible : {}".format(exc))
+        # Le guide est remplace par la liste des etapes de mise en route :
+        # quelques puces la ou l'acheteur attend un mode d'emploi. Sans le
+        # dire, le produit se presentait « pret » avec ce trou dedans.
         guide = "## Mise en route\n\n" + "\n".join(
             "1. " + str(e) for e in systeme.get("mise_en_route", []))
-    ctx.etape("guide")
+    # « ctx.etape("guide") » tout court valait « ok » — meme apres l'echec,
+    # puisque l'appel est hors du « except ». Le meme defaut se cachait dans
+    # la formation : noter le resultat APRES coup, sans regarder ce qui vient
+    # de se passer, revient a ne rien noter.
+    ctx.etape("guide", "echec" if perdu else "ok", perdu)
 
     ctx.journal("Etape 3/3 — export...")
     fichiers = _exporter(ctx, systeme, guide)

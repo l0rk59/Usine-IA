@@ -257,16 +257,24 @@ def produire(ctx: Contexte, modules: int = 0,
     for index, module in enumerate(programme["modules"]):
         ctx.journal("  [{}/{}] {}".format(index + 1, len(programme["modules"]),
                                           module["titre"]))
+        perdu = ""
         try:
             corps = _rediger_module(ctx, programme, index, module)
         except Exception as exc:
+            perdu = str(exc)
             ctx.journal("     echec : {}".format(exc))
-            ctx.etape("module-{}".format(index + 1), "echec", str(exc))
+            # Le module est remplace par son PLAN : quelques puces la ou
+            # l'acheteur attend une lecon. C'est un trou, pas un module.
             corps = "## Objectif\n\n{}\n\n## Notions\n\n{}".format(
                 module["objectif"], "\n".join("- " + n for n in module["notions"])
             )
         contenus.append(("Module {} — {}".format(index + 1, module["titre"]), corps))
-        ctx.etape("module-{}".format(index + 1), "ok")
+        # Un seul appel, et apres coup. La version d'avant notait « echec »
+        # dans la branche d'erreur puis « ok » deux lignes plus bas, hors du
+        # « else » : le dernier statut ecrasait le premier, et le module
+        # remplace par son plan passait pour un module ecrit.
+        ctx.etape("module-{}".format(index + 1),
+                  "echec" if perdu else "ok", perdu)
 
     ctx.journal("Etape 3/5 — quiz d'auto-evaluation...")
     try:
@@ -276,7 +284,7 @@ def produire(ctx: Contexte, modules: int = 0,
         ctx.journal("  quiz indisponible : {}".format(exc))
         questions = []
     ctx.etape("quiz", "ok" if questions else "echec",
-              "{} question(s)".format(len(questions)))
+              "{} question(s)".format(len(questions)), essentiel=False)
 
     scripts: List[Tuple[str, str]] = []
     if narration:
@@ -287,7 +295,7 @@ def produire(ctx: Contexte, modules: int = 0,
             ctx.journal("  narration indisponible : {}".format(exc))
             scripts = []
         ctx.etape("narration", "ok" if scripts else "echec",
-                  "{} script(s)".format(len(scripts)))
+                  "{} script(s)".format(len(scripts)), essentiel=False)
 
     ctx.journal("Etape {} — sequence e-mail de livraison...".format(
         "5/6" if narration else "4/5"))
@@ -296,7 +304,8 @@ def produire(ctx: Contexte, modules: int = 0,
     except Exception as exc:
         ctx.journal("  sequence e-mail indisponible : {}".format(exc))
         emails = []
-    ctx.etape("emails", "ok" if emails else "echec", "{} e-mails".format(len(emails)))
+    ctx.etape("emails", "ok" if emails else "echec",
+              "{} e-mails".format(len(emails)), essentiel=False)
 
     ctx.journal("Etape {} — export...".format("6/6" if narration else "5/5"))
     fichiers = _exporter(ctx, programme, contenus, emails, questions, scripts)
