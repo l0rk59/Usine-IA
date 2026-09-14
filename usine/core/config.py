@@ -332,6 +332,49 @@ PROVIDERS: List[Provider] = [
         notes="GitHub Models : gratuit avec un simple token GitHub.",
     ),
     Provider(
+        name="opencode",
+        base_url="https://opencode.ai/zen/go/v1",
+        api_key_env="OPENCODE_API_KEY",
+        # ATTENTION — ce fournisseur n'expose AUCUN endpoint « /v1/models ».
+        # (Demande faite puis fermee : anomalyco/opencode, issue 2901.)
+        #
+        # C'est la seule entree de cette liste dans ce cas, et cela change
+        # quelque chose d'important : « core/modeles.py » relit le catalogue
+        # vivant de chaque fournisseur pour rattraper un identifiant renomme.
+        # Ici il n'y a rien a relire. Un modele renomme se verra donc en 404
+        # nomme par le routeur — ce qui reste le bon comportement, mieux vaut
+        # une panne nommee qu'un chapitre ecrit par un modele d'embeddings —
+        # mais sans correction automatique. C'est exactement le defaut qui
+        # avait rendu une cle NVIDIA valide inutilisable pendant des jours.
+        #
+        # Identifiants RELEVES DE LA DOCUMENTATION le 14/09/2026, et non
+        # d'un catalogue interroge : donnee perissable au carre. Le premier
+        # appel reel dira s'ils sont justes.
+        models={
+            "rapide": "glm-5.3-flash",
+            "standard": "glm-5.3",
+            "costaud": "kimi-k3",
+            "long": "minimax-m3",
+            "creatif": "kimi-k3",
+            "code": "qwen3.8-max",
+            "raisonnement": "deepseek-v4-pro",
+        },
+        # Les plafonds d'OpenCode Go ne se comptent pas en requetes mais en
+        # DOLLARS : 20 % du mensuel par tranche de cinq heures, 50 % par
+        # semaine, 100 % par mois (documentation du 14/09/2026). Le routeur,
+        # lui, compte des requetes. Les valeurs ci-dessous sont donc une
+        # prudence, pas une transcription : elles evitent de vider une
+        # tranche de cinq heures en quelques minutes de fabrication continue.
+        # Le vrai garde-fou reste le compteur d'OpenCode, et le routeur
+        # basculera sur un autre fournisseur des le premier refus.
+        rpm=20,
+        rpd=600,
+        signup="https://opencode.ai/go (abonnement payant, ~10 $/mois)",
+        notes="OpenCode Go : une trentaine de modeles ouverts derriere une "
+              "seule cle, compatible OpenAI. Plafonds en dollars, pas en "
+              "requetes — et pas de catalogue interrogeable.",
+    ),
+    Provider(
         name="nvidia",
         base_url="https://integrate.api.nvidia.com/v1",
         api_key_env="NVIDIA_API_KEY",

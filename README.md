@@ -1,1296 +1,359 @@
 # Usine-IA
 
-**Fabrique de produits digitaux générés par IA, conçue pour tourner sur un téléphone Android via Termux.**
+**Une fabrique de produits digitaux qui tourne sur un téléphone Android, sous
+Termux.**
 
-Vous donnez un sujet. Une équipe de sept agents construit le plan, rédige le
-contenu, **le fait relire par un autre modèle**, corrige, met en page un PDF et
-un EPUB, dessine la couverture, écrit la page de vente et emballe le tout dans
-une archive prête à mettre en ligne.
+Vous donnez un sujet — ou vous n'en donnez pas, et l'usine le cherche
+elle-même. Treize agents construisent le plan, rédigent, **font relire le texte
+par un autre modèle que celui qui l'a écrit**, corrigent, mesurent, mettent en
+page un PDF et un EPUB, dessinent la couverture, écrivent la page de vente, et
+emballent le tout dans une archive prête à mettre en ligne.
 
 ```bash
-usine                 # menu interactif — l'entrée recommandée sur mobile
-usine ebook "la prospection pour freelances débutants" --marketing --zip
-usine nouvelle "un gardien de phare et le dernier hiver" -T court
-usine usine demarrer  # production en boucle, sous budget
-usine web             # tableau de bord 3D en temps réel
-python3 -m usine      # sans le raccourci dans le PATH
+usine ebook "la prospection pour freelances débutants"
 ```
+
+Dix à vingt-cinq minutes plus tard, vous avez un livre.
 
 ---
 
-## Ce qui rend ce projet utilisable sur un téléphone
+## La contrainte qui explique tout le reste
 
-| Contrainte Termux | Réponse retenue |
-|---|---|
-| `pip install` échoue souvent (compilation C) | **Zéro dépendance** : uniquement la bibliothèque standard Python |
-| `reportlab` ne compile pas | Moteur **PDF écrit à la main** (polices standard, images JPEG, sommaire) |
-| Pas de `Pillow` | Couvertures **SVG générées localement**, ou images via API sans clé |
-| Connexion mobile instable | **Bascule automatique** entre 10 fournisseurs IA + reprise sur cache |
-| Quotas gratuits serrés | Compteurs RPM/RPD en base, **cache SQLite** de chaque réponse |
-| Coupure réseau totale | Repli sur **IA locale** (ollama / llama.cpp) |
-| Pas de CDN hors ligne | Moteur **3D WebGL écrit à la main**, zéro bibliothèque |
-| Clavier virtuel pénible | **Menu interactif** : tout se fait avec des numéros |
-| Android endort Termux, la batterie se vide | **Verrou de veille** pendant la fabrication, **notification** quand c'est prêt, arrêt sous 20 % |
+**Rien hors de la bibliothèque standard de Python.** Pas de `pip install`, pas
+de CDN, pas de Node, pas de Java.
+
+Termux ne sait pas compiler de roue native, et une dépendance ajoutée par
+mégarde ne se voit qu'au moment où quelqu'un installe sur un téléphone neuf —
+c'est-à-dire trop tard.
+
+C'est pourquoi les moteurs PDF et EPUB sont écrits à la main, pourquoi la
+conformité EPUB 3 est refaite en Python plutôt que d'appeler EPUBCheck (qui est
+un programme Java), et pourquoi le tableau de bord 3D n'utilise aucune
+bibliothèque graphique.
+
+Le prix est réel : le PDF ne sait écrire que l'alphabet latin, et il le
+[dit quand il rencontre autre chose](docs/CARACTERES.md). Le gain l'est aussi :
+l'installation tient en une commande sur un appareil que tout le monde a déjà
+dans la poche.
 
 ---
 
 ## Installation
 
-```bash
-pkg install git python
-git clone https://github.com/l0rk59/usine-ia.git
-cd usine-ia
-bash install.sh
-```
-
-L'installeur vérifie Python, crée le `.env`, installe la commande `usine`
-et lance une vérification. Aucune bibliothèque tierce n'est téléchargée.
-
-### Le menu, plutôt que des commandes
+### Sur Termux (Android)
 
 ```bash
-usine
+pkg update -y && pkg install -y python git openssl ca-certificates
+termux-setup-storage
+git clone https://github.com/l0rk59/Usine-IA.git
+cd Usine-IA && bash install.sh
 ```
 
-Sans argument, sur un terminal, l'usine ouvre un menu numéroté : choisir le
-type de produit, saisir le sujet, régler le ton et la qualité, lancer. Aucune
-option à mémoriser. Les commandes restent disponibles pour l'automatisation.
+`install.sh` installe la commande `usine`, crée le dossier de travail, et
+termine par la liste de ce qui manque encore sur **cet** appareil.
 
-### Obtenir une clé gratuite (2 minutes)
+### Sur Linux ou macOS
+
+La même chose, sans les deux premières lignes. Python 3.9 minimum.
+
+### Une clé API
+
+L'usine tourne sans clé, sur le quota anonyme partagé de Pollinations — mais il
+ne suffit pas à un produit entier. Sept services gratuits sont préconfigurés :
 
 ```bash
-usine cles      # affiche les liens et le format de chaque clé
-nano .env       # collez-en au moins une
-usine docteur   # vérifie que tout répond
+usine cles          # les liens pour en obtenir, un par un
+nano .env           # coller la clé sur la bonne ligne
+usine docteur       # vérifier que l'usine peut produire
 ```
 
-Une seule clé suffit. Avec deux ou trois, l'usine bascule automatiquement
-quand un quota est atteint et ne s'arrête jamais au milieu d'un livre.
+Une seule clé suffit pour commencer. L'usine en accepte plusieurs par
+fournisseur et bascule toute seule quand l'une sature.
 
-| Fournisseur | Gratuit | Carte bancaire | Pourquoi le prendre |
+---
+
+## Le premier produit
+
+```bash
+usine ebook "la facturation pour indépendants"
+```
+
+Et si vous ne savez pas quoi vendre :
+
+```bash
+usine ebook
+```
+
+Sans sujet, l'usine en cherche un : elle propose des domaines, les **mesure**
+sur des sources publiques, écarte ceux dont la demande ne se voit pas, et part
+du mieux placé. Le détail : [docs/NICHE.md](docs/NICHE.md).
+
+---
+
+## Ce qu'elle sait fabriquer
+
+| Commande | Produit | Ce que vous recevez | Durée |
 |---|---|---|---|
-| [Groq](https://console.groq.com/keys) | oui | non | le plus rapide |
-| [Google AI Studio](https://aistudio.google.com/apikey) | oui | non | contexte 1M, idéal pour les longs livres |
-| [Cerebras](https://cloud.cerebras.ai/) | oui | non | très rapide, quota généreux |
-| [Mistral](https://console.mistral.ai/api-keys/) | oui | non | excellent en français |
-| [OpenRouter](https://openrouter.ai/keys) | oui | non | beaucoup de modèles `:free` |
-| [GitHub Models](https://github.com/settings/tokens) | oui | non | un simple token GitHub |
-| [NVIDIA NIM](https://build.nvidia.com/) | oui | non | crédits renouvelés |
-| Pollinations | oui | **aucune inscription** | dernier recours, quota étroit par IP |
+| `usine ebook` | Ebook complet | PDF + EPUB + HTML + Markdown + couverture | 10–25 min |
+| `usine nouvelle` | Nouvelle | Fiction courte, personnages et continuité tenus | 12–30 min |
+| `usine roman` | Roman | Trente scènes, en parties, continuité contrôlée | 60–180 min |
+| `usine formation` | Mini-formation | Manuel + cahier d'exercices + séquence e-mail | 12–25 min |
+| `usine prompts` | Pack de prompts | Bibliothèque classée, PDF + CSV + JSON | 5–12 min |
+| `usine outils` | Boîte à outils | Checklists, modèles, tableaux de suivi | 6–14 min |
+| `usine modeles` | Modèles Notion / tableur | Bases liées, prêtes à importer | 5–12 min |
+| `usine impression` | Cahier imprimable | Fiches à remplir, A4 et Lettre US | 5–12 min |
+| `usine social` | Pack de publications | Calendrier éditorial + visuels | 5–15 min |
+| `usine logiciel` | Outil logiciel | Un programme qui démarre, vérifié avant livraison | 8–20 min |
+| `usine idees` | Étude de niche | Pistes chiffrées, appuyées sur des mesures | 2–4 min |
 
-> **Sans aucune clé**, l'usine fonctionne quand même via Pollinations — mais son
-> quota anonyme est partagé par adresse IP et s'épuise vite. C'est fait pour
-> essayer, pas pour produire en volume.
-
-### Ne jamais être bloqué par un quota
-
-Déclarez toutes les clés que vous possédez, y compris plusieurs pour un même
-fournisseur :
-
-```
-GROQ_API_KEY=cle_une,cle_deux
-GEMINI_API_KEY_2=une_autre_cle
-```
-
-Le pool répartit la charge sur la clé la moins sollicitée, met au repos celle
-qui refuse (2 min sur un 429, 1 h sur un 401 ou un 402) et passe à la suivante
-— sans faire tomber le fournisseur entier. Les clés ne sont **jamais** écrites
-en base ni dans un journal : seule une empreinte tronquée circule.
-
-> L'usine ne crée **pas** de comptes automatiquement pour contourner un quota :
-> c'est interdit par les CGU de tous les fournisseurs et cela fait bannir
-> l'appareil. L'addition de sept services gratuits donne davantage de quota,
-> sans aucun risque. Voir [docs/SECURITE.md](docs/SECURITE.md).
-
-### Hors ligne, IA locale
-
-```bash
-pkg install ollama
-ollama serve &
-ollama pull qwen2.5:3b     # ~2 Go, correct dès 4 Go de RAM
-usine ebook "mon sujet" --hors-ligne
-```
-
-L'IA locale est **toujours placée en dernier** dans la chaîne de bascule, comme
-demandé : elle prend le relais seulement quand les API distantes sont
-indisponibles. Pour l'utiliser en priorité : `USINE_LOCAL_FIRST=1` dans le `.env`.
+Le détail de chacun : [docs/TYPES-PRODUITS.md](docs/TYPES-PRODUITS.md). Pour la
+fiction, qui suit une chaîne à part : [docs/FICTION.md](docs/FICTION.md). Pour
+les produits logiciels : [docs/LOGICIEL.md](docs/LOGICIEL.md).
 
 ---
 
-## Les produits fabricables
+## Trois façons de s'en servir
 
-| Commande | Produit | Contenu livré |
-|---|---|---|
-| `usine ebook` | Ebook complet | PDF, EPUB, HTML, Markdown, TXT, couverture |
-| `usine nouvelle` | **Fiction courte** | Bible, **mémoire d'une scène à l'autre**, fils tendus, contrôle de continuité |
-| `usine prompts` | Pack de prompts | PDF, CSV (import Notion), JSON, HTML |
-| `usine formation` | Mini-formation | Manuel PDF, cahier d'exercices, **quiz auto-corrigé**, script de narration, séquence e-mail |
-| `usine outils` | Boîte à outils | Checklists imprimables, modèles, tableaux CSV |
-| `usine modeles` | **Modèles Notion / tableur** | Bases liées, CSV prêts à importer, vues |
-| `usine impression` | **Cahier imprimable** | Plannings et fiches à remplir, A4 **et** Lettre US, marge de reliure |
-| `usine social` | Pack de publications | Calendrier CSV, posts, visuels optionnels |
-| `usine logiciel` | **Outil logiciel** | Code source **vérifié**, CLI, app web ou extension Chrome |
-| `usine idees` | Étude de niche | 12 idées appuyées sur des **mesures de marché réelles** |
-| `usine marche` | Signaux de marché | demande, concurrence, tendance — 4 sources sans clé |
-| `usine veille` | **Ce que les gens disent** | communautés, formulations de problème, leur vocabulaire |
-| `usine bilan` | Mémoire de l'usine | ce que vos productions révèlent sur vos réglages |
-| `usine doublons` | **Anti-répétition** | les produits qui se recouvrent, avant qu'un acheteur ne le voie |
-| `usine ventes` | **Ce qui rapporte** | import Gumroad/Etsy, chiffre d'affaires par niche, prix réels |
-| `usine sauvegarde` | Mettre à l'abri | ventes et historique dans une archive — le reste se refabrique ([docs/SAUVEGARDE.md](docs/SAUVEGARDE.md)) |
-| `usine complet` | **Offre complète** | Ebook + 2 bonus + kit de vente + archive ZIP |
-| `usine file` | File de production | les niches en attente de fabrication |
-| `usine usine` | **Usine continue** | produit en boucle, sous budget, jusqu'à l'arrêt |
-| `usine ab` | Tests A/B | variantes de titres et de couvertures, verdict honnête |
-
-`modeles` et `impression` sont, d'après les classements 2026 des places de
-marché, les produits digitaux les plus vendus après l'ebook. `logiciel` est le
-seul dont le livrable peut être **faux plutôt que médiocre** : rien n'en sort
-sans avoir été analysé, réparé si besoin, et — pour un outil en ligne de
-commande — réellement exécuté.
-
-**Un seul endroit les déclare** : `usine/pipelines/catalogue.py`. La CLI, le
-menu, la file de production, le tableau de bord et l'explorateur de niches le
-lisent. Avant, la liste était recopiée dans sept fichiers — et deux avaient déjà
-divergé : l'explorateur de niches ne connaissait ni `impression` ni `modeles`,
-et convertissait silencieusement ces idées en ebooks.
-
-« Vrai type » signifie : une chaîne de fabrication qui lui est propre. C'est la
-différence entre dix types et une énumération de soixante.
-Voir [docs/TYPES-PRODUITS.md](docs/TYPES-PRODUITS.md).
-
-### Exemples
-
-```bash
-# Trouver quoi vendre
-usine idees "le jardinage urbain" -n 15
-
-# Un ebook long, ton pédagogue, avec kit de vente et archive
-usine ebook "cultiver sur un balcon" -T long -t pedagogue --marketing --zip
-
-# 80 prompts pour community managers, fiche Etsy
-usine prompts "la gestion de réseaux sociaux" -n 80 --marketing --plateforme etsy
-
-# Une offre complète, sans rien télécharger
-usine complet "la méditation pour parents débordés" --hors-ligne
-
-# 30 posts LinkedIn avec 10 visuels générés
-usine social "le freelancing" -r linkedin -n 30 --visuels 10
-
-# Un outil en ligne de commande, vérifié et réellement lancé avant livraison
-usine logiciel "le nettoyage de fichiers en double" -c cli
-
-# Une application web autonome, qui marche hors connexion
-usine logiciel "le calcul de tarif pour freelances" -c web
-```
-
-### Options communes
-
-```
--a, --audience   à qui s'adresse le produit
--t, --ton        expert | amical | pro | punchy | pedagogue
--T, --taille     mini (6 ch.) | court (8) | standard (12) | long (18)
--q, --qualite    rapide (0 relecture) | standard (1) | exigeant (2)
-    --auteur     nom affiché comme auteur
-    --relecture-ensemble  cherche les contradictions entre chapitres (ebook)
-    --narration  script à lire à voix haute (formation, 1 appel IA/module)
-    --reliure MM marge intérieure pour l'impression à la demande (impression)
-    --marketing  générer aussi le kit de vente (dont l'extrait offert)
-    --extrait N  chapitres de l'édition courte offerte (défaut : un quart)
-    --plateforme gumroad | etsy | payhip | site
-    --zip        produire l'archive livrable
-    --hors-ligne ne rien télécharger
-    --sans-image ne pas générer d'images
-```
-
-### Réglages : ne rien retaper
-
-```bash
-usine reglages                                      # tout voir
-usine reglages --definir auteur="Votre Nom" qualite=exigeant marque="Atelier"
-```
-
-Auteur, marque, contact, ton, volume, qualité, plateforme, thème du tableau de
-bord : enregistrés une fois dans `atelier/reglages.json` et repris par toutes
-les commandes. Une option passée en ligne de commande reste prioritaire.
-
----
-
-## Mesurer, plutôt que déclarer
-
-### Le contrôle local — sans appel IA
-
-Beaucoup de défauts se **comptent** : tics d'écriture, répétitions en
-n-grammes, phrases toutes de la même longueur, chiffres précis sans source,
-promesses de résultat, volume, structure. L'usine les mesure en Python —
-instantané, gratuit en quota, et reproductible au centième.
-
-Le relecteur IA n'intervient qu'**ensuite**, sur ce qui demande un jugement.
-Conséquence : un défaut mesurable coûte un appel (la correction) au lieu de
-deux (la détection puis la correction).
-
-```
-   rédaction
-      │
-   contrôle local  ──►  0 appel IA, consignes déjà précises
-      │
-   correction      ──►  1 appel
-      │
-   relecture IA    ──►  pertinence, progression, promesse tenue
-```
-
-Étalonnage : un texte rédigé avec exemples et rythme varié obtient **10/10** ;
-une sortie générique de modèle obtient **0 à 2/10**. Détails et seuils dans
-[docs/QUALITE.md](docs/QUALITE.md).
-
-### Le quiz d'une formation se corrige tout seul
-
-Une mini-formation sort avec `quiz.html` : deux questions à choix unique par
-module, corrigées **dans le navigateur, hors ligne, sans bibliothèque**. La
-page dit ce qui est faux, donne la bonne réponse et explique pourquoi.
-
-Un seul appel de modèle pour toute la formation — il voit alors la
-progression entière et évite de poser deux fois la même question sous deux
-formes. Les réponses hors bornes ou les questions à une seule proposition
-sont écartées : une page qui annonce « la bonne réponse était *undefined* »
-part chez un acheteur.
-
-Chaque question est un `fieldset` avec sa `legend`, chaque proposition une
-vraie case radio étiquetée, et les verdicts sont annoncés au lecteur d'écran.
-Les deux teintes de verdict sont déclarées dans la table de contraste et
-vérifiées comme les autres.
-
-### Le code généré est vérifié, pas supposé correct
-
-Un ebook maladroit se vend quand même. Un script qui ne démarre pas se fait
-rembourser. `usine logiciel` est donc le seul type dont **rien n'est livré sans
-avoir été vérifié**.
-
-```
-   génération d'un fichier
-      │
-   analyse statique   ──►  syntaxe + appels système, réseau, eval,
-      │                    écritures hors du dossier de travail
-   réparation         ──►  l'erreur exacte est renvoyée au modèle
-      │
-   exécution réelle   ──►  bac à sable, limite de temps — cible « cli »
-                           uniquement, et seulement si l'analyse est propre
-```
-
-L'exécution n'a lieu que sur du code dont l'arbre syntaxique ne contient rien
-de dangereux : ce code vient d'un modèle, pas de vous, et un `os.system` généré
-par accident dans un exemple effacerait le téléphone. Six échantillons hostiles
-écrits pour l'analyseur — `os.system`, `shutil.rmtree`, `eval`, socket,
-`subprocess`, écriture sur chemin absolu — sont tous refusés.
-
-L'outil livré est lancé deux fois avant la mise en carton : `--help`, puis les
-tests unitaires générés avec lui. Le rapport complet part avec le produit, dans
-`verification.json` : le contrat annoncé à l'acheteur est **contrôlable**, pas
-seulement affirmé.
-
-> Catalyst, le dépôt dont cette usine reprend les idées, assemblait le code
-> renvoyé par le modèle et le déclarait livrable. Aucune vérification de
-> syntaxe, à aucun moment. Voir [docs/LOGICIEL.md](docs/LOGICIEL.md).
-
-### La couverture est composée ici, et son contraste est mesuré
-
-Chaque produit sortait avec une couverture générée par Pollinations. Au palier
-anonyme, ce service **appose un filigrane `pollinations.ai` sur chaque image** —
-`nologo` n'a aucun effet sans jeton, vérifié image à l'appui. Une couverture
-filigranée ne se vend pas : la place de marché la refuse, ou l'acheteur la
-prend pour une contrefaçon.
-
-Le plus gênant n'était pas l'erreur mais qu'elle soit **écrite dans le fichier
-qui la commettait** : `usine/core/images.py` documentait en tête, en majuscules,
-pourquoi ces images ne pouvaient pas servir de couverture — puis appelait
-Pollinations par défaut, à chaque produit.
-
-La couverture est désormais **dessinée localement**, sans réseau ni dépendance :
-une fonte capitale écrite en polygones, un rasteriseur, cinq mises en page et
-huit palettes.
-
-```
-couverture.png     1200 × 1800 — Gumroad, Etsy, KDP n'acceptent pas le SVG
-couverture.svg     même géométrie, vectorielle, pour retoucher
-<produit>.pdf      la couverture occupe la première page, pleine page
-```
-
-**Le contraste n'est plus décrété, il est calculé.** L'ancienne version prenait
-la couleur du sous-titre dans la palette : sur le fond prune, cela donnait du
-rose sur du rose — 1,4:1. L'encre est maintenant retenue par son rapport de
-contraste avec **ce qu'il y a vraiment derrière** — le dégradé, plus tout décor
-qui traverse la bande de texte. Un test rend chaque couverture deux fois, avec
-et sans son texte, et exige 4,5:1 (WCAG AA) sur les 40 combinaisons.
-
-> Pourquoi une fonte dessinée plutôt qu'embarquée, pourquoi pas de JPEG, et ce
-> que les tests ont trouvé : [docs/COUVERTURE.md](docs/COUVERTURE.md).
-
-### Les CSV livrés ne s'exécutent pas chez l'acheteur
-
-Un CSV produit par l'usine n'est pas un fichier de travail : les modèles
-Notion, le calendrier éditorial et les tableaux de la boîte à outils partent
-tels quels chez l'acheteur. Or Excel, LibreOffice et Google Sheets
-**interprètent comme une formule** toute cellule commençant par `=`, `+`, `-`
-ou `@`.
-
-Deux conséquences, l'une gênante et l'autre grave. Une cellule légitime comme
-« -50 % de temps passé » s'affichait `#NAME?` dans un fichier que l'acheteur a
-payé. Et le contenu vient d'un modèle nourri de titres Hacker News et de
-questions Stack Exchange récupérés sur internet : une cellule
-`=HYPERLINK(...)` s'exécute à l'ouverture, sur **sa** machine (CWE-1236).
-
-La parade tient en un caractère, invisible dans les trois tableurs. Vérifié en
-faisant traverser une charge hostile à quatre chaînes réelles : **87 cellules
-neutralisées, zéro exécutable**. Un test refuse par ailleurs toute écriture
-CSV qui ne passerait pas par le filtre.
-
-### Ce qui rapporte, et non plus seulement ce qui note bien
-
-L'usine mesurait la qualité, la durée, les appels consommés. Elle ne savait
-**rien de ce qui rapporte** : `usine bilan` pouvait répondre « quel ton donne
-vos meilleures notes » et jamais « quelle niche a payé ».
-
-```bash
-usine ventes --importer export.csv --sur gumroad   # colonnes reconnues, puis affichées
-usine ventes --rattacher                           # le nom en boutique → votre produit
-```
-
-L'importeur ne suppose aucun format : il cherche chaque champ par ses noms
-possibles et **montre ce qu'il a reconnu** — une correspondance devinée qu'on
-n'affiche pas est une erreur qu'on ne verra jamais. Point-virgule, virgule
-décimale, dates `jj/mm/aaaa` et statuts en français compris.
-
-Trois règles de prudence, parce qu'un chiffre d'affaires inventé est pire
-qu'un chiffre d'affaires absent : **pas de conversion** entre devises, **pas
-d'estimation** du net quand l'export ne le donne pas, **pas de doublon** si
-vous réimportez le même fichier.
-
-**Le prix cesse d'être inventé.** Le `prix_eur` d'une idée sortait du modèle :
-les quatre sources de marché mesurent la demande et la concurrence, aucune ne
-mesure un prix. Dès qu'un type compte trois ventes, l'étude de niche retient le
-médian réellement encaissé — et écrit d'où il vient.
-Détails : [docs/VENTES.md](docs/VENTES.md).
-
-### L'usine se souvient de ce qu'elle a écrit
-
-Le défaut n'apparaît qu'au volume : quatre produits par jour sur des niches
-voisines, c'est **trois fois le même livre avec des mots différents**. Ni le
-modèle ni le contrôle qualité ne peuvent le voir — chacun ne regarde qu'un
-produit à la fois, et chacun le trouve bon.
-
-La seule protection était une comparaison de chaînes : la file refusait le
-couple (sujet, type) déjà en attente. « La prospection pour freelances » et
-« Prospection freelance » y passaient sans encombre.
-
-Deux mesures, parce que deux choses différentes se répètent :
-
-- **le texte** — signature MinHash sur des groupes de 5 mots : taille fixe,
-  insensible à la longueur, robuste au remaniement ;
-- **le plan** — la charpente réduite à ses mots porteurs. C'est le cas
-  fréquent : deux livres sans une phrase en commun peuvent être le même livre.
-  `Chapitre 2 — Trouver vos premiers prospects` et `Étape 2 : trouver ses
-  premiers prospects` donnent la même entrée.
-
-```bash
-usine doublons          # sort en code 1 s'il trouve : bon pour une tâche planifiée
-```
-
-Le produit n'est pas bloqué — comparer avant supposerait de deviner ce que le
-modèle va écrire. Le quota est dépensé ; ce qu'on évite, c'est la mise en
-vente. Détails : [docs/DOUBLONS.md](docs/DOUBLONS.md).
-
-### Le sur-mesure, pas cinq tons pour tout un catalogue
-
-Cinq tons fermés et quatre volumes imposaient les mêmes réglages à tous les
-produits — ce qui est précisément ce qui les fait se ressembler.
-
-```bash
-usine ebook "la menuiserie du dimanche" \
-     --chapitres 7 --mots 900 \
-     -t "comme un vieux menuisier qui explique à son apprenti"
-usine ebook "un sujet" -T 15        # 15 sections, volume déduit
-```
-
-Les cinq tons restent des **raccourcis** : `-t punchy` vaut sa description,
-toute autre valeur passe telle quelle jusqu'à l'invite. Les valeurs absurdes
-sont bornées, pas refusées — aucun quota gratuit ne tient neuf cents
-chapitres.
-
-Le sur-mesure est accessible depuis les **trois** interfaces : la ligne de
-commande, le menu Termux (`autre...` / `sur mesure...`) et le tableau de bord.
-Sur un téléphone, une option absente du menu n'existe pas.
-
-#### Un réglage sur mesure doit aussi survivre au retour
-
-Enregistrer un ton sur mesure **par défaut** cassait les deux interfaces
-graphiques, chacune à sa manière — parce que l'une et l'autre cherchaient la
-valeur enregistrée dans une liste de raccourcis qui, par construction, ne la
-contient pas.
-
-| | Symptôme | Cause |
-|---|---|---|
-| Menu Termux | `ValueError` en ouvrant « Fabriquer un produit » | `tons.index(valeur)` |
-| Tableau de bord | le ton devenait `amical`, le volume `mini` | aucune `<option>` ne correspond : le navigateur retombe sur la première |
-
-Le second est le plus grave : **rien ne s'affiche**. Le produit part avec une
-voix et une longueur que personne n'a choisies.
-
-Les deux interfaces reproposent maintenant la valeur enregistrée dans le champ
-libre, pré-remplie. Le menu des réglages, lui, présente les raccourcis sous
-forme de liste au lieu d'un champ de saisie : `qualite` est une liste fermée —
-`rapidos` valait silencieusement `standard` partout — tandis que `ton` et
-`taille` gardent leur entrée libre.
-
-### L'usine choisit ses niches
-
-```bash
-usine file --explorer        # part de ce qui a le mieux rapporté
-```
-
-Un remplissage automatique existait : il partait du **dernier** produit
-fabriqué — son commentaire disait pourtant « les meilleures notes » —,
-explorait sans aucune mesure, et ne vérifiait pas si la piste avait déjà été
-traitée.
-
-Trois garde-fous maintenant : la graine vient de ce qui a **rapporté** (le
-revenu mesure le marché, la note mesure l'usine) ; l'exploration reçoit les
-quatre sources de marché **et** les discussions réelles ; et une piste trop
-proche d'un produit déjà fabriqué est écartée **avant** d'entrer en file — la
-file ne se dédoublonne que sur elle-même, et `usine doublons` ne rattrapait la
-répétition qu'après coup, le quota dépensé.
-
-### Aller voir ce que les gens disent
-
-Les quatre sources de marché mesurent des **volumes** : elles disent si une
-niche existe. Elles ne disent pas ce qui y fait mal, ni avec quels mots.
-
-```bash
-usine veille "freelance invoicing"
-```
-
-> `Leurs mots : freelancers (5), built (3), invoicing (2), tracking (2)`
-> `The tool I built after 10 years of chasing late payments`
-
-« chasing late payments » est une promesse produit écrite par quelqu'un qui a
-le problème. `usine idees` s'en sert déjà.
-
-**La recherche globale de Reddit ne marche pas** — vérifié : sur « meal
-planning for busy parents » elle rend des chatons dans une bouche d'égout et
-un séjour en Slovénie. Le chemin qui marche demande d'abord *qui* parle du
-sujet, puis lit ce qui s'y dit. Détails et limites :
-[docs/VEILLE.md](docs/VEILLE.md).
-
-### Les signaux de marché — sources réelles
-
-```bash
-usine marche "productivity"
-```
-
-Quatre sources publiques sans inscription : **Hacker News** (volume de
-discussions), **Wikipedia pageviews** (intérêt dans le temps — l'API Google
-Trends est fermée), **Stack Exchange** (questions non résolues), **Open
-Library** (concurrence éditoriale). Les mesures alimentent `usine idees`, qui
-raisonne dessus au lieu d'imaginer un marché.
-
-> Ces sources sont anglophones. Une requête en français y renvoie peu de
-> résultats — l'usine le détecte et le signale, au lieu de conclure « niche
-> trop étroite ». Voir [docs/MARCHE.md](docs/MARCHE.md).
-
-### La mémoire de production
-
-```bash
-usine bilan
-```
-
-Chaque produit laisse une trace mesurée : note, défauts restants, durée,
-appels consommés, réglages utilisés. Au bout de quelques produits, l'usine
-répond à des questions qu'aucun modèle ne peut trancher — quel ton donne vos
-meilleures notes, si la relecture vaut son coût chez vous, quel défaut revient
-assez souvent pour mériter une règle. Chaque conseil cite le nombre de
-productions sur lequel il s'appuie.
-
-## Tester des titres et des couvertures
-
-```bash
-usine ab creer --produit ebook-xxx --sur titre -n 5
-usine ab observer 2 --vues 910 --actions 58
-usine ab verdict 1
-```
-
-**Le chiffre à connaître : à 5 % de conversion, détecter un écart de 20 %
-demande environ 7 600 vues par variante.** Un vendeur qui fait 300 vues par
-mois ne l'atteindra jamais. Ce n'est pas une limite de l'outil, c'est la
-quantité d'information nécessaire pour distinguer un effet du hasard.
-
-La conséquence est assumée : **l'usine refuse de désigner un gagnant** tant
-que les données ne le permettent pas.
-
-```
-[A] Facturer mieux en travaillant moins    140 vues   5 ventes   3.6%    9%
-[B] Le systeme en 7 etapes du freelance    155 vues   9 ventes   5.8%   47%
-[C] Pourquoi votre agenda se vide          130 vues   4 ventes   3.1%    6%
-
-INDECIS — aucune variante ne se detache (47 % pour la mieux placee).
-```
-
-B fait presque le double de C, et il n'y a rien à conclure. Un outil qui
-annoncerait « B gagne » ici vous ferait refaire une couverture pour rien.
-
-La valeur immédiate est ailleurs :
-
-- **des variantes réellement différentes** — chaque titre est écrit sur un
-  angle imposé (bénéfice, méthode, problème, contraste, audience, délai), puis
-  l'outil **vérifie** la distinction : au-delà de 55 % de vocabulaire commun,
-  il le dit et régénère. Comparer cinq reformulations du même titre ne révèle
-  jamais rien ;
-- **un diagnostic local** de chaque titre, sans appel IA : chiffre, délai,
-  audience nommée, mots creux, longueur. Des faits, pas une prédiction de CTR ;
-- **une planche de comparaison** HTML qui met les variantes côte à côte.
-
-Statistiques : modèle beta-binomial, tirage **conjoint** sur toutes les
-variantes (ce qui évite le piège des comparaisons multiples), résultat graîné
-donc reproductible, et vérifié dans les tests contre une formule exacte
-indépendante.
-
-**Les chiffres viennent des ventes, plus de la saisie.** Renseignez la période
-pendant laquelle chaque variante était en ligne, et l'usine lui attribue les
-ventes réellement encaissées :
-
-```bash
-usine ab periode 3 --du 2026-07-01 --au 2026-07-30
-usine ab rythme 1
-```
-
-Les vues, elles, ne figurent dans aucun export — il faut les relever à l'écran,
-et l'usine ne les invente pas. Quand vous ne les avez pas, `usine ab rythme`
-compare des **rythmes de vente** : « 7 ventes en 14 jours » contre « 4 en 12 »
-n'est pas un problème binomial mais un comptage sur une durée, donc un modèle
-gamma-poisson, vérifié lui aussi contre une formule exacte.
-
-> Ce test est **séquentiel** : les variantes n'ont pas été exposées en même
-> temps, une semaine de vacances se confond avec l'effet du titre, et aucun
-> calcul ne répare cela. L'usine le dit à chaque verdict.
-
-> Les couvertures comparées sont celles de l'atelier local : **ce qui gagne le
-> test est ce qui part chez l'acheteur**. Avant, le test comparait des images
-> filigranées — quatre propositions dont aucune n'était vendable.
-> Détails : [docs/AB-TESTING.md](docs/AB-TESTING.md).
-
-## L'usine continue
-
-```bash
-usine file --ajouter "la prospection" "la gestion du temps"
-usine file --ajouter "50 prompts pour community managers" --type prompts --priorite 1
-usine usine demarrer --budget appels_jour=250 produits_jour=3
-usine usine statut          # depuis un autre terminal
-usine usine arreter
-```
-
-**La file vit en base, pas en mémoire.** C'est la décision qui compte sur
-Android : le système tue les processus en arrière-plan sans préavis. Relancer
-reprend exactement où l'usine s'était arrêtée, et une niche laissée « en
-cours » par une coupure revient en attente au démarrage suivant.
-
-**Le budget s'applique à trois niveaux.** Avant chaque produit — l'usine
-refuse d'en démarrer un qu'elle ne pourra pas finir. Avant chaque appel — une
-réponse servie par le cache n'est jamais refusée, elle ne coûte rien. Et
-pendant un produit : si un plafond tombe au dixième chapitre, **le livre sort
-quand même**, chapitres rédigés conservés, suivants réduits à leur plan, PDF et
-EPUB générés. Perdre neuf chapitres parce que le dixième a dépassé n'aurait
-aucun sens.
-
-`Ctrl+C` termine le produit en cours puis s'arrête ; un second coupe net. Un
-verrou PID empêche deux usines simultanées, et un verrou laissé par un
-processus tué est détecté comme orphelin puis nettoyé.
-
-**Le téléphone reste un téléphone.** L'usine prend le verrou de veille pour
-qu'Android ne l'endorme pas, previent par **notification** quand un produit
-sort — la taper ouvre le PDF — et **s'arrête au-dessus de 20 % de batterie**
-plutôt que de vider l'appareil. Le seuil se règle, et rien de tout cela n'est
-obligatoire : hors de Termux, ou sans `termux-api`, l'usine se comporte
-exactement comme avant.
-
-En `--auto`, quand la file se vide, l'usine explore de nouvelles niches à
-partir des sujets qui ont donné vos meilleures notes. Sans historique, elle le
-dit et s'arrête plutôt que d'inventer.
-
-Détails et recette Termux (`nohup`, batterie, notifications) :
-[docs/USINE-CONTINUE.md](docs/USINE-CONTINUE.md).
-
-## L'équipe d'agents
-
-Sept rôles, et surtout un mécanisme : **écrire, faire relire par un autre
-modèle, corriger.**
-
-| Agent | Rôle |
+| | |
 |---|---|
-| `architecte` | conçoit le plan qui tient la promesse commerciale |
-| `redacteur` | écrit le contenu |
-| `editeur` | note sur 10 et cite les passages fautifs |
-| `reviseur` | applique les corrections, sans rien casser d'autre |
-| `styliste` | retire les tics d'écriture des IA |
-| `marketeur` | écrit la page de vente |
-| `controleur` | valide, ou refuse, la mise en vente |
+| `usine menu` | tout au clavier, sans rien retenir — **recommandé sur téléphone** |
+| `usine ebook "..."` | la ligne de commande, pour les habitués et les scripts |
+| `usine web` | le tableau de bord, dans le navigateur du téléphone |
 
-Le relecteur n'est **jamais** le fournisseur qui a écrit le texte : un modèle
-qui se relit lui-même confirme ses propres erreurs. La boucle est bornée à
-deux passes, au-delà le gain s'épuise. Chaque produit relu reçoit un
-`rapport-qualite.json` avec la note avant et après, section par section.
+Les trois lisent le même catalogue et les mêmes réglages : ce que vous changez
+dans l'un vaut dans les autres.
 
-Les personnalités sont modifiables sans toucher au code :
-
-```bash
-usine prompts-systeme --exporter    # écrit atelier/prompts/agents.json
-```
-
-Détails : [docs/AGENTS.md](docs/AGENTS.md).
-
----
-
-## Tableau de bord 3D
-
-```bash
-usine web
-termux-open-url http://localhost:8777
-```
-
-Une scène WebGL **écrite à la main** — pas de three.js, pas de CDN, donc elle
-fonctionne hors connexion sur le téléphone. La peau néon, la grille en fuite
-et les scanlines tiennent en CSS plus un canvas léger :
+Le tableau de bord montre la fabrication en direct — l'équipe d'agents qui
+travaille, le journal, l'avancement — et propose six peaux, dont une pour lire
+en plein soleil et une pour voir de loin :
+[docs/PEAUX.md](docs/PEAUX.md). Sa scène 3D est écrite en WebGL brut :
 [docs/CYBERPUNK.md](docs/CYBERPUNK.md).
 
-- le **socle** est l'atelier ;
-- les **orbes en orbite** sont les dix fournisseurs ; celui qui répond s'allume
-  en vert ;
-- la **colonne centrale** est le produit : une dalle bleue par section
-  terminée, des dalles fantômes pour ce qui reste ;
-- les **particules dorées** sont les jetons qui remontent du fournisseur vers
-  le produit.
-
-Le direct passe par des Server-Sent Events : une seule connexion, pas de
-sondage. Les pastilles d'agents s'allument, le compteur s'anime, le journal
-défile. La caméra suit la hauteur de la pile et recule automatiquement en
-portrait. Si le pilote WebGL du téléphone refuse, la page bascule sur un
-message clair et **tout le reste continue de fonctionner**.
-
-Le serveur écoute sur `127.0.0.1`. Ouvert au réseau local
-(`usine web --hote 0.0.0.0`), un **jeton d'accès est généré automatiquement**
-et devient obligatoire.
-
-### Ce que le navigateur sait faire, et que la console ne peut pas
-
-Cinq outils n'existaient qu'en ligne de commande.
-
-**Tests A/B.** Le manque le plus voyant, et le plus ironique : on compare des
-**couvertures**, qui sont des images, et la seule interface avec un écran ne
-les montrait pas. La carte fait tout le cycle — créer (les couvertures
-s'affichent côte à côte, en vraie taille), reporter vues et actions, dater
-chaque variante, lire le verdict qui se met à jour, retenir la gagnante.
-
-**Ce que l'usine a appris.** `usine bilan` est la boucle de rétroaction du
-projet : note moyenne, gain réel de la relecture, classement par type, par ton,
-par qualité. Il n'était lisible qu'en console, donc invisible depuis le
-téléphone. Un réglage n'apparaît qu'à partir de deux productions notées, et la
-page le dit — sans cette phrase, un « Par ton » vide se lit comme « le ton ne
-change rien ».
-
-**Veille de niche.** La même consultation Reddit, en tâche de fond — `scouter`
-s'impose trois secondes entre deux communautés, donc la page interroge
-l'avancement au lieu d'attendre. Chaque titre trouvé porte un bouton
-**→ sujet** qui l'écrit dans le champ de fabrication et le passe au contrôle
-des domaines sensibles. Une plainte lue chez les gens devient un produit sans
-recopie.
-
-Les titres et les liens viennent d'un flux que personne ne signe, et cette
-page pilote l'usine : seul un lien `https` vers `reddit.com` est transmis au
-navigateur — un `javascript:` arrive comme une chaîne vide — et le texte est
-échappé à l'affichage. Le serveur ne nettoie pas le titre lui-même : le
-nettoyer mentirait sur ce que les gens ont écrit.
-
-**Agir sur un produit.** La carte listait les produits et servait leurs
-fichiers, sans savoir rien en faire — alors que c'est le moment où l'on veut
-l'archive ZIP ou le kit de vente. Les deux boutons y sont. L'archive est écrite
-*à côté* du dossier du produit, donc invisible dans la liste de fichiers : la
-réponse porte son lien de téléchargement.
-
-**Diagnostic.** Le bouton « pourquoi ça ne marche pas », là où on le cherche.
-Les contrôles vivent dans `core/diagnostic.py` et servent les deux interfaces —
-deux jeux finiraient par ne plus dire la même chose. Il gagne au passage
-l'espace disque libre.
-
-**Mesurer un marché.** À côté de la veille, dans la même carte : la veille dit
-ce que les gens *disent*, le marché dit combien ils sont. La page affiche les
-sources qui **n'ont pas répondu** — un silence de source n'est pas un marché
-absent.
-
-**Empreintes manquantes.** La carte des doublons affichait « aucun
-recouvrement notable » après avoir comparé **zéro** produit — les empreintes
-sont posées à la fabrication, et un catalogue plus ancien n'en a aucune. Elle
-compte désormais ce qu'elle n'a pas pu comparer, et propose le bouton qui
-répare.
-
-**Sauvegarde.** Créer l'archive, la **télécharger** — c'est la partie qui
-manquait : sur un téléphone, une archive restée dans `atelier/sauvegardes/`
-ne protège de rien, et la ligne de commande ne sait pas l'en sortir — et la
-**restaurer**, en deux temps. Un panneau dit d'abord ce que contient
-l'archive ; le bouton rouge ne s'active qu'une fois la case cochée. Côté
-serveur, `confirme` doit valoir exactement `true` : `"oui"` et `1`, vrais en
-JavaScript, sont refusés. La restauration est par ailleurs refusée tant qu'une
-fabrication, une veille ou l'usine continue tourne.
-
-**Téléverser une archive** couvre le cas de la réinstallation : téléphone
-effacé, sauvegarde sur l'ordinateur. Le corps est écrit par morceaux sur le
-disque, jamais gardé en mémoire ; le plafond est vérifié sur le
-`Content-Length` avant de lire quoi que ce soit ; le nom venu du navigateur
-est réduit à un nom de fichier (`../../etc/passwd` → `passwd.zip`) ; un nom
-déjà pris reçoit un rang au lieu d'écraser ; et ce qui n'est pas une archive
-lisible ne reste pas sur le disque.
-
-Une archive peut par ailleurs **annoncer bien plus qu'elle ne pèse** : six
-cents kilo-octets compressés déclarant une base de six cents mégaoctets
-suffiraient à faire tomber le téléphone, puisque `restaurer` lit la base d'un
-seul bloc en mémoire. Les tailles décompressées annoncées sont donc bornées
-dans `sauvegarde` — pas dans la page, car la ligne de commande acceptait déjà
-n'importe quel chemin.
-
-Ce dernier point a révélé un défaut que seule une interface à plusieurs
-threads pouvait montrer : `store.close()` ne ferme que la connexion du thread
-qui appelle, et la restauration *déplace* le fichier de base. Les autres
-threads gardaient une poignée sur un fichier qui n'était plus la base de
-personne — ils lisaient l'atelier d'avant, et ce qu'ils y écrivaient était
-perdu sans erreur. Chaque connexion retient maintenant sa génération et se
-refait quand la base a changé.
-
 ---
 
-## Comment ça marche
+## Dire ce que vous voulez — ou laisser décider
 
-```
-   sujet
-     │
-     ▼
-┌──────────────────────────────────────────────┐
-│ Routeur IA      quotas · cache · bascule     │
-│ groq → cerebras → gemini → mistral → nvidia  │
-│   → github → openrouter → pollinations       │
-│   → ollama → llama.cpp        (local en      │
-│                                dernier)      │
-└──────────────────────────────────────────────┘
-     │
-     ▼
-  plan JSON ──► rédaction chapitre par chapitre
-     │
-     ▼
-┌──────────────────────────────────────────────┐
-│ Modèle de document unique (blocs Markdown)   │
-└──────────────────────────────────────────────┘
-     │
-     ├──► PDF    (moteur maison, sommaire, images)
-     ├──► EPUB 3 (page de titre, copyright, dédicace, sommaire — puis contrôlé)
-     ├──► HTML   (responsive, thème clair/sombre, imprimable)
-     ├──► CSV / JSON / Markdown / TXT
-     ├──► couverture PNG + SVG (composée localement, sans filigrane)
-     └──► kit de vente + extrait offert + archive ZIP
-```
-
-**L'EPUB est contrôlé avant d'être livré.** EPUBCheck est l'outil de
-référence et ne tournera jamais ici — c'est un programme Java. Les contrôles
-structurels qu'il applique sont donc refaits en Python : `mimetype` en
-première entrée non compressée, conteneur qui désigne un OPF présent, chaque
-fichier du manifeste présent dans l'archive, chaque entrée du dos déclarée,
-document de navigation porteur de sa table des matières, XML bien formé
-partout. Un EPUB cassé ne se voit pas : l'archive s'ouvre, et c'est le
-distributeur qui le refuse trois semaines plus tard.
-
-**Le routeur dit quand il a été coupé.** `finish_reason` est lu : une réponse
-tranchée au plafond de jetons est signalée et n'entre pas au cache. Le plafond
-suit la longueur demandée au lieu d'être figé, chaque fournisseur déclare ce
-qu'il sait émettre, et `Retry-After` est honoré. Une panne réseau ne consomme
-plus le quota du fournisseur — seul un appel qu'il a réellement traité compte.
-Détails et mesures : [docs/ROUTEUR.md](docs/ROUTEUR.md).
-
-**Le routeur compte les jetons, pas seulement les appels.** Les paliers
-gratuits s'épuisent en jetons bien avant de s'épuiser en requêtes : Groq en
-accorde 8 000 par minute et 200 000 par jour, là où l'usine croyait disposer
-de 900 requêtes. Une demande trop grosse pour le budget d'une minute n'est pas
-tentée — elle part chez un fournisseur qui peut la servir. Et les quotas de
-Google se comptant par modèle, épuiser `flash` ne ferme plus `flash-lite`.
-
-**`usine docteur --modeles` vérifie que les modèles configurés existent
-encore.** Ce contrôle existe à cause d'une panne réelle et entièrement
-silencieuse : Groq a retiré ses modèles Llama du palier gratuit le 16 août
-2026, chaque appel a répondu 404, et le routeur s'est contenté de passer au
-suivant — pendant des semaines. Mesures et chiffres :
-[docs/QUOTAS.md](docs/QUOTAS.md).
-
-Trois mécanismes rendent la production fiable sur un forfait mobile :
-
-1. **Cache systématique.** Chaque réponse est stockée par empreinte du prompt.
-   Relancer une génération interrompue ne reconsomme aucun quota.
-2. **Dégradation progressive.** Un chapitre qui échoue n'arrête pas le livre :
-   il est remplacé par son plan détaillé, et l'échec est journalisé.
-3. **Quotas comptés localement.** Requêtes *et* jetons, par minute et par
-   jour, suivis en base — par modèle chez les fournisseurs qui comptent ainsi.
-   Le routeur attend ou bascule avant que le fournisseur ne réponde 429.
-
----
-
-## Structure
-
-```
-usine/
-  core/        fournisseurs, routeur IA, pool de clés, contrôle qualité
-               déterministe, vérification du code généré (AST + bac à sable),
-               empreintes anti-doublon (MinHash), ventes réelles,
-               signaux de marché, mémoire de production,
-               file de production, budget, A/B testing (beta-binomial),
-               diagnostic de titre, prompts, réglages, sécurité,
-               bus d'événements, HTTP, SQLite
-  agents/      les sept rôles et la boucle critique → révision
-  render/      moteur PDF, EPUB, HTML, modèle de document, métriques polices,
-               assemblage commun des livrables, fonte capitale en polygones,
-               rasteriseur + encodeur PNG, composition de couverture
-  pipelines/   catalogue (source unique des types), ebook, prompts, formation,
-               outils, modèles, imprimables, social, logiciel, idées, variantes
-  marketing/   fiche produit, page de vente, séquence de lancement
-  packaging/   notice, licence, archive ZIP
-  web/         serveur SSE + tableau de bord 3D (statique/scene.js, app.js)
-  production.py  usine continue : file, budget, verrou, arrêt propre
-  menu.py      menu interactif Termux
-  cli.py       interface en ligne de commande
-tests/         773 tests + test de fumée, aucun appel réseau
-               un atelier temporaire par module (tests/atelier.py)
-install.sh     installation Termux
-```
-
-Sorties dans `atelier/produits/<identifiant>/` (modifiable via `USINE_HOME`,
-par exemple `/sdcard/Usine-IA` pour écrire dans la mémoire du téléphone).
-
----
-
-## Tests
+Tout est facultatif. Ce que vous ne dites pas, l'usine le décide en lisant le
+sujet, et elle dit pourquoi.
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 773 tests
-python3 scripts/dependances.py               # zéro dépendance
-python3 tests/fumee.py                       # les 10 chaînes via la vraie CLI
+usine ebook "la fiscalité du freelance" \
+  --audience "freelances en première année" \
+  --ton pedagogue \
+  --chapitres 12 \
+  --qualite exigeant
 ```
 
-Couvre notamment : validité de la table xref du PDF, conformité de l'archive
-EPUB, bonne formation du XML, échappement HTML, isolation des chemins du
-serveur, **rotation effective des clés sur un 429**, non-fuite des secrets dans
-les erreurs et les événements, authentification du tableau de bord, diffusion
-temps réel par SSE, évitement du fournisseur pour la relecture, refus d'une
-révision tronquée, et le fait que le kit de vente ne parte pas chez l'acheteur.
+| Option | Ce qu'elle change |
+|---|---|
+| `--audience` | à qui le produit parle |
+| `--ton` | `amical`, `expert`, `pedagogue`, `pro`, `punchy` — ou une phrase libre |
+| `--taille` / `--chapitres` | le volume |
+| `--qualite` | `rapide` (0 relecture), `standard` (1), `exigeant` (2) |
+| `--marketing` | ajoute le kit de vente |
+| `--zip` | emballe l'archive à livrer |
+| `--hors-ligne` | ne télécharge rien (IA locale, couverture dessinée sur place) |
 
-Un test exécute **chaque type de produit déclaré**, de bout en bout, et vérifie
-que chaque format annoncé est réellement produit. Il a été ajouté après qu'une
-erreur d'import ait cassé une chaîne sans qu'aucun des 157 tests d'alors ne s'en
-aperçoive.
+Pour ne pas retaper les mêmes à chaque fois :
 
-L'A/B testing est testé sur ce qui compte : que la formule exacte et le tirage
-aléatoire **concordent** sur six jeux de données, que cinq variantes identiques
-ne produisent jamais de gagnant, et surtout que 8/100 contre 12/100 — 50 %
-d'écart apparent — soit correctement refusé.
+```bash
+usine reglages                                    # les voir, groupés
+usine reglages --definir auteur="Votre Nom" qualite=exigeant
+```
 
-L'usine continue est testée sur ce qui peut réellement mal tourner : reprise
-après un arrêt brutal, verrou orphelin d'un processus tué, refus de démarrer un
-produit infinissable, et surtout **le produit exporté malgré un budget épuisé
-en cours de route** — la promesse qui compte.
-
-Le contrôle qualité est testé sur sa **reproductibilité** (deux exécutions
-donnent la même note), sa calibration (bon texte 10/10, texte générique 2/10)
-et ses garde-fous. Les sources de marché sont testées avec des réponses figées,
-dont le cas « Freelance (2023 film) » qui ne doit jamais être retenu.
-
-La couverture est testée en la **regardant** : chaque combinaison palette ×
-mise en page est rendue deux fois, avec et sans son texte, et le contraste est
-mesuré sur les pixels obtenus. Le test exige 4,5:1 et refuse qu'un titre
-déborde de la page. Il a trouvé, à l'écriture, huit combinaisons illisibles,
-un sous-titre imprimé sous le bord de la page, et cinq lettres mal dessinées.
-
-La vérification du code généré est testée sur du code **hostile**, pas sur des
-cas d'école : six échantillons (`os.system`, `shutil.rmtree`, `eval`, socket,
-`subprocess`, écriture sur chemin absolu) doivent tous être refusés à
-l'exécution, du code propre doit passer, et une boucle infinie doit être arrêtée
-à la limite de temps. Les trois cibles logicielles sont produites de bout en
-bout, et l'application web générée a été **ouverte dans un vrai Chromium**.
-
-La géométrie 3D est vérifiée séparément : les matrices de rotation, de caméra
-et la matrice normale inverse-transposée sont contrôlées numériquement, et le
-tableau de bord est rendu dans un vrai Chromium.
-
-Une **intégration continue** lance la suite et le test de fumée sur Python 3.9,
-3.11 et 3.13, sur une installation nue — la contrainte fondatrice du projet
-étant qu'il s'installe sur un Termux sans `pip`. Un script (`scripts/dependances.py`)
-lit les imports dans l'arbre syntaxique et échoue à la première dépendance
-étrangère ; un autre contrôle vérifie qu'aucune clé API n'est apparue dans le
-dépôt. Deux tests gardent l'annonce elle-même : que toute la source se lise
-en Python 3.9, et que la version plancher soit bien celle que la CI teste.
-
-L'**accessibilité du tableau de bord** a été auditée dans un vrai navigateur,
-ce qui a trouvé deux manques : deux listes déroulantes sans étiquette (donc
-sans nom pour un lecteur d'écran) et l'absence de région principale. Les zones
-qui changent pendant qu'on regarde — journal, états de veille, de sauvegarde,
-de test — sont maintenant annonçables (`role="status"`, `role="log"`), et la
-scène 3D est masquée aux lecteurs d'écran parce qu'elle **répète** ce que le
-journal dit déjà en toutes lettres. Deux tests lisent la page servie et
-refusent un champ sans étiquette.
-
-Les routes du tableau de bord sont testées par le réseau, sur un vrai serveur
-HTTP. Ce qui compte le plus y est ce qu'elles **refusent** : un lien
-`javascript:` venu du flux de veille, un hôte qui imite Reddit, une sortie du
-dossier des sauvegardes vers `usine.db`, un fichier qui n'est pas une archive.
-Chaque garde a été retiré une fois pour vérifier que le test tombe.
-
-Le **menu est piloté par son entrée standard**, comme un doigt sur un écran de
-téléphone, et l'on regarde quelle commande il lance vraiment. Un sous-menu est
-une table entre un numéro tapé et une branche de code, que rien ne vérifie à
-l'exécution : insérer une entrée décale toutes les suivantes, et le menu lance
-tranquillement la mauvaise commande. Chaque sous-menu est en outre promené sur
-**toutes ses entrées avec des saisies absurdes**, atelier rempli : aucune ne
-doit lever, et aucune ne doit refuser de rendre la main.
-
-Chaque module de test travaille dans **son propre atelier**. Ce n'était pas le
-cas : chacun posait bien son `USINE_HOME`, mais `config` résout ses chemins une
-seule fois et `unittest discover` importe tous les modules avant d'en exécuter
-un — le premier import gagnait pour toute la suite. Les quinze modules
-partageaient une base et un dossier de produits, sans qu'aucun test n'échoue.
-La bascule a lieu maintenant dans `setUpModule`, et trois tests interdisent le
-retour en arrière.
+Trente réglages, rangés en six groupes : qui vend, comment l'usine écrit, ce
+qui part avec le produit, ce qu'elle a le droit de dépenser, le téléphone,
+l'affichage.
 
 ---
 
-## Ce que l'audit a mesuré
-
-Quatorze invariants mesurés sur tout le code, et non supposés :
-[docs/AUDIT-INVARIANTS.md](docs/AUDIT-INVARIANTS.md). Onze ont trouvé quelque
-chose — dont un pool de clés qui ne multipliait aucun quota, six leviers de
-fabrication inaccessibles depuis un téléphone, et un tableau de bord qui
-pouvait effacer le mot de passe qui le protège. Les sept autres disent que les
-garde-fous existants tiennent, ce qui est l'autre moitié de l'information.
-
-## Ce qu'un utilisateur a trouvé en dix minutes
-
-Dix minutes sur un vrai téléphone, avec de vraies clés, ont fait remonter plus
-de défauts que l'audit de la veille — et **aucun ne faisait échouer quoi que ce
-soit** : [docs/ERGONOMIE.md](docs/ERGONOMIE.md).
-
-Un fournisseur qui répond `HTTP 200`, `finish_reason: stop`, et pour contenu
-« votre clé a épuisé son budget » — écrit tel quel dans un chapitre. Deux
-fournisseurs sur deux ne servant **aucun** des modèles configurés, donc une clé
-valide qui ne sert à rien. Une coupure réseau qui emportait le plan, l'avant-
-propos et le premier chapitre déjà payés. Un roman fabricable depuis toujours
-et qui n'avait de nom nulle part. Dix-huit réglages sur vingt-six qui ne se
-changeaient qu'en éditant un fichier JSON.
-
-Et trois garde-fous verts qui auraient dû attraper tout cela : ils cherchaient
-un nom **quelque part** dans le code, et un nom se trouve partout.
-
-## Quand la machine lâche
-
-Le disque se remplit au milieu d'une fabrication, la base de l'atelier est
-écrasée, le réseau tombe — trois pannes qu'un téléphone produit vraiment, et
-qu'aucun test ne provoquait. Elles ont été provoquées pour de bon :
-[docs/PANNES.md](docs/PANNES.md).
-
-Ce qu'elles ont appris tient en une phrase : **le message est une pièce de
-l'usine**. Devant `[Errno 28] No space left on device`, on ne sait ni où, ni
-quoi faire, ni — le plus coûteux — que le travail déjà payé n'est pas perdu.
-L'usine dit maintenant les trois. Elle a aussi cessé de conseiller « créez une
-clé » quand le vrai problème est le wifi, et de mourir sur toutes ses commandes,
-`docteur` compris, quand sa base ne se lit plus.
-
-Deux défauts se sont montrés en chemin : `usine docteur` plantait chez tous
-ceux qui possèdent une clé API — c'est-à-dire tous les vrais utilisateurs — et
-le détecteur de fonctions orphelines se laissait tromper par un simple
-homonyme.
-
-## Cinq chaînes sur dix n'avaient aucune équipe
-
-Sept agents, et la moitié du catalogue qui ne les voyait jamais. La formation,
-les publications sociales, les packs de prompts, les boîtes à outils et l'étude
-de niche appelaient le routeur directement — quinze appels, chacun avec sa
-personnalité écrite en dur. Elles y perdaient quatre choses, toutes
-invisibles : aucune règle de métier, aucune relecture croisée, aucun événement
-dans le tableau de bord, et **aucun signalement de réponse tronquée** — le
-défaut le plus coûteux du routeur, précisément parce qu'il ne se voit nulle
-part en aval.
-
-Six agents s'ajoutent : [docs/AGENTS.md](docs/AGENTS.md). Cinq comblent ces
-chaînes. Le sixième, `lecteur`, répond à un manque d'une autre nature — tous
-les contrôles jugeaient le **texte**, personne ne lisait le produit comme son
-acheteur. Il reçoit le livre entier et dit ce qu'il n'a pas compris, où il a
-décroché, et quels sigles arrivent avant leur explication.
-
-Une contradiction s'est révélée en chemin : le rédacteur réclamait « un chiffre
-illustratif » et le contrôle refuse tout chiffre sans marqueur de source. Les
-deux règles étaient justes séparément ; ensemble elles coûtaient trois appels
-par chapitre, et le résultat final était correct — donc personne ne pouvait le
-remarquer.
-
-## « Trouve toi-meme quoi vendre »
-
-L'usine sait chercher des niches depuis longtemps. Mais elle cherchait des
-niches **voisines** d'une graine, et la graine venait de ce qui avait deja
-rapporte : [docs/NICHE.md](docs/NICHE.md).
-
-Sur une installation neuve il n'y a rien. Donc pas de graine, donc pas de
-prospection — l'usine repondait « ajoutez-en une a la main », poliment, sans
-echouer. **La seule fonction qui lui permet de choisir seule etait
-inatteignable depuis le seul etat ou tout le monde commence.** Un test gardait
-meme ce comportement : il avait ete observe, donc il est passe pour voulu.
-
-Le sujet etait par-dessus le marche obligatoire — un positionnel pour les dix
-chaines — et le tableau de bord refusait en silence, en deplacant le curseur
-dans le champ vide sans rien dire.
+## Produire en boucle
 
 ```bash
-usine ebook          # sans rien derriere
+usine usine demarrer       # enchaîne les produits, sous budget
+usine usine statut         # où elle en est
+usine usine arreter        # termine le produit en cours, puis s'arrête
 ```
 
-L'usine propose des domaines, les **mesure** sur des sources publiques, ecarte
-ceux dont la demande ne se voit pas, et part du mieux place. Ce qui n'a pas pu
-etre mesure est rendu quand meme et dit comme tel : une panne de reseau
-n'empeche pas de demarrer, elle empeche de pretendre qu'on a mesure.
+Elle s'arrête d'elle-même sur le plafond du jour, sur batterie faible, ou quand
+la file se vide — et si vous le lui demandez, elle **remplit la file toute
+seule** en cherchant des niches voisines de ce qui a le mieux marché.
 
-## Ce qu'un ecran de telephone peut porter
+Le plafond est tenu à l'appel près, et sous un petit budget l'usine refuse de
+commencer un produit qu'elle ne pourrait pas finir :
+[docs/USINE-CONTINUE.md](docs/USINE-CONTINUE.md).
 
-Mesure au navigateur, en 412px de large — la largeur d'un telephone courant :
+---
 
-| | avant | apres |
-|---|---|---|
-| barre d'onglets | ~190px, cinq lignes | **56px**, une ligne |
-| onglet « Reglages » | **3077px**, 29 champs deroules | **997px**, groupes replies |
-| scene 3D | sur les cinq onglets | sur les deux ou elle informe |
+## Quand ça casse
 
-Les six groupes de reglages existaient deja — mais tous deroules d'un coup,
-dans une seule carte, avec le bouton « Enregistrer » a l'autre bout. Un titre
-qui ne replie rien n'est pas une section, c'est une ligne en gras.
-
-La cause de la barre empilee n'etait ni `flex-wrap` ni `min-width` : une regle
-groupee donne `width: 100%` a **tout** bouton de la page, donc chaque onglet
-occupait la largeur entiere. Trois reglages de flexbox n'y ont rien change
-avant qu'on mesure la largeur reelle des boutons dans un navigateur.
-
-Et « produire en boucle » — la seule fonction qui fabrique sans qu'on dicte
-quoi que ce soit — vivait en quatrieme bloc de l'onglet « Fabriquer », 1770px
-plus bas, et en deuxieme ligne d'un sous-menu sur Termux. Elle a son onglet et
-son entree de premier niveau dans les deux interfaces.
-
-## Cinq chaines livraient un produit troue en le disant « pret »
-
-Mesure du 14/09/2026, faite en coupant le reseau au milieu de chaque chaine —
-pas en lisant le code : [docs/TROUS.md](docs/TROUS.md).
-
-Une formation dont quatre modules sur dix avaient ete remplaces par leur plan
-etait livree **marquee « pret »**. `usine reprendre` repondait « aucun produit
-inacheve ». Le PDF partait chez l'acheteur avec des puces a la place des
-lecons, et rien nulle part ne le disait — le defaut que ce depot craint le
-plus : invisible partout en aval.
-
-Le garde-fou existait pourtant, et il etait juste : `terminer()` laisse le
-produit « en_cours » des qu'il lui manque quelque chose. **Mais seules deux
-chaines sur neuf le renseignaient.** Les autres notaient bien leurs echecs —
-dans une table que personne ne relisait au moment de conclure. Le mecanisme
-etait bon, c'est son alimentation qui manquait.
-
-Le meme defaut etait ecrit quatre fois de la meme facon :
-
-```python
-except Exception as exc:
-    ctx.etape("module-1", "echec", str(exc))   # note l'echec
-    corps = plan_de_repli()
-ctx.etape("module-1", "ok")                    # ... puis l'efface
+```bash
+usine docteur      # ce qui ne va pas, et la commande pour le réparer
+usine liste        # ce qui est fabriqué, et ce qui est resté inachevé
+usine reprendre    # finit un produit coupé, sans repayer ce qui est fait
+usine maj          # met à jour depuis le dépôt
+usine specs        # fiche technique de l'appareil, à pousser sur GitHub
 ```
 
-Le second appel est HORS du « except » : il s'execute toujours, et le dernier
-statut gagne. Dans `ebook`, le chapitre de repli descendait meme jusqu'au
-carnet et s'y inscrivait comme un chapitre ecrit — `usine reprendre` ne le
-refaisait donc jamais.
+Une coupure — réseau, quota, batterie, processus tué par Android — ne perd rien
+de ce qui est déjà écrit. Le produit reste marqué **inachevé**, il nomme les
+sections qui lui manquent, et `usine reprendre` ne refait que celles-là :
+[docs/TROUS.md](docs/TROUS.md) et [docs/PANNES.md](docs/PANNES.md).
 
-Un detecteur garde ce motif. Il s'est trompe deux fois avant d'etre juste : il
-accusait les gestionnaires qui sortent par `continue`, et il se laissait
-aveugler par un alias (`repere` valant `"chapitre-{}".format(index + 1)`) — il
-signalait le fichier correct et laissait passer le fautif.
+Et pour mettre l'atelier à l'abri :
 
-## Sept types de produits sortaient sans aucune mesure
-
-Un exemplaire de chaque type, mesure le 14/09/2026 : seuls l'ebook et le roman
-recevaient une note. Les sept autres n'avaient rien — pas meme un nombre de
-mots : [docs/MESURE.md](docs/MESURE.md).
-
-Apres quatre vraies fabrications, `usine bilan` affichait « **0 mots
-produits** », puis, sous le titre « Conseils tires de vos donnees », « aucun
-ecart significatif » — ce qui est vrai de n'importe quel ensemble vide. Et
-`graine_de_depart()`, qui classe par chiffre d'affaires puis par note, ne
-pouvait jamais retenir ces sept types.
-
-La correction est partagee : `terminer()` relit le texte LIVRE et en tire le
-volume, une fois, pour les dix chaines.
-
-Mais **tout ne se note pas**, et c'est la partie interessante. Le controle
-deterministe mesure de la prose. Applique ailleurs il rend un chiffre sans
-signification : 9,98/10 pour trente-et-un posts sociaux de deux lignes, 9,83
-pour un outil logiciel — note en fait sur sa notice et non sur son code.
-
-Pire, la note depend surtout de la longueur des sections. Le meme texte, coupe
-de plus en plus fin :
-
-```
-mots/section :  60   80  100  120  140  200  300  400
-note         : 10.0 10.0 8.69 8.56 7.56 7.19 6.93  6.5
+```bash
+usine sauvegarde creer --avec-produits
 ```
 
-Sous cent mots, elle vaut 10 quoi que dise le texte. Une boite a outils de
-vingt-cinq mots par fiche obtenait 9,91/10, et ce chiffre serait parti se
-comparer a un ebook note 4,33. Chaque produit dit donc son volume, et chaque
-note absente dit **pourquoi** — une case vide se lit comme un oubli, et
-quelqu'un finirait par la reparer en notant quand meme.
+L'archive ne contient **jamais** vos clés API — elles vivent dans `.env`, hors
+de l'atelier : [docs/SAUVEGARDE.md](docs/SAUVEGARDE.md).
 
-## « 和食 » devenait « ?? » sur la couverture
+---
 
-Les caracteres passes directement dans les deux moteurs :
-[docs/CARACTERES.md](docs/CARACTERES.md).
+## Les fournisseurs de modèles
 
+Sept services gratuits sont préconfigurés — Groq, Cerebras, Gemini, Mistral,
+OpenRouter, GitHub Models, NVIDIA — plus Pollinations sans clé, et l'IA locale
+(Ollama, llama.cpp) en dernier recours.
+
+Le routeur choisit selon le **rôle** demandé (« un modèle costaud », « un
+modèle qui écrit de la fiction ») et non selon un nom : un identifiant renommé
+chez un fournisseur est rattrapé tout seul en relisant son catalogue vivant.
+[docs/ROUTEUR.md](docs/ROUTEUR.md), [docs/QUOTAS.md](docs/QUOTAS.md).
+
+**Abonnement payant, facultatif.** [OpenCode Go](https://opencode.ai/go) donne
+accès à une trentaine de modèles ouverts derrière une seule clé. Il est
+compatible OpenAI, donc l'usine sait lui parler :
+
+```bash
+# dans .env
+OPENCODE_API_KEY=votre-cle
 ```
-PDF  — remplaces par « ? » : cyrillique, arabe, japonais, grec, emoji
-PDF  — conserves           : « » — et tous les accents francais
-EPUB — perdus              : aucun
-```
 
-Un livre intitule « la cuisine japonaise 和食 » sortait avec « ?? » sur sa
-couverture, **livre marque « pret »**, alors que l'EPUB du meme produit etait
-parfait — et rien ne disait lequel des deux croire.
+Deux différences à connaître : ses plafonds se comptent en **dollars** et non
+en requêtes, et il n'expose **aucun catalogue interrogeable**. Si un modèle est
+renommé chez eux, l'usine le verra en erreur nommée et basculera sur un autre
+fournisseur — sans pouvoir se corriger toute seule comme elle le fait ailleurs.
 
-C'est la contrainte fondatrice qui impose la limite : pas de `reportlab` sur
-Termux, donc un moteur PDF ecrit a la main, sans police embarquee, en WinAnsi.
-Le choix n'est donc pas entre tout ecrire et n'ecrire que du latin. Il est
-entre **le dire** et **le taire**.
+---
 
-Deux pertes, deux traitements. Un **symbole** (emoji, fleche) est retire
-proprement : un « ? » a sa place se lit comme un defaut du fichier, une absence
-se lit comme un choix, et il ne portait aucune information. Une **lettre**, au
-contraire, reste en « ? » — l'effacer en silence serait pire qu'un mot
-illisible — et la chaine la signale, sur la console et sur la fiche du produit.
+## Ce que l'usine mesure
 
-Le detecteur ne regarde que les lettres et les chiffres : sur du francais
-ordinaire, accents, « guillemets » et tiret cadratin compris, il ne signale
-rien.
+C'est le parti pris du projet : **mesurer plutôt que déclarer**.
 
-## L'acheteur recevait la note interne de son propre produit
+Là où d'autres font relire par un modèle, l'usine mesure — répétitions,
+rythme des phrases, diversité lexicale, chiffres avancés sans source,
+continuité d'une section à l'autre. Une mesure ne coûte rien, ne s'épuise pas,
+et rend le même verdict deux fois de suite.
 
-Les neuf chaines fabriquees avec `--zip`, et le ZIP compare a ce que chacune
-declare livrer : [docs/ARCHIVE.md](docs/ARCHIVE.md). **Les neuf** laissaient
-partir au moins un fichier de travail.
+Chaque produit relu reçoit un rapport section par section : la note avant, la
+note après, ce qui a été corrigé, ce qui reste signalé.
+[docs/QUALITE.md](docs/QUALITE.md).
 
-L'acheteur ouvrait l'archive et y trouvait `rapport-qualite.json` — la note
-interne de ce qu'il venait de payer, 3,79/10 dans la mesure, et la liste de ses
-defauts — ainsi que `carnet.json`, qui contient le texte de chaque section et
-la ligne de commande exacte qui a fabrique le produit.
+Le prix de ce parti pris est dit aussi : un contrôle déterministe rate ce qu'il
+ne sait pas nommer. Et il ne mesure que de la **prose** — appliqué à une liste
+de prompts ou à du code, il rendrait un chiffre sans signification, donc il
+s'abstient et dit pourquoi : [docs/MESURE.md](docs/MESURE.md).
 
-La cause n'est pas un oubli, c'est une forme : une liste de noms tenue a la
-main ne connait que le passe. `carnet.json` est arrive avec la reprise,
-`rapport-qualite.json` avec le controle qualite, `bible.json` avec le roman —
-chacun ajoute dans un autre fichier, des mois plus tard, par quelqu'un qui ne
-pensait pas a l'empaquetage.
+Deux règles complètent cela, et reviennent à chaque audit :
 
-Or chaque chaine DECLARE deja ce qu'elle livre, et cette liste est juste par
-construction. L'archive se batit desormais sur elle ; la liste noire n'est plus
-qu'un filet. Les trois chemins qui fabriquent une archive passent la meme
-liste : trois filtres finiraient par diverger, et c'est celui qu'on regarde le
-moins qui fuirait.
+- **Un garde-fou satisfait par une homonymie ne garde rien.** Chercher un nom
+  « quelque part dans le code » a déjà laissé passer trois défauts.
+- **Ne pas croire le code de retour, lire le contenu.** Un fournisseur peut
+  répondre `HTTP 200`, `finish_reason: stop`, et pour tout contenu « votre clé
+  a épuisé son budget ».
 
-## Six peaux, dont quatre qui changent l'interface
-
-« Nuit » et « jour » étaient la même page en deux teintes. Une peau qui ne
-change que la couleur ne sert qu'à elle-même :
-[docs/PEAUX.md](docs/PEAUX.md).
-
-`papier` (serif, sans animation) pour travailler longtemps, `console` (chasse
-fixe, dense) qui est la peau de Termux, `ambre` pour un terminal de 1981, et
-`contraste` — texte à 18 px, bords de 2 px, noir et blanc francs — qui n'est
-pas une variante esthétique mais la peau qui rend le tableau de bord utilisable
-à qui voit mal. Les quatre coupent le canvas animé, ce qu'aucune nuance ne
-faisait pour un vieil appareil qui rame.
-
-Le défaut que cela a montré ne pouvait se voir qu'en ouvrant un vrai
-navigateur : revenir d'une peau calme à `nuit` laissait la scène 3D éteinte
-jusqu'au rechargement. Le CSS était juste, le JavaScript était juste ligne à
-ligne — c'était le retour qui manquait.
-
-## Ce que l'usine vaut face aux autres
-
-Quatre projets ouverts couvrent le même besoin. Comparaison mesurée sur leurs
-dépôts — [docs/COMPARAISON.md](docs/COMPARAISON.md) — dont le partage tient en
-une ligne : **aucun des quatre ne s'installe sur un téléphone.** Ils exigent
-Docker et PostgreSQL, ou Pandoc et LaTeX, ou Node 22. C'est ce que paient les
-moteurs PDF et EPUB écrits à la main : cher en lignes de code, sans intérêt
-sur un ordinateur de bureau, décisif sur le seul appareil que tout le monde
-possède.
-
-Second partage : là où les autres font relire par un modèle, l'usine
-**mesure**. Un modèle qui se relit confirme ses propres erreurs ; une mesure ne
-coûte rien, ne s'épuise pas, et donne le même verdict deux fois de suite. Le
-prix est réel et il est dit dans la comparaison — un contrôle déterministe
-rate ce qu'il ne sait pas nommer.
-
-## Ce qu'on pourrait ajouter
-
-Une revue complète — état du câblage, ce que chaque type de produit sait et ne
-sait pas faire, et ce qu'on peut y ajouter — est dans
-[docs/EXTENSIONS.md](docs/EXTENSIONS.md). Les deux réponses courtes :
-
-- **Nouvelles : oui, par une chaîne distincte** (`usine nouvelle`). Les
-  chapitres d'un ebook sont rédigés indépendamment les uns des autres — une
-  qualité pour un guide, un défaut rédhibitoire pour une fiction. La chaîne
-  fiction ajoute les trois pièces qui manquaient : une **bible** écrite avant
-  la première ligne, un **résumé roulant** que chaque scène reçoit et met à
-  jour, et une **grille de beats** au lieu d'un plan de chapitres. Un contrôle
-  de continuité déterministe relit ensuite la bible contre le texte produit.
-  La grille porte aussi les **fils tendus** — une promesse posée à la scène 2
-  et payée à la scène 11 — et un **arc par personnage** : chaque scène sait ce
-  qu'elle doit poser, payer, et porter sans le résoudre.
-  Voir [docs/FICTION.md](docs/FICTION.md). **La longueur d'un roman est
-  atteignable** (`--chapitres 24 --mots 3500`) : la mémoire passe en mode
-  hiérarchique dès la treizième scène — des parties closes, figées une fois
-  pour toutes, plus l'état de la partie en cours. Ce qui manque encore à un
-  roman n'est plus structurel : mémoire hiérarchique, fils tendus, arcs et
-  **intrigues secondaires** sont là, et le contrôle sait dire qu'une ligne a
-  été abandonnée en route. Un **registre des faits** lit en plus ce que les
-  phrases affirment : une héroïne aux yeux verts scène 2 puis aux yeux bleus
-  scène 9 ne casse aucune structure, et c'est l'erreur que les lecteurs
-  relèvent le plus. Chaque contradiction cite les deux passages. Et une
-  **série** (`--serie "Nom"`) fait qu'un tome reprend le monde, la
-  distribution et les faits des précédents : le tome 2 se vend au lecteur du
-  tome 1, à condition de ne pas le contredire. Ce qui manque
-  est du jugement — savoir si l'histoire vaut la peine d'être lue — et aucun
-  outil ne sait le faire.
-- **Sécurité : oui, du côté contenu — pas d'outillage.** Guides, checklists de
-  durcissement, politiques types, sensibilisation : ce sont des produits que
-  les chaînes existantes savent déjà fabriquer. L'usine ne fournit aucun outil
-  qui teste ou attaque un site.
+---
 
 ## Ce que l'usine ne fait pas
 
-- **Elle ne contourne aucun quota.** Pas de création de comptes automatisée,
-  pas de contournement de restriction de fournisseur. La rotation multi-clés et
-  l'addition de sept services gratuits donnent le même résultat sans risquer
-  le bannissement.
+- **Elle ne publie pas à votre place.** Pas d'API Etsy, Gumroad ou KDP : elle
+  produit les fichiers et le kit de vente, vous les mettez en ligne.
+- **Elle ne promet aucun revenu.** `usine bilan` ne parle que de ce qui a été
+  mesuré, et dit sur combien de produits repose chaque moyenne.
+- **Elle n'écrit que de l'alphabet latin en PDF.** L'EPUB, lui, porte tout.
+- **Elle ne remplace pas votre jugement.** Un contrôle automatique rate ce
+  qu'il ne sait pas nommer ; relisez avant de vendre.
 
-- **Elle ne publie pas à votre place.** Aucune intégration Gumroad ou Etsy :
-  vous téléversez l'archive vous-même. Elle lit en revanche vos exports de
-  ventes, et s'en sert pour choisir les niches suivantes.
-- **Elle ne sauvegarde pas toute seule.** `usine sauvegarde` existe, il faut
-  la lancer — et copier l'archive hors du téléphone.
-- **Elle ne vous dispense pas de publier lentement.** Produire quatre produits
-  par jour et les déposer au même rythme est le profil exact d'un compte qui
-  se fait fermer. L'usine le rappelle à la fin de chaque lot.
-- **Elle ne relit pas pour vous.** Le contenu est généré par IA : relisez et
-  corrigez avant de vendre. La licence livrée le mentionne explicitement.
-- **Elle n'invente pas votre expertise.** Les meilleurs produits sortent d'un
-  sujet que vous connaissez ; l'usine accélère la mise en forme, pas le savoir.
-- **Elle ne garantit aucun revenu.** Les prix proposés sont des repères, pas
-  des prévisions.
+---
+
+## Pour aller plus loin
+
+Une note par sujet, chacune racontant un défaut **mesuré** et sa correction.
+
+### Fabriquer
+
+| | |
+|---|---|
+| [TYPES-PRODUITS.md](docs/TYPES-PRODUITS.md) | ce que chaque chaîne produit exactement |
+| [FICTION.md](docs/FICTION.md) | pourquoi la fiction suit une chaîne à part |
+| [LOGICIEL.md](docs/LOGICIEL.md) | un programme vérifié, et réellement lancé, avant livraison |
+| [NICHE.md](docs/NICHE.md) | quand on ne dit pas quoi produire |
+| [USINE-CONTINUE.md](docs/USINE-CONTINUE.md) | produire en boucle, sous budget |
+| [COUVERTURE.md](docs/COUVERTURE.md) | la couverture, dessinée sans bibliothèque |
+
+### Qualité
+
+| | |
+|---|---|
+| [QUALITE.md](docs/QUALITE.md) | mesurer plutôt que déclarer |
+| [MESURE.md](docs/MESURE.md) | ce que l'usine sait de ce qu'elle vient de fabriquer |
+| [AGENTS.md](docs/AGENTS.md) | les treize agents et la boucle de relecture |
+| [TROUS.md](docs/TROUS.md) | un produit livré avec un trou doit le dire |
+| [CARACTERES.md](docs/CARACTERES.md) | ce que le PDF ne sait pas écrire |
+| [DOUBLONS.md](docs/DOUBLONS.md) | reconnaître ce qui a déjà été écrit |
+| [AB-TESTING.md](docs/AB-TESTING.md) | tester des titres et des couvertures |
+
+### Vendre
+
+| | |
+|---|---|
+| [VENDRE.md](docs/VENDRE.md) | du fichier à la première vente |
+| [ARCHIVE.md](docs/ARCHIVE.md) | ce que l'acheteur trouve dans l'archive |
+| [MARCHE.md](docs/MARCHE.md) | mesurer un marché sur des sources publiques |
+| [VEILLE.md](docs/VEILLE.md) | aller voir ce que les gens disent vraiment |
+| [VENTES.md](docs/VENTES.md) | importer ses ventes, et ce qui rapporte |
+
+### La machine
+
+| | |
+|---|---|
+| [TERMUX.md](docs/TERMUX.md) | guide pas à pas sur téléphone |
+| [ROUTEUR.md](docs/ROUTEUR.md) | le routeur multi-fournisseurs |
+| [QUOTAS.md](docs/QUOTAS.md) | ce que les paliers gratuits autorisent vraiment |
+| [PANNES.md](docs/PANNES.md) | disque plein, base écrasée, réseau coupé |
+| [SAUVEGARDE.md](docs/SAUVEGARDE.md) | mettre l'atelier à l'abri, et le remettre |
+| [SECURITE.md](docs/SECURITE.md) | ce qui ne doit jamais sortir de l'appareil |
+| [PEAUX.md](docs/PEAUX.md) | les six peaux du tableau de bord |
+| [CYBERPUNK.md](docs/CYBERPUNK.md) | la scène 3D, en WebGL brut |
+
+### Ce qui a été mesuré
+
+| | |
+|---|---|
+| [AUDIT-INVARIANTS.md](docs/AUDIT-INVARIANTS.md) | des propriétés mesurées sur tout le code |
+| [AUDIT.md](docs/AUDIT.md) | l'audit complet, câblage compris |
+| [ERGONOMIE.md](docs/ERGONOMIE.md) | ce qu'un utilisateur a trouvé en dix minutes |
+| [COMPARAISON.md](docs/COMPARAISON.md) | l'usine face à ce qui existe ailleurs |
+| [EXTENSIONS.md](docs/EXTENSIONS.md) | ce qu'elle pourrait faire de plus |
+
+---
+
+## Développer
+
+```bash
+python3 -m unittest discover -s tests -t . -q   # la suite complète
+python3 tests/fumee.py                          # les dix chaînes, de bout en bout
+python3 scripts/dependances.py                  # zéro dépendance externe
+```
+
+Les conventions du dépôt — et surtout **pourquoi** elles sont ce qu'elles
+sont — sont dans `CLAUDE.md`. La règle qui les résume : un test ne vaut que si
+on l'a vu échouer. Après une correction, on remet le défaut et on vérifie que
+la suite le remarque.
+
+---
 
 ## Licence
 
