@@ -1,6 +1,6 @@
 # Fiche technique de l'appareil
 
-Relevee par `usine specs` le 2026-09-14T13:53:27Z.
+Relevee par `usine specs` le 2026-09-14T12:31:30Z.
 
 Ce document repond a une question que `usine docteur` ne pose pas :
 **qu'est-ce qui devrait etre dans `install.sh` pour que cet appareil
@@ -10,35 +10,35 @@ marche sans bricolage ?** Aucune cle API n'y figure.
 
 | Ce qui manque | Gravite | Pour l'avoir | Ce que son absence coute |
 |---|---|---|---|
-| ollama | optionnel | `apt install ollama` | pas de production hors ligne |
+| une cle API | bloquant | `usine cles` | sans cle, seul le quota anonyme partage est disponible et il ne suffit pas a un produit entier |
 
 ## L'appareil
 
 | | |
 |---|---|
-| Systeme | Linux-6.18.44-fc-v32-x86_64-with-glibc2.39 |
-| Architecture | x86_64 |
-| Python | 3.11.15 (main, Mar  3 2026, 09:26:23) [GCC 13.3.0] |
-| Termux | non |
-| termux-api | absent |
-| Memoire vive | 16073 Mo |
-| Disque libre | 30072 Mo sur 258019 Mo |
-| Dossier de travail | `/tmp/usine-fuite` |
+| Systeme | Android-17-aarch64-64bit |
+| Architecture | aarch64 |
+| Python | 3.14.6 (main, Jul  5 2026, 10:35:55) [Clang 21.0.0 (https://android.googlesource.com/toolchain/llvm-project 5e96669f0 |
+| Termux | oui |
+| termux-api | present |
+| Memoire vive | 11276 Mo |
+| Disque libre | 787375 Mo sur 995134 Mo |
+| Dossier de travail | `/data/data/com.termux/files/home/Usine-IA/atelier` |
 
 ## Outils
 
 | Outil | Etat | Version | Si absent |
 |---|---|---|---|
-| `python3` | present | Python 3.11.15 | — |
-| `git` | present | git version 2.43.0 | — |
-| `node` | present | v22.22.2 | — |
-| `termux-notification` | **absent** | — | aucune notification quand un produit sort, pendant que l'ecran est eteint |
-| `termux-battery-status` | **absent** | — | l'usine continue ne peut pas s'arreter sur batterie faible |
-| `termux-open` | **absent** | — | impossible d'ouvrir un PDF depuis le menu |
-| `termux-share` | **absent** | — | impossible de partager une archive |
-| `termux-wake-lock` | **absent** | — | Android suspend une fabrication longue quand l'ecran s'eteint |
-| `ollama` | **absent** | — | pas de production hors ligne |
-| `curl` | present | curl 8.5.0 (x86_64-pc-linux-gnu) libcurl/8.5.0 OpenSSL/3.0.13 zlib/1.3 brotli/1. | — |
+| `python3` | present | Python 3.14.6 | — |
+| `git` | present | git version 2.55.0 | — |
+| `node` | present | v24.18.0 | — |
+| `termux-notification` | present | getopt: unrecognized option `--version' | — |
+| `termux-battery-status` | present | termux-battery-status: illegal option -- | — |
+| `termux-open` | present | getopt: unrecognized option `--version' | — |
+| `termux-share` | present | termux-share: illegal option -- | — |
+| `termux-wake-lock` | present | usage: termux-wake-lock | — |
+| `ollama` | present | ollama version is 0.31.1 | — |
+| `curl` | present | curl 8.22.0 (aarch64-unknown-linux-android) libcurl/8.22.0 OpenSSL/3.6.3 zlib/1. | — |
 
 ## Fournisseurs configures
 
@@ -46,7 +46,7 @@ Nombre de cles seulement : aucune valeur n'est ecrite ici.
 
 | Fournisseur | Variable | Cles | Genre |
 |---|---|---|---|
-| groq | `GROQ_API_KEY` | 1 | cle API |
+| groq | `GROQ_API_KEY` | 0 | cle API |
 | cerebras | `CEREBRAS_API_KEY` | 0 | cle API |
 | gemini | `GEMINI_API_KEY` | 0 | cle API |
 | mistral | `MISTRAL_API_KEY` | 0 | cle API |
