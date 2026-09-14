@@ -1177,6 +1177,29 @@ Le detecteur ne regarde que les lettres et les chiffres : sur du francais
 ordinaire, accents, « guillemets » et tiret cadratin compris, il ne signale
 rien.
 
+## L'acheteur recevait la note interne de son propre produit
+
+Les neuf chaines fabriquees avec `--zip`, et le ZIP compare a ce que chacune
+declare livrer : [docs/ARCHIVE.md](docs/ARCHIVE.md). **Les neuf** laissaient
+partir au moins un fichier de travail.
+
+L'acheteur ouvrait l'archive et y trouvait `rapport-qualite.json` — la note
+interne de ce qu'il venait de payer, 3,79/10 dans la mesure, et la liste de ses
+defauts — ainsi que `carnet.json`, qui contient le texte de chaque section et
+la ligne de commande exacte qui a fabrique le produit.
+
+La cause n'est pas un oubli, c'est une forme : une liste de noms tenue a la
+main ne connait que le passe. `carnet.json` est arrive avec la reprise,
+`rapport-qualite.json` avec le controle qualite, `bible.json` avec le roman —
+chacun ajoute dans un autre fichier, des mois plus tard, par quelqu'un qui ne
+pensait pas a l'empaquetage.
+
+Or chaque chaine DECLARE deja ce qu'elle livre, et cette liste est juste par
+construction. L'archive se batit desormais sur elle ; la liste noire n'est plus
+qu'un filet. Les trois chemins qui fabriquent une archive passent la meme
+liste : trois filtres finiraient par diverger, et c'est celui qu'on regarde le
+moins qui fuirait.
+
 ## Six peaux, dont quatre qui changent l'interface
 
 « Nuit » et « jour » étaient la même page en deux teintes. Une peau qui ne

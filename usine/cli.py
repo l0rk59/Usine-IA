@@ -262,6 +262,8 @@ def _apres_production(args: argparse.Namespace, ctx: Contexte,
             promesse=description[:200],
             contact=(getattr(args, "contact", "")
                      or str(reglages.lire("contact", "") or "")),
+            # Ce que la chaine a declare livrer, et rien d'autre.
+            livres=resume.get("fichiers"),
         )
         resume["archive"] = str(archive)
         ok("Archive : {} ({} Ko)".format(archive.name, archive.stat().st_size // 1024))
@@ -1738,6 +1740,7 @@ def cmd_livrer(args: argparse.Namespace) -> int:
         meta.get("auteur", "Usine-IA"),
         promesse=str(meta.get("promesse") or ""),
         contact=args.contact or "",
+        livres=meta.get("fichiers"),
     )
     ok("Archive : {} ({} Ko)".format(archive, archive.stat().st_size // 1024))
     return 0

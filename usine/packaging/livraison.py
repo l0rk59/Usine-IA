@@ -6,7 +6,7 @@ import json
 import time
 import zipfile
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 LICENCE = """LICENCE D'UTILISATION — {titre}
 
@@ -151,8 +151,30 @@ def ecrire_licence(dossier: Path, titre: str, auteur: str) -> Path:
 
 
 # Fichiers de travail : utiles a vous, sans interet pour l'acheteur.
+#
+# Cette liste est un FILET, pas la regle. Elle etait la regle, et c'est
+# exactement pourquoi elle a fui : mesure du 14/09/2026 sur les neuf chaines,
+# toutes laissaient partir au moins un fichier interne — « carnet.json » chez
+# les neuf, « rapport-qualite.json » chez l'ebook et le roman, plus
+# « bible.json », « continuite.json », « systeme.json », « cahier.json » et
+# « verification.json » selon la chaine.
+#
+# L'acheteur ouvrait l'archive et y trouvait la note interne de son propre
+# produit — 3,79/10 dans la mesure —, la liste de ses defauts, le texte de
+# chaque section et la ligne de commande exacte qui l'avait fabrique.
+#
+# Une liste de noms tenue a la main ne peut pas suivre : elle est ecrite une
+# fois, et chaque fichier ajoute ensuite part chez le client. La regle est
+# donc devenue « on livre ce que la chaine a DECLARE livrer » — elle le
+# declare deja, dans « meta["fichiers"] ». Ce filet ne sert plus qu'aux
+# appels qui n'ont pas cette liste sous la main.
 FICHIERS_INTERNES = ["plan.json", "programme.json", "boite.json", "produit.json",
-                     "idees.json"]
+                     "idees.json", "carnet.json", "rapport-qualite.json",
+                     "bible.json", "continuite.json", "systeme.json",
+                     "cahier.json", "verification.json", "quiz.json"]
+
+# Ce que l'empaquetage ECRIT lui-meme, et qui doit donc toujours partir.
+FICHIERS_AJOUTES = ["LISEZ-MOI.md", "LICENCE.txt"]
 # Dossiers qui ne doivent JAMAIS partir chez l'acheteur : ce sont vos supports
 # de vente (page de vente, sequence de lancement, prix plancher negociable).
 DOSSIERS_INTERNES = ["marketing"]
@@ -167,8 +189,15 @@ def empaqueter(
     contact: str = "",
     exclure: Optional[List[str]] = None,
     exclure_dossiers: Optional[List[str]] = None,
+    livres: Optional[Sequence[str]] = None,
 ) -> Path:
     """Assemble l'archive destinee a l'acheteur.
+
+    « livres » est la liste que la chaine a declaree livrer. Quand elle est
+    fournie, elle fait loi : rien d'autre n'entre dans l'archive. C'est le
+    seul sens qui tient — l'inverse, « tout sauf une liste noire », oblige a
+    penser a chaque nouveau fichier de travail au moment ou on l'ajoute, six
+    mois plus tard, dans un autre fichier, et personne n'y pense.
 
     Le kit de vente reste dans le dossier de travail mais n'entre pas dans
     l'archive : livrer sa propre page de vente a son client serait une fuite.
@@ -179,15 +208,22 @@ def empaqueter(
     ecrire_notice(dossier, titre, promesse, auteur, contact)
     ecrire_licence(dossier, titre, auteur)
 
+    declares = set(livres or ())
     archive = dossier.parent / "{}.zip".format(nom_archive)
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
         for fichier in sorted(dossier.rglob("*")):
             if not fichier.is_file():
                 continue
             relatif = fichier.relative_to(dossier)
-            if relatif.name in exclure or relatif.suffix == ".zip":
+            if relatif.suffix == ".zip":
                 continue
             if any(partie in exclure_dossiers for partie in relatif.parts[:-1]):
+                continue
+            if declares:
+                if relatif.name not in declares and \
+                        relatif.name not in FICHIERS_AJOUTES:
+                    continue
+            elif relatif.name in exclure:
                 continue
             z.write(fichier, str(Path(nom_archive) / relatif))
     return archive
