@@ -1147,6 +1147,36 @@ comparer a un ebook note 4,33. Chaque produit dit donc son volume, et chaque
 note absente dit **pourquoi** — une case vide se lit comme un oubli, et
 quelqu'un finirait par la reparer en notant quand meme.
 
+## « 和食 » devenait « ?? » sur la couverture
+
+Les caracteres passes directement dans les deux moteurs :
+[docs/CARACTERES.md](docs/CARACTERES.md).
+
+```
+PDF  — remplaces par « ? » : cyrillique, arabe, japonais, grec, emoji
+PDF  — conserves           : « » — et tous les accents francais
+EPUB — perdus              : aucun
+```
+
+Un livre intitule « la cuisine japonaise 和食 » sortait avec « ?? » sur sa
+couverture, **livre marque « pret »**, alors que l'EPUB du meme produit etait
+parfait — et rien ne disait lequel des deux croire.
+
+C'est la contrainte fondatrice qui impose la limite : pas de `reportlab` sur
+Termux, donc un moteur PDF ecrit a la main, sans police embarquee, en WinAnsi.
+Le choix n'est donc pas entre tout ecrire et n'ecrire que du latin. Il est
+entre **le dire** et **le taire**.
+
+Deux pertes, deux traitements. Un **symbole** (emoji, fleche) est retire
+proprement : un « ? » a sa place se lit comme un defaut du fichier, une absence
+se lit comme un choix, et il ne portait aucune information. Une **lettre**, au
+contraire, reste en « ? » — l'effacer en silence serait pire qu'un mot
+illisible — et la chaine la signale, sur la console et sur la fiche du produit.
+
+Le detecteur ne regarde que les lettres et les chiffres : sur du francais
+ordinaire, accents, « guillemets » et tiret cadratin compris, il ne signale
+rien.
+
 ## Six peaux, dont quatre qui changent l'interface
 
 « Nuit » et « jour » étaient la même page en deux teintes. Une peau qui ne

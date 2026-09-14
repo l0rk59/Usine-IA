@@ -7,7 +7,9 @@ Aucune compilation requise : installable sur Termux en une seconde.
 
 from __future__ import annotations
 
+import re
 import time
+import unicodedata
 import zlib
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -54,16 +56,77 @@ def _dictionnaire_info(titre: str, auteur: str, sujet: str) -> bytes:
     return ("<< {} >>".format(corps)).encode("latin-1", "replace")
 
 
+# Ce que WinAnsi ne sait pas ecrire, et qu'on remplace par son equivalent
+# lisible plutot que par un point d'interrogation.
+_REMPLACEMENTS = {
+    "’": "'", "‘": "'", "“": '"', "”": '"',
+    "–": "-", "—": "-", "…": "...", " ": " ",
+    "•": "-", "→": "->", "←": "<-", "≥": ">=",
+    "≤": "<=", "≠": "!=", "×": "x", "÷": "/",
+    "±": "+/-", "∞": "infini", "™": "(TM)", "≈": "~",
+    "⇒": "=>", "№": "no",
+}
+
+
+def _sans_symbole(texte: str) -> str:
+    """Retire les symboles que la police ne porte pas, sans laisser de trace.
+
+    Un emoji encode en WinAnsi devient « ? ». Dans un titre de couverture, ce
+    point d'interrogation se lit comme un defaut du fichier — alors qu'une
+    absence se lit comme un choix. Un emoji ne porte d'ailleurs aucune
+    information textuelle : le retirer ne perd rien, le remplacer par « ? »
+    perd la confiance du lecteur.
+
+    Les LETTRES, elles, ne sont jamais retirees : un mot russe ou japonais
+    efface en silence serait pire qu'un mot illisible. Elles deviennent « ? »,
+    et « caracteres_absents » les signale a la chaine, qui le dit.
+    """
+    garde = []
+    for caractere in texte:
+        if ord(caractere) < 128:
+            garde.append(caractere)
+            continue
+        symbole = unicodedata.category(caractere).startswith("S")
+        if symbole and caractere.encode("cp1252", "replace") == b"?":
+            continue
+        garde.append(caractere)
+    return re.sub(r"  +", " ", "".join(garde))
+
+
+def caracteres_absents(texte: str) -> List[str]:
+    """Les LETTRES et CHIFFRES que le PDF ne saura pas ecrire.
+
+    Le moteur est ecrit a la main et n'embarque aucune police : il utilise les
+    quatorze polices standard du format, en WinAnsi. Cela couvre le francais
+    entier — accents, « guillemets », tiret cadratin, ligature oe — et rien
+    au-dela de l'alphabet latin.
+
+    Mesure du 14/09/2026 : un livre intitule « la cuisine japonaise <deux
+    ideogrammes> » sortait avec « ?? » sur sa couverture et sa page de titre,
+    livre marque « pret », alors que l'EPUB du meme produit etait parfait.
+    Rien ne le disait nulle part.
+
+    On ne signale QUE les lettres et les chiffres. Les symboles sont retires
+    proprement par « _sans_symbole », et les signaler ferait crier ce controle
+    sur n'importe quel texte contenant une fleche — un garde-fou qui signale a
+    tort finit ignore.
+    """
+    perdus = []
+    for caractere in dict.fromkeys(texte):
+        if ord(caractere) < 128 or caractere in _REMPLACEMENTS:
+            continue
+        if unicodedata.category(caractere)[0] not in ("L", "N"):
+            continue
+        if caractere.encode("cp1252", "replace") == b"?":
+            perdus.append(caractere)
+    return perdus
+
+
 def _echapper(texte: str) -> bytes:
     """Encode en WinAnsi et protege les caracteres speciaux PDF."""
-    remplacements = {
-        "’": "'", "‘": "'", "“": '"', "”": '"',
-        "–": "-", "—": "-", "…": "...", " ": " ",
-        "•": "-", "→": "->", "≥": ">=", "≤": "<=", "×": "x",
-    }
-    for source, cible in remplacements.items():
+    for source, cible in _REMPLACEMENTS.items():
         texte = texte.replace(source, cible)
-    brut = texte.encode("cp1252", "replace")
+    brut = _sans_symbole(texte).encode("cp1252", "replace")
     return brut.replace(b"\\", b"\\\\").replace(b"(", b"\\(").replace(b")", b"\\)")
 
 

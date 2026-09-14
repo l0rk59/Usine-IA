@@ -477,6 +477,40 @@ def _mesurer_le_livre(ctx: Contexte, genre: str, fichiers: List[Path],
 _NIVEAU = re.compile(r"^(#{1,3})\s+(.+?)\s*$", re.MULTILINE)
 
 
+def _ce_que_le_pdf_ne_sait_pas_ecrire(ctx: Contexte, fichiers: List[Path],
+                                      titre: str = "") -> Dict[str, Any]:
+    """Les lettres que le PDF livre a remplacees par « ? ».
+
+    Le moteur PDF est ecrit a la main et n'embarque aucune police : il tient
+    le francais entier et rien au-dela de l'alphabet latin. Un livre intitule
+    « la cuisine japonaise <ideogrammes> » sortait donc avec « ?? » sur sa
+    couverture, livre marque « pret » — alors que l'EPUB du meme produit
+    etait parfait, et que rien ne disait lequel des deux fichiers croire.
+
+    Ce n'est pas une anomalie du texte : le texte va bien. C'est une limite
+    d'un des formats livres, et c'est a ce titre qu'on la dit.
+    """
+    from ..render.pdf import caracteres_absents
+
+    if not any(chemin.suffix == ".pdf" for chemin in fichiers):
+        return {}
+    # Le titre et le sujet AUTANT que le corps : ils vont sur la couverture et
+    # sur la page de titre, qui sont justement les pages qu'on regarde. Une
+    # premiere version ne lisait que le corps du livre — et le cas qui a
+    # ouvert le sujet, « la cuisine japonaise <ideogrammes> », passait
+    # inapercu, parce que les ideogrammes etaient dans le titre.
+    texte, _titres = _matiere(fichiers)
+    perdus = caracteres_absents(
+        "\n".join([texte, titre or "", ctx.sujet or "", ctx.auteur or ""]))
+    if not perdus:
+        return {}
+    ctx.journal(
+        "[!] Le PDF ne sait pas ecrire {} caractere(s) : {}. Ils y "
+        "apparaissent en « ? » — l'EPUB et le HTML, eux, les gardent."
+        .format(len(perdus), " ".join(perdus[:12])))
+    return {"pdf_caracteres_absents": perdus[:40]}
+
+
 def _decouper(texte: str) -> List[Tuple[str, str]]:
     """Le texte livre, coupe a ses entetes de PREMIER niveau utile.
 
@@ -591,6 +625,8 @@ def terminer(ctx: Contexte, fichiers: List[Path], meta: Optional[Dict[str, Any]]
     # les chaines n'ont pas la meme structure interne, et c'est le fichier qui
     # part chez l'acheteur qui compte.
     infos.update(_mesurer_le_livre(ctx, genre, fichiers, infos))
+    infos.update(_ce_que_le_pdf_ne_sait_pas_ecrire(
+        ctx, fichiers, produit_avant.get("titre", "")))
 
     store.maj_produit(
         ctx.produit_id,
