@@ -22,6 +22,24 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
+def reseaux_sociaux() -> Tuple[str, ...]:
+    """Les reseaux que la chaine « social » sait vraiment viser.
+
+    Lus la ou ils sont declares. Les recopier ici en ferait deux listes, et
+    c'est celle du formulaire qui proposerait un reseau retire.
+    """
+    from .social import RESEAUX
+
+    return tuple(sorted(RESEAUX))
+
+
+def cibles_logiciel() -> Tuple[str, ...]:
+    """Ce qu'un produit logiciel peut etre : outil, page web, extension."""
+    from .logiciel import CIBLES
+
+    return tuple(sorted(CIBLES))
+
+
 def nouvelle_scenes() -> int:
     """Le nombre de scenes d'un roman, lu la ou il est decide.
 
@@ -31,6 +49,48 @@ def nouvelle_scenes() -> int:
     from .nouvelle import ROMAN_SCENES
 
     return ROMAN_SCENES
+
+
+@dataclass(frozen=True)
+class Champ:
+    """Une option propre a UN type de produit, declaree une seule fois.
+
+    Les options communes — sujet, ton, audience, qualite — vivent dans
+    « _options_communes » de la CLI : elles valent pour les onze types et
+    n'ont rien a faire ici.
+
+    Ce qui est declare la, ce sont les reglages qu'un seul type comprend : le
+    nombre de modules d'une formation, la cible d'un outil logiciel, la marge
+    de reliure d'un cahier imprimable.
+
+    Mesure du 14/09/2026 : sur les dix-sept options propres aux types
+    fabricables, HUIT etaient inatteignables depuis le tableau de bord. On ne
+    pouvait pas choisir, depuis le navigateur, si un outil logiciel devait
+    etre une ligne de commande ou une application web.
+
+    La cause n'etait pas un oubli mais une forme : le formulaire etait du HTML
+    ecrit a la main, avec des blocs caches et montres par le script. Ajouter
+    un type demandait d'editer le gabarit, le script ET le serveur — et les
+    options tombaient entre les mailles, une par une, sans que rien ne le dise.
+
+    Une declaration, trois lecteurs : l'analyseur d'arguments la transforme en
+    « add_argument », le serveur la sert au navigateur, le tableau de bord en
+    fait la section du type. Un champ ajoute ici apparait partout.
+    """
+
+    nom: str                          # le « dest » cote CLI, la cle cote JSON
+    drapeau: str                      # « --narration », « -n/--nombre »
+    libelle: str                      # ce que l'utilisateur lit
+    genre: str = "texte"              # texte | entier | decimal | booleen | choix
+    defaut: Any = ""
+    choix: Tuple[str, ...] = ()
+    aide: str = ""
+    unite: str = ""                   # « mm », « mots »... affiche apres le champ
+
+    @property
+    def drapeaux(self) -> Tuple[str, ...]:
+        """Les formes acceptees en ligne de commande, courte puis longue."""
+        return tuple(part for part in self.drapeau.split("/") if part)
 
 
 @dataclass
@@ -69,6 +129,8 @@ class TypeProduit:
     prose: bool = True
     mots_cles: Tuple[str, ...] = ()   # aide l'explorateur de niches a choisir
     options: Dict[str, Any] = field(default_factory=dict)
+    # Les reglages que CE type comprend, et lui seul. Voir « Champ ».
+    champs: Tuple[Champ, ...] = ()
 
     @property
     def duree(self) -> str:
@@ -151,6 +213,11 @@ TYPES: List[TypeProduit] = [
         mots_cles=("fiction", "recit", "roman", "conte", "intrigue"),
         # Une serie fait du tome suivant une vente au lecteur du precedent.
         options={"serie": None},
+        champs=(
+            Champ("serie", "--serie", "Série",
+                  aide="Laissez vide pour un récit isolé. Un tome reprend le "
+                       "monde, la distribution et les faits des précédents."),
+        ),
     ),
     TypeProduit(
         cle="roman", nom="Roman (fiction longue)",
@@ -164,6 +231,15 @@ TYPES: List[TypeProduit] = [
         mots_cles=("roman", "fiction longue", "saga", "polar", "thriller",
                    "fantasy", "romance"),
         options={"serie": None},
+        # Le nombre de scenes n'est PAS declare ici : « --chapitres » est une
+        # option commune aux onze types, ajoutee par « _options_communes ».
+        # La declarer une seconde fois donnait deux champs de meme nom dans
+        # le formulaire — celui d'en haut et celui de la section du type — et
+        # le second ecrasait le premier a l'envoi.
+        champs=(
+            Champ("serie", "--serie", "Série",
+                  aide="Laissez vide pour un roman isolé."),
+        ),
     ),
     TypeProduit(
         cle="prompts", nom="Pack de prompts",
@@ -175,6 +251,10 @@ TYPES: List[TypeProduit] = [
         mots_cles=("prompt", "ia", "chatgpt", "automatisation", "productivite"),
         # Une liste de prompts : pas de rythme, pas de continuite, et la repetition y est voulue.
         prose=False,
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre de prompts",
+                  genre="entier", defaut=50),
+        ),
     ),
     TypeProduit(
         cle="formation", nom="Mini-formation",
@@ -186,6 +266,15 @@ TYPES: List[TypeProduit] = [
         # Un appel de modele par module : c'est a l'utilisateur de decider.
         options={"narration": None},
         mots_cles=("formation", "cours", "apprendre", "module", "atelier"),
+        champs=(
+            Champ("modules", "-m/--modules", "Nombre de modules",
+                  genre="entier", defaut=0,
+                  aide="0 : l'usine décide en lisant le sujet."),
+            Champ("narration", "--narration", "Script à lire à voix haute",
+                  genre="booleen", defaut=False,
+                  aide="Un appel de modèle par module, en plus. Utile si vous "
+                       "comptez enregistrer la formation."),
+        ),
     ),
     TypeProduit(
         cle="outils", nom="Boite a outils",
@@ -195,6 +284,10 @@ TYPES: List[TypeProduit] = [
         minutes=(6, 14),
         quantite=("nombre", "Combien d'outils", "10"),
         mots_cles=("checklist", "modele", "outil", "procedure", "methode"),
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre d'outils",
+                  genre="entier", defaut=10),
+        ),
     ),
     TypeProduit(
         cle="modeles", nom="Modeles Notion / tableur",
@@ -205,6 +298,10 @@ TYPES: List[TypeProduit] = [
         quantite=("nombre", "Combien de bases", "4"),
         mots_cles=("notion", "tableur", "modele", "systeme", "organisation",
                    "suivi", "tableau"),
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre de bases",
+                  genre="entier", defaut=4),
+        ),
     ),
     TypeProduit(
         cle="impression", nom="Cahier imprimable",
@@ -218,6 +315,14 @@ TYPES: List[TypeProduit] = [
                    "planning", "journal"),
         # Des pages a remplir : le PDF livre ne contient presque pas de texte suivi.
         prose=False,
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre de fiches",
+                  genre="entier", defaut=12),
+            Champ("reliure", "--reliure", "Marge de reliure",
+                  genre="decimal", defaut=0, unite="mm",
+                  aide="Marge intérieure pour l'impression à la demande. "
+                       "0 = aucune ; votre imprimeur publie la sienne."),
+        ),
     ),
     TypeProduit(
         cle="social", nom="Pack de publications",
@@ -231,6 +336,15 @@ TYPES: List[TypeProduit] = [
                    "calendrier editorial"),
         # Trente posts de deux lignes. Le controle n'a rien a mordre et rend 9,98/10 quoi qu'il arrive.
         prose=False,
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre de publications",
+                  genre="entier", defaut=30),
+            Champ("reseau", "-r/--reseau", "Réseau visé", genre="choix",
+                  defaut="linkedin", choix=reseaux_sociaux()),
+            Champ("visuels", "--visuels", "Visuels à générer",
+                  genre="entier", defaut=0,
+                  aide="0 : aucun. Chacun coûte un appel d'image."),
+        ),
     ),
     TypeProduit(
         cle="logiciel", nom="Outil logiciel", extrait=False,
@@ -244,6 +358,16 @@ TYPES: List[TypeProduit] = [
                    "calculateur", "tableau de bord"),
         # Ce qu'on vend est un programme qui marche. Le seul texte relisible est sa notice — noter l'un pour l'autre serait un verdict fabrique ; « usine logiciel » verifie deja le code.
         prose=False,
+        champs=(
+            Champ("cible", "-c/--cible", "Ce que vous livrez", genre="choix",
+                  defaut="cli", choix=cibles_logiciel(),
+                  aide="cli : outil en ligne de commande. web : page "
+                       "autonome. extension : Chrome Manifest V3."),
+            Champ("sans_essai", "--sans-essai", "Ne pas exécuter le code",
+                  genre="booleen", defaut=False,
+                  aide="L'usine analyse le code sans jamais le lancer. Plus "
+                       "prudent, mais elle ne saura pas s'il démarre."),
+        ),
     ),
     TypeProduit(
         cle="idees", nom="Etude de niche",
@@ -254,6 +378,18 @@ TYPES: List[TypeProduit] = [
         quantite=("nombre", "Combien d'idees", "12"),
         options={"avec_marche": None},
         vendable=False, file=False,
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre de pistes",
+                  genre="entier", defaut=12),
+            Champ("sans_marche", "--sans-marche", "Ne pas mesurer le marché",
+                  genre="booleen", defaut=False,
+                  aide="Plus rapide, et les pistes ne sont alors appuyées sur "
+                       "aucune mesure."),
+            Champ("sans_veille", "--sans-veille", "Ne pas lire les discussions",
+                  genre="booleen", defaut=False,
+                  aide="La veille est lente par construction : trois secondes "
+                       "entre deux communautés."),
+        ),
     ),
 ]
 

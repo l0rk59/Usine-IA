@@ -693,6 +693,28 @@ button.danger { border-radius: 2px; box-shadow: var(--neon-mag); }
                      box-shadow: 0 -8px 16px -8px rgba(0,0,0,0.45);
                      border-top: 1px solid var(--bord); }
 .facultatif { color: var(--doux); font-weight: 400; font-size: 0.78rem; }
+
+/* Le bouton de fabrication, toujours a portee. Le formulaire fait deux ecrans
+   une fois les reglages du type deplies : un bouton qu'on doit aller chercher
+   en haut se lit comme une etape de plus. Meme forme que la barre
+   « Enregistrer » des reglages, et pour la meme raison. */
+.barre-lancer { position: sticky; bottom: 0; z-index: 6;
+                margin: 0 0 0.9rem; padding: 0.7rem 0.9rem;
+                background: var(--fond2, var(--fond));
+                border: 1px solid var(--bord); border-radius: var(--rayon);
+                box-shadow: 0 -8px 16px -8px rgba(0,0,0,0.45); }
+.barre-lancer .aide { margin: 0.5rem 0 0; }
+.barre-lancer button.discret { width: auto; margin-left: 0.4rem; }
+
+/* Les reglages propres au type. Ils forment une carte a part : melanges au
+   reste, on ne savait plus ce qui valait pour tous les produits et ce qui ne
+   valait que pour celui-la. */
+#champs-type .champ { display: block; margin: 0.6rem 0; }
+#champs-type .case { display: flex; gap: 0.5rem; align-items: flex-start;
+                     margin: 0.6rem 0; }
+#champs-type small.aide { display: block; color: var(--doux);
+                          font-size: 0.78rem; margin-top: 0.15rem; }
+#champs-type .unite { color: var(--doux); font-weight: 400; }
 .groupe-reglages .champ { display: block; margin: 0.5rem 0; }
 .groupe-reglages .case { display: flex; gap: 0.5rem; align-items: flex-start;
                          margin: 0.5rem 0; }

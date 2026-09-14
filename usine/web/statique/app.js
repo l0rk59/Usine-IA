@@ -199,7 +199,11 @@ async function chargerEtat() {
   dessinerReglages(etat.groupesReglages, donnees.reglages || {});
   if (!$('ton').options.length) {
     etat.types = donnees.types;
-    remplirListe($('type'), donnees.types.map((t) => [t.cle, t.nom]), 'ebook');
+    /* Le premier du catalogue, pas un nom ecrit ici : c'est le
+       catalogue qui decide de l'ordre, et donc de ce qu'on propose
+       d'abord. Un nom en dur survivrait au retrait du type. */
+    remplirListe($('type'), donnees.types.map((t) => [t.cle, t.nom]),
+                 (donnees.types[0] || {}).cle);
     decrireType();
     remplirListe($('ton'), donnees.tons, donnees.reglages.ton);
     remplirListe($('taille'), donnees.tailles, donnees.reglages.taille);
@@ -214,7 +218,9 @@ async function chargerEtat() {
     $('taille').addEventListener('change', basculerSurMesure);
     basculerSurMesure();
     remplirListe($('qualite'), donnees.qualites, donnees.reglages.qualite);
-    remplirListe($('reseau'), donnees.reseaux, 'linkedin');
+    // Le choix du reseau est desormais un champ du type « social »,
+    // bati depuis le catalogue : plus rien a remplir ici.
+    decrireType();
     $('auteur').value = donnees.reglages.auteur || '';
     $('audience').value = donnees.reglages.audience || '';
     $('agents').innerHTML = donnees.agents.map((a) =>
@@ -618,7 +624,7 @@ $('file-ajouter').addEventListener('click', async () => {
   }
   const donnees = await envoyerFile({
     action: 'ajouter', sujet, type: $('type').value,
-    nombre: $('nombre').value, audience: $('audience').value.trim(),
+    ...valeursDuType(), audience: $('audience').value.trim(),
     ton: $('ton').value === '__libre__'
       ? $('ton-libre').value.trim() : $('ton').value,
     qualite: $('qualite').value,
@@ -818,18 +824,90 @@ function decrireType() {
   const choisi = (etat.types || []).find((t) => t.cle === $('type').value);
   if (!choisi) return;
   $('type-detail').textContent = `${choisi.detail} · ${choisi.duree}`;
-  const champ = $('nombre');
-  champ.placeholder = choisi.quantite ? String(choisi.defaut) : 'sans objet';
-  champ.disabled = !choisi.quantite;
+  /* Le champ « Sections » est commun aux onze types, mais sa valeur par
+     defaut ne l'est pas : trente scenes pour un roman, douze chapitres pour
+     un ebook. Le placeholder le dit sans imposer. */
+  if (choisi.quantite) $('chapitres').placeholder = String(choisi.defaut);
+  dessinerChampsDuType(choisi);
 }
 
-$('type').addEventListener('change', () => {
-  $('bloc-reseau').hidden = $('type').value !== 'social';
-  // Une serie n'a de sens que pour la fiction : la proposer ailleurs
-  // inviterait a ranger un guide dans une suite qui n'en est pas une.
-  $('bloc-serie').hidden = $('type').value !== 'nouvelle';
-  decrireType();
-});
+/* Les reglages propres au type, batis depuis le catalogue.
+
+   Ils etaient ecrits a la main dans le gabarit, avec des blocs caches et
+   montres par ce script — un « bloc-reseau » pour les posts, un « bloc-serie »
+   pour la fiction, et rien pour les autres. Mesure du 14/09/2026 : HUIT
+   reglages sur dix-sept n'existaient plus que dans la ligne de commande. On ne
+   pouvait pas choisir, depuis le navigateur, si un outil logiciel etait une
+   ligne de commande ou une application web, ni combien de modules comptait une
+   formation.
+
+   Ajouter un type demandait d'editer le gabarit, ce script ET le serveur.
+   Maintenant, un champ ajoute au catalogue apparait ici tout seul. */
+function dessinerChampsDuType(type) {
+  const carte = $('carte-type');
+  /* UNE source : les champs declares au catalogue. Le catalogue porte aussi
+     une « quantite » — la question que pose le menu Termux — et melanger les
+     deux affichait deux fois le meme reglage : « Combien de modules » ET
+     « Nombre de modules » sur la meme formation. */
+  const tout = type.champs || [];
+  carte.hidden = tout.length === 0;
+  $('titre-type').textContent = `Réglages : ${type.nom}`;
+  $('aide-type').textContent = tout.length
+    ? `Ce que « ${type.nom} » comprend, et lui seul.` : '';
+  $('champs-type').innerHTML = tout.map(champDuType).join('');
+  /* Les series connues n'ont de sens que pour la fiction, et la liste arrive
+     par « /api/etat » : on la rebranche apres avoir redessine. */
+  const serie = document.getElementById('champ-serie');
+  if (serie) serie.setAttribute('list', 'series-connues');
+}
+
+function champDuType(champ) {
+  const id = 'champ-' + champ.nom;
+  const aide = champ.aide
+    ? `<small class="aide">${echapper(champ.aide)}</small>` : '';
+  const unite = champ.unite ? ` <span class="unite">${echapper(champ.unite)}</span>` : '';
+  if (champ.genre === 'booleen') {
+    return `<label class="case" for="${id}">
+      <input type="checkbox" id="${id}" data-champ="${echapper(champ.nom)}"
+        ${champ.defaut ? 'checked' : ''}/>
+      <span><span class="nom-reglage">${echapper(champ.libelle)}</span>
+        ${aide}</span></label>`;
+  }
+  if (champ.genre === 'choix') {
+    const options = (champ.choix || []).map((valeur) =>
+      `<option value="${echapper(valeur)}"${
+        valeur === champ.defaut ? ' selected' : ''}>${echapper(valeur)}</option>`
+    ).join('');
+    return `<label class="champ" for="${id}">${echapper(champ.libelle)}
+      <select id="${id}" data-champ="${echapper(champ.nom)}">${options}</select>
+      ${aide}</label>`;
+  }
+  const type = champ.genre === 'entier' || champ.genre === 'decimal'
+    ? 'number' : 'text';
+  const pas = champ.genre === 'decimal' ? ' step="0.5"' : '';
+  const valeur = champ.defaut === 0 || champ.defaut ? champ.defaut : '';
+  return `<label class="champ" for="${id}">${echapper(champ.libelle)}${unite}
+    <input type="${type}"${pas} id="${id}" data-champ="${echapper(champ.nom)}"
+      ${type === 'number' ? 'min="0"' : ''}
+      placeholder="${echapper(String(valeur))}"/>
+    ${aide}</label>`;
+}
+
+/* Ce que l'utilisateur a rempli dans la section du type, prêt pour l'envoi. */
+function valeursDuType() {
+  const valeurs = {};
+  document.querySelectorAll('#champs-type [data-champ]').forEach((champ) => {
+    const nom = champ.dataset.champ;
+    if (champ.type === 'checkbox') {
+      if (champ.checked) valeurs[nom] = true;
+    } else if (String(champ.value).trim() !== '') {
+      valeurs[nom] = champ.type === 'number' ? Number(champ.value) : champ.value;
+    }
+  });
+  return valeurs;
+}
+
+$('type').addEventListener('change', decrireType);
 
 let minuterieAlerte = null;
 $('sujet').addEventListener('input', () => {
@@ -878,9 +956,10 @@ $('lancer').addEventListener('click', async () => {
       taille: $('taille').value === '__libre__' ? '' : $('taille').value,
       chapitres: $('chapitres').value, mots: $('mots').value,
       qualite: $('qualite').value,
-      auteur: $('auteur').value.trim(), nombre: $('nombre').value,
-      reseau: $('reseau').value,
-      serie: $('serie').value.trim(),
+      auteur: $('auteur').value.trim(),
+      // Les reglages propres au type, quels qu'ils soient : le formulaire
+      // vient du catalogue, donc l'envoi aussi.
+      ...valeursDuType(),
     }),
   });
   const donnees = await reponse.json();

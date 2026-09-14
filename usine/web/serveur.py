@@ -108,7 +108,19 @@ def _catalogue() -> List[Dict[str, Any]]:
     return [
         {"cle": t.cle, "nom": t.nom, "resume": t.resume, "detail": t.detail,
          "duree": t.duree, "quantite": t.nom_quantite,
-         "defaut": t.defaut_quantite()}
+         "defaut": t.defaut_quantite(),
+         # Les reglages que CE type comprend. Ecrits a la main dans le gabarit
+         # et dans le script, huit sur dix-sept avaient fini par n'exister que
+         # dans l'analyseur d'arguments : on ne pouvait pas choisir, depuis le
+         # navigateur, si un outil logiciel etait une ligne de commande ou une
+         # application web. Le formulaire se construit maintenant a partir de
+         # cette liste, donc un champ ajoute au catalogue y apparait seul.
+         "champs": [
+             {"nom": c.nom, "libelle": c.libelle, "genre": c.genre,
+              "defaut": c.defaut, "choix": list(c.choix), "aide": c.aide,
+              "unite": c.unite}
+             for c in t.champs
+         ]}
         for t in catalogue.tous(fabricables=True)
     ]
 

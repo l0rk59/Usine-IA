@@ -1102,15 +1102,34 @@ class TestDocteur(BaseServeur):
 
     def test_le_formulaire_porte_le_champ_serie(self):
         """Une option qui n'est pas dans la page n'existe pas pour qui
-        produit depuis un navigateur."""
+        produit depuis un navigateur.
+
+        Le controle a change de cible le 14/09/2026, pas de sens. Le champ
+        n'est plus ecrit dans le gabarit : il est DECLARE au catalogue et le
+        formulaire se batit a partir de la. Chercher « id="serie" » dans la
+        page reviendrait desormais a exiger le retour du defaut — c'est
+        precisement le HTML ecrit a la main qui avait laissé huit reglages
+        sur dix-sept hors du navigateur.
+        """
+        from usine.pipelines import catalogue
+
         _, corps = self.appeler("/")
         page = corps.decode("utf-8")
-        self.assertIn('id="serie"', page)
+        # La liste des series connues, elle, reste dans le gabarit : c'est un
+        # « datalist » que le script remplit.
         self.assertIn("series-connues", page)
-        script = (RACINE / "usine" / "web" / "statique" / "app.js").read_text(
-            encoding="utf-8")
-        self.assertIn("serie: $('serie')", script)
-        self.assertIn("bloc-serie", script)
+        for cle in ("nouvelle", "roman"):
+            with self.subTest(type=cle):
+                noms = [c.nom for c in catalogue.obtenir(cle).champs]
+                self.assertIn("serie", noms,
+                              "la fiction ne peut plus etre rangee en serie")
+        import json
+
+        _, brut = self.appeler("/api/etat")
+        servis = {t["cle"]: [c["nom"] for c in t["champs"]]
+                  for t in json.loads(brut.decode("utf-8"))["types"]}
+        self.assertIn("serie", servis["nouvelle"],
+                      "le serveur ne sert pas le champ au navigateur")
 
     def test_le_controle_des_modeles_ne_sort_que_si_on_le_demande(self):
         """Une requete par fournisseur : trop lent pour un rafraichissement.

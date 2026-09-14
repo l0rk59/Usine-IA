@@ -2258,6 +2258,35 @@ def cmd_web(args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------
 
 
+def _options_du_type(sous: argparse.ArgumentParser, cle: str) -> None:
+    """Ajoute les options que CE type de produit comprend, et lui seul.
+
+    Elles sont declarees dans le catalogue, pas ici. Ecrites a la main dans
+    trois endroits — l'analyseur, le gabarit du tableau de bord et son script —
+    huit d'entre elles sur dix-sept avaient fini par ne plus exister que dans
+    l'analyseur : on ne pouvait pas choisir, depuis le navigateur, si un outil
+    logiciel etait une ligne de commande ou une application web.
+    """
+    from .pipelines.catalogue import obtenir
+
+    fiche = obtenir(cle)
+    if fiche is None:
+        return
+    for champ in fiche.champs:
+        if champ.genre == "booleen":
+            sous.add_argument(*champ.drapeaux, action="store_true",
+                              help=champ.aide or champ.libelle)
+            continue
+        genre = {"entier": int, "decimal": float}.get(champ.genre, str)
+        extra = {}
+        if champ.choix:
+            extra["choices"] = list(champ.choix)
+        if champ.unite:
+            extra["metavar"] = champ.unite.upper()
+        sous.add_argument(*champ.drapeaux, type=genre, default=champ.defaut,
+                          help=champ.aide or champ.libelle, **extra)
+
+
 def _options_communes(sous: argparse.ArgumentParser, avec_sujet: bool = True) -> None:
     if avec_sujet:
         # « nargs="?" » et non un positionnel obligatoire : sans sujet,
@@ -2384,53 +2413,40 @@ def construire_parseur() -> argparse.ArgumentParser:
 
     p = sous_parseurs.add_parser("prompts", help="fabriquer un pack de prompts")
     _options_communes(p)
-    p.add_argument("-n", "--nombre", type=int, default=50, help="nombre de prompts")
+    _options_du_type(p, "prompts")
     p.set_defaults(fonction=cmd_prompts)
 
     p = sous_parseurs.add_parser("formation", help="fabriquer une mini-formation")
     _options_communes(p)
-    p.add_argument("--narration", action="store_true",
-                   help="script a lire a voix haute (un appel IA par module)")
-    p.add_argument("-m", "--modules", type=int, default=0, help="nombre de modules")
+    _options_du_type(p, "formation")
     p.set_defaults(fonction=cmd_formation)
 
     p = sous_parseurs.add_parser("outils", help="fabriquer une boite a outils")
     _options_communes(p)
-    p.add_argument("-n", "--nombre", type=int, default=10, help="nombre d'outils")
+    _options_du_type(p, "outils")
     p.set_defaults(fonction=cmd_outils)
 
     p = sous_parseurs.add_parser("modeles",
                                  help="fabriquer des modeles Notion / tableur")
     _options_communes(p)
-    p.add_argument("-n", "--nombre", type=int, default=4, help="nombre de bases")
+    _options_du_type(p, "modeles")
     p.set_defaults(fonction=cmd_modeles)
 
     p = sous_parseurs.add_parser("impression",
                                  help="fabriquer un cahier imprimable")
     _options_communes(p)
-    p.add_argument("-n", "--nombre", type=int, default=12, help="nombre de fiches")
-    p.add_argument("--reliure", type=float, default=0, metavar="MM",
-                   help="marge interieure en mm pour l'impression a la demande "
-                        "(0 = aucune ; votre imprimeur publie la sienne)")
+    _options_du_type(p, "impression")
     p.set_defaults(fonction=cmd_impression)
 
     p = sous_parseurs.add_parser("social", help="fabriquer un pack de publications")
     _options_communes(p)
-    p.add_argument("-n", "--nombre", type=int, default=30, help="nombre de publications")
-    p.add_argument("-r", "--reseau", default="linkedin",
-                   choices=sorted(social.RESEAUX), help="reseau vise")
-    p.add_argument("--visuels", type=int, default=0,
-                   help="nombre de visuels a generer")
+    _options_du_type(p, "social")
     p.set_defaults(fonction=cmd_social)
 
     p = sous_parseurs.add_parser("logiciel",
                                  help="fabriquer un outil logiciel verifie")
     _options_communes(p)
-    p.add_argument("-c", "--cible", default="cli", choices=sorted(logiciel.CIBLES),
-                   help="cli (outil en ligne de commande), web (page autonome), "
-                        "extension (Chrome Manifest V3)")
-    p.add_argument("--sans-essai", dest="sans_essai", action="store_true",
-                   help="analyser le code sans jamais l'executer")
+    _options_du_type(p, "logiciel")
     p.set_defaults(fonction=cmd_logiciel)
 
     p = sous_parseurs.add_parser("complet",

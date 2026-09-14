@@ -89,27 +89,30 @@
   </div>
   <div class="duo">
     <div><label for="qualite">Qualite</label><select id="qualite"></select></div>
-    <div><label for="nombre">Quantite</label>
-      <input id="nombre" type="number" min="0" placeholder="auto"/></div>
-  </div>
-  <div class="duo">
     <div><label for="auteur">Auteur</label><input id="auteur"/></div>
-    <div id="bloc-reseau" hidden><label for="reseau">Reseau</label>
-      <select id="reseau"></select></div>
   </div>
-  <div id="bloc-serie" hidden>
-    <label for="serie">Serie</label>
-    <input id="serie" list="series-connues"
-           placeholder="ex : Les rails — laissez vide pour un recit isole"/>
-    <datalist id="series-connues"></datalist>
-    <p class="aide">Un tome reprend le monde, la distribution et les faits des
-      precedents, et sa derniere page annonce les autres.</p>
-  </div>
+</div>
 
+<!-- Les reglages propres au type choisi. Cette carte est VIDE dans le
+     gabarit : elle se remplit depuis le catalogue, qui declare ce que chaque
+     type comprend. Ecrits a la main ici, huit reglages sur dix-sept avaient
+     fini par n'exister que dans la ligne de commande — on ne pouvait pas
+     choisir, depuis le navigateur, si un outil logiciel etait une ligne de
+     commande ou une application web. -->
+<div class="carte" id="carte-type" hidden>
+  <h2 id="titre-type">Réglages du type</h2>
+  <p class="aide" id="aide-type"></p>
+  <div id="champs-type"></div>
+  <datalist id="series-connues"></datalist>
+</div>
+
+<!-- Le bouton reste a portee sans qu'on remonte : le formulaire fait deux
+     ecrans une fois les reglages du type deplies, et un bouton qu'on doit
+     aller chercher se lit comme une etape de plus. -->
+<div class="barre-lancer">
   <button class="principal" id="lancer">Lancer la fabrication</button>
-  <p class="aide">La fabrication continue meme si vous fermez cette page.</p>
-  <p class="aide">
-    <button id="retenir" class="discret">Retenir ces choix par defaut</button>
+  <p class="aide">La fabrication continue meme si vous fermez cette page.
+    <button id="retenir" class="discret">Retenir ces choix</button>
     <span id="retenu" hidden>enregistre</span>
   </p>
 </div>
