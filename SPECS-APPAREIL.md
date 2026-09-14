@@ -1,6 +1,6 @@
 # Fiche technique de l'appareil
 
-Relevee par `usine specs` le 2026-09-14T12:27:37Z.
+Relevee par `usine specs` le 2026-09-14T12:31:30Z.
 
 Ce document repond a une question que `usine docteur` ne pose pas :
 **qu'est-ce qui devrait etre dans `install.sh` pour que cet appareil
@@ -10,10 +10,6 @@ marche sans bricolage ?** Aucune cle API n'y figure.
 
 | Ce qui manque | Gravite | Pour l'avoir | Ce que son absence coute |
 |---|---|---|---|
-| node | optionnel | `pkg install nodejs-lts` | le JavaScript genere par la chaine « logiciel » n'est verifie qu'en mode degrade : une erreur de syntaxe fine passe |
-| termux-notification | optionnel | `pkg install termux-api` | aucune notification quand un produit sort, pendant que l'ecran est eteint |
-| termux-battery-status | optionnel | `pkg install termux-api` | l'usine continue ne peut pas s'arreter sur batterie faible |
-| termux-share | optionnel | `pkg install termux-api` | impossible de partager une archive |
 | une cle API | bloquant | `usine cles` | sans cle, seul le quota anonyme partage est disponible et il ne suffit pas a un produit entier |
 
 ## L'appareil
@@ -24,9 +20,9 @@ marche sans bricolage ?** Aucune cle API n'y figure.
 | Architecture | aarch64 |
 | Python | 3.14.6 (main, Jul  5 2026, 10:35:55) [Clang 21.0.0 (https://android.googlesource.com/toolchain/llvm-project 5e96669f0 |
 | Termux | oui |
-| termux-api | absent |
+| termux-api | present |
 | Memoire vive | 11276 Mo |
-| Disque libre | 787447 Mo sur 995134 Mo |
+| Disque libre | 787375 Mo sur 995134 Mo |
 | Dossier de travail | `/data/data/com.termux/files/home/Usine-IA/atelier` |
 
 ## Outils
@@ -35,11 +31,11 @@ marche sans bricolage ?** Aucune cle API n'y figure.
 |---|---|---|---|
 | `python3` | present | Python 3.14.6 | — |
 | `git` | present | git version 2.55.0 | — |
-| `node` | **absent** | — | le JavaScript genere par la chaine « logiciel » n'est verifie qu'en mode degrade : une erreur de syntaxe fine passe |
-| `termux-notification` | **absent** | — | aucune notification quand un produit sort, pendant que l'ecran est eteint |
-| `termux-battery-status` | **absent** | — | l'usine continue ne peut pas s'arreter sur batterie faible |
+| `node` | present | v24.18.0 | — |
+| `termux-notification` | present | getopt: unrecognized option `--version' | — |
+| `termux-battery-status` | present | termux-battery-status: illegal option -- | — |
 | `termux-open` | present | getopt: unrecognized option `--version' | — |
-| `termux-share` | **absent** | — | impossible de partager une archive |
+| `termux-share` | present | termux-share: illegal option -- | — |
 | `termux-wake-lock` | present | usage: termux-wake-lock | — |
 | `ollama` | present | ollama version is 0.31.1 | — |
 | `curl` | present | curl 8.22.0 (aarch64-unknown-linux-android) libcurl/8.22.0 OpenSSL/3.6.3 zlib/1. | — |
