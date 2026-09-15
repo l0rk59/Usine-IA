@@ -37,6 +37,20 @@ SCRIPT = (STATIQUE / "app.js").read_text(encoding="utf-8")
 
 
 class LaRechercheDeFictionEstAtteignableDepuisLeNavigateur(unittest.TestCase):
+    """Les travaux crees ici sont retires apres chaque cas.
+
+    Un travail laisse « en cours » dans l'etat du serveur n'echoue nulle part
+    dans ce module — mais le module suivant refuse toute restauration au
+    motif qu'« une fabrication est en cours ». Trois tests de « test_tableau »
+    sont tombes comme cela, et la cause etait deux modules plus haut.
+    """
+
+    def setUp(self):
+        self._travaux_avant = set(serveur.TRAVAUX)
+
+    def tearDown(self):
+        for identifiant in set(serveur.TRAVAUX) - self._travaux_avant:
+            serveur.TRAVAUX.pop(identifiant, None)
 
     def test_le_bouton_existe_dans_le_gabarit(self):
         self.assertIn('id="file-prospecter-fiction"', GABARIT)
@@ -132,8 +146,7 @@ class LaRechercheDeFictionEstAtteignableDepuisLeNavigateur(unittest.TestCase):
                 serveur._lancer_prospection("t2", fiction=False)
             self.assertEqual(serveur.TRAVAUX["t1"]["statut"], "termine")
         finally:
-            serveur.TRAVAUX.pop("t1", None)
-            serveur.TRAVAUX.pop("t2", None)
+            pass
         self.assertEqual(appels, ["fiction", "niche"])
 
 
