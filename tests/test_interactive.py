@@ -231,6 +231,53 @@ class LaChaineCompleteViaLeSimulateur(unittest.TestCase):
             self.assertTrue(titre.isdigit(), titre)
 
 
+class LeChoixEstEcritCommeLeGenreLEcrit(unittest.TestCase):
+    """« Pousser la porte → 4 » ne survit pas au PDF.
+
+    Le moteur PDF n'embarque aucune police : les quatorze polices standard du
+    format, en WinAnsi, ou « → » n'existe pas. Le symbole etait RETIRE en
+    silence — a raison, un « ? » a sa place se lirait comme un defaut du
+    fichier — et la page montrait « Pousser la porte 4 », ou rien ne dit que
+    4 est une destination. Vu en ouvrant le PDF, pas en lisant le markdown.
+    """
+
+    def test_l_infinitif_prend_la_formule_du_genre(self):
+        self.assertEqual(
+            interactive.formuler_choix("Pousser la porte", 4),
+            "Si vous voulez pousser la porte, rendez-vous au **4**.")
+
+    def test_la_deuxieme_personne_ne_donne_pas_une_phrase_fautive(self):
+        # « Si vous voulez vous reculez » reviendrait a CHAQUE section.
+        formule = interactive.formuler_choix("Vous reculez", 12)
+        self.assertNotIn("Si vous voulez vous", formule)
+        self.assertIn("rendez-vous au **12**", formule)
+
+    def test_aucun_symbole_absent_des_polices_du_pdf(self):
+        from usine.render import pdf as moteur
+
+        for texte in ("Pousser la porte", "Vous reculez", "ACCEPTER"):
+            formule = interactive.formuler_choix(texte, 7)
+            # Ce que le PDF ecrira vraiment : le balisage inline retire, les
+            # symboles absents des polices retires aussi. Le numero doit
+            # survivre aux deux.
+            ecrit = moteur._sans_symbole(formule.replace("**", ""))
+            self.assertIn("rendez-vous au 7", ecrit)
+
+    def test_le_livre_livre_ne_porte_aucune_fleche(self):
+        llm.definir_simulateur(simulateur.simulateur)
+        try:
+            ctx = base.Contexte(sujet="une gare abandonnee", sans_image=True,
+                                journal=lambda m: None)
+            ctx.chapitres, ctx.mots_section = 12, 150
+            resume = interactive.produire(ctx)
+        finally:
+            llm.definir_simulateur(None)
+        texte = (Path(resume["dossier"]) / "interactive.md").read_text(
+            encoding="utf-8")
+        self.assertNotIn("\u2192", texte)
+        self.assertIn("rendez-vous au", texte)
+
+
 class LaSecondeDemandeNommeLesDefautsDeLaPremiere(unittest.TestCase):
     """Un modele a qui l'on dit « recommence » refait la meme carte.
 

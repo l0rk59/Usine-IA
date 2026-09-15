@@ -83,8 +83,9 @@ def _invite_carte(ctx: Contexte, bible: Dict[str, Any], sections: int,
         "- une fin n'a AUCUN choix ; toute autre section en a deux ou trois.\n\n"
         "Pour chaque section : un intitule court (ce qui s'y passe, pas un "
         "titre de chapitre), et ses choix. Le texte de chaque choix est ce "
-        "que le LECTEUR decide de faire, a l'infinitif ou a la deuxieme "
-        "personne.\n\n"
+        "que le LECTEUR decide de faire, A L'INFINITIF (« Pousser la porte », "
+        "« Attendre la nuit ») : il est repris dans la formule du genre, "
+        "« Si vous voulez pousser la porte, rendez-vous au 4 ».\n\n"
         "Schema JSON exact :\n"
         '{{"sections": [{{"numero": 1, "intitule": "...", "fin": false, '
         '"choix": [{{"texte": "Pousser la porte", "vers": 4}}]}}, '
@@ -297,11 +298,13 @@ def _rediger_section(ctx: Contexte, bible: Dict[str, Any],
     else:
         consigne = (
             "La section se termine JUSTE AVANT le choix. N'ecris pas les "
-            "options — elles sont ajoutees ensuite, mot pour mot :\n{choix}\n"
+            "options — elles sont ajoutees ensuite, exactement ainsi :\n"
+            "{choix}\n"
             "Amene-les : a la derniere ligne, le lecteur doit sentir ces "
             "possibilites-la et pas d'autres."
         ).format(choix="\n".join(
-            "  - {}".format(c["texte"]) for c in section["choix"]))
+            "  " + formuler_choix(c["texte"], c["vers"]).replace("**", "")
+            for c in section["choix"]))
 
     invite = (
         "Ecris la section {num} d'un livre dont le lecteur est le heros.\n\n"
@@ -325,6 +328,45 @@ def _rediger_section(ctx: Contexte, bible: Dict[str, Any],
     return sans_titres(elaguer_markdown(reponse.texte))
 
 
+# Les tetes de phrase sur lesquelles « Si vous voulez » ne se greffe pas.
+_PRONOMS = ("vous", "tu", "je", "j'", "il", "elle", "on", "nous", "ils",
+            "elles")
+
+
+def formuler_choix(texte: str, vers: int) -> str:
+    """La formule du genre : « Si vous voulez X, rendez-vous au N. »
+
+    Le livre-jeu sortait « Pousser la porte → 4 ». La fleche ne survit pas au
+    PDF : le moteur n'embarque aucune police, il utilise les quatorze polices
+    standard du format en WinAnsi, et « → » n'y figure pas. Elle etait donc
+    RETIREE en silence — a raison, un « ? » a sa place se lirait comme un
+    defaut du fichier — et la page montrait « Pousser la porte 4 », ou rien
+    ne dit que 4 est une destination. Vu en ouvrant le PDF.
+
+    La formule du genre n'a besoin d'aucun symbole. « Si vous voulez » suivi
+    d'un infinitif est la construction des livres dont vous etes le heros
+    depuis l'origine, et c'est exactement la forme que la carte porte deja :
+    l'invite demande au modele une action « a l'infinitif ou a la deuxieme
+    personne ».
+    """
+    action = texte.strip().rstrip(".")
+    premier = action.split(" ", 1)[0]
+    if premier.lower() in _PRONOMS:
+        # « Si vous voulez vous reculez » : la formule ne se greffe que sur un
+        # infinitif. L'invite en demande un, mais un modele rend parfois la
+        # deuxieme personne, et la phrase fautive reviendrait a CHAQUE
+        # section du livre. Le deux-points marche avec les deux formes, et
+        # « rendez-vous au N » — la vraie convention — y reste entier.
+        return "{} : rendez-vous au **{}**.".format(action, vers)
+    # « Pousser » devient « pousser ». Un sigle garde ses capitales. Un nom
+    # propre en tete serait abaisse a tort — c'est le cout accepte : l'invite
+    # demande une action, pas une phrase qui commence par un nom, et une
+    # majuscule au milieu d'une phrase se verrait a chaque section.
+    if premier[:1].isupper() and premier[1:].islower():
+        action = action[:1].lower() + action[1:]
+    return "Si vous voulez {}, rendez-vous au **{}**.".format(action, vers)
+
+
 def _markdown(carte: List[Dict[str, Any]]) -> str:
     morceaux = []
     for section in carte:
@@ -334,8 +376,8 @@ def _markdown(carte: List[Dict[str, Any]]) -> str:
             morceaux.append("*Fin.*")
         else:
             for choix in section["choix"]:
-                morceaux.append("- {} → **{}**".format(
-                    choix["texte"], choix["vers"]))
+                morceaux.append("- " + formuler_choix(choix["texte"],
+                                                      choix["vers"]))
         morceaux.append("")
     return "\n\n".join(morceaux)
 
