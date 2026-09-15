@@ -51,6 +51,13 @@ from typing import Any, Dict, List, Sequence, Tuple
 # decoratif : un test verifie que chaque liste y figure, et refuse une
 # donnee ajoutee sans provenance.
 SOURCES = {
+    "EN_FRANCAIS": (
+        "Ce n'est pas une donnee de marche : la traduction francaise des "
+        "termes de genre releves, en regard du terme source. Le terme source "
+        "reste la cle des releves de « MOTS_ATTENDUS » — la fourchette a ete "
+        "relevee pour « contemporary romance », pas pour une traduction "
+        "qu'on en aurait faite. Le libelle francais est ce que l'utilisateur "
+        "lit, parce que tout s'affiche en francais ici."),
     "CATEGORIES": (
         "Categories de premier niveau de la fiction chez Amazon KDP, "
         "relevees le 15/09/2026. Amazon ne publie AUCUNE taxinomie complete, "
@@ -221,6 +228,109 @@ MOTS_ATTENDUS: Dict[str, Tuple[int, int]] = {
 }
 
 
+# Le nom FRANCAIS de chaque sous-genre et de chaque trope, en regard du terme
+# source qu'il traduit.
+#
+# Les deux sont necessaires, et pour des raisons differentes.
+#
+# Le terme source est celui sous lequel une plateforme range le livre. C'est
+# lui qui porte les longueurs attendues de « MOTS_ATTENDUS », et le remplacer
+# ferait perdre la tracabilite du releve : « 50 000 a 90 000 mots » a ete
+# relevee pour « contemporary romance », pas pour une traduction qu'on en
+# aurait faite.
+#
+# Le nom francais est celui que l'utilisateur LIT. Tout est en francais dans
+# ce depot, y compris ce qui s'affiche — et une liste de suggestions en
+# anglais dans un tableau de bord francais est exactement ce qu'un
+# utilisateur signale comme « bizarre ». C'est arrive le 15/09/2026 : le
+# panneau d'un livre-jeu d'horreur proposait « chapter books, clean &
+# wholesome romance, coming of age, cozy mystery, dark romance, dystopian,
+# early readers... ».
+#
+# Quelques termes restent tels quels parce que le marche francophone les
+# emploie tels quels : « dark romance », « slow burn », « young adult »,
+# « space opera », « steampunk », « thriller ». Les traduire inventerait un
+# vocabulaire que personne ne tape dans une barre de recherche.
+EN_FRANCAIS: Dict[str, str] = {
+    # Romance
+    "contemporary romance": "romance contemporaine",
+    "historical romance": "romance historique",
+    "paranormal romance": "romance paranormale",
+    "romantic suspense": "suspense romantique",
+    "dark romance": "dark romance",
+    "fantasy romance": "romance fantasy",
+    "sports romance": "romance sportive",
+    "military romance": "romance militaire",
+    "clean & wholesome romance": "romance sans scene explicite",
+    "reverse harem": "reverse harem",
+    "small town & rural romance": "romance en petite ville",
+    "regency romance": "romance Regence",
+    # Policier
+    "cozy mystery": "cosy mystery",
+    "thriller": "thriller",
+    "espionage": "espionnage",
+    "suspense": "suspense",
+    "police procedural": "procedure policiere",
+    "hard-boiled": "polar noir",
+    # Imaginaire
+    "epic fantasy": "fantasy epique",
+    "urban fantasy": "fantasy urbaine",
+    "science fiction": "science-fiction",
+    "dystopian": "dystopie",
+    "space opera": "space opera",
+    "steampunk": "steampunk",
+    # Horreur
+    "psychological horror": "horreur psychologique",
+    "gothic": "gothique",
+    "supernatural": "surnaturel",
+    "occult horror": "horreur occulte",
+    # Litterature
+    "literary fiction": "litterature generale",
+    "historical fiction": "roman historique",
+    "family saga": "saga familiale",
+    "coming of age": "recit d'apprentissage",
+    # Jeunesse
+    "picture books": "album illustre",
+    "early readers": "premieres lectures",
+    "chapter books": "premiers romans",
+    "middle grade": "roman junior",
+    "young adult": "young adult",
+    # Tropes
+    "enemies to lovers": "ennemis puis amants",
+    "forced proximity": "huis clos force",
+    "slow burn": "slow burn",
+    "fake dating": "faux couple",
+    "grumpy x sunshine": "grognon et rayon de soleil",
+    "friends to lovers": "amis puis amants",
+    "second chance": "seconde chance",
+    "only one bed": "un seul lit",
+}
+
+_VERS_SOURCE = {fr.lower(): en for en, fr in EN_FRANCAIS.items()}
+
+
+def libelle(terme: str) -> str:
+    """Le nom francais d'un sous-genre ou d'un trope. Le terme tel quel sinon.
+
+    « Tel quel sinon » n'est pas un repli paresseux : ces listes PROPOSENT,
+    elles n'interdisent pas. Un utilisateur qui saisit un sous-genre absent
+    de la table doit le voir ressortir intact, pas efface.
+    """
+    return EN_FRANCAIS.get((terme or "").strip().lower(), terme)
+
+
+def terme_source(terme: str) -> str:
+    """Le terme source d'un libelle francais, pour retrouver un releve.
+
+    « MOTS_ATTENDUS » et « GENRES » sont indexes par le terme source. Sans ce
+    retour, choisir « romance contemporaine » dans le tableau de bord ne
+    trouverait aucune longueur attendue — le reglage serait affiche, choisi,
+    et sans effet.
+    """
+    nu = (terme or "").strip().lower()
+    return _VERS_SOURCE.get(nu, nu)
+
+
 def genre_du_sous_genre(sous_genre: str) -> str:
     """A quel genre ce sous-genre appartient-il ? Vide si on ne sait pas.
 
@@ -239,12 +349,19 @@ def genre_du_sous_genre(sous_genre: str) -> str:
 
 
 def tropes_du_genre(genre: str) -> Tuple[str, ...]:
-    return TROPES.get((genre or "").strip().lower(), ())
+    """Les tropes d'un genre, en francais — c'est ce que l'utilisateur lit."""
+    return tuple(libelle(t)
+                 for t in TROPES.get((genre or "").strip().lower(), ()))
 
 
 def mots_attendus(sous_genre: str) -> Tuple[int, int]:
-    """La fourchette du marche, ou (0, 0) quand elle n'est pas connue."""
-    return MOTS_ATTENDUS.get((sous_genre or "").strip().lower(), (0, 0))
+    """La fourchette du marche, ou (0, 0) quand elle n'est pas connue.
+
+    Accepte le libelle francais comme le terme source : le tableau de bord
+    propose « romance contemporaine », et le releve est range sous
+    « contemporary romance ».
+    """
+    return MOTS_ATTENDUS.get(terme_source(sous_genre), (0, 0))
 
 
 def situer_la_longueur(mots: int, sous_genre: str) -> str:

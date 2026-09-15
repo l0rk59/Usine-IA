@@ -251,18 +251,33 @@ class LesDeuxCheminsDeposentLaPromesse(unittest.TestCase):
 class LaFictionNeReprendPasLesReglagesDuPratique(unittest.TestCase):
 
     def test_chaque_type_de_fiction_recoit_les_champs_de_fiction(self):
-        """AU MOINS ceux-la, pas exactement ceux-la.
+        """Tous les champs pour la fiction adulte ; pas pour un album.
 
-        La premiere version exigeait l'egalite, et le conte l'a mise en
-        defaut le jour ou il a ajoute sa tranche d'age — un reglage qui n'a
-        de sens que pour lui. Ce qui doit etre garanti, c'est qu'aucun type
-        de fiction n'en PERDE, pas qu'aucun n'en ajoute.
+        Ce test exigeait la liste COMPLETE sur les six types, conte compris.
+        C'est ainsi qu'un album pour trois a cinq ans en est venu a proposer
+        « niveau de chaleur : explicite » — et la valeur partait reellement
+        dans l'invite qui ecrit l'album.
+
+        Le partage d'une liste unique reste la bonne idee entre un roman et
+        un feuilleton. Il ne vaut pas entre un roman et un album illustre.
+        « catalogue.SANS_OBJET_EN_JEUNESSE » nomme la difference, et
+        « tests/test_reglages_fiction.py » la garde.
         """
+        from usine.pipelines import catalogue
+
         attendus = {c.nom for c in catalogue.champs_de_fiction()}
-        for cle in fiction.types_de_fiction():
-            fiche = catalogue.obtenir(cle)
-            manquants = attendus - {c.nom for c in fiche.champs}
-            self.assertEqual(manquants, set(), cle)
+        for produit in catalogue.TYPES:
+            if produit.famille != "fiction":
+                continue
+            noms = {c.nom for c in produit.champs}
+            with self.subTest(type=produit.cle):
+                if produit.cle == "conte":
+                    self.assertEqual(
+                        noms & set(catalogue.SANS_OBJET_EN_JEUNESSE), set())
+                    self.assertIn("tranche", noms)
+                else:
+                    self.assertTrue(attendus <= noms, attendus - noms)
+
 
     def test_aucun_type_pratique_ne_recoit_ces_champs(self):
         """« sous-genre » ou « niveau de chaleur » sur un guide de fiscalite
@@ -356,14 +371,14 @@ class LeVocabulaireDuGenreEstProposeQuandRienNEstImpose(unittest.TestCase):
 
     def test_le_genre_connu_apporte_ses_tropes(self):
         texte = fiction.promesse_pour_ia({"sous_genre": "dark romance"})
-        self.assertIn("enemies to lovers", texte)
+        self.assertIn("ennemis puis amants", texte)
 
     def test_des_tropes_imposes_ne_sont_pas_completes(self):
         """Proposer une liste a qui a deja choisi, c'est l'inviter a
         s'ecarter de son choix."""
         texte = fiction.promesse_pour_ia(
             {"sous_genre": "dark romance", "tropes": "one bed"})
-        self.assertNotIn("enemies to lovers", texte)
+        self.assertNotIn("ennemis puis amants", texte)
 
     def test_un_genre_sans_trope_recense_n_en_propose_aucun(self):
         """Le cozy mystery a bien un genre — mais aucune source consultee ne

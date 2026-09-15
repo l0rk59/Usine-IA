@@ -143,7 +143,30 @@ class Champ:
         return tuple(part for part in self.drapeau.split("/") if part)
 
 
-def champs_de_fiction() -> Tuple[Champ, ...]:
+# Ce qu'un ALBUM JEUNESSE ne comprend pas. Ce ne sont pas des reglages « en
+# trop » : ce sont des reglages nuisibles.
+#
+# Mesure du 15/09/2026. « Niveau de chaleur » etait propose sur le conte, avec
+# « sensuelle » et « explicite » parmi ses valeurs, et la valeur choisie
+# partait REELLEMENT dans l'invite qui ecrit l'album :
+#
+#     NIVEAU DE CHALEUR : explicite
+#     Les scenes d'intimite sont detaillees. [...]
+#
+# Sur un livre pour trois a cinq ans. S'y ajoutaient les tropes de romance
+# (« ennemis puis amants »), un point de vue de roman, un temps du recit, une
+# charpente en voyage du heros sur quatorze doubles-pages, et une serie.
+#
+# La cause n'est pas une etourderie sur un champ. Les six types de fiction
+# partageaient la meme liste, et le partage a un bon argument : il evite qu'un
+# type ajoute plus tard oublie la moitie des reglages. Cet argument vaut entre
+# un roman et un feuilleton. Il ne vaut pas entre un roman et un album
+# illustre — ce sont deux objets, pas deux longueurs du meme objet.
+SANS_OBJET_EN_JEUNESSE = ("tropes", "point_de_vue", "temps", "chaleur",
+                          "fin", "structure", "serie")
+
+
+def champs_de_fiction(jeunesse: bool = False) -> Tuple[Champ, ...]:
     """Les reglages que TOUTE fiction comprend, et qu'aucun guide ne comprend.
 
     Declares une fois, partages par les types de la famille « fiction ». Les
@@ -156,20 +179,32 @@ def champs_de_fiction() -> Tuple[Champ, ...]:
     n'ont pas de sens pour un roman. Une fiction se regle par ou elle se
     range, ce que le lecteur vient y retrouver, et ce qu'il ne pardonnera pas
     qu'on lui refuse.
+
+    « jeunesse » retire ce qu'un album ne comprend pas, et restreint les
+    sous-genres a ceux de la jeunesse — voir « SANS_OBJET_EN_JEUNESSE ».
     """
     from . import fiction
 
-    sous_genres = tuple(sorted(
-        s for sous in fiction.GENRES.values() for s in sous))
-    return (
+    familles = ({"jeunesse": fiction.GENRES["jeunesse"]} if jeunesse
+                else fiction.GENRES)
+    # En francais : c'est ce que l'utilisateur lit. Le terme source reste la
+    # cle des releves, « fiction.terme_source » fait le chemin inverse.
+    sous_genres = tuple(sorted(fiction.libelle(s)
+                               for sous in familles.values() for s in sous))
+    champs = (
         Champ("genre", "--genre", "Genre", genre="choix",
-              choix=("",) + tuple(sorted(fiction.GENRES)),
+              choix=("",) + tuple(sorted(familles)),
               aide="Laissez vide : il se deduit du sous-genre."),
         Champ("sous_genre", "--sous-genre", "Sous-genre",
-              aide="C'est lui qui decide de tout le reste — longueur "
-                   "attendue, chaleur, fin admissible. « Romance » seul ne "
-                   "suffit pas a ecrire une romance. Suggestions : "
-                   + ", ".join(sous_genres[:8]) + "..."),
+              aide=("Il decide de la longueur attendue et du vocabulaire : "
+                    "un album pour tout-petits et un premier roman ne "
+                    "s'ecrivent pas pareil. Suggestions : "
+                    if jeunesse else
+                    "C'est lui qui decide de tout le reste — longueur "
+                    "attendue, chaleur, fin admissible. « Romance » seul ne "
+                    "suffit pas a ecrire une romance. Suggestions : ")
+                   + ", ".join(sous_genres[:8])
+                   + ("." if jeunesse else "...")),
         Champ("tropes", "--tropes", "Tropes",
               aide="Ce que le lecteur vient retrouver, separes par des "
                    "virgules. C'est par la qu'il cherche un livre : il ne "
@@ -205,6 +240,9 @@ def champs_de_fiction() -> Tuple[Champ, ...]:
               aide="Laissez vide pour un recit isole. Un tome reprend le "
                    "monde, la distribution et les faits des precedents."),
     )
+    if jeunesse:
+        return tuple(c for c in champs if c.nom not in SANS_OBJET_EN_JEUNESSE)
+    return champs
 
 
 @dataclass
@@ -417,7 +455,7 @@ TYPES: List[TypeProduit] = [
         quantite=("pages", "Combien de doubles-pages", "16"),
         mots_cles=("conte", "album", "jeunesse", "enfants", "histoire du soir"),
         options={"tranche": None},
-        champs=champs_de_fiction() + (
+        champs=champs_de_fiction(jeunesse=True) + (
             Champ("tranche", "--tranche", "Tranche d'age", genre="choix",
                   choix=conte_tranches(), defaut="6-8 ans",
                   aide="Elle decide de tout : nombre de pages, longueur des "

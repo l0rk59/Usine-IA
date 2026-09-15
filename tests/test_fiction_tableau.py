@@ -231,7 +231,10 @@ class LesTypesSontRangesParFamille(unittest.TestCase):
                 continue
             noms = {c["nom"] for c in fiche["champs"]}
             self.assertIn("sous_genre", noms, fiche["cle"])
-            self.assertIn("chaleur", noms, fiche["cle"])
+            # Pas sur un album : « catalogue.SANS_OBJET_EN_JEUNESSE » dit
+            # pourquoi, et « tests/test_reglages_fiction.py » le garde.
+            if fiche["cle"] != "conte":
+                self.assertIn("chaleur", noms, fiche["cle"])
 
     def test_les_choix_d_un_champ_de_fiction_sont_servis(self):
         """Une liste vide cote navigateur donne un champ libre la ou le
