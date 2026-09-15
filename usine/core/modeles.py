@@ -225,14 +225,15 @@ def interroger(fournisseur: config.Provider,
     from . import cles as pool_cles
     from .http import HttpErreur, requete
 
-    entetes = dict(fournisseur.extra_headers)
+    valeur = ""
     if fournisseur.api_key_env:
         lot = pool_cles.pool(fournisseur.name, fournisseur.api_key_env)
         candidates = lot.disponibles() or lot.cles
         if candidates:
-            entetes["Authorization"] = "Bearer {}".format(candidates[0].valeur)
+            valeur = candidates[0].valeur
         elif not fournisseur.keyless:
             return None  # sans cle, la question ne peut pas etre posee
+    entetes = config.entetes_appel(fournisseur, valeur, corps_json=False)
     try:
         statut, brut = requete(fournisseur.base_url.rstrip("/") + "/models",
                                entetes=entetes, timeout=timeout)

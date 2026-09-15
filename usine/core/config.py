@@ -6,6 +6,7 @@ est souvent deplacee (~/Usine-IA, /sdcard/Usine-IA, etc.).
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 from dataclasses import dataclass, field
@@ -127,6 +128,10 @@ class Provider:
     signup: str = ""                # ou obtenir une cle gratuite
     notes: str = ""
     extra_headers: Dict[str, str] = field(default_factory=dict)
+    # En-tete de session exige par le service, s'il en exige un. Sa valeur ne
+    # peut pas etre ecrite ici : elle se derive de la cle, et la cle n'est
+    # connue qu'a l'appel. « entetes_appel » s'en charge.
+    entete_session: str = ""
     # Secondes avant d'abandonner un appel. Un service distant repond en
     # quelques secondes ; un modele de 3 milliards de parametres sur le
     # processeur d'un telephone produit entre trois et dix jetons par
@@ -344,6 +349,17 @@ PROVIDERS: List[Provider] = [
         name="opencode",
         base_url="https://opencode.ai/zen/go/v1",
         api_key_env="OPENCODE_API_KEY",
+        # Ce service refuse tout appel sans en-tete de session. Releve le
+        # 15/09/2026, en clair dans le corps de son HTTP 400 :
+        #
+        #   MissingSessionID — « Request is missing x-opencode-session
+        #   and cannot be routed »
+        #
+        # Six modeles, six cents requetes par jour, un abonnement paye, et
+        # pas un seul appel n'aboutissait. Le code seul (400) n'en disait
+        # rien ; c'est le CORPS de la reponse qui l'a nomme, et c'est pour
+        # cela que le rapport de quotas le rend desormais.
+        entete_session="x-opencode-session",
         # ATTENTION — ce fournisseur n'expose AUCUN endpoint « /v1/models ».
         # (Demande faite puis fermee : anomalyco/opencode, issue 2901.)
         #
@@ -506,6 +522,54 @@ def provider_order() -> List[str]:
     # du catalogue rend l'oubli impossible au lieu de le corriger une fois.
     connus = list(DEFAULT_ORDER)
     return connus + [p.name for p in PROVIDERS if p.name not in connus]
+
+
+def _identifiant_de_session(nom: str, cle: str) -> str:
+    """Un identifiant de session stable, derive de la cle.
+
+    Stable, parce qu'une session qui change a chaque appel n'est pas une
+    session. Derive de la CLE plutot que tire au sort et range quelque part,
+    pour trois raisons : deux installations du meme compte partagent la meme
+    session, ce qui est le comportement attendu ; il n'y a rien a persister,
+    donc rien a migrer ni a perdre ; et une cle changee change la session
+    sans qu'on ait a y penser.
+
+    Le condensat ne laisse pas remonter a la cle, ce qui compte : cet
+    identifiant part sur le reseau a chaque appel.
+    """
+    brut = hashlib.sha256("usine-ia:{}:{}".format(nom, cle).encode("utf-8"))
+    h = brut.hexdigest()
+    # Forme d'un UUID. Aucun service n'a dit l'exiger — mais c'est la forme
+    # que prend un identifiant de session partout, et un condensat brut de
+    # soixante-quatre caracteres est ce qui a le plus de chances d'etre
+    # refuse par un controle de format.
+    return "{}-{}-{}-{}-{}".format(h[:8], h[8:12], h[12:16], h[16:20], h[20:32])
+
+
+def entetes_appel(p: Provider, cle: str = "",
+                  corps_json: bool = True) -> Dict[str, str]:
+    """Les en-tetes d'UN appel a ce fournisseur, cle comprise.
+
+    Quatre endroits construisaient ces en-tetes, chacun a sa facon : le
+    routeur, la sonde directe, et les deux lecteurs de catalogue. Tant qu'il
+    n'y avait que « Content-Type » et « Authorization », la repetition ne
+    coutait rien.
+
+    Elle a commence a couter le jour ou un fournisseur a exige un en-tete de
+    plus. Corriger un appelant sur quatre aurait donne le defaut favori de ce
+    depot : la chose marche a un endroit, echoue ailleurs, et l'ecart ne se
+    voit qu'a l'usage. Un test verifie qu'aucun autre endroit ne pose
+    « Authorization » lui-meme.
+    """
+    entetes: Dict[str, str] = {}
+    if corps_json:
+        entetes["Content-Type"] = "application/json"
+    entetes.update(p.extra_headers)
+    if cle:
+        entetes["Authorization"] = "Bearer {}".format(cle)
+        if p.entete_session:
+            entetes[p.entete_session] = _identifiant_de_session(p.name, cle)
+    return entetes
 
 
 def active_providers(include_unavailable: bool = False) -> List[Provider]:

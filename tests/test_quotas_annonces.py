@@ -392,3 +392,143 @@ class LaSondeRapporteCeQuElleAConsomme(unittest.TestCase):
         requetes = next(m for m in ligne["mesures"] if m["genre"] == "requetes")
         self.assertEqual(requetes["consomme_service"], 0,
                          "l'audit compte sa propre requete comme un ecart")
+
+
+class LeMessageDuServiceEstExtraitDeSonEnveloppe(unittest.TestCase):
+    """Cinq corps d'erreur RELEVES sur un vrai compte le 15/09/2026.
+
+    Ils n'ont aucune forme commune : « message » a la racine chez Cerebras et
+    Mistral, « error.message » chez OpenCode et GitHub, du texte brut chez
+    Pollinations. Tronques a cent cinquante signes, quatre sur cinq perdaient
+    leur fin — et chez Pollinations, la fin etait le LIEN qui permet de
+    relever le budget, donc le seul geste a faire.
+    """
+
+    CAS = (
+        ('{"message":"Payment required to access this resource. Visit your '
+         'billing tab.","type":"payment_required_error","param":"quota"}',
+         "Payment required to access this resource. Visit your billing tab."),
+        ('{"object":"error","message":"Rate limit exceeded",'
+         '"type":"rate_limited","code":"1300"}', "Rate limit exceeded"),
+        ('{"type":"error","error":{"type":"MissingSessionID","message":'
+         '"Request is missing x-opencode-session and cannot be routed"}}',
+         "Request is missing x-opencode-session and cannot be routed"),
+        ('{"error":{"code":"github_models_retirement_brownout","message":'
+         '"GitHub Models is temporarily unavailable."}}',
+         "GitHub Models is temporarily unavailable."),
+    )
+
+    def test_les_quatre_enveloppes_rencontrees_se_defont(self):
+        for corps, attendu in self.CAS:
+            self.assertEqual(diagnostic._message_lisible(corps), attendu)
+
+    def test_ce_qui_n_est_pas_du_json_est_rendu_tel_quel(self):
+        """Pollinations repond en texte. Vouloir faire mieux le perdrait."""
+        brut = ("The API key used for this request has reached its budget. "
+                "Please [raise the key budget](https://enter.pollinations.ai"
+                "/edit-key?id=89idjaTSg2hI4YwZDuO8)")
+        self.assertEqual(diagnostic._message_lisible(brut), brut)
+
+    def test_un_json_sans_message_connu_est_rendu_tel_quel(self):
+        """Rater une extraction plutot que rendre une chaine vide : une
+        enveloppe lisible vaut mieux qu'un silence."""
+        corps = '{"statut":"refuse","raison_interne":42}'
+        self.assertEqual(diagnostic._message_lisible(corps), corps)
+
+    def test_le_lien_survit_a_la_mise_en_page(self):
+        """Coupe sur son trait d'union, il n'est plus cliquable — et c'est
+        exactement ce qu'a fait la premiere version du pliage."""
+        import textwrap
+        brut = ("Please [raise the key budget](https://enter.pollinations.ai"
+                "/edit-key?id=89idjaTSg2hI4YwZDuO8)")
+        lignes = textwrap.wrap(brut, 68, break_on_hyphens=False,
+                               break_long_words=False)
+        self.assertTrue(any("edit-key?id=89idjaTSg2hI4YwZDuO8" in l
+                            for l in lignes), lignes)
+
+
+class LaReservationNonConsommeeEstMesuree(unittest.TestCase):
+    """Un ecart qui vaut exactement la reservation n'est pas une derive.
+
+    Premier rapport reel, Groq : 8000 annonces, 7667 restants, donc 333
+    decomptes — alors que la sonde n'avait produit que 116 jetons. Deux
+    lectures possibles, et elles n'appellent pas le meme geste :
+
+      soit le compteur de l'usine derive ;
+      soit le service decompte la sortie DEMANDEE et non celle produite.
+
+    On ne tranche pas a la place de la mesure : la sonde rend ce qu'elle a
+    demande et ce qu'elle a produit, et le rapport constate l'egalite quand
+    elle a lieu. A 8000 jetons par minute, reserver 8192 par appel epuiserait
+    la minute en un seul appel — la difference n'est pas academique.
+    """
+
+    def _mesurer(self, total, sortie, plafond, reste):
+        p = config.PROVIDERS_BY_NAME["groq"]
+        quota = p.quota("standard")
+
+        def essai(prov, modele, timeout=30, observe=None):
+            if observe is not None:
+                observe["entetes"] = {
+                    "x-ratelimit-limit-tokens": str(quota.tpm),
+                    "x-ratelimit-remaining-tokens": str(reste),
+                }
+                observe["jetons"] = total
+                observe["jetons_sortie"] = sortie
+                observe["plafond_demande"] = plafond
+            return "OK"
+
+        with mock.patch.object(diagnostic.config, "active_providers",
+                               return_value=[p]), \
+             mock.patch("usine.core.llm.essai_direct", side_effect=essai):
+            ligne = diagnostic.auditer_quotas()["lignes"][0]
+        return next(m for m in ligne["mesures"] if m["genre"] == "jetons")
+
+    def test_ce_que_la_sonde_a_demande_sans_le_produire_est_rendu(self):
+        mesure = self._mesurer(total=116, sortie=39, plafond=256, reste=7667)
+        self.assertEqual(mesure["reservation_inutilisee"], 256 - 39)
+
+    def test_un_service_muet_sur_l_usage_ne_rend_pas_de_reservation(self):
+        """Sans plafond releve, il n'y a rien a constater — et rendre zero
+        ferait croire a une reservation entierement consommee."""
+        mesure = self._mesurer(total=0, sortie=0, plafond=0, reste=7667)
+        self.assertIsNone(mesure["reservation_inutilisee"])
+
+    def test_les_requetes_n_ont_pas_de_reservation(self):
+        """Une requete ne se reserve pas : elle a lieu ou non."""
+        p = config.PROVIDERS_BY_NAME["groq"]
+        quota = p.quota("standard")
+
+        def essai(prov, modele, timeout=30, observe=None):
+            if observe is not None:
+                observe["entetes"] = {
+                    "x-ratelimit-limit-requests": str(quota.rpd)}
+                observe.update(jetons=116, jetons_sortie=39,
+                               plafond_demande=256)
+            return "OK"
+
+        with mock.patch.object(diagnostic.config, "active_providers",
+                               return_value=[p]), \
+             mock.patch("usine.core.llm.essai_direct", side_effect=essai):
+            ligne = diagnostic.auditer_quotas()["lignes"][0]
+        requetes = next(m for m in ligne["mesures"] if m["genre"] == "requetes")
+        self.assertIsNone(requetes["reservation_inutilisee"])
+
+    def test_la_sonde_releve_vraiment_ces_deux_chiffres(self):
+        """Posés a la main, ils ne prouveraient rien : ils doivent venir de
+        la reponse du service et du plafond reellement demande."""
+        import json as _json
+        from usine.core import llm as module_llm
+        p = config.PROVIDERS_BY_NAME["groq"]
+        observe = {}
+        with mock.patch("usine.core.http.requete_complete",
+                        return_value=(200, _json.dumps({
+                            "choices": [{"message": {"content": "OK"}}],
+                            "usage": {"prompt_tokens": 77,
+                                      "completion_tokens": 39,
+                                      "total_tokens": 116},
+                        }).encode("utf-8"), {})):
+            module_llm.essai_direct(p, "m", observe=observe)
+        self.assertEqual(observe["jetons"], 116)
+        self.assertEqual(observe["jetons_sortie"], 39)
+        self.assertEqual(observe["plafond_demande"], min(256, p.max_sortie))

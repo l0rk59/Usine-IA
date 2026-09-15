@@ -500,6 +500,94 @@ standard ne fixe leur nom, et chaque service a sa forme. Les jeter
 garantirait de ne jamais apprendre celles qu'on ignore ; les montrer, c'est
 les coder demain.
 
+## Le fournisseur payé ne recevait pas un seul appel
+
+C'est le message rendu par la correction ci-dessus qui l'a nommé, dès la
+première exécution :
+
+```
+opencode : HTTP 400
+  Error from provider (Console Go): Request is missing
+  x-opencode-session and cannot be routed
+```
+
+Six modèles, six cents requêtes par jour, un abonnement payé — et **aucun
+appel n'aboutissait**. Le code seul (`400`) n'en disait rien ; il aura fallu
+afficher le corps de la réponse pour que le défaut se nomme lui-même. C'est
+la démonstration la plus directe de la règle du dépôt : *ne pas croire le
+code de retour, lire le contenu.*
+
+### Un identifiant de session dérivé de la clé
+
+Il fallait une valeur **stable** — une session qui change à chaque appel n'est
+pas une session — et **propre au compte**. Elle est dérivée de la clé par
+condensat :
+
+- deux installations du même compte partagent la même session, ce qui est le
+  comportement attendu ;
+- il n'y a rien à persister, donc rien à migrer ni à perdre ;
+- une clé changée change la session sans qu'on ait à y penser ;
+- le condensat ne laisse pas remonter à la clé, ce qui compte : cet
+  identifiant part sur le réseau à chaque appel.
+
+La **forme** retenue est celle d'un UUID. Aucun service n'a dit l'exiger —
+l'authentification d'OpenCode passe avant le contrôle de session, donc le
+format n'a pas pu être mesuré sans clé. C'est la forme la plus courante, donc
+la moins susceptible d'être refusée. Si elle l'est quand même, le corps du
+refus le dira maintenant, en toutes lettres.
+
+### Quatre endroits construisaient ces en-têtes
+
+Le corriger à un seul endroit aurait donné le défaut favori de ce dépôt : la
+chose marche ici, échoue là, et l'écart ne se voit qu'à l'usage. Le routeur,
+la sonde directe et les deux lecteurs de catalogue passent désormais tous par
+`config.entetes_appel`.
+
+Le garde-fou lit la **structure**, pas un nom : il cherche toute fonction qui
+pose elle-même son `Authorization` **et** qui parle de `base_url`. Chercher la
+chaîne « entetes_appel » quelque part dans le fichier aurait été satisfait par
+un commentaire — c'est l'homonymie qui a déjà laissé passer une fonction sans
+appelant et deux réglages orphelins. Un test montre le détecteur en train
+d'accuser un cas fabriqué, parce qu'un détecteur écrit après la correction ne
+peut pas avoir été vu échouer sur le vrai défaut.
+
+## L'écart de 217 jetons : une dérive, ou une convention ?
+
+Toujours au premier passage, chez Groq :
+
+```
+jetons : 8000 annoncé — c'est le quota « jetons par minute » écrit
+         il en reste 7667 pour cette fenêtre
+         consommé : 217 selon le service, 0 selon l'usine — ÉCART
+```
+
+Le service dit avoir décompté **333** jetons ; la sonde n'en avait produit que
+**116**. Deux lectures, et elles n'appellent pas le même geste :
+
+1. le compteur de l'usine dérive ;
+2. le service décompte la sortie **demandée** (`max_tokens`) et non celle
+   produite.
+
+La seconde n'est pas académique : `max_sortie` vaut 8192 chez Groq, pour un
+plafond de 8 000 jetons **par minute**. Si la réservation est décomptée, un
+seul appel épuise la minute entière — et l'usine, qui compte les
+`usage.total_tokens` réellement rendus, croirait avoir de la marge.
+
+**On ne tranche pas à la place de la mesure.** La sonde rend désormais ce
+qu'elle a demandé (`max_tokens`) et ce qu'elle a produit
+(`completion_tokens`), et le rapport constate l'égalité **quand elle a lieu** :
+
+```
+consommé : 217 selon le service, 0 selon l'usine — ÉCART
+l'écart vaut exactement la réservation non consommée (217) :
+ce service décompte la sortie DEMANDÉE, pas celle produite.
+```
+
+Cette ligne ne s'affiche que si les deux nombres sont **exactement** égaux.
+Tant qu'elle ne s'est pas affichée sur un vrai compte, l'hypothèse reste une
+hypothèse : la prochaine exécution la confirme ou la réfute, et c'est elle qui
+décidera s'il faut compter les réservations dans le budget de la minute.
+
 ## Un code HTTP ne dit pas quoi faire, le message du service si
 
 Le premier rapport réel contenait aussi cette ligne, sur un fournisseur
@@ -517,6 +605,27 @@ Le rapport rend donc le message du service, passé par `securite.expurger` :
 une clé peut se trouver dans un message d'erreur, et un diagnostic ne doit
 jamais être l'endroit où elle sort.
 
+**Défait de son enveloppe, et plié plutôt que tranché.** Les cinq corps relevés
+n'ont aucune forme commune — `message` à la racine chez Cerebras et Mistral,
+`error.message` chez OpenCode et GitHub, du texte brut chez Pollinations.
+Tronqués à cent cinquante signes, quatre sur cinq perdaient leur fin :
+
+```
+{"message":"Payment required to access this resource. Visit your
+billing tab.","type":"payment_required_error","param":"quota","code":
+"payment_require
+```
+
+Quarante signes d'enveloppe avant la phrase utile, et la coupe qui tombe dans
+le code d'erreur. Chez Pollinations, elle emportait le **lien** qui permet de
+relever le budget — c'est-à-dire le seul geste à faire.
+
+Ce qui ne se reconnaît pas est rendu tel quel : une enveloppe lisible vaut
+mieux qu'une phrase perdue en voulant faire mieux. Et le pliage ne coupe ni
+sur un trait d'union ni au milieu d'un mot — la première version tranchait
+`edit-key?id=…` en deux et rendait le lien inutilisable, le défaut qu'on
+corrigeait déplacé d'un cran.
+
 ## Ce que le premier passage sur un vrai compte a publié
 
 *15/09/2026, huit clés.*
@@ -525,7 +634,11 @@ jamais être l'endroit où elle sort.
 |---|---|
 | `groq` | requêtes **et** jetons, avec restes et remises à zéro |
 | `gemini`, `openrouter` | aucun chiffre — `non publié`, donc « on ne sait pas » |
-| `opencode` | HTTP 400 : le message était invisible, il l'est maintenant |
+| `opencode` | HTTP 400 : en-tête de session manquant — **corrigé** |
+| `cerebras` | HTTP 402 : crédit épuisé — *Visit your billing tab* |
+| `mistral` | HTTP 429 : quota du jour atteint |
+| `github` | HTTP 410 : *scheduled retirement brownout* — le service ferme |
+| `pollinations` | HTTP 402 : budget de la clé épuisé, avec le lien pour le relever |
 
 Trois services sur huit publient des en-têtes de quota, et il n'existe aucun
 standard sur leur nom. Ceux qu'on ne sait pas lire sont montrés bruts.

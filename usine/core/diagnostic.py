@@ -68,14 +68,15 @@ def _catalogue_distant(fournisseur: config.Provider,
     """
     from .http import HttpErreur, requete
 
-    entetes = dict(fournisseur.extra_headers)
+    valeur = ""
     if fournisseur.api_key_env:
         lot = pool_cles.pool(fournisseur.name, fournisseur.api_key_env)
         candidates = lot.disponibles() or lot.cles
         if candidates:
-            entetes["Authorization"] = "Bearer {}".format(candidates[0].valeur)
+            valeur = candidates[0].valeur
         elif not fournisseur.keyless:
             return None  # sans cle, la question ne peut pas etre posee
+    entetes = config.entetes_appel(fournisseur, valeur, corps_json=False)
     url = fournisseur.base_url.rstrip("/") + "/models"
     try:
         statut, brut = requete(url, entetes=entetes, timeout=timeout)
@@ -312,6 +313,42 @@ def _correspondance(annonce: int, quota: Any) -> str:
     return ""
 
 
+def _message_lisible(corps: str) -> str:
+    """Le message destine a un humain, extrait de l'enveloppe du service.
+
+    Les corps d'erreur sont du JSON, et la phrase utile y est noyee. Le
+    premier rapport reel montrait ceci, tronque a cent cinquante signes :
+
+      {"message":"Payment required to access this resource. Visit your
+      billing tab.","type":"payment_required_error","param":"quota","code":
+      "payment_require
+
+    Quarante signes d'enveloppe avant la phrase, et la troncature tombait
+    dans le code d'erreur. Chez Pollinations elle coupait le LIEN qui permet
+    de relever le budget — c'est-a-dire le seul geste a faire.
+
+    Quatre formes rencontrees, et aucune norme : « message » a la racine,
+    « error.message », « error » en texte, ou pas de JSON du tout. Ce qui ne
+    se reconnait pas est rendu tel quel : mieux vaut une enveloppe lisible
+    qu'une phrase perdue en voulant faire mieux.
+    """
+    corps = (corps or "").strip()
+    try:
+        charge = json.loads(corps)
+    except (ValueError, TypeError):
+        return corps
+    if not isinstance(charge, dict):
+        return corps
+    for chemin in (("message",), ("error", "message"), ("detail",),
+                   ("error",), ("error", "code")):
+        valeur: Any = charge
+        for clef in chemin:
+            valeur = valeur.get(clef) if isinstance(valeur, dict) else None
+        if isinstance(valeur, str) and valeur.strip():
+            return valeur.strip()
+    return corps
+
+
 def _compte_usine(fournisseur: Any, modele: str,
                   correspond: str) -> Optional[int]:
     """Ce que l'usine a compte pour cette fenetre, ou None si indecidable.
@@ -389,10 +426,11 @@ def auditer_quotas(timeout: int = 30) -> Dict[str, Any]:
             # n'a pu etre lu » ne dit pas pourquoi, et c'est un fournisseur
             # paye : sans son message, on ne peut ni le reparer ni savoir
             # qu'il n'y a rien a reparer.
-            detail = securite.expurger((exc.corps or str(exc))[:300])
+            detail = securite.expurger(
+                _message_lisible(exc.corps or str(exc))[:300])
         except Exception as exc:
             erreur = type(exc).__name__
-            detail = securite.expurger(str(exc)[:300])
+            detail = securite.expurger(_message_lisible(str(exc))[:300])
         entetes = observe.get("entetes") or {}
         # Ce que CET appel vient de consommer. L'audit doit se retirer de sa
         # propre mesure : sans cela, il comparait « 333 jetons selon le
@@ -415,7 +453,15 @@ def auditer_quotas(timeout: int = 30) -> Dict[str, Any]:
             fenetre = _fenetre(_secondes(_premier(entetes, remises)))
             reste = _nombre(_premier(entetes, restes))
             correspond = _correspondance(annonce, quota)
+            # La part de la sonde que le service a peut-etre decomptee sans
+            # qu'elle soit produite. Rendue, pas jugee : c'est a l'execution
+            # suivante de dire si l'ecart lui est exactement egal.
+            reservation = None
+            if genre == "jetons" and observe.get("plafond_demande"):
+                reservation = (int(observe["plafond_demande"])
+                               - int(observe.get("jetons_sortie") or 0))
             mesures.append({
+                "reservation_inutilisee": reservation,
                 "genre": genre, "fenetre": fenetre, "annonce": annonce,
                 "correspond": correspond, "reste": reste,
                 # Ce que le service dit avoir consomme, contre ce que l'usine

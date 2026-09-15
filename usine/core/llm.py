@@ -370,10 +370,8 @@ def _appel(
     if json_mode and p.name not in ("pollinations", "llamacpp"):
         charge["response_format"] = {"type": "json_object"}
 
-    entetes = {"Content-Type": "application/json"}
-    entetes.update(p.extra_headers)
-    if cle is not None and cle.valeur:
-        entetes["Authorization"] = "Bearer {}".format(cle.valeur)
+    entetes = config.entetes_appel(
+        p, cle.valeur if cle is not None else "")
 
     url = p.base_url.rstrip("/") + "/chat/completions"
     debut = time.time()
@@ -717,13 +715,13 @@ def essai_direct(p: config.Provider, modele: str, timeout: int = 30,
         # Un diagnostic qui accuse a tort est pire que pas de diagnostic.
         "max_tokens": min(256, p.max_sortie),
     }
-    entetes = {"Content-Type": "application/json"}
-    entetes.update(p.extra_headers)
+    valeur = ""
     if p.api_key_env:
         lot = pool_cles.pool(p.name, p.api_key_env)
         candidates = lot.disponibles() or lot.cles
         if candidates:
-            entetes["Authorization"] = "Bearer {}".format(candidates[0].valeur)
+            valeur = candidates[0].valeur
+    entetes = config.entetes_appel(p, valeur)
     url = p.base_url.rstrip("/") + "/chat/completions"
     from .http import requete_complete
 
@@ -737,8 +735,17 @@ def essai_direct(p: config.Provider, modele: str, timeout: int = 30,
         # eux le cout de CET appel : l'audit doit pouvoir se retirer de sa
         # propre mesure, sinon il se compte lui-meme comme un ecart.
         observe["entetes"] = dict(entetes_recus)
-        observe["jetons"] = int((data.get("usage") or {})
-                                .get("total_tokens") or 0)
+        usage = data.get("usage") or {}
+        observe["jetons"] = int(usage.get("total_tokens") or 0)
+        # Ce qui a ete DEMANDE et ce qui a ete PRODUIT, separement. Certains
+        # services decomptent la reservation — l'invite plus le plafond de
+        # sortie — et non la sortie reelle. La difference n'est pas theorique
+        # : chez un fournisseur a 8000 jetons par minute, reserver 8192 par
+        # appel epuise la minute en un appel. On rend les deux chiffres pour
+        # que l'audit puisse constater laquelle des deux conventions le
+        # service applique, au lieu de la supposer.
+        observe["jetons_sortie"] = int(usage.get("completion_tokens") or 0)
+        observe["plafond_demande"] = int(charge["max_tokens"])
     choix = (data.get("choices") or [{}])[0]
     brut = ((choix.get("message") or {}).get("content") or "").strip()
     texte = module_texte.assainir(brut)

@@ -9,6 +9,7 @@ import argparse
 import json
 import sqlite3
 import sys
+import textwrap
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -2142,8 +2143,19 @@ def cmd_docteur(args: argparse.Namespace) -> int:
                 alerte("{} : {} — aucun quota lisible.".format(
                     ligne["fournisseur"], ligne["erreur"]))
                 if ligne.get("detail"):
-                    # Le code seul ne dit pas quoi faire ; le message, si.
-                    print("      " + _c(ligne["detail"][:150], "90"))
+                    # Le code seul ne dit pas quoi faire ; le message, si —
+                    # a condition de le montrer en entier. Tronque a cent
+                    # cinquante signes, celui de Pollinations perdait le lien
+                    # qui permet de relever le budget, donc le seul geste a
+                    # faire. On plie, on ne tranche pas.
+                    # Ni sur un trait d'union, ni au milieu d'un mot : le
+                    # premier essai a coupe « edit-key?id=... » en deux et a
+                    # rendu le lien inutilisable — le defaut meme qu'on
+                    # corrigeait, deplace d'un cran.
+                    for bout in textwrap.wrap(
+                            ligne["detail"], 68, break_on_hyphens=False,
+                            break_long_words=False) or [""]:
+                        print("      " + _c(bout, "90"))
                 continue
             for mesure in ligne["mesures"]:
                 if mesure["verdict"] == "non publie":
@@ -2176,6 +2188,18 @@ def cmd_docteur(args: argparse.Namespace) -> int:
                         1, service // 10) else _c("ECART", "33")
                     print("               consomme : {} selon le service, "
                           "{} selon l'usine — {}".format(service, usine, accord))
+                    # Un ecart qui vaut EXACTEMENT la reservation non
+                    # consommee n'est pas un compteur qui derive : c'est un
+                    # service qui decompte la sortie DEMANDEE et non celle
+                    # produite. Les deux se ressemblent dans le rapport et
+                    # n'appellent pas le meme geste — d'ou cette ligne, qui
+                    # constate l'egalite au lieu de la supposer.
+                    reserve = mesure.get("reservation_inutilisee")
+                    if reserve and service - usine == reserve:
+                        print("               l'ecart vaut exactement la "
+                              "reservation non consommee ({}) :".format(reserve))
+                        print("               ce service decompte la sortie "
+                              "DEMANDEE, pas celle produite.")
             for nom, valeur in sorted(ligne["inconnus"].items()):
                 print("               {} {} : {}".format(
                     _c("?", "90"), nom, str(valeur)[:44]))
