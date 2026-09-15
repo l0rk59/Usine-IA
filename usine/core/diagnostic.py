@@ -212,6 +212,74 @@ def essayer_modeles(timeout: int = 30) -> Dict[str, Any]:
             "muets": [l for l in lignes if l["etat"] != "repond"]}
 
 
+def reparer_modeles(timeout: int = 30) -> Dict[str, Any]:
+    """Remplace chaque identifiant mort par un qui REPOND, et le retient.
+
+    « essayer_modeles » mesure. Celui-ci agit sur la mesure, et seulement sur
+    elle : journal d'un utilisateur, le 15/09/2026, vingt modeles sur
+    vingt-sept ne repondaient pas. Six portaient un identifiant que leur
+    fournisseur ne connait plus — le reste etait du quota, du credit epuise
+    ou une panne, qui ne se reparent pas en changeant de modele.
+
+    Pourquoi reparer plutot que corriger config.py : les catalogues bougent
+    toutes les quelques semaines, et chacun differe d'un compte a l'autre.
+    NVIDIA LISTE « writer/palmyra-creative-122b » dans son catalogue public,
+    et cette cle-la recoit 404 en le demandant. Un identifiant recopie d'un
+    catalogue public repare la panne d'un compte, pas celle du compte voisin.
+    L'usine essaie donc, chez CE compte, et garde ce qui a repondu.
+
+    Chaque remplacant est APPELE avant d'etre retenu. Sans cela on
+    remplacerait un identifiant mort par un autre, ce qui ne se verrait qu'a
+    la fabrication suivante.
+    """
+    from . import llm, modeles as module_modeles
+    from .http import HttpErreur
+
+    repares: List[Dict[str, Any]] = []
+    sans_recours: List[Dict[str, Any]] = []
+    for fournisseur in config.active_providers():
+        if fournisseur.local:
+            continue
+        servis = None
+        for role, identifiant in sorted(fournisseur.models.items()):
+            if not identifiant:
+                continue
+            actuel = module_modeles.modele_effectif(fournisseur, role)
+            try:
+                llm.essai_direct(fournisseur, actuel, timeout=timeout)
+                continue  # il repond : rien a reparer
+            except HttpErreur as exc:
+                if not llm._modele_inconnu(exc):
+                    # Quota, credit, panne : changer de modele n'y peut rien,
+                    # et le faire masquerait la vraie cause.
+                    continue
+            except Exception:
+                continue
+            if servis is None:
+                servis = module_modeles.catalogue(fournisseur) or []
+            candidats = [m for m in servis if m != actuel]
+            trouve = ""
+            for _ in range(4):
+                candidat = module_modeles.choisir(candidats, role)
+                if not candidat:
+                    break
+                candidats = [m for m in candidats if m != candidat]
+                try:
+                    llm.essai_direct(fournisseur, candidat, timeout=timeout)
+                except Exception:
+                    continue
+                trouve = candidat
+                break
+            if trouve:
+                module_modeles.retenir(fournisseur.name, role, trouve)
+                repares.append({"fournisseur": fournisseur.name, "role": role,
+                                "avant": actuel, "apres": trouve})
+            else:
+                sans_recours.append({"fournisseur": fournisseur.name,
+                                     "role": role, "modele": actuel})
+    return {"repares": repares, "sans_recours": sans_recours}
+
+
 def _nommer_le_refus(exc: Any) -> str:
     """Le genre de refus, en un mot, parce que le geste a faire en depend."""
     from . import llm
@@ -224,6 +292,10 @@ def _nommer_le_refus(exc: Any) -> str:
     # ferait chercher une cle la ou il faut demarrer un serveur.
     if not statut:
         return "injoignable"
+    if statut == 200:
+        # Le service a repondu : ce n'est ni une panne ni un refus. Le modele
+        # marche, il lui faut seulement plus de place pour conclure.
+        return "raisonnement seul"
     if statut in (401, 403):
         return "cle refusee"
     if statut == 402:

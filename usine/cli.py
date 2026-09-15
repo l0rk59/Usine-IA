@@ -2126,6 +2126,30 @@ def cmd_docteur(args: argparse.Namespace) -> int:
         else:
             ok("Les {} modeles declares repondent.".format(len(essais["essais"])))
 
+    if getattr(args, "reparer", False):
+        from .core import diagnostic as _d
+
+        titre_console("Reparation des identifiants morts")
+        print("  Chaque remplacant est APPELE avant d'etre retenu : sinon on\n"
+              "  remplacerait un identifiant mort par un autre, et cela ne se\n"
+              "  verrait qu'a la fabrication suivante.\n")
+        bilan = _d.reparer_modeles()
+        for ligne in bilan["repares"]:
+            ok("{} / {} : « {} » -> « {} »".format(
+                ligne["fournisseur"], ligne["role"],
+                ligne["avant"], ligne["apres"]))
+        for ligne in bilan["sans_recours"]:
+            alerte("{} / {} : « {} » ne repond pas, et rien dans son "
+                   "catalogue ne le remplace.".format(
+                       ligne["fournisseur"], ligne["role"], ligne["modele"]))
+        if not bilan["repares"] and not bilan["sans_recours"]:
+            ok("Aucun identifiant mort : rien a reparer.")
+        elif bilan["repares"]:
+            print("\n      Ces choix sont gardes pour les prochaines "
+                  "fabrications.")
+            print("      Pour les oublier : "
+                  + _c("usine cache --catalogues", "1"))
+
     titre_console("Verdict")
     verdict = etat["verdict"]
     (alerte if verdict["etat"] == "bloque" else ok)(verdict["message"])
@@ -2843,6 +2867,9 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.add_argument("--essai", action="store_true",
                    help="appeler vraiment chaque modele declare et dire "
                         "lequel repond (un appel par modele, consomme du quota)")
+    p.add_argument("--reparer", action="store_true",
+                   help="remplacer chaque identifiant mort par un qui repond "
+                        "chez VOTRE compte, et le retenir")
     p.set_defaults(fonction=cmd_docteur)
 
     p = sous_parseurs.add_parser("cles", help="obtenir des cles API gratuites")

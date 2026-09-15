@@ -461,6 +461,9 @@ DEFAULT_ORDER = [
     "gemini",
     "mistral",
     "nvidia",
+    # Paye et genereux : 600 requetes par jour. Il passe avant les paliers
+    # gratuits, qui s'epuisent en une fabrication.
+    "opencode",
     "github",
     "openrouter",
     "pollinations",
@@ -477,7 +480,17 @@ def provider_order() -> List[str]:
         known = [n for n in names if n in PROVIDERS_BY_NAME]
         if known:
             return known
-    return list(DEFAULT_ORDER)
+    # Tout fournisseur DECLARE qui ne figure pas dans l'ordre est ajoute a la
+    # fin plutot que perdu. Sans cela, « opencode » — declare, dote d'une cle,
+    # affiche « disponible » par le diagnostic, et absent de cette liste —
+    # n'a jamais ete appele une seule fois. Le journal du 15/09/2026 le
+    # montre : sur vingt-sept modeles essayes, aucun n'etait le sien.
+    #
+    # C'est le defaut que ce depot appelle un reglage orphelin, deplace d'un
+    # cran : une chose declaree, visible, et que rien ne lit. Deriver l'ordre
+    # du catalogue rend l'oubli impossible au lieu de le corriger une fois.
+    connus = list(DEFAULT_ORDER)
+    return connus + [p.name for p in PROVIDERS if p.name not in connus]
 
 
 def active_providers(include_unavailable: bool = False) -> List[Provider]:

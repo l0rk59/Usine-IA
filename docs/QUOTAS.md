@@ -209,3 +209,81 @@ rien — c'est ainsi qu'une première version du test de quota par modèle a ét
 prise en défaut : elle saturait flash (250 requêtes), un chiffre trop bas pour
 faire la différence avec le comptage global. Elle sature maintenant flash-lite
 (1 000) et vérifie que flash reste ouvert.
+
+---
+
+# Vingt modèles sur vingt-sept ne répondaient pas
+
+*`usine docteur --essai` sur un vrai téléphone, huit clés valides, 15/09/2026.*
+
+C'est la première fois que la question « est-ce que ce modèle marche ? » recevait
+une réponse mesurée plutôt que déduite d'un catalogue. Elle a trouvé trois
+choses, et **deux étaient des défauts de la sonde elle-même**.
+
+## Le plus coûteux : un fournisseur payé, jamais appelé
+
+Le rapport listait 27 modèles essayés. Aucun n'était ceux d'`opencode` — six
+modèles, six cents requêtes par jour, un abonnement payé.
+
+`opencode` était **déclaré**, doté d'une clé, et affiché « disponible » par le
+diagnostic. Mais `active_providers()` se construit sur `DEFAULT_ORDER`, et ce
+nom n'y figurait pas. Un fournisseur absent de cette liste est invisible pour
+toujours — au routeur comme à la sonde.
+
+C'est le **réglage orphelin** du dépôt, déplacé d'un cran : une chose déclarée,
+visible, et que rien ne lit.
+
+La correction ne se contente pas d'ajouter le nom : l'ordre est désormais
+**dérivé** du catalogue, et tout fournisseur non listé est ajouté à la fin
+plutôt que perdu. Corriger l'oubli une fois ne suffit pas ; il faut le rendre
+impossible.
+
+## Un diagnostic qui accuse à tort est pire que pas de diagnostic
+
+```
+x groq  openai/gpt-oss-120b   vide   0.48s
+x groq  openai/gpt-oss-20b    vide   0.40s
+```
+
+Groq venait de servir **14 399 jetons le jour même**, avec succès.
+
+La sonde accordait seize jetons — assez pour « OK ». Mais les `gpt-oss` sont
+des modèles de **raisonnement** : ils rédigent leur brouillon entre `<think>`
+et `</think>` avant de répondre. `core.texte` retire ce brouillon, et il ne
+restait rien.
+
+Deux corrections : la sonde accorde 256 jetons, et le cas « le modèle a parlé,
+et tout ce qu'il a dit était du brouillon » porte son propre nom —
+`raisonnement seul` — parce que le geste à faire n'est pas celui d'un modèle
+mort.
+
+## Listé ne veut pas dire appelable
+
+NVIDIA **liste** `writer/palmyra-creative-122b` dans son catalogue public — je
+l'ai vérifié, parmi 81. Et cette clé-là reçoit 404 en le demandant, deux fois,
+à un jour d'intervalle.
+
+Ce n'est donc ni transitoire ni une erreur de recopie : **le catalogue public
+et ce qu'un compte peut appeler sont deux choses différentes.** Un identifiant
+copié d'un catalogue public répare la panne d'un compte, pas celle du compte
+voisin.
+
+D'où `usine docteur --reparer` : pour chaque identifiant que le fournisseur ne
+connaît plus, l'usine cherche un remplaçant dans le catalogue, **l'appelle**, et
+ne le retient que s'il répond. Sans cet appel, on remplacerait un identifiant
+mort par un autre — et cela ne se verrait qu'à la fabrication suivante.
+
+Ce qui n'est **pas** réparé, et c'est volontaire : un quota atteint, un crédit
+épuisé, une panne du service. Changer de modèle n'y peut rien, et le faire
+masquerait la vraie cause — c'est le compte qui est à sec, pas l'identifiant.
+
+## Ce que le rapport disait d'autre, et qui n'est pas réparable
+
+| fournisseur | état | ce qu'il faut faire |
+|---|---|---|
+| `cerebras` | HTTP 402 | crédit épuisé |
+| `mistral` | HTTP 429 | quota du jour atteint |
+| `pollinations` | HTTP 402 | budget de la clé épuisé |
+| `github` | HTTP 410 | **le service ferme** — rien à corriger |
+| `ollama` | HTTP 500 / 404 | serveur local, modèle non téléchargé |
+| `llamacpp` | injoignable | serveur local non lancé |

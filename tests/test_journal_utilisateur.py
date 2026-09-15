@@ -203,5 +203,131 @@ class UneGrilleCoupeeEstRedemandee(unittest.TestCase):
         self.assertEqual(appels, [3350], "un seul appel quand rien n'est coupe")
 
 
+class UnFournisseurDeclareEtJamaisAppele(unittest.TestCase):
+    """« opencode » etait declare, dote d'une cle, affiche « disponible »
+    par le diagnostic — et l'ordre de bascule ne le nommait pas.
+
+    Journal du 15/09/2026 : vingt-sept modeles essayes, aucun n'etait le
+    sien. Six modeles payes, jamais appeles une seule fois. C'est le reglage
+    orphelin du depot, deplace d'un cran : une chose declaree, visible, et
+    que rien ne lit.
+    """
+
+    def test_tout_fournisseur_declare_entre_dans_l_ordre(self):
+        declares = {p.name for p in config.PROVIDERS}
+        ordonnes = set(config.provider_order())
+        self.assertEqual(declares - ordonnes, set(),
+                         "declares et jamais appeles")
+
+    def test_un_fournisseur_absent_de_la_liste_est_ajoute_a_la_fin(self):
+        """Le garde-fou structurel : corriger l'oubli une fois ne suffit
+        pas, il faut le rendre impossible."""
+        faux = config.Provider(name="atelier-fictif",
+                               base_url="https://exemple.invalide/v1",
+                               api_key_env="", models={"standard": "x"},
+                               keyless=True)
+        config.PROVIDERS.append(faux)
+        config.PROVIDERS_BY_NAME[faux.name] = faux
+        try:
+            self.assertIn("atelier-fictif", config.provider_order())
+            self.assertIn("atelier-fictif",
+                          [p.name for p in
+                           config.active_providers(include_unavailable=True)])
+        finally:
+            config.PROVIDERS.remove(faux)
+            del config.PROVIDERS_BY_NAME[faux.name]
+
+    def test_opencode_passe_avant_les_paliers_gratuits(self):
+        """Il est paye : le laisser derriere les gratuits reviendrait a ne
+        l'appeler qu'une fois ceux-ci epuises."""
+        ordre = config.provider_order()
+        self.assertLess(ordre.index("opencode"), ordre.index("pollinations"))
+
+
+class LaSondeNAccusePasAtort(unittest.TestCase):
+    """Un modele de RAISONNEMENT redige son brouillon avant de repondre.
+
+    « core.texte » retire ce brouillon. Avec seize jetons accordes, il ne
+    restait rien : la sonde declarait « vide » les deux modeles de Groq,
+    alors que Groq venait de servir quatorze mille jetons le jour meme. Un
+    diagnostic qui accuse a tort est pire que pas de diagnostic.
+    """
+
+    def test_la_sonde_laisse_de_la_place_au_brouillon(self):
+        source = (RACINE / "usine" / "core" / "llm.py").read_text(
+            encoding="utf-8")
+        debut = source.index("def essai_direct(")
+        corps = source[debut:source.index("\ndef ", debut + 10)]
+        self.assertIn("min(256, p.max_sortie)", corps,
+                      "seize jetons ne laissent pas conclure un modele de "
+                      "raisonnement")
+
+    def test_un_brouillon_seul_se_nomme_ainsi(self):
+        """Et pas « vide » : le modele a parle, et il fonctionne."""
+        from usine.core import diagnostic
+
+        self.assertEqual(diagnostic._nommer_le_refus(
+            HttpErreur(200, "raisonnement seul")), "raisonnement seul")
+
+    def test_le_brouillon_seul_n_est_pas_un_modele_inconnu(self):
+        """Sinon la reparation remplacerait un modele qui marche."""
+        exc = HttpErreur(200, "raisonnement seul, pas de reponse")
+        self.assertFalse(llm._modele_inconnu(exc))
+        self.assertFalse(llm._service_ferme(exc))
+
+
+class LaReparationEssaieAvantDeRetenir(unittest.TestCase):
+    """Remplacer un identifiant mort par un autre identifiant mort ne se
+    verrait qu'a la fabrication suivante."""
+
+    def setUp(self):
+        modeles.oublier()
+
+    def test_un_remplacant_muet_n_est_pas_retenu(self):
+        from usine.core import diagnostic
+
+        fournisseur = config.PROVIDERS_BY_NAME["nvidia"]
+        catalogue = ["mort-un", "mort-deux", "vivant-standard"]
+        appels = []
+
+        def essai(p, modele, timeout=30):
+            appels.append(modele)
+            if modele.startswith("vivant"):
+                return "OK"
+            raise HttpErreur(404, "Not Found")
+
+        with mock.patch.object(diagnostic.config, "active_providers",
+                               return_value=[fournisseur]), \
+             mock.patch("usine.core.llm.essai_direct", side_effect=essai), \
+             mock.patch.object(modeles, "catalogue", return_value=catalogue), \
+             mock.patch.object(modeles, "choisir",
+                               side_effect=lambda c, r: c[0] if c else ""):
+            bilan = diagnostic.reparer_modeles()
+
+        retenus = {(l["fournisseur"], l["role"]): l["apres"]
+                   for l in bilan["repares"]}
+        self.assertTrue(retenus, "rien n'a ete repare")
+        for apres in retenus.values():
+            self.assertTrue(apres.startswith("vivant"),
+                            "un remplacant muet a ete retenu : " + apres)
+
+    def test_un_quota_atteint_ne_declenche_pas_de_remplacement(self):
+        """Changer de modele n'y peut rien, et le faire masquerait la vraie
+        cause : c'est le compte qui est a sec, pas l'identifiant."""
+        from usine.core import diagnostic
+
+        fournisseur = config.PROVIDERS_BY_NAME["nvidia"]
+
+        def essai(p, modele, timeout=30):
+            raise HttpErreur(429, "Too Many Requests")
+
+        with mock.patch.object(diagnostic.config, "active_providers",
+                               return_value=[fournisseur]), \
+             mock.patch("usine.core.llm.essai_direct", side_effect=essai):
+            bilan = diagnostic.reparer_modeles()
+        self.assertEqual(bilan["repares"], [])
+        self.assertEqual(bilan["sans_recours"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

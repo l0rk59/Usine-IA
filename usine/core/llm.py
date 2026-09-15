@@ -708,7 +708,13 @@ def essai_direct(p: config.Provider, modele: str, timeout: int = 30) -> str:
         "model": modele,
         "messages": [{"role": "user", "content": "Reponds exactement : OK"}],
         "temperature": 0.0,
-        "max_tokens": min(16, p.max_sortie),
+        # Seize jetons suffisent pour « OK » — mais pas pour un modele de
+        # RAISONNEMENT, qui redige d'abord son brouillon entre « <think> » et
+        # « </think> ». « core.texte » retire ce brouillon, et il ne restait
+        # rien : la sonde declarait « vide » les deux modeles de Groq, alors
+        # que Groq venait de servir quatorze mille jetons le jour meme.
+        # Un diagnostic qui accuse a tort est pire que pas de diagnostic.
+        "max_tokens": min(256, p.max_sortie),
     }
     entetes = {"Content-Type": "application/json"}
     entetes.update(p.extra_headers)
@@ -719,9 +725,16 @@ def essai_direct(p: config.Provider, modele: str, timeout: int = 30) -> str:
             entetes["Authorization"] = "Bearer {}".format(candidates[0].valeur)
     url = p.base_url.rstrip("/") + "/chat/completions"
     data = post_json(url, charge, entetes, timeout=timeout)
-    brut = (((data.get("choices") or [{}])[0].get("message") or {})
-            .get("content") or "").strip()
+    choix = (data.get("choices") or [{}])[0]
+    brut = ((choix.get("message") or {}).get("content") or "").strip()
     texte = module_texte.assainir(brut)
+    if not texte and brut:
+        # Le modele a parle, et tout ce qu'il a dit etait du brouillon. Le
+        # dire ainsi plutot que « vide » : le geste a faire n'est pas le meme,
+        # et ce modele-la fonctionne.
+        raise HttpErreur(
+            200, "{} : raisonnement seul, pas de reponse en {} jetons"
+            .format(p.name, charge["max_tokens"]), corps=brut[:200])
     refus = module_texte.refus_deguise(texte, attend_francais=False)
     if refus:
         statut = 402 if module_texte.ressemble_a_un_quota(texte) else 503
