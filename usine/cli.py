@@ -24,8 +24,8 @@ from .core import verification
 from .marketing import vente
 from .packaging import livraison
 from .pipelines import (boite_outils, catalogue, ebook, formation, idees,
-                        emails, impression, logiciel, memo, modeles,
-                        nouvelle, pack_prompts, quiz,
+                        emails, impression, interactive, logiciel, memo,
+                        modeles, nouvelle, pack_prompts, quiz,
                         social)
 from .pipelines.base import (CHAPITRES_MAX, CHAPITRES_MIN, Contexte, MOTS_MAX,
                              MOTS_MIN, TAILLES, TONS)
@@ -571,6 +571,27 @@ def cmd_quiz(args: argparse.Namespace) -> int:
     _resume_console(_apres_production(
         args, ctx, resume,
         "Quiz de {} questions, corrige explique.".format(resume["questions"])))
+    return 0
+
+
+def cmd_interactive(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication d'un livre dont le lecteur est le heros")
+    # Comme pour le roman : la quantite arrive par « --chapitres », l'option
+    # commune aux types. Un « --sections » propre a ce type ferait deux
+    # drapeaux pour le meme chiffre, et le second ecraserait le premier.
+    resume = interactive.produire(ctx)
+    description = "{} sections, {} fins.".format(
+        resume["sections"], resume["fins"])
+    if resume.get("carte_elaguee"):
+        # Une degradation se dit a l'ecran, pas seulement dans le JSON : c'est
+        # la seule facon que l'utilisateur sache s'il doit refabriquer.
+        alerte("La carte a du etre elaguee pour rester jouable.")
+    for defaut in resume.get("defauts_restants") or []:
+        alerte(defaut)
+    _resume_console(_apres_production(args, ctx, resume, description))
     return 0
 
 
@@ -2699,6 +2720,13 @@ def construire_parseur() -> argparse.ArgumentParser:
     _options_communes(p)
     _options_du_type(p, "roman")
     p.set_defaults(fonction=cmd_roman)
+
+    p = sous_parseurs.add_parser(
+        "interactive",
+        help="un livre dont le lecteur est le heros (carte verifiee)")
+    _options_communes(p)
+    _options_du_type(p, "interactive")
+    p.set_defaults(fonction=cmd_interactive, _type="interactive")
 
     p = sous_parseurs.add_parser(
         "journal", help="ce que l'usine a fait pendant qu'on ne regardait pas")

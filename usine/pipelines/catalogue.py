@@ -69,6 +69,17 @@ def nouvelle_scenes() -> int:
     return ROMAN_SCENES
 
 
+def interactive_sections() -> int:
+    """Le nombre de sections d'un livre-jeu, lu la ou il est decide.
+
+    Le recopier ici en ferait deux chiffres qui divergent — et c'est celui du
+    menu qui promettrait une longueur que la chaine ne fabrique pas.
+    """
+    from .interactive import SECTIONS
+
+    return SECTIONS
+
+
 @dataclass(frozen=True)
 class Champ:
     """Une option propre a UN type de produit, declaree une seule fois.
@@ -262,13 +273,14 @@ class TypeProduit:
 def _chaines() -> Dict[str, Callable]:
     """Import tardif : le catalogue est lu par des modules que les chaines importent."""
     from . import (boite_outils, ebook, emails, formation, idees, impression,
-                   logiciel, memo, modeles, nouvelle, pack_prompts, quiz,
-                   social)
+                   interactive, logiciel, memo, modeles, nouvelle,
+                   pack_prompts, quiz, social)
 
     return {
         "ebook": ebook.produire,
         "nouvelle": nouvelle.produire,
         "roman": nouvelle.produire_roman,
+        "interactive": interactive.produire,
         "prompts": pack_prompts.produire,
         "formation": formation.produire,
         "outils": boite_outils.produire,
@@ -325,6 +337,27 @@ TYPES: List[TypeProduit] = [
         # La declarer une seconde fois donnait deux champs de meme nom dans
         # le formulaire — celui d'en haut et celui de la section du type — et
         # le second ecrasait le premier a l'envoi.
+        champs=champs_de_fiction(),
+    ),
+    TypeProduit(
+        cle="interactive", nom="Livre dont le lecteur est le heros",
+        famille="fiction",
+        resume="Un recit a embranchements, dont la carte est verifiee",
+        detail="PDF + EPUB + HTML + Markdown + carte du livre",
+        formats=("pdf", "epub", "html", "md", "txt"),
+        # Une section par appel, plus la bible et la carte. Vingt-quatre
+        # sections courtes coutent moins qu'un roman, mais la carte demande
+        # un modele costaud et parfois deux essais.
+        minutes=(25, 70),
+        quantite=("sections", "Combien de sections", str(interactive_sections())),
+        # Etroits a dessein : « choix » et « aventure » designent aussi bien
+        # un livre-jeu qu'un guide de developpement personnel.
+        mots_cles=("livre-jeu", "dont vous etes le heros", "embranchements",
+                   "recit interactif"),
+        # « sections » n'est PAS declare en option : c'est deja la quantite
+        # ci-dessus. Le declarer deux fois donnait deux chemins pour le meme
+        # chiffre — et un garde-fou du depot l'a vu tout de suite, parce que
+        # le menu n'en proposait qu'un des deux.
         champs=champs_de_fiction(),
     ),
     TypeProduit(

@@ -152,6 +152,38 @@ def simulateur(messages, role):
              "pourquoi_maintenant": "la rentree"},
         ]}, ensure_ascii=False)
 
+    # --- livre-jeu : une carte VALIDE, sinon le test n'exerce rien --------
+    #
+    # Sans ce cas, le simulateur ne savait pas repondre a la demande de carte
+    # et rendait du vide. La chaine elaguait donc un graphe vide, ecrivait
+    # zero section, et le test de fumee declarait « abouti » un livre de zero
+    # page. Un simulateur qui ne sait pas repondre ne rend pas un test
+    # moins bon : il le rend faux.
+    if '"vers"' in invite and '"fin"' in invite:
+        combien = _combien(invite, 12)
+        # Une chaine lineaire avec un embranchement par section, et deux fins
+        # a la queue. Volontairement SIMPLE et JUSTE : ce que le test doit
+        # exercer, c'est la chaine, pas la capacite du simulateur a se
+        # tromper. Les cartes fausses sont exercees par les tests d'unite,
+        # qui les fabriquent a la main.
+        sections = []
+        derniere, avant_derniere = combien, combien - 1
+        for numero in range(1, combien + 1):
+            if numero in (derniere, avant_derniere):
+                sections.append({
+                    "numero": numero, "intitule": "l'issue {}".format(numero),
+                    "fin": True,
+                    "issue": "heureuse" if numero == derniere else "malheureuse",
+                    "choix": []})
+                continue
+            suivant = min(numero + 1, avant_derniere)
+            sections.append({
+                "numero": numero, "intitule": "le couloir {}".format(numero),
+                "fin": False,
+                "choix": [{"texte": "Avancer", "vers": suivant},
+                          {"texte": "Rebrousser chemin", "vers": derniere}]})
+        return json.dumps({"sections": sections}, ensure_ascii=False)
+
     # --- sequence e-mail : le plan, puis chaque message --------------------
     if '"messages"' in invite and '"angle"' in invite:
         combien = _combien(invite, 7)
@@ -770,7 +802,14 @@ def simulateur(messages, role):
         return etat
 
     # --- fiction : le texte d'une scene --------------------------------------
-    if "ecris la scene" in bas:
+    #
+    # « la section » y est jointe pour le livre-jeu : sans elle, le
+    # simulateur rendait de la prose de guide pratique — listes a puces,
+    # « A retenir », chiffres d'affaires — dans un recit a embranchements. Le
+    # test de fumee mesurait alors la qualite d'un texte qu'aucune chaine de
+    # fiction ne produirait, ce qui ne prouve rien dans un sens ni dans
+    # l'autre.
+    if "ecris la scene" in bas or "ecris la section" in bas:
         return _texte_scene()
 
     # --- tout le reste : du markdown ---------------------------------------

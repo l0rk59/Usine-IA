@@ -46,6 +46,12 @@ SCENARIOS = [
     # test de fumee dure une heure.
     ("roman", ["roman", "une disparition dans les Cevennes", "--chapitres", "8",
                "--mots", "400", "--sans-image"]),
+    # Le livre-jeu est la seule chaine dont le produit est un GRAPHE. Son
+    # scenario compte, parce que ses defauts ne sont pas des defauts de texte
+    # mais de structure : un choix vers le vide, une section qu'aucun chemin
+    # n'atteint. Douze sections suffisent a ramifier sans allonger le test.
+    ("interactive", ["interactive", "un manoir sur la lande", "--chapitres",
+                     "12", "--mots", "150", "--sans-image"]),
     ("prompts", ["prompts", "la gestion de projet", "-n", "8", "--sans-image"]),
     ("formation", ["formation", "le copywriting", "-m", "4", "--sans-image"]),
     ("outils", ["outils", "la facturation", "-n", "5", "--sans-image"]),
@@ -115,6 +121,9 @@ ATTENDUS = {
     "ebook": [".pdf", ".epub", "lire.html", "livre.md", "livre.txt"],
     "nouvelle": [".pdf", ".epub", "bible.json", "continuite.json",
                  "nouvelle.md", "lire.html"],
+    # « carte.json » n'est pas un fichier de travail : c'est le graphe verifie,
+    # et c'est ce qui permet de rouvrir le livre pour en corriger un chemin.
+    "interactive": [".pdf", ".epub", "carte.json", "lire.html"],
     "prompts": [".pdf", "prompts.csv", "prompts.json", "lire.html"],
     "formation": ["-manuel.pdf", "-cahier-exercices.pdf", "formation.md",
                   "quiz.html"],
