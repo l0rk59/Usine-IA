@@ -300,10 +300,13 @@ def domaines_de_depart(
     if not mesure_possible:
         dire("Aucune source de marche n'a repondu : ces domaines sont "
              "PROPOSES, pas mesures.")
-    for piste in retenus[:3]:
-        dire("  {} — demande {} ({})".format(
-            piste["domaine"], piste.get("demande") or "non mesuree",
-            piste.get("fiabilite") or "hors ligne"))
+    # Une seule ligne de conclusion : chaque piste a deja eu la sienne
+    # au-dessus. Les repeter toutes les trois faisait un journal ou l'on
+    # lisait deux fois la meme chose, et ou la conclusion se noyait.
+    if retenus:
+        tete = retenus[0]
+        dire("  en tete : « {} » — demande {}".format(
+            tete["domaine"], tete.get("demande") or "non mesuree"))
     return {"retenus": retenus, "mesures": mesures, "mesure": mesure_possible}
 
 
