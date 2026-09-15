@@ -44,7 +44,14 @@ def _combien(invite: str, defaut: int) -> int:
                   r"systeme de (\d+) bases",
                   r"sequence de\s+(\d+)\s+e-mails",
                   r"en\s+(\d+)\s+blocs courts",
-                  r"Ecris\s+(\d+)\s+questions"):
+                  r"Ecris\s+(\d+)\s+questions",
+                  # Sans ces deux-la, le simulateur rendait toujours sa
+                  # valeur par defaut : sept recits quand le test en demandait
+                  # trois, et une carte de douze sections quand on en voulait
+                  # vingt. Le test passait — il n'exercait simplement pas ce
+                  # qu'il croyait.
+                  r"RECUEIL de\s+(\d+)\s+nouvelles",
+                  r"sections numerotees de 1 a\s+(\d+)"):
         trouve = re.search(motif, invite, re.IGNORECASE)
         if trouve:
             return int(trouve.group(1))
@@ -151,6 +158,49 @@ def simulateur(messages, role):
              "acheteur": "quelqu'un qui a arrete dix ans",
              "pourquoi_maintenant": "la rentree"},
         ]}, ensure_ascii=False)
+
+    # --- recueil : des premisses qui DIFFERENT ---------------------------
+    #
+    # Le piege que ce cas doit eviter : un simulateur qui rendrait sept fois
+    # la meme premisse ferait echouer le controle de variete a chaque test de
+    # fumee, et on finirait par le desactiver — alors que c'est lui la raison
+    # d'etre de la chaine. Les premisses ci-dessous different par qui les
+    # vit, par l'epoque et par la fin.
+    if '"premisse"' in invite and '"registre"' in invite:
+        combien = _combien(invite, 7)
+        graines = [
+            ("Le quai numero deux", "Un cheminot decouvre que la ligne ferme "
+             "dans sept jours et cache la lettre a sa fille.",
+             "un cheminot", "sobre", "amere"),
+            ("La couturiere de Roubaix", "Une couturiere retrouve la robe "
+             "qu'elle avait cousue pour un mariage qui n'a pas eu lieu.",
+             "une couturiere", "tendre", "ouverte"),
+            ("Ce que la mer rend", "Un adolescent trouve un carnet dans une "
+             "epave et reconnait l'ecriture de son grand-pere.",
+             "un adolescent", "mysterieux", "heureuse"),
+            ("Le dernier locataire", "Une proprietaire refuse de vendre "
+             "l'immeuble tant que le vieux du troisieme y vit.",
+             "une proprietaire", "ironique", "tragique"),
+            ("Trois minutes de retard", "Une infirmiere rejoue la nuit ou "
+             "elle est arrivee apres l'heure.", "une infirmiere",
+             "tendu", "amere"),
+            ("La boulangerie ferme a onze heures", "Un boulanger apprend a "
+             "lire a soixante-deux ans, en secret.", "un boulanger",
+             "lumineux", "heureuse"),
+            ("Les cles du presbytere", "Une archiviste doit bruler des "
+             "registres qu'elle vient de passer dix ans a classer.",
+             "une archiviste", "grave", "ouverte"),
+        ]
+        return json.dumps({
+            "titre": "Ce que le nord garde",
+            "fil": "Sept personnes, une meme ville, et ce qu'elles n'ont "
+                   "jamais dit.",
+            "recits": [
+                {"titre": t, "premisse": p, "qui": q, "registre": r,
+                 "fin": f, "place": "rang {}".format(rang + 1)}
+                for rang, (t, p, q, r, f) in enumerate(
+                    (graines * 3)[:combien])],
+        }, ensure_ascii=False)
 
     # --- livre-jeu : une carte VALIDE, sinon le test n'exerce rien --------
     #

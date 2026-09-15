@@ -315,3 +315,84 @@ simple et juste — ce que le test doit exercer, c'est la chaîne, pas la
 capacité du simulateur à se tromper. Les cartes fausses sont fabriquées à la
 main par les tests d'unité.
 
+## Recueil de nouvelles — `usine recueil`
+
+*Ajouté le 15/09/2026.*
+
+**Ce que l'acheteur reçoit** : plusieurs nouvelles liées par un fil, dans un
+ordre voulu — PDF, EPUB, HTML, Markdown, et la mesure de variété en JSON.
+
+**Pourquoi une chaîne à part.** Fabriquer sept nouvelles et les agrafer ne fait
+pas un recueil : cela fait sept nouvelles dans le même fichier. Ce qui fait la
+valeur d'un recueil, c'est qu'il se lise d'un bout à l'autre — donc que les
+textes se répondent sans se répéter.
+
+Et c'est précisément là que la fiction générée est la plus faible. Les études
+publiques sur les textes de modèles le disent toutes de la même façon :
+personnages archétypaux, tensions désamorcées, résolutions trop nettes. Sur
+une nouvelle isolée, cela passe. **Sur sept d'affilée, cela se voit** — le
+lecteur reconnaît la même histoire à la troisième, et repose le livre.
+
+### Mesurer que les récits ne sont pas le même
+
+C'est ce qui donne son intérêt à cette chaîne. En deux temps, et le premier
+est le moins cher :
+
+**Avant d'écrire** — les prémisses proposées se ressemblent-elles ? Deux
+prémisses jumelles coûtent deux récits à découvrir. Quand il y en a, on
+redemande le fil en **nommant les couples** : redemander « varie davantage »
+ne change rien, dire « *Le phare* et *La lanterne* racontent la même chose »
+change ce point-là.
+
+**Après avoir écrit** — combien de protagonistes distincts, combien de formes
+de fin, de combien les longueurs s'écartent.
+
+Les deux sont déterministes : ils comparent des chaînes et comptent des mots.
+Aucun n'appelle un modèle, et aucun ne juge la qualité d'un texte — ils
+mesurent un **écart**, ce qui est vérifiable, là où « ce récit est banal » ne
+l'est pas.
+
+### Le seuil est volontairement haut, et ce qui passe dessous reste visible
+
+Mesure du 15/09/2026 : « une libraire hérite du phare de son père et y trouve
+une lettre » contre « une libraire reçoit le phare de son père et découvre une
+lettre » donne **0,67**. Deux fois la même histoire — et le contrôle la laisse
+passer.
+
+C'est assumé, et c'est la règle du dépôt : *rater un défaut plutôt qu'en
+inventer un*. Un recueil où deux textes se répondent volontairement — deux
+versions d'un même événement, un diptyque — est un procédé, pas une faute, et
+un contrôle qui le refuserait finirait ignoré.
+
+Ce qui compense : **la proximité maximale est rendue dans tous les cas**, avec
+son chiffre.
+
+```
+3 protagoniste(s) distinct(s), 3 forme(s) de fin.
+Les deux recits les plus proches : « Le phare » et « La lettre » (0.67).
+```
+
+Le 0,67 se voit, et c'est un humain qui tranche.
+
+### Ce qui est dit, et ce qui ne l'est pas
+
+Une seule chose est affirmée, parce qu'une seule est certaine : deux récits qui
+portent le même protagoniste, ou sept qui finissent de la même façon, sont un
+**fait**. Tout le reste est rendu en chiffres.
+
+Et même ces faits ne sont pas des condamnations. Un recueil de Noël finit bien
+sept fois, et c'est un choix :
+
+> *Les 7 récits finissent tous de la même façon (heureuse). C'est peut-être
+> voulu ; lu d'affilée, cela s'entend.*
+
+Un test vérifie que les mots « mauvais », « raté », « à refaire » n'y
+apparaissent pas.
+
+### Un défaut trouvé en regardant le produit
+
+La première version livrait **sept récits pour trois demandés**, sans un mot :
+le modèle rendait plus de prémisses que demandé et la chaîne les fabriquait
+toutes. Quatre fois le temps et le quota annoncés, découverts à la fin. Ce qui
+est demandé fait foi maintenant.
+

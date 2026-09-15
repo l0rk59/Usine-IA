@@ -69,6 +69,13 @@ def nouvelle_scenes() -> int:
     return ROMAN_SCENES
 
 
+def recueil_recits() -> int:
+    """Le nombre de nouvelles d'un recueil, lu la ou il est decide."""
+    from .recueil import RECITS
+
+    return RECITS
+
+
 def interactive_sections() -> int:
     """Le nombre de sections d'un livre-jeu, lu la ou il est decide.
 
@@ -274,13 +281,14 @@ def _chaines() -> Dict[str, Callable]:
     """Import tardif : le catalogue est lu par des modules que les chaines importent."""
     from . import (boite_outils, ebook, emails, formation, idees, impression,
                    interactive, logiciel, memo, modeles, nouvelle,
-                   pack_prompts, quiz, social)
+                   pack_prompts, quiz, recueil, social)
 
     return {
         "ebook": ebook.produire,
         "nouvelle": nouvelle.produire,
         "roman": nouvelle.produire_roman,
         "interactive": interactive.produire,
+        "recueil": recueil.produire,
         "prompts": pack_prompts.produire,
         "formation": formation.produire,
         "outils": boite_outils.produire,
@@ -358,6 +366,18 @@ TYPES: List[TypeProduit] = [
         # ci-dessus. Le declarer deux fois donnait deux chemins pour le meme
         # chiffre — et un garde-fou du depot l'a vu tout de suite, parce que
         # le menu n'en proposait qu'un des deux.
+        champs=champs_de_fiction(),
+    ),
+    TypeProduit(
+        cle="recueil", nom="Recueil de nouvelles", famille="fiction",
+        resume="Plusieurs recits lies par un fil, dont on mesure la variete",
+        detail="PDF + EPUB + HTML + Markdown + couverture",
+        formats=("pdf", "epub", "html", "md", "txt"),
+        # Sept recits de quatre scenes : c'est plus long qu'une nouvelle et
+        # moins qu'un roman, et chaque recit paie sa propre bible.
+        minutes=(45, 120),
+        quantite=("recits", "Combien de nouvelles", str(recueil_recits())),
+        mots_cles=("recueil", "nouvelles", "anthologie", "textes courts"),
         champs=champs_de_fiction(),
     ),
     TypeProduit(

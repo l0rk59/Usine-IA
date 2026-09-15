@@ -52,6 +52,11 @@ SCENARIOS = [
     # n'atteint. Douze sections suffisent a ramifier sans allonger le test.
     ("interactive", ["interactive", "un manoir sur la lande", "--chapitres",
                      "12", "--mots", "150", "--sans-image"]),
+    # Le recueil : la seule chaine qui mesure un ECART entre ses propres
+    # sections. Trois recits suffisent a exercer la mesure sans que le test
+    # de fumee en fabrique sept.
+    ("recueil", ["recueil", "une ville du nord", "--chapitres", "3",
+                 "--mots", "150", "--sans-image"]),
     ("prompts", ["prompts", "la gestion de projet", "-n", "8", "--sans-image"]),
     ("formation", ["formation", "le copywriting", "-m", "4", "--sans-image"]),
     ("outils", ["outils", "la facturation", "-n", "5", "--sans-image"]),
@@ -124,6 +129,7 @@ ATTENDUS = {
     # « carte.json » n'est pas un fichier de travail : c'est le graphe verifie,
     # et c'est ce qui permet de rouvrir le livre pour en corriger un chemin.
     "interactive": [".pdf", ".epub", "carte.json", "lire.html"],
+    "recueil": [".pdf", ".epub", "recueil.json", "lire.html"],
     "prompts": [".pdf", "prompts.csv", "prompts.json", "lire.html"],
     "formation": ["-manuel.pdf", "-cahier-exercices.pdf", "formation.md",
                   "quiz.html"],

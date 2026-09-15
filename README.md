@@ -98,6 +98,7 @@ du mieux placé. Le détail : [docs/NICHE.md](docs/NICHE.md).
 | `usine nouvelle` | Nouvelle | Fiction courte, personnages et continuité tenus | 12–30 min |
 | `usine roman` | Roman | Trente scènes, en parties, continuité contrôlée | 60–180 min |
 | `usine interactive` | Livre dont le lecteur est le héros | Un récit à embranchements, dont la carte est vérifiée avant d'écrire | 25–70 min |
+| `usine recueil` | Recueil de nouvelles | Plusieurs récits liés par un fil, dont on mesure la variété | 45–120 min |
 | `usine formation` | Mini-formation | Manuel + cahier d'exercices + séquence e-mail | 12–25 min |
 | `usine prompts` | Pack de prompts | Bibliothèque classée, PDF + CSV + JSON | 5–12 min |
 | `usine outils` | Boîte à outils | Checklists, modèles, tableaux de suivi | 6–14 min |
@@ -117,7 +118,7 @@ Et quand vous ne savez pas encore quoi fabriquer :
 | `usine auto` | L'usine choisit la niche **et** le type de produit |
 | `usine auto "votre sujet"` | Vous donnez le sujet, elle choisit le type qui se vend le mieux dessus |
 
-Les douze commandes ci-dessus demandent le type d'abord. Or le choisir suppose
+Les treize commandes ci-dessus demandent le type d'abord. Or le choisir suppose
 de savoir ce qui se vend dans une niche qu'on n'a pas encore cherchée : c'est
 l'ordre inverse de celui dans lequel la question se pose. Le tableau de bord
 propose le même choix, en tête de la liste des types.

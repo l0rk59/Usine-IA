@@ -26,7 +26,7 @@ from .packaging import livraison
 from .pipelines import (boite_outils, catalogue, ebook, formation, idees,
                         emails, impression, interactive, logiciel, memo,
                         modeles, nouvelle, pack_prompts, quiz,
-                        social)
+                        recueil, social)
 from .pipelines.base import (CHAPITRES_MAX, CHAPITRES_MIN, Contexte, MOTS_MAX,
                              MOTS_MIN, TAILLES, TONS)
 
@@ -591,6 +591,30 @@ def cmd_interactive(args: argparse.Namespace) -> int:
         alerte("La carte a du etre elaguee pour rester jouable.")
     for defaut in resume.get("defauts_restants") or []:
         alerte(defaut)
+    _resume_console(_apres_production(args, ctx, resume, description))
+    return 0
+
+
+def cmd_recueil(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication d'un recueil de nouvelles")
+    resume = recueil.produire(ctx)
+    description = "{} nouvelles, {} mots.".format(
+        resume["recits"], resume["mots"])
+    # La variete est la raison d'etre de cette chaine : elle se dit a l'ecran,
+    # pas seulement dans le JSON que personne n'ouvre.
+    variete = resume["variete"]
+    print("  {} protagoniste(s) distinct(s), {} forme(s) de fin.".format(
+        variete["protagonistes_distincts"], variete["fins_distinctes"]))
+    proche = variete.get("proximite_maximale") or {}
+    if proche.get("titres"):
+        print("  Les deux recits les plus proches : « {} » et « {} » "
+              "({}).".format(proche["titres"][0][:26],
+                             proche["titres"][1][:26], proche["score"]))
+    for lecture in resume.get("lectures") or []:
+        alerte(lecture)
     _resume_console(_apres_production(args, ctx, resume, description))
     return 0
 
@@ -2727,6 +2751,12 @@ def construire_parseur() -> argparse.ArgumentParser:
     _options_communes(p)
     _options_du_type(p, "interactive")
     p.set_defaults(fonction=cmd_interactive, _type="interactive")
+
+    p = sous_parseurs.add_parser(
+        "recueil", help="un recueil de nouvelles liees par un fil")
+    _options_communes(p)
+    _options_du_type(p, "recueil")
+    p.set_defaults(fonction=cmd_recueil, _type="recueil")
 
     p = sous_parseurs.add_parser(
         "journal", help="ce que l'usine a fait pendant qu'on ne regardait pas")
