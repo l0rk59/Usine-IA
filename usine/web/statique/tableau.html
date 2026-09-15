@@ -65,6 +65,21 @@
        liste ici la ferait diverger, comme c'est deja arrive. -->
   <select id="type"></select>
   <p class="aide" id="type-detail"></p>
+  <!-- La phrase qui dit que le formulaire est fini. Sans elle, sept champs
+       vides se lisent comme sept questions auxquelles il faut repondre : on
+       cherche quoi ecrire dans « Audience » au lieu d'appuyer. -->
+  <p class="aide accent">C'est tout : appuyez sur <b>Lancer la fabrication</b>.
+    L'usine cherche la niche, choisit l'audience, le ton et le volume, puis
+    fabrique.</p>
+</div>
+
+<!-- Tout ce qui suit est facultatif — ca l'a toujours ete, un champ vide
+     voulant deja dire « decide pour moi ». Mais deplie, ca ne se voyait pas :
+     le formulaire faisait deux ecrans de cases a remplir avant le bouton,
+     pour une usine dont la promesse est qu'on choisit un type et qu'on
+     appuie. Replie, la promesse se lit ; le choix reste, a un clic. -->
+<details class="carte repli" id="reglages-fins">
+  <summary>Choisir moi-même <span class="facultatif">facultatif</span></summary>
 
   <label for="sujet">Sujet <span class="facultatif">facultatif</span></label>
   <textarea id="sujet" placeholder="ex : la prospection pour freelances debutants"></textarea>
@@ -91,7 +106,6 @@
     <div><label for="qualite">Qualite</label><select id="qualite"></select></div>
     <div><label for="auteur">Auteur</label><input id="auteur"/></div>
   </div>
-</div>
 
 <!-- Les reglages propres au type choisi. Cette carte est VIDE dans le
      gabarit : elle se remplit depuis le catalogue, qui declare ce que chaque
@@ -99,12 +113,13 @@
      fini par n'exister que dans la ligne de commande — on ne pouvait pas
      choisir, depuis le navigateur, si un outil logiciel etait une ligne de
      commande ou une application web. -->
-<div class="carte" id="carte-type" hidden>
-  <h2 id="titre-type">Réglages du type</h2>
+<div id="carte-type" hidden>
+  <h3 id="titre-type">Réglages du type</h3>
   <p class="aide" id="aide-type"></p>
   <div id="champs-type"></div>
   <datalist id="series-connues"></datalist>
 </div>
+</details>
 
 <!-- Le bouton reste a portee sans qu'on remonte : le formulaire fait deux
      ecrans une fois les reglages du type deplies, et un bouton qu'on doit

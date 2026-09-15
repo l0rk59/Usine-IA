@@ -836,6 +836,26 @@ button.danger { border-radius: 2px; box-shadow: var(--neon-mag); }
                      background: var(--fond2, var(--fond));
                      box-shadow: 0 -8px 16px -8px rgba(0,0,0,0.45);
                      border-top: 1px solid var(--bord); }
+/* Le repli de « Fabriquer ». Il emprunte le sommaire de « .groupe-reglages »
+   — meme geste, meme affordance — mais garde le fond et l'espacement d'une
+   carte : c'en est une, simplement fermee. Sept champs deplies faisaient lire
+   le formulaire comme sept questions a repondre avant d'avoir le droit
+   d'appuyer. */
+.repli { padding-top: 0.45rem; padding-bottom: 0.45rem; }
+.repli > summary { cursor: pointer; font-weight: 600; list-style: none;
+                   display: flex; align-items: baseline; gap: 0.5rem;
+                   padding: 0.35rem 0; }
+.repli > summary::-webkit-details-marker { display: none; }
+.repli > summary::after { content: '+'; margin-left: auto;
+                          color: var(--doux); font-weight: 400; }
+.repli[open] > summary::after { content: '\2212'; }
+.repli[open] > summary { border-bottom: 1px solid var(--bord);
+                         padding-bottom: 0.6rem; margin-bottom: 0.4rem; }
+.repli > summary:focus-visible { outline: 2px solid var(--accent);
+                                 outline-offset: 2px; }
+/* La phrase qui dit que le formulaire est fini : elle doit se voir, sinon
+   elle ne sert a rien. */
+.aide.accent { color: var(--texte); }
 .facultatif { color: var(--doux); font-weight: 400; font-size: 0.78rem; }
 
 /* Le bouton de fabrication, toujours a portee. Le formulaire fait deux ecrans

@@ -665,6 +665,7 @@ $('file-ajouter').addEventListener('click', async () => {
     ajouterLigne('donnez un sujet dans l\'onglet « Fabriquer », ou utilisez '
       + '« Trouver des niches maintenant »', 'souci');
     montrerSection('fabriquer');
+    ouvrirLesReglages();
     $('sujet').focus();
     return;
   }
@@ -897,6 +898,17 @@ function decrireType() {
 
    Ajouter un type demandait d'editer le gabarit, ce script ET le serveur.
    Maintenant, un champ ajoute au catalogue apparait ici tout seul. */
+/* Les reglages fins sont replies par defaut : le formulaire promet qu'on
+   choisit un type et qu'on appuie. Trois chemins y renvoient pourtant le
+   curseur — mettre le sujet saisi en file, reprendre un titre trouve par la
+   veille, signaler un sujet manquant. Sans cette ligne, « focus() » visait un
+   champ dans un bloc ferme : rien ne bougeait a l'ecran, exactement le defaut
+   qu'on avait deja corrige quand le champ vivait dans un onglet cache. */
+function ouvrirLesReglages() {
+  const repli = $('reglages-fins');
+  if (repli) repli.open = true;
+}
+
 function dessinerChampsDuType(type) {
   const carte = $('carte-type');
   /* UNE source : les champs declares au catalogue. Le catalogue porte aussi
@@ -1133,6 +1145,7 @@ function ligneDite(d, classe) {
 document.addEventListener('click', (evenement) => {
   const propose = evenement.target.dataset?.sujet;
   if (!propose) return;
+  ouvrirLesReglages();
   $('sujet').value = propose;
   $('sujet').scrollIntoView({ behavior: 'smooth', block: 'center' });
   $('sujet').focus();

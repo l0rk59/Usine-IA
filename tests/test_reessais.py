@@ -206,6 +206,11 @@ class ChaqueCheminReseauReessaie(unittest.TestCase):
     """Un point unique de reessai ne sert a rien si personne ne l'appelle."""
 
     def _compter(self, module, attribut, lancer, exception=None):
+        # Le constat « le service d'images est muet » survit a l'appel qui l'a
+        # pose : c'est tout son interet. Il traverse donc aussi les tests, et
+        # le premier qui echoue rendait le suivant complaisant — il mesurait
+        # une tentative la ou il en attendait trois, et il l'a dit.
+        images._SERVICE_MUET = False
         panne = Panne(exception or http.HttpErreur(503, "indisponible"))
         vrai = getattr(module, attribut)
         setattr(module, attribut, panne)
@@ -253,6 +258,67 @@ class ChaqueCheminReseauReessaie(unittest.TestCase):
             os.environ.pop("POLLINATIONS_TOKEN", None)
             reglages.ecrire({"couverture": "atelier"})
         self.assertEqual(appels, http.TENTATIVES)
+
+    def test_un_service_d_images_muet_ne_se_constate_qu_une_fois(self):
+        """Quinze illustrations, une seule lecon.
+
+        Mesure du 15/09/2026 par le chemin reel du tableau de bord, sans
+        fournisseur d'images joignable : un conte prenait 83 secondes, dont
+        77,5 en images. Quinze appels, chacun rejouant trois tentatives avec
+        attente — les quatorze derniers rapprenaient a cinq secondes piece ce
+        que le premier avait etabli.
+
+        Les reessais restent justes pour un hoquet. C'est de les payer quinze
+        fois qui ne l'est pas.
+        """
+        import tempfile
+
+        images._SERVICE_MUET = False
+        panne = Panne(http.HttpErreur(503, "indisponible"))
+        vrai = images.image_pollinations
+        images.image_pollinations = panne
+        dossier = Path(tempfile.mkdtemp())
+        try:
+            with SansAttendreVraiment():
+                for page in range(15):
+                    images.generer_visuel(dossier, "p{}".format(page), "un ourson")
+        finally:
+            images.image_pollinations = vrai
+        # Le premier appel mesure (trois tentatives), les quatorze suivants
+        # tentent leur chance une fois.
+        self.assertEqual(panne.appels, http.TENTATIVES + 14, (
+            "{} appels pour quinze illustrations : la panne est reapprise a "
+            "chaque page".format(panne.appels)))
+
+    def test_le_service_qui_revient_est_repris_au_vol(self):
+        """Le constat s'efface au premier succes : sans cela, une coupure au
+        debut d'un album condamnait les treize illustrations suivantes a une
+        seule tentative chacune, pour toute la duree du processus."""
+        import tempfile
+
+        images._SERVICE_MUET = False
+        etat = {"appels": 0}
+
+        def service(*a, **k):
+            etat["appels"] += 1
+            if etat["appels"] <= http.TENTATIVES:      # la panne du debut
+                raise http.HttpErreur(503, "indisponible")
+            if etat["appels"] == http.TENTATIVES + 1:  # le service revient
+                return b"x" * 2048
+            raise http.HttpErreur(503, "rechute")      # et retombe
+
+        vrai = images.image_pollinations
+        images.image_pollinations = service
+        dossier = Path(tempfile.mkdtemp())
+        try:
+            with SansAttendreVraiment():
+                for page in range(3):
+                    images.generer_visuel(dossier, "p{}".format(page), "un ourson")
+        finally:
+            images.image_pollinations = vrai
+        # 3 (panne) + 1 (succes, qui efface le constat) + 3 (l'insistance a
+        # repris). Sans l'effacement, la derniere page n'en ferait qu'une.
+        self.assertEqual(etat["appels"], http.TENTATIVES * 2 + 1)
 
     def test_chaque_source_du_sondage_est_rejouee(self):
         appels, attente = self._compter(

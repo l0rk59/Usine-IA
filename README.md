@@ -313,6 +313,8 @@ Une note par sujet, chacune racontant un défaut **mesuré** et sa correction.
 | [PROSPECTION.md](docs/PROSPECTION.md) | pourquoi l'exploration rendait toujours les mêmes huit idées |
 | [AUDIT-ORGANISATION.md](docs/AUDIT-ORGANISATION.md) | compter plutôt que lire : copies, câblage, code à l'abandon |
 | [ILLUSTRATIONS.md](docs/ILLUSTRATIONS.md) | quatorze illustrations produites, zéro livrée — et pourquoi rien n'échouait |
+| [COMPTES.md](docs/COMPTES.md) | la couverture annonçait sept prompts, le pack en contenait douze |
+| [UN-BOUTON.md](docs/UN-BOUTON.md) | un type, un clic : ce que la mesure a dit, et les deux choses qui ne suivaient pas |
 | [PROSE.md](docs/PROSE.md) | la phrase, que les contrôles de charpente ne regardaient pas |
 | [RESEAU.md](docs/RESEAU.md) | ce qui se passe quand une API échoue : réessais, attente, bascule |
 | [DEPUIS-ZERO.md](docs/DEPUIS-ZERO.md) | l'usine décide tout à partir du sujet : plus aucun réglage par défaut |

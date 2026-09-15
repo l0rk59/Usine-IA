@@ -90,6 +90,35 @@ def illustration_demandee() -> bool:
     return str(reglages.lire("couverture", "atelier")).lower() == "ia"
 
 
+# Le service d'images repond-il, MAINTENANT ? Une panne se constate une fois.
+#
+# Mesure du 15/09/2026, chemin reel du tableau de bord, aucun fournisseur
+# d'images joignable : un conte prenait 83 secondes, dont 77,5 en images —
+# quinze appels, chacun rejouant trois tentatives avec attente. Les quatorze
+# derniers rapprenaient, a cinq secondes piece, ce que le premier avait deja
+# etabli.
+#
+# Les reessais restent justes pour un hoquet : c'est de les payer QUINZE FOIS
+# qui ne l'est pas. Apres un « insister » epuise — trois tentatives sur cinq
+# secondes, c'est deja la mesure — les appels suivants tentent leur chance une
+# seule fois. Aucun delai, aucun seuil a inventer : le premier succes efface
+# le constat et l'insistance reprend, donc un service qui revient au milieu
+# d'un album est repris au vol.
+_SERVICE_MUET = False
+
+
+def _demander_une_image(faire):
+    """Un appel au service d'images, insistant ou non selon ce qu'on sait."""
+    global _SERVICE_MUET
+    try:
+        brut = faire() if _SERVICE_MUET else insister(faire)
+    except Exception:
+        _SERVICE_MUET = True
+        raise
+    _SERVICE_MUET = False
+    return brut
+
+
 def generer_couverture(
     dossier: Path,
     titre: str,
@@ -118,7 +147,7 @@ def generer_couverture(
             # Une coupure d'une seconde ne doit pas decider de la couverture
             # d'un livre. Le repli local existe et il est bon, mais il n'a pas
             # a servir parce que le forfait a hoquete au mauvais moment.
-            brut = insister(
+            brut = _demander_une_image(
                 lambda: image_pollinations(invite, 1024, 1365, graine=graine))
             chemin = dossier / "{}.{}".format(nom, extension_image(brut))
             chemin.write_bytes(brut)
@@ -171,7 +200,8 @@ def generer_visuel(
         # a sa place. Mesure du 15/09/2026 : un seul essai, zero seconde
         # d'attente — une coupure d'une seconde coutait l'image pour de bon,
         # et le journal annoncait « 0 image(s) sur 14 » sans dire pourquoi.
-        brut = insister(lambda: image_pollinations(invite, largeur, hauteur))
+        brut = _demander_une_image(
+            lambda: image_pollinations(invite, largeur, hauteur))
     except Exception:
         return None
     dossier.mkdir(parents=True, exist_ok=True)
