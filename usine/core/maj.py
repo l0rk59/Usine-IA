@@ -124,11 +124,16 @@ def par_archive(branche: str = BRANCHE_DEFAUT,
     n'est pas celle qu'on attend, et l'avoir a moitie deballee sur
     l'installation serait pire que de ne pas avoir essaye.
     """
-    from .http import get_bytes
+    from .http import get_bytes, insister
 
     dossier = Path(dossier or racine())
     try:
-        brut = get_bytes(url_archive(branche), timeout=180)
+        # Une archive de plusieurs mega-octets sur un forfait mobile : c'est
+        # le telechargement le plus long de l'usine, donc celui qui a le plus
+        # de chances d'etre coupe en route. Abandonner au premier hoquet
+        # laissait l'utilisateur sur une version ancienne en croyant avoir
+        # essaye.
+        brut = insister(lambda: get_bytes(url_archive(branche), timeout=180))
     except Exception as exc:
         # Un depot PRIVE repond 404 a une requete sans jeton, exactement comme
         # une branche qui n'existe pas. On ne peut pas distinguer les deux

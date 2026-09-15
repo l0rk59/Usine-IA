@@ -223,7 +223,7 @@ def interroger(fournisseur: config.Provider,
                timeout: int = 10) -> Optional[List[str]]:
     """Demande « /models » au fournisseur, sans cache. Rend None si on ne sait pas."""
     from . import cles as pool_cles
-    from .http import HttpErreur, requete
+    from .http import HttpErreur, insister, requete
 
     valeur = ""
     if fournisseur.api_key_env:
@@ -235,8 +235,14 @@ def interroger(fournisseur: config.Provider,
             return None  # sans cle, la question ne peut pas etre posee
     entetes = config.entetes_appel(fournisseur, valeur, corps_json=False)
     try:
-        statut, brut = requete(fournisseur.base_url.rstrip("/") + "/models",
-                               entetes=entetes, timeout=timeout)
+        # Rendre None ici n'est pas anodin : sans catalogue, le routeur ne
+        # sait pas par quoi remplacer un modele qui a disparu, et le
+        # fournisseur part au repos une demi-heure pour une coupure d'une
+        # seconde. Deux essais : la question est rapide et se pose une fois.
+        statut, brut = insister(
+            lambda: requete(fournisseur.base_url.rstrip("/") + "/models",
+                            entetes=entetes, timeout=timeout),
+            tentatives=2)
     except (HttpErreur, OSError):
         return None
     if statut != 200:

@@ -33,8 +33,68 @@ import os
 import shutil
 import sys
 import tempfile
+import urllib.request
 from pathlib import Path
 from typing import Dict
+
+# --------------------------------------------------------------------------
+# Aucun test ne sort sur le reseau
+# --------------------------------------------------------------------------
+#
+# La regle est dans CLAUDE.md depuis le debut, et rien ne la faisait respecter.
+# Mesure du 15/09/2026 : « test_equipe » appelait cinq services publics reels
+# — hn.algolia.com, fr.wikipedia.org, api.stackexchange.com, openlibrary.org,
+# www.reddit.com — a chaque execution de la suite.
+#
+# Personne ne l'avait vu parce que l'echec coutait zero seconde : sans reseau,
+# les cinq appels rataient instantanement et le test passait quand meme, en
+# exercant un chemin degrade qu'il ne pretendait pas tester. Le jour ou les
+# reessais sont arrives, le meme test est passe de 2,6 a 30,8 secondes — et
+# c'est la seule raison pour laquelle la violation s'est vue.
+#
+# Un test qui sort sur le reseau ne mesure pas ce qu'il croit : il mesure
+# l'humeur d'un service gratuit, il echoue dans un train, et il est lent.
+#
+# Le garde-fou coupe a la DERNIERE porte — « urlopen » — et non a
+# « http.requete » : un module qui appellerait urllib directement passerait a
+# cote d'un controle pose plus haut.
+
+
+class SortieReseauInterdite(RuntimeError):
+    """Un test a tente un appel vers une machine distante."""
+
+
+# La boucle locale n'est pas « le reseau ». Les tests du tableau de bord
+# demarrent leur propre serveur et lui parlent ; ceux de l'IA locale parlent a
+# un ollama sur le port 11434. Les refuser ferait crier le garde-fou sur
+# quarante tests parfaitement legitimes — et un controle qui signale a tort
+# finit desactive, ce qui vaut moins que pas de controle du tout.
+_MACHINES_LOCALES = ("localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]")
+
+
+def _est_local(url: str) -> bool:
+    if url.startswith("file:"):
+        return True
+    reste = url.split("//", 1)[-1]
+    hote = reste.split("/", 1)[0].split("@")[-1]
+    return hote.split(":")[0].strip("[]") in tuple(
+        m.strip("[]") for m in _MACHINES_LOCALES)
+
+
+def _refuser(requete, *args, **kwargs):
+    url = str(getattr(requete, "full_url", requete))
+    if _est_local(url):
+        return _urlopen_reel(requete, *args, **kwargs)
+    raise SortieReseauInterdite(
+        "Aucun test ne sort sur le reseau, et celui-ci a tente « {} ».\n"
+        "Injectez la reponse : « tests/simulateur.py » pour le routeur, ou "
+        "remplacez « marche.sonder », « http.requete » ou "
+        "« images.image_pollinations » selon le cas.".format(url[:120]))
+
+
+_urlopen_reel = urllib.request.urlopen
+urllib.request.urlopen = _refuser
+
 
 RACINE = Path(__file__).resolve().parent.parent
 if str(RACINE) not in sys.path:

@@ -266,10 +266,31 @@ def domaines_de_depart(
         mesures.append({"domaine": nom, "demande": demande,
                         "fiabilite": lecture.get("fiabilite", ""),
                         "verdict": lecture.get("verdict", "")})
-        if demande == "faible":
-            dire("  ecarte « {} » — {}".format(nom, lecture.get("fiabilite", "")))
-            continue
-        retenus.append({**piste, "demande": demande,
+        # Plus aucune piste n'est ECARTEE sur ces mesures, et c'est le coeur
+        # de la correction. Les quatre sources sont anglophones et
+        # generalistes : elles peuvent confirmer qu'un sujet interesse, jamais
+        # prouver qu'il n'interesse personne. Le detail du releve est au-dessus
+        # de « marche.DISCUSSIONS_FORTE ».
+        #
+        # Ce que faisait l'ancien code : ecarter toute piste dont la demande
+        # etait « faible ». Or « faible » tombait des que le mot-cle faisait
+        # plusieurs mots ou n'etait pas anglais — c'est-a-dire sur TOUTES les
+        # pistes que le prospecteur propose. Huit domaines mesures, huit
+        # ecartes, « aucune niche trouvee ». Le journal affichait en prime la
+        # fiabilite (« 3/4 sources ») a la place de la raison, ce qui envoyait
+        # chercher une panne de source la ou il n'y en avait pas.
+        #
+        # Les pistes non mesurees ne sont pas perdues : elles ferment la
+        # marche du classement, juste apres celles que la mesure a confirmees.
+        if demande:
+            dire("  {} « {} » — demande {} ({})".format(
+                "retenu" if demande == "forte" else "garde", nom, demande,
+                lecture.get("fiabilite", "")))
+        else:
+            dire("  garde « {} » — demande non mesuree ({}) : ces sources ne "
+                 "savent pas juger ce mot-cle".format(
+                     nom, lecture.get("fiabilite", "")))
+        retenus.append({**piste, "demande": demande or "",
                         "fiabilite": lecture.get("fiabilite", "")})
 
     # Le plus demande d'abord. Les non mesures ferment la marche : ils

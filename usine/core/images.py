@@ -25,7 +25,7 @@ from typing import Optional, Tuple
 
 from . import config
 from ..render import couverture
-from .http import HttpErreur, get_bytes
+from .http import HttpErreur, get_bytes, insister
 
 def image_pollinations(
     invite: str,
@@ -115,7 +115,11 @@ def generer_couverture(
             "premium minimal poster, theme: {titre}. No text, no letters, no words."
         ).format(style=style or "modern flat vector", titre=titre)
         try:
-            brut = image_pollinations(invite, 1024, 1365, graine=graine)
+            # Une coupure d'une seconde ne doit pas decider de la couverture
+            # d'un livre. Le repli local existe et il est bon, mais il n'a pas
+            # a servir parce que le forfait a hoquete au mauvais moment.
+            brut = insister(
+                lambda: image_pollinations(invite, 1024, 1365, graine=graine))
             chemin = dossier / "{}.{}".format(nom, extension_image(brut))
             chemin.write_bytes(brut)
             return chemin
@@ -162,7 +166,12 @@ def generer_visuel(
     if not en_ligne:
         return None
     try:
-        brut = image_pollinations(invite, largeur, hauteur)
+        # Ici il n'y a AUCUN repli : une illustration d'album qui ne vient pas
+        # ne vient pas du tout, et le livre sort avec une note « a dessiner »
+        # a sa place. Mesure du 15/09/2026 : un seul essai, zero seconde
+        # d'attente — une coupure d'une seconde coutait l'image pour de bon,
+        # et le journal annoncait « 0 image(s) sur 14 » sans dire pourquoi.
+        brut = insister(lambda: image_pollinations(invite, largeur, hauteur))
     except Exception:
         return None
     dossier.mkdir(parents=True, exist_ok=True)

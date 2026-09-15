@@ -135,3 +135,89 @@ retrouvée une fois de plus — *un garde-fou satisfait par une homonymie ne gar
 rien*. Il fait maintenant tourner le fil et regarde le sujet retenu.
 
 Les vingt-et-une mutations de la campagne sont vues.
+
+## La recherche de niche ne pouvait pas aboutir
+
+Signalé le 15/09/2026, journal à l'appui : huit domaines proposés, huit
+écartés, « aucune niche trouvée ». À chaque fois.
+
+```
+8 domaines proposes — mesure sur les sources publiques...
+  ecarte « cours de photographie smartphone » — 3/4 sources
+  ecarte « guide méditation débutants stress » — 3/4 sources
+  ...
+Aucune niche trouvee : donnez-en une.
+```
+
+### Le message ment sur sa propre raison
+
+« 3/4 sources » est la **fiabilité**, affichée là où devait figurer la raison.
+Le rejet ne venait pas de la quatrième source : trois sur quatre répondaient.
+On cherchait donc une panne de réseau là où il n'y en avait pas.
+
+### Le verdict reposait sur une seule source, avec des seuils inventés
+
+`demande` était calculé par Hacker News, et par lui seul. Wikipedia, Stack
+Exchange et Open Library ne contribuaient rien au verdict qui décide.
+Au-dessus de 3 000 discussions « forte », au-dessus de 400 « moyenne », en
+dessous **« faible » — et écarté**.
+
+Ces deux nombres n'avaient jamais été mesurés. Relevé du 15/09/2026 sur l'API
+de recherche de Hacker News :
+
+| requête | discussions |
+|---|---|
+| machine learning | 18 539 |
+| kubernetes | 11 481 |
+| photography | 5 203 |
+| startup funding | 4 642 |
+| python programming | 3 078 |
+| meditation | 2 290 |
+| personal finance | 1 819 |
+| gardening | 566 |
+| meal planning | 196 |
+| freelance invoicing | 126 |
+| **facturation freelance** | **0** |
+| **potager balcon** | **0** |
+
+L'échelle suit la **largeur du mot-clé** et sa présence dans un forum
+anglophone de développeurs. Elle ne suit pas la demande d'un marché.
+
+Or un nom de niche fait plusieurs mots par nature — « modèles CV créatifs
+freelance » — et une niche francophone rend zéro quoi qu'il arrive. Même les
+équivalents anglais des domaines proposés restaient sous le seuil :
+*smartphone photography course* 1, *meditation for beginners* 10, *freelance
+resume template* 5.
+
+**Toutes les pistes que le prospecteur propose étaient donc écartées, par
+construction.** C'était vrai depuis le premier jour.
+
+Le code le savait, d'ailleurs. Il écrivait :
+
+> « Ces sources sont anglophones : une requête en français y renvoie peu de
+> résultats, ce qui ne dit RIEN du marché francophone. »
+
+…et écartait la niche sur cette mesure-là.
+
+### La correction
+
+**Une source anglophone généraliste peut confirmer un intérêt ; elle ne peut
+pas prouver son absence.** Zéro discussion sur Hacker News à propos de
+« potager balcon » ne dit rien du marché francophone du potager en balcon.
+
+Sous le seuil, `demande` vaut désormais `None` — *non mesurée* — et plus
+jamais « faible ». Les deux seuils restent, sourcés par le relevé ci-dessus,
+et ils servent à **promouvoir** une piste, jamais à l'écarter.
+
+`production.py` n'écarte plus rien sur ces mesures : les pistes confirmées
+passent devant, les non mesurées ferment la marche. Elles sont un filet, pas
+une recommandation — et le journal le dit maintenant en toutes lettres.
+
+### Ce qui garde la correction
+
+Une campagne de mutation a d'abord rendu deux `[RATE]` : les tests de
+sélection injectaient `demande` directement dans la lecture, sans jamais
+exercer le calcul qui la produit. Remettre `demande = "faible"` dans Hacker
+News ne faisait échouer aucun test — le défaut vivait précisément là où rien
+ne regardait. `UneSourceAnglophoneNePeutPasRefuterUneNiche` teste désormais
+`marche.interpreter` lui-même. Cinq mutations, toutes vues.

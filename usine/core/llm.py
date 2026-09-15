@@ -197,6 +197,18 @@ def _charger_repos() -> None:
         pass  # une base illisible ne doit pas empecher de produire
 
 
+def _patienter(secondes: float) -> None:
+    """Attend par tranches d'une seconde, pour ne pas retarder un Ctrl+C.
+
+    Un « time.sleep(8) » d'un bloc fait attendre huit secondes a qui veut
+    arreter la production. Sur un telephone, l'utilisateur tue alors le
+    processus a la main.
+    """
+    fin = time.time() + max(0.0, secondes)
+    while time.time() < fin:
+        time.sleep(min(1.0, fin - time.time()))
+
+
 def _reposer(nom: str, secondes: float, raison: str) -> None:
     """Met un fournisseur au repos, en memoire ET en base.
 
@@ -339,7 +351,12 @@ def _laisser_passer(p: config.Provider, role: str, cout: int,
     if pause is None:
         return False
     if pause > 0:
-        time.sleep(pause)
+        # Jusqu'a soixante-deux secondes : c'est la plus longue attente de
+        # l'usine, et elle etait d'un seul bloc. Un Ctrl+C attendait donc une
+        # minute entiere avant d'etre entendu, et sur un telephone
+        # l'utilisateur tue le processus a la main bien avant — en laissant la
+        # base dans l'etat qu'on imagine.
+        _patienter(pause)
         pause = _attente(p, role, cout, cle_id)
     return bool(pause == 0.0)
 
@@ -584,7 +601,7 @@ def generer(
                         break
                     if not exc.temporaire:
                         break
-                    time.sleep(min(8.0, 1.5 * (essai + 1)) + random.random())
+                    _patienter(min(8.0, 1.5 * (essai + 1)) + random.random())
                 except Exception as exc:
                     store.enregistrer_appel(p.name,
                                             module_modeles.modele_effectif(p, role),
@@ -592,7 +609,21 @@ def generer(
                                             repr(exc), cle_id=cle.id if cle else "")
                     erreurs.append("{} : {}".format(
                         p.name, _expliquer(p, exc, module_modeles.modele_effectif(p, role))))
-                    break
+                    # Une exception qui n'est pas une « HttpErreur » veut dire,
+                    # en pratique, qu'on n'a pas su LIRE la reponse : un JSON
+                    # tronque par une coupure, un corps vide, une structure
+                    # inattendue. C'est transitoire — le meme modele redemande
+                    # rend en general quelque chose de lisible.
+                    #
+                    # Mesure du 15/09/2026 : ce « break » etait sec. Une
+                    # « HttpErreur » temporaire valait deux essais et six
+                    # secondes d'attente ; une reponse illisible valait UN
+                    # essai et zero seconde, et le fournisseur etait abandonne.
+                    # Les deux pannes se ressemblent pourtant du point de vue
+                    # de l'usine : le service n'a rien donne d'exploitable.
+                    if essai == tentatives_par_fournisseur - 1:
+                        break
+                    _patienter(min(8.0, 1.5 * (essai + 1)) + random.random())
 
     raise PlusDeFournisseur(
         "Tous les fournisseurs ont echoue :\n  - " + "\n  - ".join(erreurs[-10:])

@@ -59,6 +59,85 @@ def _sondage_simule(demande_par_sujet=None):
     return sonder
 
 
+def _rapport(sujet, discussions=None, ouvrages=None):
+    """Un rapport de sondage a la forme que « interpreter » attend vraiment."""
+    sources = {}
+    disponibles = []
+    if discussions is not None:
+        sources["hacker_news"] = {"disponible": True,
+                                  "discussions_totales": discussions}
+        disponibles.append("hacker_news")
+    if ouvrages is not None:
+        sources["open_library"] = {"disponible": True,
+                                   "ouvrages_totaux": ouvrages,
+                                   "recents_dans_echantillon": 1,
+                                   "echantillon": 10}
+        disponibles.append("open_library")
+    return {"sujet": sujet, "date": "2026-09-15", "sources": sources,
+            "sources_disponibles": disponibles, "sources_indisponibles": []}
+
+
+class UneSourceAnglophoneNePeutPasRefuterUneNiche(unittest.TestCase):
+    """Le defaut etait dans « interpreter », et rien ne le testait.
+
+    Les tests de selection injectaient « demande » directement dans la
+    lecture, donc ils n'exercaient jamais le calcul qui la produit. Une
+    campagne de mutation l'a montre le 15/09/2026 : remettre « demande =
+    faible » dans Hacker News ne faisait echouer aucun test.
+
+    Releve du meme jour, sur l'API de recherche de Hacker News :
+
+        machine learning 18539, kubernetes 11481, photography 5203,
+        startup funding 4642, python programming 3078, meditation 2290,
+        personal finance 1819, gardening 566, meal planning 196,
+        freelance invoicing 126, facturation freelance 0, potager balcon 0
+
+    L'echelle suit la LARGEUR du mot-cle et sa presence dans un forum
+    anglophone de developpeurs. Elle ne suit pas la demande d'un marche.
+    """
+
+    def test_sous_le_seuil_la_demande_n_est_pas_mesuree_et_non_faible(self):
+        for total in (0, 1, 126, 196, 400):
+            with self.subTest(discussions=total):
+                lecture = marche.interpreter(_rapport("potager balcon", total))
+                self.assertIsNone(
+                    lecture["demande"],
+                    "{} discussions ont produit un verdict que la mesure ne "
+                    "porte pas".format(total))
+
+    def test_au_dessus_du_seuil_la_source_confirme(self):
+        self.assertEqual(
+            marche.interpreter(_rapport("photography", 5203))["demande"],
+            "forte")
+        self.assertEqual(
+            marche.interpreter(_rapport("gardening", 566))["demande"],
+            "moyenne")
+
+    def test_les_seuils_restent_a_l_echelle_relevee(self):
+        # « gardening » (566) est moyen, « meal planning » (196) n'est pas
+        # mesurable : entre les deux se trouve le seuil. Le descendre
+        # promouvrait n'importe quel mot-cle au rang de marche confirme.
+        self.assertGreater(marche.DISCUSSIONS_MOYENNE, 196)
+        self.assertLess(marche.DISCUSSIONS_MOYENNE, 566)
+        self.assertGreater(marche.DISCUSSIONS_FORTE, 2290)
+        self.assertLess(marche.DISCUSSIONS_FORTE, 4642)
+
+    def test_le_verdict_dit_que_le_sujet_n_est_ni_valide_ni_invalide(self):
+        lecture = marche.interpreter(_rapport("facturation freelance", 0))
+        self.assertIn("non mesure", lecture["verdict"])
+        # Et il ne doit surtout pas suggerer que la niche est mauvaise.
+        self.assertNotIn("trop etroite", lecture["verdict"])
+
+    def test_une_requete_francaise_est_nommee_comme_telle(self):
+        # Le detecteur cherche un mot-outil francais. « facturation
+        # freelance » n'en contient aucun et passe donc pour anglophone —
+        # c'est une limite connue, et elle ne decide plus de rien depuis que
+        # la mesure ne peut plus ecarter une piste.
+        lecture = marche.interpreter(_rapport("le potager en bac sur balcon", 0))
+        self.assertTrue(lecture["requete_francophone"])
+        self.assertIn("anglophones", lecture["verdict"])
+
+
 class UneInstallationNeuveSaitDemarrer(unittest.TestCase):
     """Le cas de TOUT LE MONDE le premier jour."""
 
@@ -90,18 +169,62 @@ class UneInstallationNeuveSaitDemarrer(unittest.TestCase):
         self.assertGreater(resultat["ajoutees"], 0)
         self.assertGreater(file.compter()["en_attente"], 0)
 
-    def test_un_domaine_sans_demande_mesuree_est_ecarte(self):
-        """Proposer ne suffit pas : ce qui sort d'un modele n'est pas une
-        mesure. Sans ce filtre, l'usine fabriquerait la premiere chose qui
-        lui passe par la tete et la presenterait comme un choix motive."""
+    def test_un_domaine_que_les_sources_ne_savent_pas_juger_survit(self):
+        """Ce test disait l'inverse, et il avait tort.
+
+        Il exigeait qu'un domaine sans demande mesuree soit ECARTE — au nom
+        d'une idee juste : ce qui sort d'un modele n'est pas une mesure. Mais
+        le filtre ne mesurait rien. Releve du 15/09/2026 sur Hacker News, la
+        seule source qui alimentait ce verdict :
+
+            machine learning 18539, photography 5203, gardening 566,
+            meal planning 196, freelance invoicing 126,
+            facturation freelance 0, potager balcon 0
+
+        L'echelle suit la largeur du mot-cle et sa presence dans un forum
+        anglophone de developpeurs. Un nom de niche fait plusieurs mots par
+        nature ; une niche francophone rend zero. « Faible » tombait donc sur
+        toutes les pistes que le prospecteur propose, et la recherche de niche
+        ne pouvait pas aboutir : huit domaines mesures, huit ecartes, « aucune
+        niche trouvee ».
+
+        Ce qui est garde ici : une source anglophone generaliste peut
+        CONFIRMER un interet, jamais prouver son absence.
+        """
         from usine import production
 
         marche.sonder = _sondage_simule({
-            "la facturation des independants": "faible",
-            "le potager en bac sur balcon": "faible",
+            "la facturation des independants": None,
+            "le potager en bac sur balcon": None,
             "la reprise de course a pied apres 40 ans": "forte"})
-        retenus = [d["domaine"] for d in production.domaines_de_depart()["retenus"]]
-        self.assertEqual(retenus, ["la reprise de course a pied apres 40 ans"])
+        retenus = production.domaines_de_depart()["retenus"]
+        noms = [d["domaine"] for d in retenus]
+        self.assertEqual(len(noms), 3, "une piste non mesuree a ete perdue")
+        # Confirmee d'abord, non mesurees ensuite : elles ferment la marche,
+        # elles ne sont pas une recommandation.
+        self.assertEqual(noms[0], "la reprise de course a pied apres 40 ans")
+        self.assertEqual(retenus[0]["demande"], "forte")
+        for piste in retenus[1:]:
+            self.assertEqual(piste["demande"], "")
+
+    def test_le_journal_dit_la_raison_et_non_la_fiabilite(self):
+        """Il affichait « ecarte ... — 3/4 sources ».
+
+        La fiabilite a la place de la raison : on cherchait une panne de
+        source la ou il n'y en avait pas. Trois sources sur quatre
+        repondaient, et le rejet ne venait pas de la quatrieme.
+        """
+        from usine import production
+
+        marche.sonder = _sondage_simule({
+            "la facturation des independants": None,
+            "le potager en bac sur balcon": "forte",
+            "la reprise de course a pied apres 40 ans": "moyenne"})
+        lignes = []
+        production.domaines_de_depart(journal=lignes.append)
+        journal = "\n".join(lignes)
+        self.assertNotIn("ecarte", journal)
+        self.assertIn("demande non mesuree", journal)
 
     def test_le_plus_demande_passe_devant(self):
         from usine import production

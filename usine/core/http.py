@@ -1,15 +1,24 @@
-"""Petit client HTTP base sur urllib (aucune dependance, Termux-friendly)."""
+"""Petit client HTTP base sur urllib (aucune dependance, Termux-friendly).
+
+Et le point unique ou l'on decide de RECOMMENCER. Mesure du 15/09/2026 :
+le routeur IA rejouait un appel deux fois avec attente et basculait de
+fournisseur, mais tout le reste du reseau tentait UNE fois, sans attendre —
+les illustrations, le sondage de marche, le catalogue de modeles, la mise a
+jour, la veille. Une coupure d'une seconde sur un forfait mobile perdait
+donc une illustration pour de bon, et le journal disait « 0 image ».
+"""
 
 from __future__ import annotations
 
 import gzip
 import json
+import random
 import socket
 import ssl
 import time
 import urllib.error
 import urllib.request
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple, TypeVar
 
 USER_AGENT = "Usine-IA/1.0 (+termux; python-stdlib)"
 
@@ -161,3 +170,85 @@ def en_ligne(timeout: int = 6) -> bool:
 def attendre(secondes: float) -> None:
     if secondes > 0:
         time.sleep(secondes)
+
+
+# Trois essais, pas dix. Sur un telephone, une panne qui dure plus de quelques
+# secondes dure en general des minutes : le forfait est coupe, le Wi-Fi a
+# saute, le service est en panne. Insister dix fois vide la batterie pour
+# arriver au meme resultat, plus tard — et la bascule de fournisseur du
+# routeur, elle, repond en une seconde.
+TENTATIVES = 3
+ATTENTE_INITIALE = 1.5
+ATTENTE_MAXIMALE = 20.0
+
+T = TypeVar("T")
+
+
+def patienter(secondes: float, arret: Optional[Callable[[], bool]] = None) -> bool:
+    """Attend, par tranches d'une seconde. Faux si « arret » a demande la fin.
+
+    Un « time.sleep(20) » d'un seul bloc fait attendre vingt secondes a un
+    Ctrl+C. L'utilisateur tue alors le processus a la main, en laissant la
+    base dans l'etat qu'on imagine. C'est la meme raison qui a fait ecrire
+    « _dormir » dans le moteur continu, et c'est la meme regle ici : une
+    boucle qui dort reste interruptible.
+    """
+    fin = time.time() + max(0.0, secondes)
+    while time.time() < fin:
+        if arret is not None and arret():
+            return False
+        time.sleep(min(1.0, fin - time.time()))
+    return True
+
+
+def insister(action: Callable[[], T], tentatives: int = TENTATIVES,
+             attente: float = ATTENTE_INITIALE,
+             plafond: float = ATTENTE_MAXIMALE,
+             journal: Optional[Callable[[str], None]] = None,
+             arret: Optional[Callable[[], bool]] = None) -> T:
+    """Rejoue une action reseau tant qu'elle echoue de facon TEMPORAIRE.
+
+    Ce qui est rejoue, et pourquoi :
+
+      - une « HttpErreur » temporaire (429, 5xx, et le statut 0 qui signifie
+        « le reseau n'a pas repondu ») : le service dira peut-etre oui dans
+        deux secondes ;
+      - toute AUTRE exception, parce qu'en pratique c'est une reponse qu'on
+        n'a pas su lire — un JSON tronque par une coupure, un corps vide. Le
+        cout d'un essai inutile est un appel ; le cout de ne pas reessayer
+        est une illustration perdue ou une scene manquante.
+
+    Ce qui n'est PAS rejoue : une « HttpErreur » definitive. Une cle refusee
+    (401), un acces interdit (403), un modele qui n'existe pas (404), un
+    credit epuise (402) ne changeront pas d'avis en deux secondes, et
+    insister ne fait que retarder le message utile.
+
+    « Retry-After » prime sur le calcul : quand le service dit lui-meme
+    combien de temps attendre, deviner a sa place revient soit a patienter
+    dix minutes pour cinq secondes, soit a revenir trop tot et reprendre un
+    429 — ce qui, lui, consomme du quota.
+    """
+    dernier: Optional[BaseException] = None
+    for essai in range(max(1, tentatives)):
+        try:
+            return action()
+        except HttpErreur as exc:
+            if not exc.temporaire:
+                raise
+            dernier = exc
+            pause = exc.patienter() or min(plafond, attente * (2 ** essai))
+        except Exception as exc:          # noqa: BLE001 — voir la docstring
+            dernier = exc
+            pause = min(plafond, attente * (2 ** essai))
+        if essai == tentatives - 1:
+            break
+        # Le hasard evite que dix appels partis ensemble reviennent ensemble :
+        # le service les refuserait tous une seconde fois.
+        pause = min(plafond, pause + random.random())
+        if journal is not None:
+            journal("  reseau : {} — nouvel essai dans {:.0f} s ({}/{})".format(
+                dernier, pause, essai + 1, tentatives - 1))
+        if not patienter(pause, arret):
+            break
+    assert dernier is not None
+    raise dernier

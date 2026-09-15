@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from .http import HttpErreur, requete
+from .http import HttpErreur, insister, requete
 
 
 def _sans_accent(texte: str) -> str:
@@ -50,6 +50,32 @@ def _semble_francais(sujet: str) -> bool:
     return sum(1 for m in mots if m in _MOTS_FRANCAIS) >= 1
 
 
+# Ce que « discussions_totales » mesure vraiment. Releve du 15/09/2026 sur
+# l'API de recherche de Hacker News :
+#
+#     machine learning      18 539       kubernetes            11 481
+#     photography            5 203       startup funding        4 642
+#     python programming     3 078       meditation             2 290
+#     personal finance       1 819       gardening                566
+#     meal planning            196       freelance invoicing      126
+#     facturation freelance      0       potager balcon             0
+#
+# L'echelle suit la LARGEUR du mot-cle et sa presence dans un forum
+# anglophone de developpeurs. Elle ne suit pas la demande d'un marche : un nom
+# de niche fait plusieurs mots par nature, et une niche francophone rend zero
+# quoi qu'il arrive.
+#
+# Ces deux seuils n'avaient jamais ete mesures, et le troisieme cas — « en
+# dessous, la demande est FAIBLE » — ecartait donc toutes les pistes que le
+# prospecteur propose. Huit domaines mesures, huit ecartes, « aucune niche
+# trouvee » : la recherche de niche ne pouvait pas aboutir, et c'etait vrai
+# depuis le premier jour.
+#
+# Ils servent desormais a PROMOUVOIR une piste, jamais a l'ecarter.
+DISCUSSIONS_FORTE = 3000
+DISCUSSIONS_MOYENNE = 400
+
+
 @dataclass
 class Source:
     nom: str
@@ -59,8 +85,23 @@ class Source:
 
 
 def _json(url: str, timeout: int = 20) -> Any:
-    _, brut = requete(url, "GET", {"Accept": "application/json"}, None, timeout)
-    return json.loads(brut.decode("utf-8", "replace"))
+    """Une source du sondage, rejouee si elle a echoue de facon temporaire.
+
+    Les quatre services publics interroges ici tombent regulierement — ce
+    sont des API gratuites et sans engagement. Mesure du 15/09/2026 : un
+    seul essai par source, aucune attente. Une source absente ne fait pas
+    echouer le sondage, elle le rend plus pauvre en silence, et « 3/4
+    sources » ressemble a « 4/4 » dans un rapport que personne ne relit.
+
+    Deux essais et non trois : un sondage interroge quatre services de suite,
+    et l'utilisateur attend devant son telephone.
+    """
+    def appel():
+        _, brut = requete(url, "GET", {"Accept": "application/json"}, None,
+                          timeout)
+        return json.loads(brut.decode("utf-8", "replace"))
+
+    return insister(appel, tentatives=2)
 
 
 # --------------------------------------------------------------------------
@@ -282,17 +323,28 @@ def interpreter(rapport: Dict[str, Any]) -> Dict[str, Any]:
     hn = sources.get("hacker_news", {})
     if hn.get("disponible"):
         total = hn.get("discussions_totales", 0)
-        if total > 3000:
+        if total > DISCUSSIONS_FORTE:
             demande = "forte"
             signaux.append("{} discussions sur Hacker News : sujet tres debattu"
                            .format(total))
-        elif total > 400:
+        elif total > DISCUSSIONS_MOYENNE:
             demande = "moyenne"
             signaux.append("{} discussions sur Hacker News".format(total))
         else:
-            demande = "faible"
-            signaux.append("seulement {} discussions sur Hacker News : niche etroite "
-                           "ou mal nommee".format(total))
+            # Et surtout PAS « faible ». Voir le releve au-dessus de
+            # « DISCUSSIONS_FORTE » : sous ce niveau, le compte ne distingue
+            # plus une niche sans marche d'une niche simplement etroite ou
+            # francophone. « potager balcon » rend exactement zero, et cela ne
+            # dit rien du marche francophone du potager en balcon.
+            #
+            # Une source anglophone generaliste peut CONFIRMER un interet ;
+            # elle ne peut pas prouver son absence. On laisse donc « demande »
+            # a None — « non mesuree » — plutot que de rendre un verdict que
+            # la mesure ne porte pas.
+            signaux.append(
+                "{} discussion(s) sur Hacker News : sous le seuil ou ce compte "
+                "distingue quelque chose — la demande n'est pas mesuree ici"
+                .format(total))
 
     wiki = sources.get("wikipedia", {})
     if wiki.get("disponible"):
@@ -341,16 +393,17 @@ def interpreter(rapport: Dict[str, Any]) -> Dict[str, Any]:
     elif demande == "forte" and concurrence == "forte":
         verdict = ("Marche actif mais encombre : ne pas viser le sujet general, "
                    "viser un segment et un probleme precis.")
-    elif demande == "faible":
-        verdict = ("Peu de signaux de demande. Soit la niche est trop etroite, soit "
-                   "le terme employe n'est pas celui du public : essayez le mot "
-                   "qu'emploierait un acheteur.")
+    elif demande is None:
+        verdict = ("Aucune source n'a pu qualifier la demande : ces mesures sont "
+                   "anglophones et generalistes, et un nom de niche n'y laisse "
+                   "pas de trace. Le sujet n'est ni valide ni invalide — il "
+                   "est non mesure.")
     else:
         verdict = ("Signaux moyens. Le sujet tient, la difference se fera sur l'angle "
                    "et sur la preuve apportee.")
     if tendance == "baisse":
         verdict += " Attention : l'interet mesure recule sur douze mois."
-    if francais and demande == "faible":
+    if francais and demande is None:
         verdict = (
             "Ces sources sont anglophones : une requete en francais y renvoie peu "
             "de resultats, ce qui ne dit RIEN du marche francophone. Relancez avec "
