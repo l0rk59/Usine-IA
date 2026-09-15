@@ -312,6 +312,7 @@ Une note par sujet, chacune racontant un défaut **mesuré** et sa correction.
 | [NICHE.md](docs/NICHE.md) | quand on ne dit pas quoi produire |
 | [PROSPECTION.md](docs/PROSPECTION.md) | pourquoi l'exploration rendait toujours les mêmes huit idées |
 | [AUDIT-ORGANISATION.md](docs/AUDIT-ORGANISATION.md) | compter plutôt que lire : copies, câblage, code à l'abandon |
+| [ILLUSTRATIONS.md](docs/ILLUSTRATIONS.md) | quatorze illustrations produites, zéro livrée — et pourquoi rien n'échouait |
 | [USINE-CONTINUE.md](docs/USINE-CONTINUE.md) | produire en boucle, sous budget |
 | [COUVERTURE.md](docs/COUVERTURE.md) | la couverture, dessinée sans bibliothèque |
 

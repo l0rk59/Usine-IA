@@ -31,6 +31,10 @@ Trois verdicts :
   [RATE]  la suite passe quand meme — le test est decoratif, a reecrire
   [?]     le motif n'est plus dans le fichier — la campagne a vieilli
 
+La campagne refuse de demarrer si la suite est deja rouge : sur une suite
+rouge, tout est « [vu] », et le rapport annonce que tout est garde au moment
+precis ou plus rien ne l'est.
+
 Le code est toujours restaure, y compris sur Ctrl+C : une campagne
 interrompue ne doit pas laisser le depot mute.
 """
@@ -65,6 +69,40 @@ def _lancer(tests: List[str], timeout: int) -> bool:
         timeout=timeout,
         env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
     return execution.returncode != 0
+
+
+def _modules_de(mutations: List[Dict[str, Any]]) -> List[str]:
+    """Les modules que la campagne va lancer. Vide = toute la suite."""
+    modules: List[str] = []
+    for mutation in mutations:
+        tests = mutation.get("tests")
+        if not tests:
+            return []
+        for module in tests:
+            if module not in modules:
+                modules.append(module)
+    return modules
+
+
+def _suite_deja_rouge(mutations: List[Dict[str, Any]], timeout: int) -> bool:
+    """Lance les tests de la campagne SANS muter. Vrai s'ils echouent deja.
+
+    Sans ce controle, une campagne jouee sur une suite deja rouge rend « [vu] »
+    partout : chaque mutation est « detectee » par un test qui echouait avant
+    qu'on ne touche a quoi que ce soit. Le rapport annonce alors que tout est
+    garde au moment precis ou plus rien ne l'est — le pire verdict possible
+    pour un outil dont le seul role est de ne pas se laisser rassurer.
+
+    Vu le 15/09/2026 : une campagne de quinze mutations rendue entierement
+    verte, dont deux ne tenaient qu'a un test casse par un changement de
+    format de sortie. Les deux corrections qu'elles pretendaient garder
+    n'etaient gardees par rien.
+    """
+    try:
+        return _lancer(_modules_de(mutations), timeout)
+    except subprocess.TimeoutExpired:
+        print("La suite de reference depasse le delai : verdicts impossibles.")
+        return True
 
 
 def jouer(mutations: List[Dict[str, Any]], timeout: int = 900) -> int:
@@ -115,6 +153,12 @@ def main(argv: List[str]) -> int:
         mutations = mutations.get("mutations") or []
     if not mutations:
         print("Campagne vide.")
+        return 2
+
+    if _suite_deja_rouge(mutations, 900):
+        print("La suite echoue AVANT toute mutation.")
+        print("Sur une suite rouge, chaque mutation ressort « [vu] » : c'est le")
+        print("test deja casse qui echoue, pas le defaut remis. Reparez d'abord.")
         return 2
 
     print("{} mutation(s) — le depot est restaure apres chacune.\n"

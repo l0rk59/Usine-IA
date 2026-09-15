@@ -218,6 +218,18 @@ class DocumentPDF:
         return self.largeur - 2 * self.marge - self.reliure
 
     @property
+    def hauteur_restante(self) -> float:
+        """Hauteur libre sous le curseur, sur la page courante.
+
+        Le seul moyen, pour une mise en page appelante, de savoir combien de
+        blanc il reste sans lire le curseur interne. Un album s'en sert pour
+        centrer son texte dans le vide laisse par l'illustration : sans cela,
+        le texte se colle sous l'image et laisse la moitie basse de la page
+        deserte — ce qui ressemble a une page ratee plutot qu'a un album.
+        """
+        return max(0.0, self._y - (self.marge + 26))
+
+    @property
     def page_courante(self) -> int:
         return len(self._pages) + 1
 
@@ -462,6 +474,49 @@ class DocumentPDF:
                         (0.15, 0.17, 0.2))
             self._y -= taille * 1.42
         self._y -= 16
+
+    def image(self, brut: bytes, largeur_max: float = 0.0,
+              hauteur_max: float = 0.0, espace_apres: float = 14.0) -> bool:
+        """Place une image dans le fil du texte. Faux si elle n'a pas pu entrer.
+
+        Deux formats entrent dans un PDF sans decodeur : le JPEG tel quel
+        (« DCTDecode ») et des pixels bruts (« FlateDecode »). Une image
+        rapportee du reseau n'est ni l'un ni l'autre des qu'elle arrive en PNG
+        ou en WebP, et ecrire un decodeur PNG a la main couterait ici plus
+        cher que ce qu'il rapporte.
+
+        D'ou le FAUX plutot qu'une exception : l'appelant ecrit sa note
+        d'illustration a la place, et le livre sort. Un album avec une note
+        « a dessiner » se vend ; un album qui leve une exception au moment de
+        l'export n'existe pas.
+        """
+        infos = dimensions_jpeg(brut) if brut else None
+        if not infos or infos[0] <= 0 or infos[1] <= 0:
+            return False
+        largeur_px, hauteur_px = infos[0], infos[1]
+        large = min(largeur_max or self.largeur_utile, self.largeur_utile)
+        haut = large * hauteur_px / largeur_px
+        # Hauteur disponible sur une page NEUVE, pas sur la page courante :
+        # au-dela, l'image ne tiendrait nulle part et « _place » bouclerait
+        # en ouvrant des pages vides.
+        plafond = min(hauteur_max or self.hauteur,
+                      self.hauteur - self.marge - (self.marge + 26) - espace_apres)
+        if haut > plafond:
+            haut = plafond
+            large = haut * largeur_px / hauteur_px
+        if haut <= 0 or large <= 0:
+            return False
+        self._ouvrir_page()
+        self._place(haut + espace_apres)
+        nom = self._ajouter_image(brut, infos)
+        self._y -= haut
+        self._flux.append(
+            "q {w:.2f} 0 0 {h:.2f} {x:.2f} {y:.2f} cm /{n} Do Q".format(
+                w=large, h=haut,
+                x=self.marge_gauche + (self.largeur_utile - large) / 2,
+                y=self._y, n=nom))
+        self._y -= espace_apres
+        return True
 
     def separateur(self) -> None:
         self._place(24)

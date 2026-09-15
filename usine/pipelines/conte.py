@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Sequence
+from typing import Any, Callable, Dict, List, Sequence
 
 from ..agents import equipe
 from ..core import images
@@ -109,6 +109,11 @@ TRANCHES: Dict[str, Dict[str, int]] = {
 }
 TRANCHE_DEFAUT = "6-8 ans"
 PAGES_MIN, PAGES_MAX = 6, 40
+
+# Corps du texte dans le PDF. Dix-neuf points, pas les onze du moteur commun :
+# un album se lit A VOIX HAUTE, souvent a deux, l'enfant regardant la page a
+# cote de l'adulte. Onze points, c'est un guide.
+CORPS, INTERLIGNE = 19.0, 1.75
 
 
 def reglages_de_tranche(tranche: str) -> Dict[str, int]:
@@ -221,6 +226,55 @@ def lire_l_age(mesure: Dict[str, Any]) -> List[str]:
     return lectures
 
 
+def _album(page: Dict[str, Any], illustration: bytes) -> Callable[[Any], None]:
+    """Compose une double-page d'album dans le PDF.
+
+    Pourquoi une mise en page a part. Le moteur commun compose un GUIDE : le
+    titre du bloc en vingt-quatre points, un filet bleu, puis du texte de onze
+    points justifie. Applique a un album, cela donnait « Page 1 » en corps de
+    chapitre au-dessus d'une seule ligne — « Le petit ours dort. » — et le
+    reste de la page blanc. Le defaut ne se voyait qu'en OUVRANT le PDF : le
+    markdown, lui, etait correct depuis le debut.
+
+    Et la note d'illustration sortait en corps de texte ordinaire, donc
+    indistinguable du recit : l'enfant a qui on lit l'album s'entendait dire
+    « Illustration : un ourson roule en boule » sur le meme ton que
+    l'histoire. Ici elle part dans un encadre, qui la designe comme une
+    consigne a l'illustrateur.
+    """
+
+    def rendre(doc) -> None:
+        doc.nouvelle_page()
+        pose = False
+        if illustration:
+            # 52 % de la hauteur : dans un album l'image domine la page, mais
+            # le texte doit rester sous elle sans deborder sur la page
+            # suivante — une double-page coupee en deux n'est plus une
+            # double-page.
+            pose = doc.image(illustration,
+                             largeur_max=doc.largeur_utile * 0.88,
+                             hauteur_max=doc.hauteur * 0.52,
+                             espace_apres=24.0)
+        if not pose and page.get("illustration"):
+            doc.espace(16)
+            doc.encadre("Illustration a dessiner", page["illustration"])
+            doc.espace(12)
+        else:
+            doc.espace(8)
+        # Le texte se centre dans le blanc que l'illustration laisse. Colle
+        # sous l'image, il laissait la moitie basse de la page deserte — vu en
+        # ouvrant le PDF, et c'est ce qui distingue une page d'album d'une
+        # page de guide ou le texte coule depuis le haut.
+        lignes = doc.couper(page["texte"], doc.police_corps, CORPS,
+                            doc.largeur_utile)
+        doc.espace(max(0.0, (doc.hauteur_restante
+                             - len(lignes) * CORPS * INTERLIGNE) / 2))
+        doc.paragraphe(page["texte"], taille=CORPS, interligne=INTERLIGNE,
+                       espace_apres=0.0, justifier=False)
+
+    return rendre
+
+
 def produire(ctx: Contexte, pages: int = 0,
              tranche: str = TRANCHE_DEFAUT) -> Dict[str, Any]:
     """Un conte en doubles-pages, avec ses illustrations quand c'est possible."""
@@ -271,15 +325,34 @@ def produire(ctx: Contexte, pages: int = 0,
 
     ctx.journal("Etape 3/3 — export...")
     blocs = []
+    ressources = []
     for page in conte["pages"]:
         corps = [page["texte"]]
+        octets = b""
         if page.get("image"):
-            corps.append("![]({})".format("images/" + page["image"]))
+            relatif = "images/" + page["image"]
+            fichier = dossier / relatif
+            if fichier.is_file():
+                octets = fichier.read_bytes()
+                ressources.append(relatif)
+            # Le texte de remplacement porte la note d'illustration : c'est ce
+            # que lit un lecteur d'ecran, et ce que le texte brut affiche a la
+            # place de l'image.
+            corps.append("![{}]({})".format(
+                page["illustration"].replace("]", " "), relatif))
         elif page["illustration"]:
-            corps.append("*Illustration : {}*".format(page["illustration"]))
+            # Citation et non italique : dans tous les formats a la fois, une
+            # citation se distingue du recit. Une ligne en italique, non.
+            corps.append("> **Illustration** : {}".format(page["illustration"]))
         blocs.append(livraison.Bloc(
             titre="Page {}".format(page["numero"]),
-            corps="\n\n".join(corps)))
+            corps="\n\n".join(corps),
+            rendu_pdf=_album(page, octets),
+            # Ni titre de chapitre ni entree de sommaire : un album n'a pas de
+            # table des matieres, et quatorze lignes « Page 1 »... « Page 14 »
+            # n'auraient renseigne personne.
+            titre_pdf=False,
+            sommaire=False))
     produit = livraison.Produit(
         type="conte", titre=titre,
         sous_titre="{} doubles-pages — {}".format(len(conte["pages"]), tranche),
@@ -289,6 +362,7 @@ def produire(ctx: Contexte, pages: int = 0,
         nom_donnees="conte",
         formats=("md", "pdf", "html", "epub", "txt"),
         libelle_sections="double(s)-page(s)",
+        ressources=tuple(ressources),
     )
     fichiers = livraison.livrer(ctx, produit)
     resume = {

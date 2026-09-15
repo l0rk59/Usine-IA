@@ -147,7 +147,27 @@ class LaChaineCompleteViaLeSimulateur(unittest.TestCase):
         resume = self._produire(6, sujet="une chouette")
         texte = (Path(resume["dossier"]) / "conte.md").read_text(
             encoding="utf-8")
-        self.assertIn("Illustration :", texte)
+        self.assertIn("**Illustration** :", texte)
+
+    def test_la_note_d_illustration_ne_se_lit_pas_comme_le_recit(self):
+        """Elle sortait en italique, dans le fil du texte.
+
+        Sur la page, cela donnait une phrase de plus : l'adulte qui lit
+        l'album a voix haute enchainait « Illustration : un ourson roule en
+        boule » sur le meme ton que l'histoire. Une citation, elle, se
+        distingue dans les quatre formats a la fois — cadre dans le PDF,
+        « blockquote » en HTML, barre verticale en texte brut.
+        """
+        resume = self._produire(6, sujet="un herisson")
+        dossier = Path(resume["dossier"])
+        markdown = (dossier / "conte.md").read_text(encoding="utf-8")
+        for ligne in markdown.splitlines():
+            if "Illustration" in ligne:
+                self.assertTrue(ligne.startswith(">"), ligne)
+        self.assertIn("| Illustration", (dossier / "conte.txt").read_text(
+            encoding="utf-8"))
+        self.assertIn("<blockquote>", (dossier / "lire.html").read_text(
+            encoding="utf-8"))
 
     def test_le_nombre_de_pages_demande_fait_foi(self):
         self.assertEqual(self._produire(8, sujet="un blaireau")["pages"], 8)

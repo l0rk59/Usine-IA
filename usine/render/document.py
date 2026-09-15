@@ -14,10 +14,11 @@ from typing import Dict, List
 
 @dataclass
 class Bloc:
-    type: str                       # h1 h2 h3 p ul ol quote callout hr code
+    type: str                       # h1 h2 h3 p ul ol quote callout hr code image
     texte: str = ""
     elements: List[str] = field(default_factory=list)
     titre: str = ""                 # utilise par 'callout'
+    url: str = ""                   # utilise par 'image'
 
 
 _TITRE = re.compile(r"^(#{1,6})\s+(.*)$")
@@ -32,6 +33,14 @@ _GRAS = re.compile(r"\*\*(.+?)\*\*")
 _ITALIQUE = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)")
 _CODE_INLINE = re.compile(r"`([^`]+)`")
 _LIEN = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+# Une image SEULE sur sa ligne. Le modele de document ignorait cette forme :
+# elle tombait dans « paragraphe », et « ![](images/page-01.png) » sortait
+# imprime tel quel, crochets et parentheses compris, dans le PDF, le HTML,
+# l'EPUB et le texte brut. Un conte de quatorze doubles-pages livrait ainsi
+# quatorze illustrations produites, enregistrees sur le disque, et visibles
+# nulle part. Le defaut ne se voyait qu'en OUVRANT le produit : le markdown,
+# lui, etait correct depuis le debut.
+_IMAGE_SEULE = re.compile(r"^!\[([^\]]*)\]\(([^)\s]+)\)$")
 
 
 def nettoyer_inline(texte: str) -> str:
@@ -156,6 +165,14 @@ def analyser(markdown: str) -> List[Bloc]:
             blocs.append(Bloc("quote", " ".join(morceaux).strip()))
             continue
 
+        image = _IMAGE_SEULE.match(nu)
+        if image:
+            vider()
+            blocs.append(Bloc("image", image.group(1).strip(),
+                              url=image.group(2).strip()))
+            i += 1
+            continue
+
         paragraphe.append(nu)
         i += 1
 
@@ -187,6 +204,11 @@ def vers_texte(blocs: List[Bloc]) -> str:
             sortie.append("\n" + "* * *")
         elif bloc.type == "code":
             sortie.extend("    " + l for l in bloc.texte.split("\n"))
+        elif bloc.type == "image":
+            # Le texte brut ne montre pas d'image : il dit qu'il y en a une,
+            # et ce qu'elle represente quand le texte de remplacement le dit.
+            sortie.append("[Illustration{}]".format(
+                " : " + bloc.texte if bloc.texte else ""))
         else:
             sortie.append(nettoyer_inline(bloc.texte))
         sortie.append("")
@@ -215,6 +237,10 @@ def vers_html(blocs: List[Bloc], niveau_depart: int = 1) -> str:
             sortie.append("<hr/>")
         elif bloc.type == "code":
             sortie.append("<pre><code>{}</code></pre>".format(html.escape(bloc.texte)))
+        elif bloc.type == "image":
+            sortie.append(
+                '<p class="illustration"><img src="{}" alt="{}"/></p>'.format(
+                    html.escape(bloc.url, quote=True), html.escape(bloc.texte)))
         else:
             sortie.append("<p>{}</p>".format(inline_html(bloc.texte)))
     return "\n".join(sortie)
@@ -246,6 +272,14 @@ def vers_pdf(blocs: List[Bloc], doc, sauter_h1: bool = False) -> None:
             doc.separateur()
         elif bloc.type == "code":
             doc.paragraphe(bloc.texte, taille=9.5, police="Helvetica", justifier=False)
+        elif bloc.type == "image":
+            # Le modele de document ne porte qu'un CHEMIN, pas les octets : il
+            # ne sait pas ou est le dossier du produit et n'ouvre aucun
+            # fichier. Une chaine qui veut l'image dans son PDF la place
+            # elle-meme, par « rendu_pdf », ou elle a les octets. Ici, on dit
+            # qu'il y a une image plutot que d'imprimer son chemin.
+            if bloc.texte:
+                doc.encadre("Illustration", bloc.texte)
         else:
             doc.paragraphe(nettoyer_inline(bloc.texte), justifier=True)
 

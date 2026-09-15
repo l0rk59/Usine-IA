@@ -160,6 +160,27 @@ def page_droits(titre: str, auteur: str, editeur: str, identifiant: str,
     return '<div class="droits">{}</div>'.format("".join(lignes))
 
 
+def _type_image(nom: str) -> str:
+    """Type mime d'apres l'extension.
+
+    Deduit du NOM, pas des octets : c'est ce que le manifeste declare, et un
+    manifeste qui ment sur le type fait rejeter le livre par le distributeur
+    avant meme qu'un lecteur l'ouvre. Les quatre formats connus sont ceux
+    qu'EPUB 3 accepte comme images de base ; tout le reste passe pour du PNG,
+    ce qui est faux mais visible — le controle de conformite le dira.
+    """
+    bas = nom.lower()
+    if bas.endswith((".jpg", ".jpeg")):
+        return "image/jpeg"
+    if bas.endswith(".svg"):
+        return "image/svg+xml"
+    if bas.endswith(".gif"):
+        return "image/gif"
+    if bas.endswith(".webp"):
+        return "image/webp"
+    return "image/png"
+
+
 def construire_epub(
     chemin: Path,
     titre: str,
@@ -172,11 +193,16 @@ def construire_epub(
     editeur: str = "",
     mentions: Sequence[str] = (),
     dedicace: str = "",
+    ressources: Sequence[Tuple[str, bytes]] = (),
 ) -> Path:
     """Assemble un EPUB.
 
     chapitres : suite de (titre, fragment HTML deja rendu).
     couverture : (nom de fichier, octets) — JPEG ou PNG.
+    ressources : (chemin dans le livre, octets) — images citees par les
+                 chapitres. Un EPUB est une archive FERMEE : une image
+                 referencee mais absente du conteneur ne s'affiche pas chez
+                 le lecteur, et le distributeur refuse le fichier.
     mentions   : lignes ajoutees a la page de copyright (mention d'assistance
                  IA, contact, numero d'edition...).
     dedicace   : texte de la page de dedicace, omise si vide.
@@ -215,9 +241,7 @@ def construire_epub(
         if couverture:
             nom_couverture, octets = couverture
             z.writestr("OEBPS/" + nom_couverture, octets)
-            mime = "image/jpeg" if nom_couverture.lower().endswith(("jpg", "jpeg")) else (
-                "image/svg+xml" if nom_couverture.lower().endswith("svg") else "image/png"
-            )
+            mime = _type_image(nom_couverture)
             fichiers.append(("cover-image", nom_couverture, mime))
             z.writestr(
                 "OEBPS/couverture.xhtml",
@@ -265,6 +289,13 @@ def construire_epub(
             )
             fichiers.append(("dedicace", "dedicace.xhtml",
                              "application/xhtml+xml"))
+
+        for rang, (nom_ressource, octets) in enumerate(ressources, 1):
+            if not octets:
+                continue
+            z.writestr("OEBPS/" + nom_ressource, octets)
+            fichiers.append(("res{:03d}".format(rang), nom_ressource,
+                             _type_image(nom_ressource)))
 
         entrees_nav: List[Tuple[str, str]] = []
         for index, (titre_chapitre, corps_html) in enumerate(chapitres, 1):

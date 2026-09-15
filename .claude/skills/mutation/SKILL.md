@@ -74,7 +74,21 @@ Trois causes reelles, rencontrees dans ce depot :
   trois caracteres sans que ce mot apparaisse. Comparer le texte **exact** l'a
   rendu sensible.
 
-## Deux pieges du procede lui-meme
+## Trois pieges du procede lui-meme
+
+**La suite deja rouge.** C'est le pire, parce qu'il ne ressemble pas a une
+panne : il ressemble a une reussite. Sur une suite qui echoue avant toute
+mutation, chaque mutation ressort `[vu]` — c'est le test deja casse qui
+echoue, pas le defaut remis. Le rapport annonce alors que tout est garde au
+moment precis ou plus rien ne l'est.
+
+Cas reel, le 15/09/2026 : une campagne de quinze mutations rendue
+entierement verte. Deux d'entre elles ne tenaient qu'a un test casse par un
+changement de format de sortie ; les deux corrections qu'elles pretendaient
+garder n'etaient gardees par rien. Depuis, le script lance d'abord les
+modules de la campagne SANS muter, et refuse de continuer s'ils echouent.
+
+## Les deux autres pieges
 
 **Le `.pyc` perime.** Python reutilise un fichier compile quand la taille et
 la date du source n'ont pas change. Une mutation remplace souvent un motif par

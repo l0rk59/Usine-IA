@@ -39,6 +39,12 @@ class Bloc:
     rendu_pdf: Optional[Callable[[DocumentPDF], None]] = None
     rendu_html: str = ""                              # sinon derive du markdown
     sommaire: bool = True
+    # Le titre du bloc est ecrit par le moteur, en corps de chapitre. Un album
+    # jeunesse n'en veut pas : « Page 1 » en vingt-quatre points au-dessus
+    # d'une seule phrase, c'est la mise en page d'un guide appliquee a un
+    # album. Quand ce drapeau est baisse, « rendu_pdf » ouvre sa page et
+    # compose tout — titre compris s'il en veut un.
+    titre_pdf: bool = True
 
 
 @dataclass
@@ -89,6 +95,11 @@ class Produit:
     # serait livrer a un acheteur un livre dont la couverture a change depuis
     # qu'il l'a vu. Le drapeau n'est leve que par une refabrication.
     reutiliser_couverture: bool = False
+    # Fichiers du dossier produit a embarquer dans l'EPUB, chemins relatifs
+    # (« images/page-01.jpg »). Un EPUB est une archive fermee : une image
+    # referencee mais absente du conteneur ne s'affiche pas chez le lecteur,
+    # et le distributeur refuse le fichier.
+    ressources: Tuple[str, ...] = ()
     # Documents supplementaires : cahier d'exercices, second format de page.
     documents: List[Tuple[str, Callable[[Optional[Tuple[str, Any]]],
                                         DocumentPDF]]] = \
@@ -181,13 +192,18 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
     # --- PDF --------------------------------------------------------------
     if "pdf" in formats:
         doc = _document(produit, ctx, page_couverture)
-        for bloc, blocs_md in blocs_analyses:
-            doc.titre(bloc.titre, 1, sommaire=bloc.sommaire)
+        for bloc, blocs_analysees in blocs_analyses:
+            if bloc.titre_pdf:
+                doc.titre(bloc.titre, 1, sommaire=bloc.sommaire)
             if bloc.rendu_pdf is not None:
                 bloc.rendu_pdf(doc)
-            elif blocs_md:
-                D.vers_pdf(blocs_md, doc, sauter_h1=True)
-        doc.inserer_sommaire(apres=1)
+            elif blocs_analysees:
+                D.vers_pdf(blocs_analysees, doc, sauter_h1=True)
+        # Un sommaire vide ne s'omettait pas : il sortait une page « Sommaire »
+        # avec son filet bleu et rien dessous. Personne ne l'avait vu parce
+        # qu'aucun produit n'avait, jusqu'au conte, de blocs sans titre PDF.
+        if doc.sommaire:
+            doc.inserer_sommaire(apres=1)
         chemin = dossier / "{}{}.pdf".format(base, produit.suffixe_pdf)
         doc.enregistrer(chemin)
         fichiers.append(chemin)
@@ -213,7 +229,10 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
             description=produit.promesse, couverture=image,
             editeur=getattr(ctx, "marque", "") or "",
             mentions=_mentions_droits(),
-            dedicace=getattr(ctx, "dedicace", "") or "")
+            dedicace=getattr(ctx, "dedicace", "") or "",
+            ressources=[(nom, (dossier / nom).read_bytes())
+                        for nom in produit.ressources
+                        if (dossier / nom).is_file()])
         # Un EPUB casse ne se voit pas : l'archive s'ouvre, le fichier part
         # chez le distributeur, et c'est lui qui le refuse. Le controle est
         # instantane et sans reseau — il n'y a aucune raison de le sauter.
