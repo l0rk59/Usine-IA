@@ -37,6 +37,7 @@ from ..core import empreinte
 from ..render import livraison
 from . import fiction
 from . import memoire as M
+from . import prose
 from .base import Contexte, nettoyer_titre, preparer, terminer
 
 RECITS = 7
@@ -338,6 +339,15 @@ def produire(ctx: Contexte, recits: int = 0) -> Dict[str, Any]:
               "{} protagonistes, {} fins".format(
                   mesure["protagonistes_distincts"], mesure["fins_distinctes"]))
 
+    # La variete mesure la DISTANCE entre les recits ; la prose mesure la
+    # phrase. Sept nouvelles peuvent etre parfaitement variees et toutes
+    # ecrites de la meme main molle.
+    style = prose.mesurer_la_prose([(r["titre"], r["texte"]) for r in ecrits])
+    lectures_prose = prose.lire_la_prose(style)
+    ctx.journal("  " + prose.situer_le_dialogue(style["part_de_dialogue"]))
+    for lecture in lectures_prose:
+        ctx.journal("  [prose] " + lecture)
+
     ctx.journal("Etape 4/4 — export...")
     blocs = [livraison.Bloc(
         titre="Le fil", corps=fil["fil"] or "Sept textes, un meme fil.")]
@@ -349,7 +359,7 @@ def produire(ctx: Contexte, recits: int = 0) -> Dict[str, Any]:
         blocs=blocs,
         donnees={"fil": fil["fil"], "recits": [
             {k: v for k, v in r.items() if k != "bible"} for r in ecrits],
-            "variete": mesure},
+            "variete": mesure, "prose": style},
         nom_donnees="recueil",
         formats=("md", "pdf", "html", "epub", "txt"),
         libelle_sections="nouvelle(s)",
@@ -362,6 +372,13 @@ def produire(ctx: Contexte, recits: int = 0) -> Dict[str, Any]:
         "recits": len(ecrits),
         "mots": sum(r["mots"] for r in ecrits),
         "variete": mesure,
+        "prose": style,
+        # A part, et non fondues dans « lectures ». « lectures » porte les
+        # VERDICTS de la chaine — un recueil dont deux nouvelles se
+        # ressemblent trop. Les lignes de prose ne sont pas des verdicts :
+        # elles comptent et elles nomment. Les melanger ferait passer un
+        # produit sain pour un produit alerte.
+        "lectures_prose": lectures_prose,
         "lectures": lectures,
         "premisses_jumelles": jumelles,
         "fichiers": [f.name for f in fichiers],

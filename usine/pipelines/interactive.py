@@ -39,6 +39,7 @@ from typing import Any, Dict, List, Sequence, Set
 from ..agents import equipe
 from ..render import livraison
 from . import fiction
+from . import prose
 from .base import (Contexte, elaguer_markdown, jetons_pour, preparer,
                    sans_titres, terminer)
 
@@ -447,6 +448,16 @@ def produire(ctx: Contexte, sections: int = 0) -> Dict[str, Any]:
             ctx.journal("  {}/{} sections".format(rang, len(carte)))
     ctx.etape("sections", "ok", "{} sections redigees".format(len(carte)))
 
+    # La verification du graphe dit que le livre est JOUABLE ; elle ne dit
+    # rien de ce qu'on y lit. Un livre-jeu dont toutes les sections sont
+    # atteignables peut etre ecrit de la meme main molle.
+    style = prose.mesurer_la_prose(
+        [(str(s["numero"]), s.get("texte") or "") for s in carte])
+    lectures_prose = prose.lire_la_prose(style)
+    ctx.journal("  " + prose.situer_le_dialogue(style["part_de_dialogue"]))
+    for lecture in lectures_prose:
+        ctx.journal("  [prose] " + lecture)
+
     ctx.journal("Etape 4/4 — export...")
     fins = [s for s in carte if s["fin"]]
     produit = livraison.Produit(
@@ -462,7 +473,7 @@ def produire(ctx: Contexte, sections: int = 0) -> Dict[str, Any]:
                       "atteindrez depend de vous.".format(len(fins))),
             livraison.Bloc(titre="Le livre", corps=_markdown(carte)),
         ],
-        donnees={"bible": bible, "carte": carte},
+        donnees={"bible": bible, "carte": carte, "prose": style},
         nom_donnees="carte",
         formats=("md", "pdf", "html", "epub", "txt"),
         libelle_sections="section(s)",
@@ -478,6 +489,8 @@ def produire(ctx: Contexte, sections: int = 0) -> Dict[str, Any]:
         # Ce qui reste faux est rendu, pas tu : c'est ce que l'acheteur
         # rencontrerait, et c'est ce qui decide s'il faut refabriquer.
         "defauts_restants": restantes,
+        "prose": style,
+        "lectures_prose": lectures_prose,
         "mots": sum(len((s.get("texte") or "").split()) for s in carte),
         "fichiers": [f.name for f in fichiers],
     }

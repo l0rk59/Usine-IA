@@ -64,6 +64,24 @@ def alerte(texte: str) -> None:
     print(_c("  [!] ", "33") + texte)
 
 
+def dire_la_prose(resume: Dict[str, Any]) -> None:
+    """Les releves de prose, a l'ecran, et jamais en alerte.
+
+    Ce sont des COMPTES, pas des verdicts : « six mots filtres », « doucement
+    onze fois ». Les passer par « alerte » ferait clignoter en jaune un texte
+    qui n'a rien de fautif, et un signal jaune qui se declenche a chaque
+    production finit ignore — y compris les fois ou il dit quelque chose.
+    """
+    mesure = resume.get("prose") or {}
+    if mesure.get("mots"):
+        from .pipelines import prose as module_prose
+
+        print("  " + module_prose.situer_le_dialogue(
+            mesure.get("part_de_dialogue") or 0.0))
+    for lecture in resume.get("lectures_prose") or []:
+        print("  " + _c("[prose] ", "36") + lecture)
+
+
 def erreur(texte: str) -> None:
     print(_c("  [x] ", "31") + texte, file=sys.stderr)
 
@@ -334,6 +352,7 @@ def cmd_nouvelle(args: argparse.Namespace) -> int:
     if resume.get("rang"):
         description = "Tome {} de « {} ». ".format(
             resume["rang"], args.serie) + description
+    dire_la_prose(resume)
     _resume_console(_apres_production(args, ctx, resume, description))
     return 0
 
@@ -355,6 +374,7 @@ def cmd_roman(args: argparse.Namespace) -> int:
     description = "Roman{}, {} scenes, {} mots.".format(
         " — " + resume["sous_titre"] if resume.get("sous_titre") else "",
         resume["scenes"], resume["mots"])
+    dire_la_prose(resume)
     _resume_console(_apres_production(args, ctx, resume, description))
     return 0
 
@@ -591,6 +611,7 @@ def cmd_interactive(args: argparse.Namespace) -> int:
         alerte("La carte a du etre elaguee pour rester jouable.")
     for defaut in resume.get("defauts_restants") or []:
         alerte(defaut)
+    dire_la_prose(resume)
     _resume_console(_apres_production(args, ctx, resume, description))
     return 0
 
@@ -615,6 +636,7 @@ def cmd_recueil(args: argparse.Namespace) -> int:
                              proche["titres"][1][:26], proche["score"]))
     for lecture in resume.get("lectures") or []:
         alerte(lecture)
+    dire_la_prose(resume)
     _resume_console(_apres_production(args, ctx, resume, description))
     return 0
 
@@ -631,6 +653,7 @@ def cmd_feuilleton(args: argparse.Namespace) -> int:
         alerte("Episodes sans suspens declare : {} — le lecteur n'a aucune "
                "raison de revenir.".format(", ".join(
                    str(e) for e in resume["episodes_sans_suspens"])))
+    dire_la_prose(resume)
     _resume_console(_apres_production(
         args, ctx, resume,
         "{} episodes, {} mots.".format(resume["episodes"], resume["mots"])))

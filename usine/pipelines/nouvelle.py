@@ -47,6 +47,7 @@ from . import fiction
 from . import carnet
 from . import faits
 from . import memoire as M
+from . import prose
 from . import voix
 from .base import (PLUS_RIEN_A_DEMANDER, Contexte, elaguer_markdown,
                    jetons_pour, nettoyer_titre, preparer, sans_titres,
@@ -1370,6 +1371,16 @@ def produire(ctx: Contexte, serie: str = "",
             rapport["controle_local"]["note_moyenne_finale"]))
     rapport["mesure_finale"] = ctrl.controler_ensemble(
         sections, ctx.mots_par_chapitre)
+    # La charpente est controlee douze fois au-dessus ; la PHRASE ne l'etait
+    # nulle part. C'est pourtant la que se voit, d'une ligne, qu'un texte a
+    # ete genere. Aucune de ces mesures ne rend de verdict : elles comptent
+    # et elles nomment.
+    rapport["prose"] = prose.mesurer_la_prose(sections)
+    lectures_prose = prose.lire_la_prose(rapport["prose"])
+    ctx.journal("  " + prose.situer_le_dialogue(
+        rapport["prose"]["part_de_dialogue"]))
+    for lecture in lectures_prose:
+        ctx.journal("  [prose] " + lecture)
     (dossier / "rapport-qualite.json").write_text(
         json.dumps(rapport, ensure_ascii=False, indent=2), encoding="utf-8")
     ctx.journal("  note finale mesuree : {} / 10".format(
@@ -1408,6 +1419,8 @@ def produire(ctx: Contexte, serie: str = "",
         "mots": mots,
         "fichiers": [f.name for f in fichiers],
         "qualite": rapport,
+        "prose": rapport["prose"],
+        "lectures_prose": lectures_prose,
         "budget_epuise": budget_epuise,
         "note": (rapport.get("mesure_finale") or {}).get("note_moyenne"),
         "alertes": [d for d, _ in alertes],

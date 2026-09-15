@@ -30,6 +30,7 @@ from ..agents import equipe
 from ..render import livraison
 from . import fiction
 from . import memoire as M
+from . import prose
 from .base import (Contexte, elaguer_markdown, nettoyer_titre,
                    preparer, sans_titres, terminer)
 
@@ -258,6 +259,16 @@ def produire(ctx: Contexte, episodes: int = 0) -> Dict[str, Any]:
     for lecture in lectures:
         ctx.journal("  [!] " + lecture)
 
+    # Le recap mesure ce qui se repete d'un episode a l'autre ; la prose
+    # mesure la phrase. Un feuilleton dont chaque episode rappelle
+    # correctement le precedent peut rester ecrit de la meme main molle.
+    style = prose.mesurer_la_prose(
+        [(e["titre"], e["texte"]) for e in ecrits])
+    lectures_prose = prose.lire_la_prose(style)
+    ctx.journal("  " + prose.situer_le_dialogue(style["part_de_dialogue"]))
+    for lecture in lectures_prose:
+        ctx.journal("  [prose] " + lecture)
+
     blocs = [livraison.Bloc(
         titre="La saison", corps=arc["promesse"] or "Une saison en {} "
         "episodes.".format(len(ecrits)))]
@@ -277,7 +288,7 @@ def produire(ctx: Contexte, episodes: int = 0) -> Dict[str, Any]:
         promesse=arc["promesse"],
         blocs=blocs,
         donnees={"bible": bible, "arc": arc, "episodes": ecrits,
-                 "recaps": mesures},
+                 "recaps": mesures, "prose": style},
         nom_donnees="saison",
         formats=("md", "pdf", "html", "epub", "txt"),
         libelle_sections="episode(s)",
@@ -291,6 +302,10 @@ def produire(ctx: Contexte, episodes: int = 0) -> Dict[str, Any]:
         "mots": sum(e["mots"] for e in ecrits),
         "episodes_sans_suspens": sans_suspens,
         "recaps": mesures,
+        "prose": style,
+        # A part, et non fondues dans « lectures » : celles-ci portent les
+        # verdicts de la chaine, les lignes de prose ne sont que des comptes.
+        "lectures_prose": lectures_prose,
         "lectures": lectures,
         "fichiers": [f.name for f in fichiers],
     }

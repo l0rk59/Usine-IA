@@ -34,7 +34,7 @@ def setUpModule():
     atelier.isoler("sources_des_donnees")
 
 
-from usine.pipelines import conte, fiction, social  # noqa: E402
+from usine.pipelines import conte, fiction, prose, social  # noqa: E402
 
 
 def _donnees_de(module) -> list:
@@ -74,7 +74,7 @@ def _donnees_de(module) -> list:
 
 class ChaqueTableDeDonneesPorteSaSource(unittest.TestCase):
 
-    MODULES = (fiction, conte, social)
+    MODULES = (fiction, conte, social, prose)
 
     def _orphelines(self, modules):
         """La detection, appelee PAR le test et PAR son temoin.
