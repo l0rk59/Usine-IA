@@ -111,6 +111,70 @@ class Champ:
         return tuple(part for part in self.drapeau.split("/") if part)
 
 
+def champs_de_fiction() -> Tuple[Champ, ...]:
+    """Les reglages que TOUTE fiction comprend, et qu'aucun guide ne comprend.
+
+    Declares une fois, partages par les types de la famille « fiction ». Les
+    recopier type par type garantirait qu'un type ajoute plus tard en oublie
+    la moitie — et un reglage manquant ne se voit pas : la chaine se contente
+    du defaut, qui n'est pas neutre, seulement invisible.
+
+    Ce ne sont PAS les reglages du non-fictionnel renommes. Un guide se regle
+    par audience, promesse de resultat et niveau de difficulte ; ces trois-la
+    n'ont pas de sens pour un roman. Une fiction se regle par ou elle se
+    range, ce que le lecteur vient y retrouver, et ce qu'il ne pardonnera pas
+    qu'on lui refuse.
+    """
+    from . import fiction
+
+    sous_genres = tuple(sorted(
+        s for sous in fiction.GENRES.values() for s in sous))
+    return (
+        Champ("genre", "--genre", "Genre", genre="choix",
+              choix=("",) + tuple(sorted(fiction.GENRES)),
+              aide="Laissez vide : il se deduit du sous-genre."),
+        Champ("sous_genre", "--sous-genre", "Sous-genre",
+              aide="C'est lui qui decide de tout le reste — longueur "
+                   "attendue, chaleur, fin admissible. « Romance » seul ne "
+                   "suffit pas a ecrire une romance. Suggestions : "
+                   + ", ".join(sous_genres[:8]) + "..."),
+        Champ("tropes", "--tropes", "Tropes",
+              aide="Ce que le lecteur vient retrouver, separes par des "
+                   "virgules. C'est par la qu'il cherche un livre : il ne "
+                   "tape pas « romance contemporaine », il tape « ennemis "
+                   "puis amants »."),
+        Champ("ambiance", "--ambiance", "Ambiance", genre="choix",
+              choix=("",) + fiction.AMBIANCES,
+              aide="Ce que le lecteur vient ressentir. Deux livres du meme "
+                   "sous-genre ne visent pas le meme lecteur si l'ambiance "
+                   "differe."),
+        Champ("point_de_vue", "--point-de-vue", "Point de vue", genre="choix",
+              choix=("",) + fiction.POINTS_DE_VUE,
+              aide="Convention de sous-genre, pas detail de style : se "
+                   "tromper se lit comme une maladresse des la premiere "
+                   "page."),
+        Champ("temps", "--temps", "Temps du recit", genre="choix",
+              choix=("",) + fiction.TEMPS),
+        Champ("chaleur", "--chaleur", "Niveau de chaleur", genre="choix",
+              choix=("",) + fiction.CHALEUR,
+              aide="Une attente de lecteur, pas un curseur de gout : "
+                   "promettre l'un et livrer l'autre fache dans les DEUX "
+                   "sens."),
+        Champ("fin", "--fin", "Fin attendue", genre="choix",
+              choix=("",) + fiction.FINS,
+              aide="En romance, une fin malheureuse est un manquement au "
+                   "contrat de genre. Ailleurs, elle est libre."),
+        Champ("structure", "--structure", "Charpente", genre="choix",
+              choix=("",) + fiction.STRUCTURES,
+              aide="« Beats de romance » suit l'arc de la RELATION : dans "
+                   "une romance, c'est elle la charpente, et la traiter en "
+                   "second plan se voit."),
+        Champ("serie", "--serie", "Serie",
+              aide="Laissez vide pour un recit isole. Un tome reprend le "
+                   "monde, la distribution et les faits des precedents."),
+    )
+
+
 @dataclass
 class TypeProduit:
     """Un type de produit reellement fabricable."""
@@ -145,6 +209,13 @@ class TypeProduit:
     # Le nombre de mots et de sections, lui, se compte pour tout le monde :
     # c'est un decompte, pas un verdict.
     prose: bool = True
+    # « fiction » ou « pratique ». Ce n'est pas un rangement de menu : c'est
+    # ce qui decide de la QUESTION qu'on pose au modele avant de fabriquer.
+    # Pour un guide, on cherche un probleme que quelqu'un paie pour resoudre.
+    # Pour un roman, cette question n'a pas de reponse honnete — et un modele
+    # a qui l'on pose une question sans reponse en fabrique une. On obtenait
+    # « ce thriller resout le probleme du manque de suspense dans votre vie ».
+    famille: str = "pratique"
     mots_cles: Tuple[str, ...] = ()   # aide l'explorateur de niches a choisir
     options: Dict[str, Any] = field(default_factory=dict)
     # Les reglages que CE type comprend, et lui seul. Voir « Champ ».
@@ -224,7 +295,7 @@ TYPES: List[TypeProduit] = [
         mots_cles=("guide", "methode", "livre", "manuel", "apprendre"),
     ),
     TypeProduit(
-        cle="nouvelle", nom="Nouvelle (fiction)",
+        cle="nouvelle", nom="Nouvelle (fiction)", famille="fiction",
         resume="Une histoire courte, avec bible et continuite tenue",
         detail="PDF + EPUB + HTML + Markdown + couverture",
         formats=("pdf", "epub", "html", "md", "txt"),
@@ -235,14 +306,10 @@ TYPES: List[TypeProduit] = [
         mots_cles=("fiction", "recit", "roman", "conte", "intrigue"),
         # Une serie fait du tome suivant une vente au lecteur du precedent.
         options={"serie": None},
-        champs=(
-            Champ("serie", "--serie", "Série",
-                  aide="Laissez vide pour un récit isolé. Un tome reprend le "
-                       "monde, la distribution et les faits des précédents."),
-        ),
+        champs=champs_de_fiction(),
     ),
     TypeProduit(
-        cle="roman", nom="Roman (fiction longue)",
+        cle="roman", nom="Roman (fiction longue)", famille="fiction",
         resume="Un roman : trente scenes en parties, continuite tenue",
         detail="PDF + EPUB + HTML + Markdown + couverture",
         formats=("pdf", "epub", "html", "md", "txt"),
@@ -258,10 +325,7 @@ TYPES: List[TypeProduit] = [
         # La declarer une seconde fois donnait deux champs de meme nom dans
         # le formulaire — celui d'en haut et celui de la section du type — et
         # le second ecrasait le premier a l'envoi.
-        champs=(
-            Champ("serie", "--serie", "Série",
-                  aide="Laissez vide pour un roman isolé."),
-        ),
+        champs=champs_de_fiction(),
     ),
     TypeProduit(
         cle="prompts", nom="Pack de prompts",

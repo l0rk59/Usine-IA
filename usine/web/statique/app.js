@@ -34,6 +34,38 @@ function remplirListe(select, valeurs, defaut) {
     .join('');
 }
 
+/* Les types, ranges par famille dans des groupes natifs.
+
+   Une seule liste melangeait « Roman » entre « Pack de prompts » et
+   « Sequence e-mail ». Ce n'est pas qu'une question d'ordre : les reglages
+   qui s'affichent en dessous n'ont rien de commun d'une famille a l'autre,
+   et passer de « niveau de chaleur » a « marge de reliure » dans le meme
+   ecran donne l'impression d'un formulaire qui ne sait pas ce qu'il demande.
+
+   « optgroup » plutot qu'une liste dessinee a la main : sur un telephone,
+   c'est le selecteur natif d'Android qui s'ouvre, et lui sait deja afficher
+   des groupes. */
+const FAMILLES = [['fiction', 'Fiction'], ['pratique', 'Pratique']];
+
+function remplirTypes(select, types, defaut) {
+  const sans = types.filter((t) => !t.famille);
+  const bloc = (liste) => liste
+    .map((t) => `<option value="${echapper(t.cle)}"` +
+                `${t.cle === defaut ? ' selected' : ''}>` +
+                `${echapper(t.nom)}</option>`)
+    .join('');
+  const groupes = FAMILLES
+    .map(([cle, titre]) => {
+      const membres = types.filter((t) => t.famille === cle);
+      /* Une famille vide ne laisse pas d'en-tete orphelin : le jour ou un
+         type est retire, le groupe disparait avec lui. */
+      return membres.length
+        ? `<optgroup label="${titre}">${bloc(membres)}</optgroup>` : '';
+    })
+    .join('');
+  select.innerHTML = bloc(sans) + groupes;
+}
+
 function echapper(texte) {
   return String(texte ?? '').replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -202,8 +234,7 @@ async function chargerEtat() {
     /* Le premier du catalogue, pas un nom ecrit ici : c'est le
        catalogue qui decide de l'ordre, et donc de ce qu'on propose
        d'abord. Un nom en dur survivrait au retrait du type. */
-    remplirListe($('type'), donnees.types.map((t) => [t.cle, t.nom]),
-                 (donnees.types[0] || {}).cle);
+    remplirTypes($('type'), donnees.types, (donnees.types[0] || {}).cle);
     decrireType();
     remplirListe($('ton'), donnees.tons, donnees.reglages.ton);
     remplirListe($('taille'), donnees.tailles, donnees.reglages.taille);

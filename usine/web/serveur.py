@@ -110,6 +110,11 @@ def _catalogue() -> List[Dict[str, Any]]:
         {"cle": t.cle, "nom": t.nom, "resume": t.resume, "detail": t.detail,
          "duree": t.duree, "quantite": t.nom_quantite,
          "defaut": t.defaut_quantite(),
+         # Fiction ou pratique. Le navigateur en fait deux groupes dans la
+         # liste : melangees, « Roman » se cherchait entre « Pack de
+         # prompts » et « Sequence e-mail », et les reglages qui suivaient
+         # n'avaient aucun rapport les uns avec les autres.
+         "famille": t.famille,
          # Les reglages que CE type comprend. Ecrits a la main dans le gabarit
          # et dans le script, huit sur dix-sept avaient fini par n'exister que
          # dans l'analyseur d'arguments : on ne pouvait pas choisir, depuis le
@@ -146,7 +151,7 @@ def _types_offerts() -> List[Dict[str, Any]]:
                        "parmi les {} types qu'elle sait fabriquer".format(
                            len(catalogue.tous(fabricables=True))),
              "duree": "variable", "quantite": "", "defaut": 0,
-             "champs": []}] + _catalogue()
+             "famille": "", "champs": []}] + _catalogue()
 
 
 def _entier(valeur: Any) -> int:

@@ -382,6 +382,78 @@ def choisir_une_niche(
     return {"sujet": "", "type": defaut, "source": ""}
 
 
+def prospecter_fiction(nombre: int = 8, graine: str = "",
+                       journal: Optional[Callable[[str], None]] = None
+                       ) -> Dict[str, Any]:
+    """Cherche des PROMESSES DE LECTURE, et non des niches.
+
+    Pourquoi une entree separee plutot qu'un drapeau dans « prospecter » :
+    les deux ne posent pas la meme question, ne lisent pas les memes
+    sources, et ne remplissent pas les memes reglages. La prospection de
+    niches interroge des mesures de marche et des discussions reelles pour
+    trouver un probleme que quelqu'un paie pour resoudre. Aucune de ces
+    sources ne dit quoi que ce soit d'utile sur le prochain cozy mystery.
+
+    Ce que cette exploration remplit, ce sont les reglages de fiction du
+    produit mis en file : sous-genre, tropes, ambiance, chaleur, fin. Sans
+    cela, la fiction partait avec les valeurs par defaut — qui ne sont pas
+    neutres, seulement invisibles.
+    """
+    from .pipelines import fiction
+
+    dire = journal or (lambda message: None)
+    contexte = Contexte(sujet=graine, journal=lambda m: None, sans_image=True)
+    dire("Recherche de promesses de lecture{}...".format(
+        " a partir de « {} »".format(graine) if graine else ""))
+    try:
+        promesses = fiction.explorer_promesses(
+            contexte, nombre=nombre, connus=idees.deja_connu())
+    except Exception as exc:
+        dire("Exploration impossible : {}".format(exc))
+        return {"graine": graine, "ajoutees": 0, "ecartees": [], "en_file": 0,
+                "pistes": 0, "promesses": []}
+
+    ajoutees, ecartees, en_file = 0, [], 0
+    for piste in promesses:
+        titre, type_produit = piste["titre"], piste["type"]
+        proches = empreinte.sujets_proches(titre, type_produit)
+        if proches:
+            ecartees.append((titre, proches[0]["titre"] or proches[0]["sujet"]))
+            continue
+        # Les reglages de fiction voyagent avec la piste. C'est tout
+        # l'interet : une promesse trouvee ici arrive en fabrication avec sa
+        # chaleur et sa fin, au lieu d'etre re-devinee scene par scene.
+        options = {cle: piste[cle] for cle in
+                   ("genre", "sous_genre", "tropes", "ambiance",
+                    "point_de_vue", "temps", "chaleur", "fin", "structure")
+                   if piste.get(cle)}
+        if piste.get("lecteur"):
+            options["audience"] = piste["lecteur"]
+        if file.ajouter(titre, type_produit, options=options, priorite=5,
+                        source="auto"):
+            ajoutees += 1
+        else:
+            en_file += 1
+
+    dire("{} promesse(s) explorees, {} mise(s) en file.".format(
+        len(promesses), ajoutees))
+    for piste in promesses[:3]:
+        if piste.get("sous_genre"):
+            dire("  « {} » — {} / {}".format(
+                piste["titre"][:34], piste["sous_genre"],
+                piste.get("tropes", "")[:38]))
+    # Le contrat de genre se verifie AVANT de fabriquer : une romance a fin
+    # tragique coute un livre entier a decouvrir apres coup.
+    for piste in promesses:
+        for alerte in fiction.contrat_de_genre(piste):
+            dire("  [!] « {} » : {}".format(piste["titre"][:30], alerte))
+    if en_file:
+        dire("  {} promesse(s) etaient deja en file d'attente.".format(en_file))
+    return {"graine": graine, "ajoutees": ajoutees, "ecartees": ecartees,
+            "en_file": en_file, "pistes": len(promesses),
+            "promesses": promesses}
+
+
 def prospecter(nombre: int = 8, graine: str = "",
                journal: Optional[Callable[[str], None]] = None,
                avec_veille: bool = True) -> Dict[str, Any]:
@@ -595,6 +667,12 @@ class UsineContinue:
             sans_image=not profil["images"],
             journal=lambda message: self.journal("    " + message),
         )
+        # Meme depot que par la ligne de commande. Une promesse trouvee par
+        # « prospecter_fiction » voyage dans les options de la file : sans
+        # cette ligne, elle arrivait jusqu'a la fabrication et s'y perdait.
+        from .pipelines import fiction as _fiction
+
+        _fiction.poser_la_promesse(contexte, options)
 
         self.compteur.demarrer_produit()
         budget.brancher(self.compteur)

@@ -29,12 +29,38 @@ sys.path.insert(0, str(RACINE))
 from tests import atelier  # noqa: E402
 
 
+_SANS_RESEAU = None
+
+
 def setUpModule():
+    """Aucun test ne sort sur le reseau — y compris celui-ci.
+
+    « prospecter » appelle « idees.produire(avec_marche=True) », qui interroge
+    quatre services publics (Hacker News, Wikipedia, Stack Exchange, Open
+    Library). Ce module les appelait donc pour de vrai, et cela s'est vu de
+    la pire facon : le test qui compare deux invites a echoue dans la suite
+    complete parce que la mesure de marche disait « 3/4 sources » au premier
+    passage et « 4/4 » au second. Un service lent, et le test devenait faux
+    sur un defaut qui n'existait pas.
+
+    Un test qui depend du reseau ne mesure pas ce qu'il croit mesurer : il
+    mesure aussi la meteo du jour chez quatre inconnus.
+    """
+    global _SANS_RESEAU
     atelier.isoler("prospection_neuve")
+    _SANS_RESEAU = mock.patch.object(
+        marche, "sonder",
+        side_effect=OSError("reseau coupe : aucun test ne sort d'ici"))
+    _SANS_RESEAU.start()
+
+
+def tearDownModule():
+    if _SANS_RESEAU is not None:
+        _SANS_RESEAU.stop()
 
 
 from usine import production  # noqa: E402
-from usine.core import file, llm, store  # noqa: E402
+from usine.core import file, llm, marche, store  # noqa: E402
 from usine.pipelines import idees  # noqa: E402
 
 

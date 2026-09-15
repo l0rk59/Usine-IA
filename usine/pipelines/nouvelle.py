@@ -43,6 +43,7 @@ from ..core import evenements, securite
 from ..core import serie as module_serie
 from ..render import document as D
 from ..render import livraison
+from . import fiction
 from . import carnet
 from . import faits
 from . import memoire as M
@@ -112,7 +113,13 @@ def construire_bible(ctx: Contexte, rappel: str = "") -> Dict[str, Any]:
         "Concois la bible d'une nouvelle (fiction courte) a partir de cette "
         "idee :\n"
         "IDEE : {sujet}\n"
-        "LECTEUR : {audience}\n\n"
+        "LECTEUR : {audience}\n"
+        # La promesse de lecture ENTRE ici, et non apres coup. Un sous-genre
+        # decide de la distribution, de la charpente et de la fin : le poser
+        # apres la bible revient a ne pas le poser. Sans cette ligne, les
+        # neuf reglages de fiction etaient saisissables, enregistres, et lus
+        # par personne — un mensonge fait a l'utilisateur.
+        "{promesse}\n"
         "Contraintes :\n"
         "- Le titre est evocateur, pas explicatif.\n"
         "- 2 a 4 personnages, pas plus : une nouvelle n'a pas la place d'une "
@@ -131,6 +138,7 @@ def construire_bible(ctx: Contexte, rappel: str = "") -> Dict[str, Any]:
         '"desir": "...", "defaut": "...", "voix": "..."}}], '
         '"enjeu": "...", "fin_visee": "..."}}'
     ).format(sujet=ctx.sujet, audience=ctx.audience,
+             promesse=fiction.consignes(ctx),
              rappel=(rappel + "\n\n") if rappel else "")
 
     bible = equipe.ARCHITECTE.travailler_json(ctx, invite, max_tokens=2200)
@@ -773,6 +781,7 @@ def rediger_scene(ctx: Contexte, bible: Dict[str, Any], grille: Dict[str, Any],
         "CE QUE {pdv} VEUT ICI : {objectif}\n"
         "OBSTACLE : {obstacle}\n"
         "PIVOT (vrai a la fin, faux au debut) : {pivot}\n"
+        "{promesse}"
         "{fils}"
         "{intrigue}"
         "{arc}"
@@ -805,6 +814,7 @@ def rediger_scene(ctx: Contexte, bible: Dict[str, Any], grille: Dict[str, Any],
         objectif=scene["objectif"] or "libre",
         obstacle=scene["obstacle"] or "libre",
         pivot=scene["pivot"] or "libre",
+        promesse=fiction.consignes_de_scene(ctx),
         fils=_bloc(_consignes_de_fils(fils_de_la_scene(grille, index))),
         intrigue=_bloc(_consignes_d_intrigue(grille, index)),
         arc=_bloc(_consigne_d_arc(grille, index)),

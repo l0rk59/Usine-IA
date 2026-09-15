@@ -161,8 +161,12 @@ def contexte_depuis(args: argparse.Namespace) -> Contexte:
         return contexte
     # Ce que l'utilisateur n'a pas choisi, l'usine le decide en lisant le
     # sujet — ici, en un seul endroit, pour les dix chaines a la fois.
-    from .pipelines import brief
+    from .pipelines import brief, fiction
 
+    # La promesse de lecture AVANT le brief : le brief decide de ce que
+    # l'utilisateur n'a pas choisi, et pour une fiction ce qu'il a choisi est
+    # justement le sous-genre et la fin.
+    fiction.poser_la_promesse(contexte, args)
     contexte.meta["brief"] = brief.appliquer(
         contexte, getattr(args, "commande", "produit"))
     return contexte
@@ -1056,6 +1060,28 @@ def cmd_file(args: argparse.Namespace) -> int:
                       .format(proche["titre"][:52]))
         print("\n  File : " + _resume_file())
         return 0
+
+    if getattr(args, "fiction", None) is not None:
+        from .production import prospecter_fiction
+
+        titre_console("Promesses de lecture")
+        print("  Une fiction ne se cherche pas comme une niche. Le lecteur\n"
+              "  n'achete pas la solution d'un probleme : il achete une\n"
+              "  experience qu'il veut revivre — un sous-genre, des tropes,\n"
+              "  une ambiance, et une fin qu'on ne lui refuse pas.\n")
+        rapport = prospecter_fiction(
+            nombre=args.nombre or 8, graine=args.fiction or "",
+            journal=lambda message: print("  " + message))
+        if rapport["ajoutees"]:
+            ok("{} promesse(s) mise(s) en file.".format(rapport["ajoutees"]))
+        elif rapport["en_file"]:
+            alerte("Aucune promesse NEUVE : les {} sont deja en file."
+                   .format(rapport["en_file"]))
+        elif rapport["pistes"]:
+            alerte("Aucune promesse retenue : toutes recouvrent un recit "
+                   "deja ecrit.")
+        print("\n  File : " + _resume_file())
+        return 0 if rapport["ajoutees"] else 1
 
     if args.explorer is not None:
         from .production import prospecter
@@ -2661,18 +2687,17 @@ def construire_parseur() -> argparse.ArgumentParser:
     p = sous_parseurs.add_parser(
         "nouvelle", help="fabriquer une nouvelle (fiction courte)")
     _options_communes(p)
-    p.add_argument("--serie", default="",
-                   help="ranger ce recit dans une serie : le tome reprend le "
-                        "monde, la distribution et les faits des precedents, "
-                        "et la continuite est verifiee contre eux")
+    # Lus du catalogue, pas ecrits ici. « --serie » y etait declare a la
+    # main, et le jour ou la fiction a recu neuf reglages de plus,
+    # l'analyseur n'en a vu aucun : ils etaient saisissables depuis le
+    # navigateur et introuvables en ligne de commande.
+    _options_du_type(p, "nouvelle")
     p.set_defaults(fonction=cmd_nouvelle)
 
     p = sous_parseurs.add_parser(
         "roman", help="un roman : fiction longue, en parties, continuite tenue")
     _options_communes(p)
-    p.add_argument("--serie", default="",
-                   help="ranger ce roman dans une suite (le monde et la "
-                        "distribution sont repris du tome precedent)")
+    _options_du_type(p, "roman")
     p.set_defaults(fonction=cmd_roman)
 
     p = sous_parseurs.add_parser(
@@ -2846,6 +2871,12 @@ def construire_parseur() -> argparse.ArgumentParser:
                         "(sans argument : part de ce qui a le mieux rapporte)")
     p.add_argument("--sans-veille", dest="sans_veille", action="store_true",
                    help="explorer sans aller lire les discussions")
+    p.add_argument("--fiction", nargs="?", const="", default=None,
+                   metavar="DEPART",
+                   help="chercher des PROMESSES DE LECTURE au lieu de niches : "
+                        "sous-genre, tropes, ambiance, chaleur, fin. Un "
+                        "lecteur de roman n'achete pas la solution d'un "
+                        "probleme (sans argument : l'usine choisit)")
     p.add_argument("--type", default="ebook", choices=catalogue.cles(en_file=True),
                    help="type de produit a fabriquer")
     p.add_argument("-n", "--nombre", type=int, default=0,

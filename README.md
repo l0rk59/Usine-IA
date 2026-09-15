@@ -303,8 +303,10 @@ Une note par sujet, chacune racontant un défaut **mesuré** et sa correction.
 |---|---|
 | [TYPES-PRODUITS.md](docs/TYPES-PRODUITS.md) | ce que chaque chaîne produit exactement |
 | [FICTION.md](docs/FICTION.md) | pourquoi la fiction suit une chaîne à part |
+| [FICTION-PROMESSE.md](docs/FICTION-PROMESSE.md) | pour la fiction, on ne cherche pas une niche |
 | [LOGICIEL.md](docs/LOGICIEL.md) | un programme vérifié, et réellement lancé, avant livraison |
 | [NICHE.md](docs/NICHE.md) | quand on ne dit pas quoi produire |
+| [PROSPECTION.md](docs/PROSPECTION.md) | pourquoi l'exploration rendait toujours les mêmes huit idées |
 | [USINE-CONTINUE.md](docs/USINE-CONTINUE.md) | produire en boucle, sous budget |
 | [COUVERTURE.md](docs/COUVERTURE.md) | la couverture, dessinée sans bibliothèque |
 
