@@ -325,7 +325,7 @@ def _rediger_section(ctx: Contexte, bible: Dict[str, Any],
              intitule=section["intitule"] or "libre",
              promesse=fiction.consignes_de_scene(ctx),
              consigne=consigne, mots=mots)
-    reponse = equipe.REDACTEUR.travailler(ctx, invite, max_tokens=jetons_pour(mots))
+    reponse = equipe.ROMANCIER.travailler(ctx, invite, max_tokens=jetons_pour(mots))
     return sans_titres(elaguer_markdown(reponse.texte))
 
 
@@ -404,7 +404,7 @@ def produire(ctx: Contexte, sections: int = 0) -> Dict[str, Any]:
     # Deux tentatives, et la seconde NOMME les defauts de la premiere. Un
     # modele a qui l'on dit « recommence » refait la meme carte.
     for tentative in range(2):
-        brut = equipe.ARCHITECTE.travailler_json(
+        brut = equipe.SCENARISTE.travailler_json(
             ctx, _invite_carte(ctx, bible, demande, fautes),
             role_modele="costaud", temperature=0.6, max_tokens=4000,
             cache=tentative == 0)

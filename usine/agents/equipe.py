@@ -55,10 +55,21 @@ OUTILLEUR = _agent("outilleur")
 PROSPECTEUR = _agent("prospecteur")
 LECTEUR = _agent("lecteur")
 
+# Les quatre metiers de la fiction. Les six chaines de fiction n'employaient
+# que l'architecte et le redacteur — ecrits l'un et l'autre pour le
+# non-fictionnel, jusqu'a « donner des etapes numerotees executables
+# aujourd'hui ». Le detail de ce qui clochait est dans « core/prompts.py »,
+# au-dessus de leurs fiches.
+SCENARISTE = _agent("scenariste")
+ROMANCIER = _agent("romancier")
+CONTEUR = _agent("conteur")
+LECTEUR_DE_FICTION = _agent("lecteur_de_fiction")
+
 EQUIPE: Dict[str, Agent] = {
     a.nom: a for a in (ARCHITECTE, REDACTEUR, EDITEUR, REVISEUR, STYLISTE,
                        MARKETEUR, CONTROLEUR, FORMATEUR, ANIMATEUR,
-                       BIBLIOTHECAIRE, OUTILLEUR, PROSPECTEUR, LECTEUR)
+                       BIBLIOTHECAIRE, OUTILLEUR, PROSPECTEUR, LECTEUR,
+                       SCENARISTE, ROMANCIER, CONTEUR, LECTEUR_DE_FICTION)
 }
 
 
@@ -618,6 +629,100 @@ def lire_comme_l_audience(contexte: Any, sections: List[Tuple[str, str]],
         "decrochages": decrochages,
         "mots_non_expliques": mots,
         "manques": manques,
+        "resume": resume,
+        "relecteur": relecteur,
+    }
+
+
+def lire_comme_un_lecteur_de_fiction(
+        contexte: Any, sections: List[Tuple[str, str]], promesse: str = "",
+        fournisseur_auteur: str = "") -> Dict[str, Any]:
+    """La lecture en acheteur, pour un livre qu'on n'a pas achete pour apprendre.
+
+    « lire_comme_l_audience » existait deja — et demande « qu'est-ce que tu ne
+    sauras toujours pas faire apres avoir lu », « quel sigle est employe sans
+    avoir ete explique ». Ce sont les bonnes questions pour un guide. Posees a
+    propos d'un roman, elles ne mesurent rien : un roman ne promet pas de
+    savoir-faire, et un lecteur de fiction ne decroche pas sur un sigle.
+
+    Les questions qui decident, elles, si un lecteur finit le livre : ou a-t-il
+    cesse d'y croire, a-t-il devine la fin trop tot, quels personnages a-t-il
+    confondus. Aucune ne se mesure en Python — c'est precisement pourquoi elle
+    passe par un modele, et par un AUTRE que celui qui a ecrit.
+
+    Un appel par produit, sur le texte entier : confondre deux personnages ne
+    se voit d'aucune scene prise seule.
+    """
+    if len(sections) < 2:
+        return {}
+    corps = "\n\n".join(
+        "### {}\n{}".format(titre, texte[:2200]) for titre, texte in sections)
+    invite = (
+        "Tu es le lecteur qui a achete ce livre pour passer une soiree avec. "
+        "Public : {audience}.\n"
+        "Tu n'es ni editeur, ni correcteur, ni professeur de litterature.\n\n"
+        "CE QU'ON T'A PROMIS : {promesse}\n\n"
+        "--- LE LIVRE ---\n{corps}\n--- FIN ---\n\n"
+        "Reponds honnetement, a la premiere personne :\n"
+        "- a quel endroit exactement as-tu cesse d'y croire, et pourquoi ;\n"
+        "- as-tu devine la fin, et a partir de quel moment ;\n"
+        "- quels personnages as-tu confondus, et a partir d'ou ;\n"
+        "- y a-t-il une promesse du debut qui n'est jamais payee ;\n"
+        "- aurais-tu tourne la page, oui ou non.\n\n"
+        "Ne corrige ni le style ni la ponctuation. Si tu as tout lu d'une "
+        "traite, dis-le : c'est une reponse parfaitement acceptable.\n\n"
+        "Schema JSON exact :\n"
+        '{{"aurait_tourne_la_page": true, "note_envie_de_lire": 8.0, '
+        '"decrochages": [{{"section": "titre", "passage": "citation exacte", '
+        '"pourquoi": "ce a quoi je n\'ai plus cru"}}], '
+        '"fin_devinee": "a partir de quelle scene, ou vide", '
+        '"personnages_confondus": ["X et Y"], '
+        '"promesses_non_payees": ["..."]}}'
+    ).format(audience=getattr(contexte, "audience", "un public francophone"),
+             promesse=promesse or "non precisee", corps=corps[:28000])
+
+    try:
+        donnees, relecteur = LECTEUR_DE_FICTION.travailler_json(
+            contexte, invite, max_tokens=1600,
+            eviter=[fournisseur_auteur] if fournisseur_auteur else None,
+            avec_fournisseur=True)
+    except Exception as exc:
+        evenements.publier("qualite", etat="lecteur_indisponible",
+                           detail=str(exc))
+        return {"disponible": False, "raison": str(exc)}
+    if not isinstance(donnees, dict):
+        return {"disponible": False, "raison": "reponse illisible"}
+
+    decrochages = [d for d in (donnees.get("decrochages") or [])
+                   if isinstance(d, dict) and d.get("pourquoi")][:6]
+    confondus = [str(c)[:80] for c in
+                 (donnees.get("personnages_confondus") or [])][:6]
+    promesses = [str(p)[:160] for p in
+                 (donnees.get("promesses_non_payees") or [])][:5]
+    devinee = str(donnees.get("fin_devinee") or "").strip()[:160]
+    try:
+        envie = round(float(donnees.get("note_envie_de_lire")), 1)
+    except (TypeError, ValueError):
+        envie = None
+    resume = "lecteur : {} decrochage(s), {} confusion(s) de personnage".format(
+        len(decrochages), len(confondus))
+    if envie is not None:
+        resume += ", envie de lire {}/10".format(envie)
+    if donnees.get("aurait_tourne_la_page") is False:
+        resume += " — N'AURAIT PAS TOURNE LA PAGE"
+    evenements.publier("lecteur", envie=envie, decrochages=len(decrochages),
+                       tournerait_la_page=bool(
+                           donnees.get("aurait_tourne_la_page", True)),
+                       relecteur=relecteur)
+    return {
+        "disponible": True,
+        "aurait_tourne_la_page": bool(
+            donnees.get("aurait_tourne_la_page", True)),
+        "note_envie_de_lire": envie,
+        "decrochages": decrochages,
+        "fin_devinee": devinee,
+        "personnages_confondus": confondus,
+        "promesses_non_payees": promesses,
         "resume": resume,
         "relecteur": relecteur,
     }

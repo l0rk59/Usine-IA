@@ -182,7 +182,7 @@ class UneGrilleCoupeeEstRedemandee(unittest.TestCase):
                 return {"scenes": [{"titre": "coupee"}]}
             return {"scenes": [{"titre": "a"}, {"titre": "b"}], "beats": [1]}
 
-        with mock.patch.object(nouvelle.equipe.ARCHITECTE, "travailler_json",
+        with mock.patch.object(nouvelle.equipe.SCENARISTE, "travailler_json",
                                side_effect=repondre):
             grille = nouvelle._grille_ou_retente(ctx, "invite", 2250)
         self.assertEqual(budgets, [2250, 4500], "la relance doit doubler")
@@ -205,7 +205,7 @@ class UneGrilleCoupeeEstRedemandee(unittest.TestCase):
             appels.append(max_tokens)
             return {"scenes": [{"titre": "a"}]}
 
-        with mock.patch.object(nouvelle.equipe.ARCHITECTE, "travailler_json",
+        with mock.patch.object(nouvelle.equipe.SCENARISTE, "travailler_json",
                                side_effect=repondre):
             nouvelle._grille_ou_retente(FauxContexte(), "invite", 3350)
         self.assertEqual(appels, [3350], "un seul appel quand rien n'est coupe")

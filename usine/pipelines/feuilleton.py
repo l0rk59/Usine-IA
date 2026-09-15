@@ -62,7 +62,7 @@ def _arc(ctx: Contexte, nombre: int) -> Dict[str, Any]:
         'dernier episode"}}]}}'
     ).format(n=nombre, sujet=ctx.sujet, audience=ctx.audience,
              promesse=fiction.consignes(ctx))
-    donnees = equipe.ARCHITECTE.travailler_json(
+    donnees = equipe.SCENARISTE.travailler_json(
         ctx, invite, role_modele="costaud", temperature=0.75, max_tokens=3000)
     if not isinstance(donnees, dict):
         raise ValueError("Arc de saison illisible")
@@ -178,7 +178,7 @@ def _ecrire_recap(ctx: Contexte, precedent: Dict[str, Any],
     ).format(texte=(precedent.get("texte") or "")[-1800:],
              noms=", ".join(distribution) or "libre",
              suspens=precedent.get("suspens") or "libre")
-    reponse = equipe.REDACTEUR.travailler(ctx, invite, max_tokens=400)
+    reponse = equipe.ROMANCIER.travailler(ctx, invite, max_tokens=400)
     # Un titre dans le rappel fabrique une section fantome au sommaire, au
     # milieu des episodes numerotes. Mesure du 15/09/2026 : le rappel de
     # l'episode 2 portait « ## Le principe de base ».

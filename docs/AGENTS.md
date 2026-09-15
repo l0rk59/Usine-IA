@@ -1,6 +1,6 @@
 # Les agents et la boucle qualité
 
-## Pourquoi treize rôles plutôt qu'un seul prompt
+## Pourquoi dix-sept rôles plutôt qu'un seul prompt
 
 Un prompt unique qui demande « écris un chapitre utile, concret, bien écrit,
 sans risque juridique et qui tienne la promesse du titre » produit un texte
@@ -26,8 +26,80 @@ pourquoi un test vérifie que deux agents n'en partagent jamais un.
 | `prospecteur` | `?` | juge une niche | raisonnement | 0.55 |
 | `lecteur` | `o` | lit le produit fini, en acheteur | standard | 0.50 |
 | `controleur` | `v` | valide la mise en vente | costaud | 0.30 |
+| `scenariste` | `>` | conçoit une charpente de **récit** | costaud | 0.70 |
+| `romancier` | `%` | écrit une scène | créatif | 0.85 |
+| `conteur` | `*` | écrit un album lu à voix haute | créatif | 0.85 |
+| `lecteur_de_fiction` | `:` | lit le roman fini, en lecteur | standard | 0.50 |
 
-### Les six derniers venus, et ce qui manquait sans eux
+### Les quatre métiers de la fiction
+
+Ceux-là ne viennent pas d'un manque ressenti, mais d'un **comptage**.
+
+Les six chaînes de fiction du dépôt — nouvelle, roman, recueil, feuilleton,
+livre-jeu, conte — n'employaient que **deux agents sur treize** : `architecte`
+et `redacteur`. Et pas deux agents neutres qu'on aurait pu réutiliser :
+
+> l'architecte conçoit « une structure qui mène le lecteur d'un **problème
+> précis** à un **résultat vérifiable** », en « diagnostic, méthode, mise en
+> œuvre, suivi », et sa dernière partie « dit quoi faire ensuite » ;
+>
+> le rédacteur écrit « comme on explique à un ami compétent mais pressé »,
+> doit « ouvrir sur une situation que le lecteur reconnaît, jamais sur une
+> définition », et « donner des **étapes numérotées exécutables
+> aujourd'hui** ».
+
+C'est sous ces règles que l'usine écrivait ses romans.
+
+**Rien n'échouait.** Un modèle à qui l'on demande une scène en écrit une, même
+si sa personnalité lui parle d'étapes numérotées : la consigne de la chaîne est
+plus précise que celle de l'agent, et elle gagne. Le défaut ne sort qu'à la
+lecture, sous la forme d'une fiction qui explique au lieu de montrer — c'est-à-dire
+exactement ce que les relevés de [PROSE.md](PROSE.md) comptent.
+
+Les règles du `romancier` reprennent d'ailleurs ces relevés un à un : montrer
+plutôt que dire, ne pas mettre de conscience entre la scène et le lecteur,
+« dit » suffit presque toujours, un adverbe qui rattrape un verbe faible
+signale le verbe faible. **Les deux moitiés de l'usine doivent dire la même
+chose** — le dépôt a déjà payé la contradiction inverse, quand le rédacteur
+réclamait « un chiffre illustratif » pendant que le contrôle déterministe
+signalait tout chiffre sans source, et que la boucle de correction payait la
+différence à chaque chapitre. Un test garde ce point.
+
+#### Pourquoi le conteur est un agent à part
+
+Parce que sa règle principale **contredit** celle du romancier :
+
+> La répétition est un outil, pas un défaut : une formule qui revient est ce
+> que l'enfant attend et finit par dire avec l'adulte.
+
+Un album se construit sur le retour d'une formule. Donner au conte les règles
+d'un romancier — varier le vocabulaire, ne jamais répéter — lui interdirait son
+procédé principal. Deux métiers, deux agents.
+
+#### Le lecteur de fiction n'est pas le lecteur
+
+`lire_comme_l_audience` existait déjà, et demande « qu'est-ce que tu ne sauras
+toujours pas faire après avoir lu », « quel sigle est employé sans avoir été
+expliqué ». Ce sont les bonnes questions pour un guide. Posées à propos d'un
+roman, elles ne mesurent rien : un roman ne promet aucun savoir-faire, et un
+lecteur de fiction ne décroche pas sur un sigle.
+
+`lire_comme_un_lecteur_de_fiction` pose les questions qui décident si un
+lecteur finit le livre :
+
+- à quel endroit exactement as-tu cessé d'y croire ;
+- as-tu deviné la fin, et à partir de quel moment ;
+- quels personnages as-tu confondus ;
+- y a-t-il une promesse du début qui n'est jamais payée ;
+- aurais-tu tourné la page.
+
+Aucune ne se mesure en Python — c'est précisément pourquoi elle passe par un
+modèle, et par un **autre** que celui qui a écrit. Tout le reste de la chaîne
+vérifie que le livre *tient* ; personne ne demandait si on avait envie de
+tourner la page. Un roman parfaitement cohérent qu'on repose au chapitre trois
+est un roman raté.
+
+### Les six venus avant eux, et ce qui manquait sans eux
 
 Les sept premiers ne servaient qu'aux ebooks et aux pages de vente. **Cinq
 chaînes sur dix n'avaient aucune équipe** : la formation, les publications

@@ -161,6 +161,25 @@ def simulateur(messages, role):
              "pourquoi_maintenant": "la rentree"},
         ]}, ensure_ascii=False)
 
+    # --- la lecture en lecteur de fiction --------------------------------
+    #
+    # Sans ce cas, le simulateur rendait un objet sans rapport et la lecture
+    # revenait « 0 decrochage » quoi qu'il arrive : le test passait en
+    # n'exercant que le chemin ou le lecteur n'a rien a dire. Un simulateur
+    # qui ne sait pas repondre ne rend pas un test moins bon, il le rend
+    # faux.
+    if '"aurait_tourne_la_page"' in invite:
+        return json.dumps({
+            "aurait_tourne_la_page": True,
+            "note_envie_de_lire": 7.5,
+            "decrochages": [{"section": "Scene modele 2",
+                             "passage": "Il comprit alors que tout etait joue",
+                             "pourquoi": "on me dit ce que je devrais deviner"}],
+            "fin_devinee": "des la scene 2",
+            "personnages_confondus": ["Camille et Lucie"],
+            "promesses_non_payees": ["la lettre fermee n'est jamais ouverte"],
+        }, ensure_ascii=False)
+
     # --- feuilleton : le « Precedemment », ecrit POUR LE LECTEUR ---------
     #
     # Sans ce cas, le simulateur rendait de la prose de guide pratique en

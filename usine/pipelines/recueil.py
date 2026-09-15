@@ -88,7 +88,7 @@ def _fil(ctx: Contexte, nombre: int) -> Dict[str, Any]:
         '"place": "pourquoi ce texte est a cette place dans le recueil"}}]}}'
     ).format(n=nombre, sujet=ctx.sujet, audience=ctx.audience,
              promesse=fiction.consignes(ctx))
-    donnees = equipe.ARCHITECTE.travailler_json(
+    donnees = equipe.SCENARISTE.travailler_json(
         ctx, invite, role_modele="costaud", temperature=0.85, max_tokens=3000)
     if not isinstance(donnees, dict):
         raise ValueError("Fil du recueil illisible")

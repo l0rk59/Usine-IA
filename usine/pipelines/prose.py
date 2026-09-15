@@ -352,7 +352,11 @@ def situer_le_dialogue(part: float) -> str:
     """
     pourcent = round(part * 100, 1)
     if part < 0.10:
-        repere = "sous « To the Lighthouse » (3,3 %) et loin de « Sherlock Holmes » (47,0 %)"
+        # « sous To the Lighthouse » etait faux des que la part depassait
+        # 3,3 % : la phrase annoncait « sous » un repere qu'elle venait de
+        # franchir. Vu en lisant le journal d'une production reelle.
+        repere = ("du cote de « To the Lighthouse » (3,3 %), loin de "
+                  "« Sherlock Holmes » (47,0 %)")
     elif part < 0.35:
         repere = "entre « To the Lighthouse » (3,3 %) et « Sherlock Holmes » (47,0 %)"
     elif part < 0.55:

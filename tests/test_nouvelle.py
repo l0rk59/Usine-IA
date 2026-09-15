@@ -323,18 +323,18 @@ def _invite_de_scene(grille: Dict[str, Any], index: int) -> str:
     su des promesses qu'il devait tenir.
     """
     recues = []
-    origine = equipe.REDACTEUR.travailler
+    origine = equipe.ROMANCIER.travailler
 
     def espion(contexte, invite, **kwargs):
         recues.append(invite)
         return origine(contexte, invite, **kwargs)
 
-    equipe.REDACTEUR.travailler = espion
+    equipe.ROMANCIER.travailler = espion
     try:
         nouvelle.rediger_scene(_contexte(), BIBLE, grille, index,
                                grille["scenes"][index], "memoire")
     finally:
-        equipe.REDACTEUR.travailler = origine
+        equipe.ROMANCIER.travailler = origine
     return recues[0]
 
 
@@ -934,18 +934,18 @@ class TestSerieDansLaChaine(unittest.TestCase):
         """Le rappel doit ENTRER dans l'invite de la bible, pas seulement
         exister : c'est la seule chose qui fasse du tome 2 une suite."""
         vus = []
-        vrai = nouvelle.equipe.ARCHITECTE.travailler_json
+        vrai = nouvelle.equipe.SCENARISTE.travailler_json
 
         def espion(ctx, invite, **kwargs):
             vus.append(invite)
             return vrai(ctx, invite, **kwargs)
 
-        nouvelle.equipe.ARCHITECTE.travailler_json = espion
+        nouvelle.equipe.SCENARISTE.travailler_json = espion
         try:
             tome2 = nouvelle.produire(_contexte(sujet="dix ans plus tard"),
                                       serie="Les rails")
         finally:
-            nouvelle.equipe.ARCHITECTE.travailler_json = vrai
+            nouvelle.equipe.SCENARISTE.travailler_json = vrai
         self.assertEqual(tome2["rang"], 2)
         self.assertTrue(vus)
         self.assertIn("SERIE", vus[0])

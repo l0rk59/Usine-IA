@@ -143,7 +143,7 @@ def construire_bible(ctx: Contexte, rappel: str = "") -> Dict[str, Any]:
              promesse=fiction.consignes(ctx),
              rappel=(rappel + "\n\n") if rappel else "")
 
-    bible = equipe.ARCHITECTE.travailler_json(ctx, invite, max_tokens=2200)
+    bible = equipe.SCENARISTE.travailler_json(ctx, invite, max_tokens=2200)
     if not isinstance(bible, dict) or not bible.get("personnages"):
         raise ValueError("Bible invalide renvoyee par le modele")
 
@@ -260,7 +260,7 @@ def _grille_ou_retente(ctx, invite: str, budget: int):
         return len(meta.get("tronquees") or [])
 
     avant = coupees()
-    grille = equipe.ARCHITECTE.travailler_json(ctx, invite, max_tokens=budget)
+    grille = equipe.SCENARISTE.travailler_json(ctx, invite, max_tokens=budget)
     if coupees() == avant:
         return grille
     plus = min(8000, budget * 2)
@@ -270,7 +270,7 @@ def _grille_ou_retente(ctx, invite: str, budget: int):
                 .format(budget, plus))
     # La reponse coupee n'a pas ete mise en cache par le routeur : la
     # relance repart bien vers le modele, pas vers la reponse tronquee.
-    seconde = equipe.ARCHITECTE.travailler_json(ctx, invite, max_tokens=plus)
+    seconde = equipe.SCENARISTE.travailler_json(ctx, invite, max_tokens=plus)
     return seconde if isinstance(seconde, dict) and seconde.get("scenes") else grille
 
 
@@ -628,7 +628,7 @@ def mettre_a_jour_resume(ctx: Contexte, etat: str, intitule: str,
     # appel de l'usine qui gagne vraiment a un modele de long contexte, et le
     # seul ou tronquer la matiere a six mille caracteres perdait des scenes
     # entieres. Les fournisseurs sans modele dedie retombent sur « standard ».
-    reponse = equipe.REDACTEUR.travailler(
+    reponse = equipe.SCENARISTE.travailler(
         ctx, invite, max_tokens=320,
         # « creatif » quand il s'agit d'ecrire la scene, « long » quand il
         # s'agit de fermer une partie entiere : ce ne sont pas les memes
@@ -827,7 +827,7 @@ def rediger_scene(ctx: Contexte, bible: Dict[str, Any], grille: Dict[str, Any],
         mots=ctx.mots_par_chapitre,
     )
 
-    reponse = equipe.REDACTEUR.travailler(
+    reponse = equipe.ROMANCIER.travailler(
         ctx, invite, max_tokens=jetons_pour(ctx.mots_par_chapitre))
     # TOUS les titres, pas seulement ceux du debut. Le titre de la scene est
     # ajoute par la chaine ; un titre laisse dans le corps en fabrique un
@@ -1350,6 +1350,37 @@ def produire(ctx: Contexte, serie: str = "",
     ctx.etape("continuite",
               "ok" if not continuite["majeures"] else "anomalie",
               continuite["resume"])
+
+    # Le lecteur de fiction : la seule voix qui ne juge pas le metier. Tout
+    # le reste de la chaine verifie que le livre TIENT — faits, voix, beats,
+    # promesses payees. Personne ne demandait si on avait envie de tourner la
+    # page. Un roman parfaitement coherent qu'on repose au chapitre trois est
+    # un roman rate, et rien ne le signalait.
+    #
+    # Ce n'est pas « lire_comme_l_audience », qui demande « qu'est-ce que tu
+    # ne sauras toujours pas faire apres avoir lu » : la bonne question pour
+    # un guide, aucune question pour un roman.
+    lecture = {}
+    if not budget_epuise:
+        ctx.journal("  lecture en lecteur : ou cesse-t-on d'y croire...")
+        try:
+            lecture = equipe.lire_comme_un_lecteur_de_fiction(
+                ctx, sections, bible.get("premisse", ""))
+        except PLUS_RIEN_A_DEMANDER as exc:
+            budget_epuise = True
+            ctx.journal("  {} — lecture en lecteur ignoree".format(exc))
+        except Exception as exc:
+            ctx.journal("  lecture en lecteur indisponible : {}".format(exc))
+        if lecture.get("disponible"):
+            ctx.journal("  " + lecture["resume"])
+            for decrochage in lecture["decrochages"][:3]:
+                ctx.journal("    « {} » — {}".format(
+                    str(decrochage.get("passage", ""))[:60],
+                    str(decrochage.get("pourquoi", ""))[:80]))
+            if lecture.get("fin_devinee"):
+                ctx.journal("    fin devinee : " + lecture["fin_devinee"])
+            ctx.etape("lecteur", "ok", lecture["resume"], essentiel=False)
+
     (dossier / "continuite.json").write_text(
         json.dumps({"continuite": continuite, "memoires": memoires},
                    ensure_ascii=False, indent=2), encoding="utf-8")
@@ -1359,6 +1390,8 @@ def produire(ctx: Contexte, serie: str = "",
                         genre=genre)
 
     rapport: Dict[str, Any] = {"continuite": continuite}
+    if lecture:
+        rapport["lecteur"] = lecture
     if local:
         rapport["controle_local"] = {
             "note_moyenne_initiale": round(

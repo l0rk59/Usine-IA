@@ -143,7 +143,7 @@ def _pages(ctx: Contexte, tranche: str, pages: int) -> Dict[str, Any]:
     ).format(tranche=tranche, n=pages, sujet=ctx.sujet,
              mots=regle["mots_page"], phrase=regle["mots_phrase"],
              promesse=fiction.consignes(ctx))
-    donnees = equipe.REDACTEUR.travailler_json(
+    donnees = equipe.CONTEUR.travailler_json(
         ctx, invite, role_modele="creatif", temperature=0.85, max_tokens=4000)
     if not isinstance(donnees, dict):
         raise ValueError("Conte illisible")
