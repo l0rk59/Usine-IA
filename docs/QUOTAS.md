@@ -378,3 +378,71 @@ Le rapport distingue désormais quatre états :
 Et le cas qui ne doit surtout pas passer pour un succès a désormais sa propre
 phrase : *« Aucun identifiant mort — mais aucun modèle n'a répondu non plus.
 Ce contrôle ne dit rien. »*
+
+---
+
+# Vérifier les quotas, pas seulement les modèles
+
+*Ajouté le 15/09/2026, à la demande : « on pourrait faire en sorte que l'usine
+teste les requêtes, les jetons, pour être sûr qu'on a bien paramétré ? »*
+
+`config.py` le dit de lui-même : *fournisseurs, modèles, quotas — données
+recopiées, donc périssables.* Les modèles savent désormais se vérifier
+(`--essai`, `--reparer`). Les quotas, eux, étaient recopiés d'une page de
+documentation et **rien ne les avait jamais confrontés à quoi que ce soit**.
+
+Or la plupart des services les annoncent dans les en-têtes de **chaque**
+réponse. L'usine les jetait : `requete()` ne rendait que le statut et le
+corps. Un appel minimal par fournisseur suffit donc — pas un par modèle,
+puisque ces limites valent pour le compte.
+
+```bash
+usine docteur --quotas
+```
+
+## La fenêtre ne se lit pas dans le nom, mais dans la remise à zéro
+
+Aucun en-tête ne dit « par jour ». `x-ratelimit-limit-requests: 1000` ne veut
+rien dire seul : mille par minute et mille par jour sont deux mondes.
+
+C'est `x-ratelimit-reset-requests` qui tranche — `7.2s` désigne une limite par
+minute, `23h14m56s` une limite par jour. Comparer un chiffre à `rpm` plutôt
+qu'à `rpd` se trompe d'un facteur **1 440**.
+
+Entre trois et trente minutes, l'audit **ne tranche pas**. Un quota comparé à
+la mauvaise fenêtre est pire qu'un quota non vérifié : il produit un
+« conforme » ou un « différent » tiré à pile ou face, sur un chiffre que
+personne n'ira revérifier.
+
+## Trois verdicts, et le troisième compte autant
+
+| verdict | ce que ça veut dire |
+|---|---|
+| **accordé** | le service publie un chiffre, et c'est celui qui est écrit |
+| **différent** | il en publie un autre — **c'est lui qui a raison**, c'est lui qui applique |
+| **non publié** | il n'en publie aucun. Ce n'est **pas** « tout va bien », c'est « on ne sait pas » |
+
+La distinction n'est pas de la pédanterie : confondre « non publié » et
+« conforme » ferait passer un quota jamais vérifié pour un quota vérifié —
+exactement la fausse assurance que ce dépôt supprime partout ailleurs.
+
+## Le compteur de l'usine, confronté à celui du service
+
+Un `rpd` exact ne protège de rien si le compteur qui s'y compare dérive. Le
+service dit combien il en reste ; l'usine dit combien elle en a consommé. Les
+deux répondent à la même question.
+
+L'écart est **rendu, pas jugé** : l'usine ne connaît pas les appels faits
+depuis une autre machine avec la même clé, et accuser sur cette base serait
+crier à tort.
+
+## Ce qu'on ne sait pas lire est montré tel quel
+
+Les en-têtes de quota non reconnus sont affichés bruts plutôt que jetés. Aucun
+standard ne fixe leur nom, et chaque service a sa forme. Les jeter
+garantirait de ne jamais apprendre celles qu'on ignore ; les montrer, c'est
+les coder demain.
+
+> Ces en-têtes n'apparaissent que sur l'endpoint facturé. Ils n'ont donc pas
+> pu être vérifiés depuis un poste sans clé : la première exécution sur un
+> vrai compte est celle qui nous apprendra quels services publient quoi.

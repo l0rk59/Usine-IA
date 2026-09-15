@@ -10,6 +10,7 @@ interfaces les mettent en forme chacune a sa facon.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sys
 import time
@@ -210,6 +211,184 @@ def essayer_modeles(timeout: int = 30) -> Dict[str, Any]:
     return {"essais": lignes,
             "repondent": [l for l in lignes if l["etat"] == "repond"],
             "muets": [l for l in lignes if l["etat"] != "repond"]}
+
+
+# Les en-tetes par lesquels un service annonce ses limites. Aucun standard ne
+# les fixe : chacun a sa forme, et certains n'en envoient aucun.
+#
+# La FENETRE ne se lit pas dans le nom mais dans le temps de remise a zero :
+# « x-ratelimit-reset-requests: 7.2s » dit une limite par minute, « 23h14m »
+# une limite par jour. C'est la seule facon de savoir a quoi comparer un
+# chiffre de « config.py », et elle vaut pour tous les fournisseurs.
+_ENTETES_REQUETES = ("x-ratelimit-limit-requests", "x-ratelimit-limit",
+                     "ratelimit-limit", "x-rate-limit-limit")
+_ENTETES_REQUETES_RESTE = ("x-ratelimit-remaining-requests",
+                           "x-ratelimit-remaining", "ratelimit-remaining")
+_ENTETES_REQUETES_REMISE = ("x-ratelimit-reset-requests", "x-ratelimit-reset",
+                            "ratelimit-reset")
+_ENTETES_JETONS = ("x-ratelimit-limit-tokens",)
+_ENTETES_JETONS_RESTE = ("x-ratelimit-remaining-tokens",)
+_ENTETES_JETONS_REMISE = ("x-ratelimit-reset-tokens",)
+
+
+def _premier(entetes: Dict[str, str], noms) -> str:
+    bas = {k.lower(): v for k, v in entetes.items()}
+    for nom in noms:
+        if bas.get(nom):
+            return str(bas[nom])
+    return ""
+
+
+def _nombre(brut: str) -> Optional[int]:
+    chiffres = re.sub(r"[^0-9]", "", str(brut).split(".")[0])
+    return int(chiffres) if chiffres else None
+
+
+def _secondes(brut: str) -> Optional[float]:
+    """« 7.2s », « 1m30s », « 23h14m56s », « 60 » -> des secondes.
+
+    Sans cela on ne sait pas si une limite est par minute ou par jour, et
+    comparer un chiffre a « rpm » plutot qu'a « rpd » se trompe d'un facteur
+    mille quatre cent quarante.
+    """
+    texte = str(brut).strip().lower()
+    if not texte:
+        return None
+    total, trouve = 0.0, False
+    for valeur, unite in re.findall(r"([0-9]+(?:\.[0-9]+)?)\s*(ms|s|m|h|d)?",
+                                    texte):
+        if not valeur:
+            continue
+        facteur = {"ms": 0.001, "s": 1, "m": 60, "h": 3600, "d": 86400,
+                   "": 1}[unite]
+        total += float(valeur) * facteur
+        trouve = True
+    return total if trouve else None
+
+
+def _fenetre(secondes: Optional[float]) -> str:
+    """Par minute, par jour, ou inconnue — jamais devinee."""
+    if secondes is None:
+        return ""
+    if secondes <= 180:
+        return "minute"
+    if secondes >= 1800:
+        return "jour"
+    # Entre trois et trente minutes : ce n'est ni l'un ni l'autre. Le dire
+    # plutot que de trancher — un quota compare a la mauvaise fenetre est
+    # pire qu'un quota non verifie.
+    return ""
+
+
+def _compte_usine(fournisseur: Any, modele: str, genre: str,
+                  fenetre: str) -> Optional[int]:
+    """Ce que l'usine a compte pour cette fenetre, ou None si indecidable."""
+    if not fenetre:
+        return None
+    try:
+        if genre == "requetes":
+            return (store.compteur_minute(fournisseur.name, modele)
+                    if fenetre == "minute"
+                    else store.compteur_jour(fournisseur.name, modele))
+        utilises, _ancien = (store.jetons_minute(fournisseur.name, modele)
+                             if fenetre == "minute" else (None, None))
+        if fenetre == "minute":
+            return utilises
+        return store.jetons_jour(fournisseur.name, modele)
+    except Exception:
+        # Une base illisible ne doit pas emporter l'audit : on rend « je ne
+        # sais pas » plutot qu'un zero qui passerait pour une mesure.
+        return None
+
+
+def auditer_quotas(timeout: int = 30) -> Dict[str, Any]:
+    """Confronte les quotas ECRITS a ceux que chaque service annonce.
+
+    « config.py » le dit de lui-meme : fournisseurs, modeles, quotas —
+    donnees recopiees, donc perissables. Les modeles, on sait maintenant les
+    verifier. Les quotas, non : ils sont recopies d'une page de documentation
+    et rien ne les avait jamais confrontes a quoi que ce soit.
+
+    Or la plupart des services les annoncent dans les en-tetes de CHAQUE
+    reponse. Un appel minimal par fournisseur suffit donc — pas un par
+    modele, puisque ces limites valent pour le compte.
+
+    Trois verdicts, et le troisieme compte autant que les deux autres :
+
+      « accorde »     le service publie un chiffre, et il est celui ecrit ;
+      « different »   il en publie un autre — c'est lui qui a raison ;
+      « non publie »  il n'en publie aucun. Ce n'est PAS « tout va bien » :
+                      c'est « on ne sait pas », et la difference est la seule
+                      chose qui empeche de prendre un silence pour un accord.
+
+    Les en-tetes de quota qu'on ne sait pas lire sont rendus tels quels : ce
+    qu'on ne comprend pas aujourd'hui se lit a l'oeil, et se code demain.
+    """
+    from . import llm
+    from .http import HttpErreur
+
+    lignes: List[Dict[str, Any]] = []
+    for fournisseur in config.active_providers():
+        if fournisseur.local:
+            continue
+        entetes: Dict[str, str] = {}
+        modele = fournisseur.model_for("rapide") or fournisseur.model_for("standard")
+        erreur = ""
+        try:
+            llm.essai_direct(fournisseur, modele, timeout=timeout,
+                             entetes_vus=entetes)
+        except HttpErreur as exc:
+            # Un 429 porte justement les en-tetes les plus interessants.
+            entetes.update(getattr(exc, "entetes", {}) or {})
+            erreur = "HTTP {}".format(exc.statut)
+        except Exception as exc:
+            erreur = type(exc).__name__
+
+        quota = fournisseur.quota("standard")
+        mesures = []
+        for genre, noms, restes, remises, ecrit_minute, ecrit_jour in (
+                ("requetes", _ENTETES_REQUETES, _ENTETES_REQUETES_RESTE,
+                 _ENTETES_REQUETES_REMISE, quota.rpm, quota.rpd),
+                ("jetons", _ENTETES_JETONS, _ENTETES_JETONS_RESTE,
+                 _ENTETES_JETONS_REMISE, quota.tpm, quota.tpd)):
+            annonce = _nombre(_premier(entetes, noms))
+            if annonce is None:
+                mesures.append({"genre": genre, "verdict": "non publie"})
+                continue
+            fenetre = _fenetre(_secondes(_premier(entetes, remises)))
+            ecrit = {"minute": ecrit_minute, "jour": ecrit_jour}.get(fenetre)
+            reste = _nombre(_premier(entetes, restes))
+            mesures.append({
+                "genre": genre, "fenetre": fenetre, "annonce": annonce,
+                "ecrit": ecrit, "reste": reste,
+                # Ce que le service dit avoir consomme, contre ce que l'usine
+                # a compte. Les deux repondent a la meme question, et c'est
+                # la seule facon de savoir si le comptage de l'usine est
+                # juste : un « rpd » exact ne sert a rien si le compteur qui
+                # s'y compare derive. L'ecart est rendu, pas juge — l'usine
+                # ne connait pas les appels faits depuis une autre machine
+                # avec la meme cle, et accuser sur cette base serait crier a
+                # tort.
+                "consomme_service": (annonce - reste
+                                     if reste is not None else None),
+                "compte_usine": _compte_usine(fournisseur, modele, genre,
+                                              fenetre),
+                "verdict": ("fenetre inconnue" if not fenetre
+                            else "accorde" if ecrit == annonce
+                            else "different"),
+            })
+        # Ce qu'on n'a pas su lire, montre tel quel plutot que jete.
+        connus = {n for groupe in (_ENTETES_REQUETES, _ENTETES_REQUETES_RESTE,
+                                   _ENTETES_REQUETES_REMISE, _ENTETES_JETONS,
+                                   _ENTETES_JETONS_RESTE, _ENTETES_JETONS_REMISE)
+                  for n in groupe}
+        inconnus = {k: v for k, v in entetes.items()
+                    if ("ratelimit" in k.lower() or "rate-limit" in k.lower())
+                    and k.lower() not in connus}
+        lignes.append({"fournisseur": fournisseur.name, "modele": modele,
+                       "erreur": erreur, "mesures": mesures,
+                       "inconnus": inconnus})
+    return {"lignes": lignes}
 
 
 def reparer_modeles(timeout: int = 30) -> Dict[str, Any]:

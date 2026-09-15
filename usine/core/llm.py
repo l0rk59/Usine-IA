@@ -692,7 +692,8 @@ def generer_json(
             essais, ", ".join(tentes) or "aucun fournisseur", derniere))
 
 
-def essai_direct(p: config.Provider, modele: str, timeout: int = 30) -> str:
+def essai_direct(p: config.Provider, modele: str, timeout: int = 30,
+                 entetes_vus: Optional[Dict[str, str]] = None) -> str:
     """Un appel minimal a UN modele nomme, sans routage ni cache.
 
     Le routeur existe pour ne jamais s'arreter : il bascule, substitue,
@@ -724,7 +725,16 @@ def essai_direct(p: config.Provider, modele: str, timeout: int = 30) -> str:
         if candidates:
             entetes["Authorization"] = "Bearer {}".format(candidates[0].valeur)
     url = p.base_url.rstrip("/") + "/chat/completions"
-    data = post_json(url, charge, entetes, timeout=timeout)
+    from .http import requete_complete
+
+    _statut, brut_reponse, entetes_recus = requete_complete(
+        url, "POST", entetes,
+        json.dumps(charge, ensure_ascii=False).encode("utf-8"), timeout)
+    data = json.loads(brut_reponse.decode("utf-8", "replace"))
+    if entetes_vus is not None:
+        # Les en-tetes portent les quotas que le service applique VRAIMENT.
+        # L'appelant les recupere ici plutot que de refaire l'appel.
+        entetes_vus.update(entetes_recus)
     choix = (data.get("choices") or [{}])[0]
     brut = ((choix.get("message") or {}).get("content") or "").strip()
     texte = module_texte.assainir(brut)

@@ -2126,6 +2126,61 @@ def cmd_docteur(args: argparse.Namespace) -> int:
         else:
             ok("Les {} modeles declares repondent.".format(len(essais["essais"])))
 
+    if getattr(args, "quotas", False):
+        from .core import diagnostic as _d
+
+        titre_console("Quotas ecrits contre quotas annonces")
+        print("  Les chiffres de config.py sont recopies d'une page de\n"
+              "  documentation. La plupart des services annoncent les leurs\n"
+              "  dans les en-tetes de chaque reponse : un appel suffit.\n")
+        audit = _d.auditer_quotas()
+        muets = []
+        for ligne in audit["lignes"]:
+            entete = "  {:12}".format(ligne["fournisseur"])
+            if ligne["erreur"] and not any(
+                    m.get("annonce") for m in ligne["mesures"]):
+                alerte("{} : {} — rien n'a pu etre lu.".format(
+                    ligne["fournisseur"], ligne["erreur"]))
+                continue
+            for mesure in ligne["mesures"]:
+                if mesure["verdict"] == "non publie":
+                    muets.append("{}/{}".format(ligne["fournisseur"],
+                                                mesure["genre"]))
+                    continue
+                if mesure["verdict"] == "fenetre inconnue":
+                    print("{} {:9} {:>9} annonce — fenetre non deduite"
+                          .format(entete, mesure["genre"], mesure["annonce"]))
+                    continue
+                marque = _c("v", "32") if mesure["verdict"] == "accorde" \
+                    else _c("!", "33")
+                print("{} {} {:9} par {:7} : ecrit {:>9}   annonce {:>9}"
+                      .format(entete, marque, mesure["genre"],
+                              mesure["fenetre"],
+                              "?" if mesure["ecrit"] is None else mesure["ecrit"],
+                              mesure["annonce"]))
+                if mesure.get("reste") is not None:
+                    print("               il en reste {} pour cette fenetre"
+                          .format(mesure["reste"]))
+                service = mesure.get("consomme_service")
+                usine = mesure.get("compte_usine")
+                if service is not None and usine is not None:
+                    # Le compteur de l'usine sert a s'arreter AVANT le 429.
+                    # S'il derive, un quota exact ne protege de rien.
+                    accord = "concorde" if abs(service - usine) <= max(
+                        1, service // 10) else _c("ECART", "33")
+                    print("               consomme : {} selon le service, "
+                          "{} selon l'usine — {}".format(service, usine, accord))
+            for nom, valeur in sorted(ligne["inconnus"].items()):
+                print("               {} {} : {}".format(
+                    _c("?", "90"), nom, str(valeur)[:44]))
+        if muets:
+            print()
+            # « Non publie » n'est pas « tout va bien » : c'est « on ne sait
+            # pas ». Les confondre, c'est prendre un silence pour un accord.
+            alerte("Aucun chiffre publie par : " + ", ".join(sorted(muets)))
+            print("      Ce n'est pas un accord, c'est une absence de "
+                  "reponse : ces quotas-la restent invérifiés.")
+
     if getattr(args, "reparer", False):
         from .core import diagnostic as _d
 
@@ -2898,6 +2953,10 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.add_argument("--essai", action="store_true",
                    help="appeler vraiment chaque modele declare et dire "
                         "lequel repond (un appel par modele, consomme du quota)")
+    p.add_argument("--quotas", action="store_true",
+                   help="confronter les quotas ecrits a ceux que chaque "
+                        "service annonce dans ses en-tetes (un appel par "
+                        "fournisseur)")
     p.add_argument("--reparer", action="store_true",
                    help="remplacer chaque identifiant mort par un qui repond "
                         "chez VOTRE compte, et le retenir")

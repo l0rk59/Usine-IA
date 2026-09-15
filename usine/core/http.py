@@ -71,6 +71,26 @@ def requete(
     timeout: int = 120,
 ) -> Tuple[int, bytes]:
     """Effectue une requete et renvoie (statut, corps brut)."""
+    statut, brut, _ = requete_complete(url, methode, entetes, donnees, timeout)
+    return statut, brut
+
+
+def requete_complete(
+    url: str,
+    methode: str = "GET",
+    entetes: Optional[Dict[str, str]] = None,
+    donnees: Optional[bytes] = None,
+    timeout: int = 120,
+) -> Tuple[int, bytes, Dict[str, str]]:
+    """Comme « requete », mais rend aussi les en-tetes de la reponse.
+
+    Ils etaient jetes, et c'est une source de verite qu'on n'avait pas : un
+    fournisseur y annonce sa limite de requetes, sa limite de jetons, ce qu'il
+    en reste, et dans combien de temps le compteur repart. Les quotas ecrits
+    dans « config.py » sont recopies d'une page de documentation — donnee
+    perissable s'il en est — et rien ne les avait jamais confrontes a ce que
+    le service DIT lui-meme.
+    """
     tetes = {"User-Agent": USER_AGENT, "Accept-Encoding": "gzip"}
     tetes.update(entetes or {})
     req = urllib.request.Request(url, data=donnees, headers=tetes, method=methode)
@@ -79,7 +99,7 @@ def requete(
             brut = rep.read()
             if rep.headers.get("Content-Encoding", "") == "gzip":
                 brut = gzip.decompress(brut)
-            return rep.status, brut
+            return rep.status, brut, dict(rep.headers)
     except urllib.error.HTTPError as exc:
         corps = b""
         try:
