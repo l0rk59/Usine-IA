@@ -23,6 +23,7 @@ from .core import empreinte, reglages, securite, store, telephone, ventes
 from .core import verification
 from .marketing import vente
 from .packaging import livraison
+from .pipelines import apres
 from .pipelines import (boite_outils, catalogue, conte, ebook, feuilleton,
                         formation, idees, emails, impression, interactive,
                         logiciel, memo, modeles, nouvelle, pack_prompts,
@@ -227,26 +228,30 @@ def _verifier_fournisseurs() -> bool:
 # --------------------------------------------------------------------------
 
 
-def _reglage_ou_option(args: argparse.Namespace, option: str,
-                       reglage: str) -> bool:
-    """Le reglage decide, l'option tranche — dans les deux sens.
+def _tranche(args: argparse.Namespace, option: str) -> Optional[bool]:
+    """Ce que la ligne de commande dit d'une etape facultative.
 
-    « --marketing » force, « --sans-marketing » empeche, et sans l'une ni
-    l'autre on applique ce qui a ete declare une fois pour toutes. Sans la
-    forme negative, un reglage active ne pourrait plus jamais etre annule
-    pour un seul produit, ce qui en ferait un piege plutot qu'un confort.
+    Trois etats, et c'est ce qui compte : « --zip » veut oui, « --sans-zip »
+    veut non, et l'absence des deux veut « None » — laisse le reglage decider.
+    Ecraser ce troisieme etat par « False » rendrait le reglage inapplicable,
+    ce qui est la facon la plus discrete de creer un reglage orphelin.
     """
     if getattr(args, "sans_" + option, False):
         return False
     if getattr(args, option, False):
         return True
-    return bool(reglages.lire(reglage, False))
+    return None
 
 
 def _apres_production(args: argparse.Namespace, ctx: Contexte,
                       resume: Dict[str, Any], description: str) -> Dict[str, Any]:
-    """Kit de vente + archive, si demandes."""
-    dossier = Path(resume["dossier"])
+    """Kit de vente + archive, si demandes.
+
+    Le travail lui-meme vit dans « pipelines/apres.py », parce que le tableau
+    de bord doit faire exactement la meme chose : il l'a longtemps ignore, et
+    quatre reglages coches depuis le telephone ne produisaient rien. Ici ne
+    restent que la lecture des options de la ligne de commande et l'affichage.
+    """
     if not (getattr(args, "contact", "") or reglages.lire("contact", "")):
         # La notice promet d'envoyer une version adaptee a qui en demande une.
         # C'est ce que la reglementation europeenne d'accessibilite attend
@@ -256,53 +261,23 @@ def _apres_production(args: argparse.Namespace, ctx: Contexte,
                "pas de version adaptee aux lecteurs qui en auraient besoin.")
         print("      " + _c("usine reglages", "1")
               + "  ou  " + _c("--contact vous@exemple.fr", "1"))
-    # Le reglage decide, l'option tranche. « --marketing » force,
-    # « --sans-marketing » empeche, et sans les deux on fait ce qui a ete
-    # declare une fois pour toutes. Un vendeur qui empaquette toujours ses
+    # « --marketing » force, « --sans-marketing » empeche, et sans les deux on
+    # laisse le reglage decider. Un vendeur qui empaquette toujours ses
     # produits retapait « --zip » cent fois ; celui qui ne le fait jamais
     # n'avait pas a le voir.
-    veut_kit = _reglage_ou_option(args, "marketing", "marketing_auto")
-    veut_zip = _reglage_ou_option(args, "zip", "archive_auto")
-    if veut_kit:
+    veut_kit = _tranche(args, "marketing")
+    veut_zip = _tranche(args, "zip")
+    if veut_kit is not False:
         titre_console("Kit de vente")
-        try:
-            kit = vente.produire_kit(
-                ctx, resume["titre"], description, dossier,
-                plateforme=getattr(args, "plateforme", "gumroad"),
-                couverture=next(
-                    (n for n in resume.get("fichiers", []) if n.startswith("couverture")), ""
-                ),
-                # Le nom de la commande EST la cle du catalogue : c'est
-                # l'invariant du projet, autant s'y appuyer.
-                type_produit=getattr(args, "commande", "ebook"),
-                chapitres_offerts=(getattr(args, "extrait", 0)
-                                   or int(reglages.lire("extrait_offert", 0) or 0)),
-            )
-            resume["marketing"] = kit["fichiers"]
-            if kit.get("extrait"):
-                resume["extrait"] = kit["extrait"]
-            prix = (kit["fiche"].get("prix_conseille") or {}).get("cible")
-            ok("Kit de vente pret ({} fichiers)".format(len(kit["fichiers"])))
-            if prix:
-                ok("Prix conseille : {} EUR".format(prix))
-        except Exception as exc:
-            alerte("Kit de vente non genere : {}".format(exc))
-
-    if veut_zip:
-        titre_console("Mise en carton")
-        from .pipelines.base import slug
-
-        archive = livraison.empaqueter(
-            dossier, slug(resume["titre"], 46), resume["titre"], ctx.auteur,
-            promesse=description[:200],
-            contact=(getattr(args, "contact", "")
-                     or str(reglages.lire("contact", "") or "")),
-            # Ce que la chaine a declare livrer, et rien d'autre.
-            livres=resume.get("fichiers"),
-        )
-        resume["archive"] = str(archive)
-        ok("Archive : {} ({} Ko)".format(archive.name, archive.stat().st_size // 1024))
-    return resume
+    return apres.apres_production(
+        ctx, resume, description,
+        type_produit=getattr(args, "commande", "ebook"),
+        kit=veut_kit, archive=veut_zip,
+        plateforme=getattr(args, "plateforme", ""),
+        extrait=getattr(args, "extrait", 0),
+        contact=getattr(args, "contact", ""),
+        journal=ok,
+    )
 
 
 def _resume_console(resume: Dict[str, Any]) -> None:

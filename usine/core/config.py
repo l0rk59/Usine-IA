@@ -214,6 +214,12 @@ PROVIDERS: List[Provider] = [
             "standard": "openai/gpt-oss-120b",
             "costaud": "openai/gpt-oss-120b",
         },
+        # Releves le 12/09/2026 sur console.groq.com/docs/rate-limits. La date
+        # racontee plus haut est celle d'une depreciation passee, pas celle
+        # d'un releve : elle dit pourquoi ces modeles-ci sont configures, elle
+        # ne dit pas quand ces quotas-la ont ete verifies. Le garde-fou de
+        # tests/test_fournisseurs_declares.py ne fait pas la difference — et
+        # c'est voulu, un lecteur non plus.
         rpm=30,
         rpd=1000,
         quotas={
@@ -241,6 +247,7 @@ PROVIDERS: List[Provider] = [
         },
         # 5 requetes par minute, pas 25 : l'usine en supposait cinq fois trop
         # et s'attirait des 429 a chaque enchainement de chapitres.
+        # Releve le 12/09/2026 sur inference-docs.cerebras.ai.
         rpm=5,
         rpd=200,
         quotas={
@@ -299,6 +306,11 @@ PROVIDERS: List[Provider] = [
             "standard": "mistral-small-latest",
             "costaud": "mistral-medium-latest",
         },
+        # Poses le 11/09/2026 et JAMAIS confrontes a la documentation du
+        # fournisseur : le depot n'en porte aucune trace. Ce sont donc des
+        # bornes prudentes, pas un releve — a revalider sur
+        # docs.mistral.ai/deployment/laplateforme/tier/, ou avec
+        # « usine docteur --modeles » qui interroge le service lui-meme.
         rpm=20,
         rpd=500,
         signup="https://console.mistral.ai/api-keys/",
@@ -340,6 +352,11 @@ PROVIDERS: List[Provider] = [
             "standard": "openai/gpt-4o-mini",
             "costaud": "openai/gpt-4o",
         },
+        # Poses le 11/09/2026, sans releve : GitHub Models publie ses limites
+        # par palier de modele et non par compte, donc ces deux nombres sont
+        # une borne basse choisie pour ne pas declencher de 429 — pas une
+        # mesure. A revalider sur docs.github.com/github-models, ou avec
+        # « usine docteur --modeles ».
         rpm=14,
         rpd=140,
         signup="https://github.com/settings/tokens (token classique, scope models:read)",
@@ -438,6 +455,10 @@ PROVIDERS: List[Provider] = [
         # Seul « openai-fast » est ouvert au palier anonyme : les autres renvoient 402.
         models={"rapide": "openai-fast", "standard": "openai-fast",
                 "costaud": "openai-fast"},
+        # Poses le 11/09/2026 au juge : le palier anonyme de Pollinations ne
+        # publie aucun chiffre. Trois par minute est ce qui passait sans 429
+        # lors de l'integration ; ce n'est pas un quota annonce, et le service
+        # peut le changer sans prevenir.
         rpm=3,
         rpd=60,
         max_sortie=4096,

@@ -26,7 +26,8 @@ RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 
 from tests import atelier  # noqa: E402
-from usine import cli  # noqa: E402
+from usine import cli
+from usine.pipelines import apres  # noqa: E402
 from usine.core import reglages  # noqa: E402
 
 
@@ -109,30 +110,38 @@ class LeReglageDecideEtLOptionTranche(unittest.TestCase):
         parseur = cli.construire_parseur()
         return parseur.parse_args(["ebook", "un sujet"] + list(options))
 
+    def _decide(self, options, cle, reglage):
+        """La decision complete : ce que la ligne de commande veut, puis ce
+        que le reglage dit quand elle ne veut rien.
+
+        Elle se lit en deux temps depuis que le tableau de bord doit rendre le
+        MEME verdict : « cli._tranche » ne connait que les options, et
+        « apres.veut » applique le reglage. Le troisieme etat — None, « je ne
+        me prononce pas » — est ce qui permet aux deux de coexister ; l'ecraser
+        par False rendrait le reglage inapplicable.
+        """
+        return apres.veut(cli._tranche(self._args(*options), cle), reglage)
+
     def test_sans_reglage_ni_option_on_ne_fait_rien(self):
-        self.assertFalse(cli._reglage_ou_option(self._args(), "marketing",
-                                                "marketing_auto"))
+        self.assertFalse(self._decide((), "marketing", "marketing_auto"))
 
     def test_le_reglage_seul_suffit(self):
         reglages.ecrire({"marketing_auto": True})
-        self.assertTrue(cli._reglage_ou_option(self._args(), "marketing",
-                                               "marketing_auto"))
+        self.assertTrue(self._decide((), "marketing", "marketing_auto"))
 
     def test_l_option_negative_l_emporte_sur_le_reglage(self):
         reglages.ecrire({"marketing_auto": True})
-        self.assertFalse(cli._reglage_ou_option(
-            self._args("--sans-marketing"), "marketing", "marketing_auto"))
+        self.assertFalse(self._decide(("--sans-marketing",), "marketing",
+                                      "marketing_auto"))
 
     def test_l_option_positive_suffit_sans_reglage(self):
-        self.assertTrue(cli._reglage_ou_option(
-            self._args("--marketing"), "marketing", "marketing_auto"))
+        self.assertTrue(self._decide(("--marketing",), "marketing",
+                                     "marketing_auto"))
 
     def test_l_archive_suit_la_meme_regle(self):
         reglages.ecrire({"archive_auto": True})
-        self.assertTrue(cli._reglage_ou_option(self._args(), "zip",
-                                               "archive_auto"))
-        self.assertFalse(cli._reglage_ou_option(self._args("--sans-zip"),
-                                                "zip", "archive_auto"))
+        self.assertTrue(self._decide((), "zip", "archive_auto"))
+        self.assertFalse(self._decide(("--sans-zip",), "zip", "archive_auto"))
 
 
 class LeTableauDeBordLesMontreTous(unittest.TestCase):

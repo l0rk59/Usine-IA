@@ -28,6 +28,7 @@ from ..core import cles as pool_cles
 from ..core import config, empreinte, evenements, experience
 from ..core import file as file_prod, llm
 from ..core import reglages, securite, store, ventes
+from ..pipelines import apres
 from ..pipelines import catalogue, social
 from ..production import AUTO
 from ..pipelines.base import TAILLES, TONS, Contexte
@@ -242,9 +243,25 @@ def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None
         sans_image=bool(options.get("sans_image")) or not profil["images"],
         journal=journal,
     )
+    # Les reglages de fabrication que la chaine prend en OPTION. Le tableau de
+    # bord les affichait, les enregistrait, et ne les passait pas : coche,
+    # « relecture_ensemble » ne faisait rien, et l'agent LECTEUR — celui qui
+    # lit le produit comme l'acheteur — n'a jamais parle une seule fois quand
+    # on fabrique depuis le telephone.
+    for cle in ("relecture_ensemble",):
+        if options.get(cle) is None and profil.get(cle):
+            options[cle] = profil[cle]
     try:
         journal("Demarrage...")
         resultat = catalogue.executer(type_produit, ctx, options)
+        # Kit de vente, extrait offert, archive : le meme travail que la ligne
+        # de commande, par le meme chemin. Le recopier ici ferait diverger les
+        # deux, et c'est exactement ainsi que ces reglages avaient vieilli.
+        apres.apres_production(
+            ctx, resultat, str(resultat.get("promesse") or ctx.sujet),
+            type_produit=type_produit,
+            kit=options.get("marketing"), archive=options.get("zip"),
+            journal=journal)
         with _VERROU:
             TRAVAUX[travail_id].update(statut="termine", resultat=resultat)
         journal("Termine.")

@@ -631,8 +631,16 @@ class TestReglagesTousBranches(unittest.TestCase):
     # « devise », dont les valeurs par defaut etaient ecrites en dur dans la
     # CLI. Qui vend en francs suisses reglait sa devise et voyait « EUR » a
     # chaque import.
+    #
+    # « veut( » est arrive le 15/09/2026, quand le kit de vente et l'archive
+    # ont quitte la ligne de commande pour un point commun que le tableau de
+    # bord appelle aussi. Le detecteur a immediatement signale « marketing_auto »
+    # et « archive_auto » comme orphelins : la cle etait la, sur une ligne
+    # qu'il ne savait pas lire. Il avait raison de se plaindre — une liste de
+    # verbes est une liste, elle ne devine pas. C'est le prix d'un detecteur
+    # qui lit la STRUCTURE plutot qu'un nom « quelque part dans le code ».
     VERBES = ("lire(", "profil", "reglages", "charger()", "DEFAUTS",
-              "_reglage_ou_option")
+              "veut(")
 
     @classmethod
     def orphelins(cls, lignes, noms):

@@ -101,13 +101,40 @@ class LaDonneeRecopiePorteSaDate(unittest.TestCase):
         une — et les autres pouvaient vieillir sans que rien ne le dise,
         abritees par la date de leur voisine. C'est la meme erreur que
         chercher un nom « quelque part dans le code ».
+
+        La deuxieme version ne regardait que DEUX fiches, nommees en dur, sur
+        onze. Audit du 15/09/2026 : quatre fournisseurs distants portaient des
+        quotas sans aucune date — mistral, github et pollinations n'avaient
+        meme pas de source, et cerebras citait la sienne sans dire quand. Un
+        garde-fou dont la portee est une liste ecrite a la main vieillit des
+        qu'on ajoute une ligne ailleurs. Il lit donc la liste des
+        fournisseurs, qui est la seule source.
         """
-        for nom in ("nvidia", "opencode"):
-            with self.subTest(fournisseur=nom):
+        verifiees = 0
+        for fournisseur in config.PROVIDERS:
+            # Un fournisseur LOCAL ne recopie rien : « 600 par minute » sur
+            # ollama veut dire « autant que le telephone en supporte ». Ce
+            # n'est pas un chiffre pris chez quelqu'un, et exiger une date la
+            # serait un garde-fou qui crie a tort.
+            if fournisseur.local:
+                continue
+            verifiees += 1
+            with self.subTest(fournisseur=fournisseur.name):
                 self.assertTrue(
-                    self.DATE.search(self._bloc(nom)),
-                    "la fiche « {} » recopie des identifiants sans dire "
-                    "quand ils ont ete verifies".format(nom))
+                    self.DATE.search(self._bloc(fournisseur.name)),
+                    "la fiche « {} » recopie des identifiants et des quotas "
+                    "sans dire quand ils ont ete releves".format(
+                        fournisseur.name))
+        # Le compte, parce qu'un detecteur vert ne se garde pas lui-meme.
+        # Une campagne de mutation a montre qu'on pouvait reduire la boucle
+        # ci-dessus a deux fournisseurs sans qu'un seul test bronche : c'est
+        # exactement la panne d'origine, et elle survivait a sa propre
+        # correction. Les deux comptes viennent de la meme liste mais pas du
+        # meme chemin — restreindre la boucle fait diverger l'un sans l'autre.
+        self.assertEqual(
+            verifiees, sum(1 for p in config.PROVIDERS if not p.local),
+            "le controle n'a regarde que {} fiche(s) distante(s) : sa portee "
+            "a ete retrecie".format(verifiees))
 
     def test_opencode_dit_qu_il_n_a_pas_de_catalogue(self):
         """Le seul fournisseur de la liste sans endpoint « /v1/models ».
