@@ -14,15 +14,76 @@ from ..render.page import ecrire_page
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
 
 
+SOURCES = {
+    "RESEAUX": (
+        "Consignes d'ecriture BATIES sur « LIMITES », donc relevees le "
+        "15/09/2026 comme elles. Elles n'ont pas de source propre : elles en "
+        "heritent. Les recopier a cote ferait deux chiffres pour la meme "
+        "chose, et c'est celui de l'invite qui ferait ecrire des posts "
+        "tronques."),
+    "LIMITES": (
+        "Limites de caracteres relevees le 15/09/2026 sur les recensements "
+        "publics par plateforme. Donnee perissable : le plafond des legendes "
+        "TikTok est passe de 2 200 a 4 000 caracteres en 2024, et rien dans "
+        "l'usine ne l'aurait su."),
+}
+
+# Ce qu'une plateforme accepte, et ce qu'elle MONTRE avant de replier.
+#
+# Le second chiffre est celui qui compte, et il manquait. Un post LinkedIn
+# peut faire trois mille caracteres — mais seuls les deux cent dix premiers
+# s'affichent avant « voir plus ». Ecrire une accroche de trois lignes revient
+# donc a ecrire pour personne : ce qui decide qu'on clique tient dans deux
+# cent dix signes.
+#
+# La premiere version de ce module n'avait aucun de ces chiffres. Elle
+# donnait « 120-220 mots » pour LinkedIn et « 240 caracteres » pour X, deux
+# valeurs sans source — et la seconde laissait quarante caracteres inutilises
+# par message sur un plafond reel de deux cent quatre-vingts.
+LIMITES = {
+    "linkedin": {"maximum": 3000, "avant_repli": 210},
+    "instagram": {"maximum": 2200, "avant_repli": 125},
+    "x": {"maximum": 280, "avant_repli": 280},
+    "tiktok": {"maximum": 4000, "avant_repli": 120},
+}
+
+# Une adresse compte pour vingt-trois caracteres chez X, quelle que soit sa
+# longueur. Un fil qui colle un lien dans chaque message perd donc vingt-trois
+# signes par message sans que personne ne les voie partir.
+CARACTERES_PAR_LIEN_X = 23
+
+_GABARITS = {
+    "linkedin": "LinkedIn (ton professionnel, paragraphes d'une ligne, pas de "
+                "hashtags excessifs. Plafond {linkedin_max} caracteres, mais "
+                "seuls les {linkedin_repli} premiers s'affichent avant « voir "
+                "plus » : tout ce qui doit faire cliquer tient la)",
+    "instagram": "Instagram (ton direct, emojis avec parcimonie, appel a "
+                 "commenter, 5 a 8 hashtags pertinents. Plafond "
+                 "{instagram_max} caracteres, repli apres "
+                 "{instagram_repli})",
+    "x": "X/Twitter (fil de 4 a 7 messages de {x_max} caracteres maximum "
+         "chacun, separes par une ligne '---'. Une adresse compte pour "
+         "{lien_x} caracteres quelle que soit sa longueur)",
+    "tiktok": "TikTok (script video de 30 a 45 secondes : accroche 3 "
+              "secondes, 3 points, conclusion + appel a l'action. La legende "
+              "accepte {tiktok_max} caracteres, repli apres "
+              "{tiktok_repli})",
+}
+
+# Les consignes sont BATIES sur les limites, jamais recopiees a cote : deux
+# endroits pour le meme chiffre divergent, et c'est celui de l'invite qui
+# ferait ecrire des posts tronques.
 RESEAUX = {
-    "linkedin": "LinkedIn (ton professionnel, 120-220 mots, paragraphes d'une ligne, "
-                "une accroche forte en premiere ligne, pas de hashtags excessifs)",
-    "instagram": "Instagram (legende de 60-140 mots, ton direct, emojis avec parcimonie, "
-                 "appel a commenter, 5 a 8 hashtags pertinents)",
-    "x": "X/Twitter (fil de 4 a 7 messages de 240 caracteres maximum chacun, "
-         "separes par une ligne '---')",
-    "tiktok": "TikTok (script video de 30 a 45 secondes : accroche 3 secondes, "
-              "3 points, conclusion + appel a l'action)",
+    cle: texte.format(
+        linkedin_max=LIMITES["linkedin"]["maximum"],
+        linkedin_repli=LIMITES["linkedin"]["avant_repli"],
+        instagram_max=LIMITES["instagram"]["maximum"],
+        instagram_repli=LIMITES["instagram"]["avant_repli"],
+        x_max=LIMITES["x"]["maximum"],
+        tiktok_max=LIMITES["tiktok"]["maximum"],
+        tiktok_repli=LIMITES["tiktok"]["avant_repli"],
+        lien_x=CARACTERES_PAR_LIEN_X)
+    for cle, texte in _GABARITS.items()
 }
 
 

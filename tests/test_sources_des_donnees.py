@@ -34,7 +34,7 @@ def setUpModule():
     atelier.isoler("sources_des_donnees")
 
 
-from usine.pipelines import conte, fiction  # noqa: E402
+from usine.pipelines import conte, fiction, social  # noqa: E402
 
 
 def _donnees_de(module) -> list:
@@ -74,7 +74,7 @@ def _donnees_de(module) -> list:
 
 class ChaqueTableDeDonneesPorteSaSource(unittest.TestCase):
 
-    MODULES = (fiction, conte)
+    MODULES = (fiction, conte, social)
 
     def _orphelines(self, modules):
         """La detection, appelee PAR le test et PAR son temoin.
@@ -208,3 +208,83 @@ class LesDonneesSourceesSontCellesQuiOntEteMesurees(unittest.TestCase):
         """Amazon ne publie aucune taxinomie complete. Le taire laisserait
         croire que ce qui manque n'existe pas."""
         self.assertIn("partielle", fiction.SOURCES["CATEGORIES"])
+
+
+class LesChiffresVerifiesUneSecondeFois(unittest.TestCase):
+    """Seconde passe du 15/09/2026, a la demande : « creuse ce point, et
+    verifie aussi les autres donnees ».
+
+    Elle a trouve trois erreurs, dont une que la PREMIERE correction avait
+    introduite.
+    """
+
+    def test_le_conte_ne_pretend_plus_savoir_faire_du_9_12_ans(self):
+        """L'erreur de ma correction precedente.
+
+        J'avais adosse la tranche 9-12 aux « premiers lecteurs » (1 000 a
+        5 000 mots) — qui s'adressent aux 5-7 ans. A neuf ans on lit un livre
+        en CHAPITRES : 10 000 a 20 000 mots pour les 7-10, 25 000 a 50 000
+        pour les 8-12. Ce n'est pas un album plus long, c'est un autre objet.
+        """
+        self.assertNotIn("9-12 ans", conte.TRANCHES)
+        self.assertEqual(sorted(conte.TRANCHES), ["3-5 ans", "6-8 ans"])
+        # Et l'absence est documentee, pas seulement effective.
+        self.assertIn("au_dela_de_huit_ans", conte.SOURCES)
+        self.assertIn("chapitres", conte.SOURCES["au_dela_de_huit_ans"])
+
+    def test_ce_que_l_usine_sait_faire_pour_cet_age_porte_ses_longueurs(self):
+        """Retirer une tranche sans dire ou aller laisserait un trou."""
+        self.assertEqual(fiction.MOTS_ATTENDUS["chapter books"], (10000, 20000))
+        self.assertEqual(fiction.MOTS_ATTENDUS["middle grade"], (25000, 50000))
+
+    def test_la_fantasy_epique_porte_la_fourchette_la_plus_large(self):
+        """Les sources divergent la, et seulement la : de 100 000 a 200 000
+        selon qu'on lit « ce que le lecteur attend » ou « ce qu'un premier
+        roman fait ». La regle du module est de retenir la plus large."""
+        self.assertEqual(fiction.MOTS_ATTENDUS["epic fantasy"], (100000, 200000))
+        self.assertIn("200 000", fiction.SOURCES["MOTS_ATTENDUS"])
+
+    def test_la_source_des_categories_cite_amazon_lui_meme(self):
+        """« Thousands of book categories in each Amazon marketplace, and
+        they can change over time » — c'est Amazon qui le dit sur sa propre
+        page d'aide, et qui renvoie a la navigation du magasin plutot qu'a
+        une liste."""
+        self.assertIn("thousands of book categories",
+                      fiction.SOURCES["CATEGORIES"])
+
+
+class LesLimitesDesReseauxSontCellesDuMoment(unittest.TestCase):
+    """Donnee la plus perissable de la chaine sociale, et elle n'avait aucune
+    source. Le plafond des legendes TikTok est passe de 2 200 a 4 000 en
+    2024 : rien dans l'usine ne l'aurait su."""
+
+    def test_les_plafonds_releves_sont_ceux_de_2026(self):
+        self.assertEqual(social.LIMITES["x"]["maximum"], 280)
+        self.assertEqual(social.LIMITES["linkedin"]["maximum"], 3000)
+        self.assertEqual(social.LIMITES["instagram"]["maximum"], 2200)
+        self.assertEqual(social.LIMITES["tiktok"]["maximum"], 4000)
+
+    def test_le_repli_est_rendu_car_c_est_lui_qui_decide(self):
+        """Un post LinkedIn peut faire 3 000 caracteres, mais seuls les 210
+        premiers s'affichent. Ce qui fait cliquer tient la."""
+        self.assertEqual(social.LIMITES["linkedin"]["avant_repli"], 210)
+        self.assertEqual(social.LIMITES["instagram"]["avant_repli"], 125)
+
+    def test_les_consignes_sont_baties_sur_les_limites(self):
+        """Deux endroits pour le meme chiffre divergent, et c'est celui de
+        l'invite qui ferait ecrire des posts tronques."""
+        for cle, limites in social.LIMITES.items():
+            self.assertIn(str(limites["maximum"]), social.RESEAUX[cle], cle)
+
+    def test_le_cout_d_un_lien_chez_x_est_rendu(self):
+        """Vingt-trois caracteres quelle que soit la longueur de l'adresse :
+        un fil qui colle un lien par message en perd vingt-trois a chaque
+        fois, sans que personne ne les voie partir."""
+        self.assertEqual(social.CARACTERES_PAR_LIEN_X, 23)
+        self.assertIn("23", social.RESEAUX["x"])
+
+    def test_chaque_reseau_declare_a_ses_limites(self):
+        """Un reseau propose sans plafond connu ferait ecrire a l'aveugle."""
+        from usine.pipelines import catalogue
+
+        self.assertEqual(set(catalogue.reseaux_sociaux()), set(social.LIMITES))

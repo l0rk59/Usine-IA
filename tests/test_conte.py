@@ -47,13 +47,27 @@ class LeTexteEstCompareALaConsigneQuiLAProduit(unittest.TestCase):
         self.assertTrue(any("depassent les 8 mots" in l for l in lectures),
                         lectures)
 
-    def test_la_meme_phrase_passe_pour_une_tranche_plus_agee(self):
+    def test_le_verdict_suit_le_plafond_declare_et_rien_d_autre(self):
         """Le controle ne juge pas la phrase : il la compare a ce qu'on a
-        demande. Changer la demande change le verdict, et c'est voulu."""
+        demande. Changer la demande change le verdict, et c'est voulu.
+
+        La premiere version faisait cette demonstration avec la tranche
+        « 9-12 ans ». Elle a disparu — aucune source ne soutenait qu'un livre
+        de cet age soit un album — et la demonstration se fait donc sur le
+        plafond lui-meme, ce qui est d'ailleurs plus direct.
+        """
+        from unittest import mock
+
         pages = [{"numero": 1, "illustration": "x",
-                  "texte": "Le petit ours ouvrit les yeux et vit la foret."}]
-        self.assertEqual(conte.lire_l_age(
-            conte.mesurer_l_age(pages, "9-12 ans")), [])
+                  "texte": "Le petit ours ouvrit les yeux et vit la foret "
+                           "blanche."}]
+        self.assertTrue(conte.lire_l_age(
+            conte.mesurer_l_age(pages, "3-5 ans")))
+        large = dict(conte.TRANCHES)
+        large["3-5 ans"] = dict(large["3-5 ans"], mots_phrase=14)
+        with mock.patch.object(conte, "TRANCHES", large):
+            self.assertEqual(
+                conte.lire_l_age(conte.mesurer_l_age(pages, "3-5 ans")), [])
 
     def test_le_plafond_rendu_est_celui_de_la_tranche(self):
         for tranche, regle in conte.TRANCHES.items():

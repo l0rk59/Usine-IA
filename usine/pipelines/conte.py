@@ -74,8 +74,31 @@ SOURCES = {
         "Reperes de lisibilite releves le 15/09/2026 : une phrase de 8 mots "
         "est comprise a pres de 100 %, une de 14 a plus de 90 %. Les premiers "
         "lecteurs lisent des phrases de 3 a 6 mots, jusqu'a 8."),
+    "au_dela_de_huit_ans": (
+        "Releve le 15/09/2026 : au-dela de huit ans, on n'ecrit plus un "
+        "album. Un livre pour 7-10 ans fait 10 000 a 20 000 mots en chapitres "
+        "(60 a 120 pages imprimees) ; un 8-12 ans en fait 25 000 a 50 000 "
+        "(35 000 en moyenne pour un premier livre). Ni l'un ni l'autre ne "
+        "tient en quatorze doubles-pages."),
 }
 
+# Deux tranches seulement, et l'absence d'une troisieme est une DONNEE.
+#
+# La premiere version en proposait une pour les 9-12 ans : vingt
+# doubles-pages, deux mille quatre cents mots. Corrigee une premiere fois,
+# elle restait fausse — j'avais adosse ce chiffre aux « premiers lecteurs »
+# (mille a cinq mille mots), qui s'adressent aux 5-7 ans, pas aux 9-12.
+#
+# Le releve du 15/09/2026 le dit sans ambiguite : a cet age on lit un livre
+# en CHAPITRES — dix a vingt mille mots pour les 7-10 ans, vingt-cinq a
+# cinquante mille pour les 8-12. Ce n'est pas un album plus long, c'est un
+# autre objet : pas de doubles-pages, pas une image par page, une structure
+# de chapitres. Cette chaine ne sait pas le fabriquer, et pretendre le
+# contraire livrerait un album de deux mille mots vendu pour un roman
+# junior.
+#
+# Ce que l'usine sait faire pour cet age s'appelle « roman », et les
+# longueurs attendues sont dans « fiction.MOTS_ATTENDUS ».
 TRANCHES: Dict[str, Dict[str, int]] = {
     # 300 mots sur 14 doubles-pages, phrases au repere « comprises a 100 % ».
     "3-5 ans": {"pages": 14, "mots_page": 21, "mots_phrase": 8,
@@ -83,11 +106,6 @@ TRANCHES: Dict[str, Dict[str, int]] = {
     # 500 mots sur 14 doubles-pages, meme repere : c'est encore un album.
     "6-8 ans": {"pages": 14, "mots_page": 36, "mots_phrase": 8,
                 "mots_total": 500},
-    # Au-dela, ce n'est plus un album mais un premier roman illustre : les
-    # « early readers » vont de mille a cinq mille mots (voir
-    # « fiction.MOTS_ATTENDUS »). Le second repere de lisibilite s'applique.
-    "9-12 ans": {"pages": 20, "mots_page": 120, "mots_phrase": 14,
-                 "mots_total": 2400},
 }
 TRANCHE_DEFAUT = "6-8 ans"
 PAGES_MIN, PAGES_MAX = 6, 40

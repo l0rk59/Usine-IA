@@ -53,10 +53,12 @@ from typing import Any, Dict, List, Sequence, Tuple
 SOURCES = {
     "CATEGORIES": (
         "Categories de premier niveau de la fiction chez Amazon KDP, "
-        "relevees le 15/09/2026. Amazon ne publie AUCUNE taxinomie complete "
-        "— plus de seize mille categories existent, dont des milliers "
-        "invisibles depuis le tableau de bord KDP. Cette liste est donc "
-        "partielle par construction, et le dire fait partie de la donnee."),
+        "relevees le 15/09/2026. Amazon ne publie AUCUNE taxinomie complete, "
+        "et le dit lui-meme sur sa page d'aide : « thousands of book "
+        "categories in each Amazon marketplace, and they can change over "
+        "time ». Elle renvoie a la navigation du magasin plutot qu'a une "
+        "liste. Celle-ci est donc partielle par construction, et le dire "
+        "fait partie de la donnee."),
     "SOUS_GENRES": (
         "Sous-categories effectivement nommees par les sources consultees le "
         "15/09/2026 (guides de categories KDP). La romance seule en compte "
@@ -80,9 +82,11 @@ SOURCES = {
         "meme : rien, hors champ, a l'ecran, explicite."),
     "MOTS_ATTENDUS": (
         "Guides de longueur par genre consultes le 15/09/2026 (Publishing "
-        "Xpress, WordTally, Authorlytica, Kevin Anderson & Associates), qui "
-        "s'accordent a quelques milliers de mots pres. Fourchettes les plus "
-        "larges rapportees."),
+        "Xpress, WordTally, Authorlytica, Kevin Anderson & Associates), "
+        "puis verifies une seconde fois le meme jour contre un guide "
+        "d'attentes d'agents. Fourchettes les plus LARGES rapportees : "
+        "les sources s'accordent a quelques milliers de mots pres, sauf "
+        "sur la fantasy epique ou elles vont de 100 000 a 200 000."),
     "STRUCTURES": (
         "Relevees le 15/09/2026. Charpentes nommees et publiees : « Save the "
         "Cat » (quinze beats) et "
@@ -205,11 +209,12 @@ MOTS_ATTENDUS: Dict[str, Tuple[int, int]] = {
     "suspense": (70000, 90000),
     "police procedural": (80000, 100000),
     "hard-boiled": (70000, 90000),
-    "epic fantasy": (100000, 150000),
+    "epic fantasy": (100000, 200000),
     "urban fantasy": (70000, 100000),
     "science fiction": (80000, 120000),
     "dystopian": (70000, 100000),
-    "middle grade": (20000, 40000),
+    "chapter books": (10000, 20000),
+    "middle grade": (25000, 50000),
     "young adult": (50000, 80000),
     "early readers": (1000, 5000),
     "picture books": (100, 800),
