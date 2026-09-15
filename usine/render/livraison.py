@@ -90,6 +90,19 @@ class Produit:
     # « 8 chapitres » est plus juste que « 8 sections » pour un ebook : chaque
     # type garde son vocabulaire plutot que d'heriter d'un terme generique.
     libelle_sections: str = "section(s)"
+    # Un sommaire coute une page pleine. Il la vaut dans un livre, ou l'on
+    # cherche le chapitre neuf ; pas dans une fiche qu'on parcourt d'un coup
+    # d'oeil. Mesure du 15/09/2026 sur les produits reellement fabriques :
+    #
+    #     social   4 pages, dont 1 de sommaire — un quart du document
+    #     quiz     5 pages, sommaire de trois entrees : Consignes,
+    #              Questions, Corrige. On les trouve en tournant la page.
+    #     memo     6 pages, alors que ce type se veut « une ou deux pages »
+    #
+    # C'est la chaine qui declare, parce qu'elle seule sait si son produit est
+    # un livre ou une carte. Un seuil en nombre de pages serait un chiffre
+    # invente, et il se tromperait sur un ebook court comme sur un memo long.
+    sommaire: bool = True
     # Refabriquer un produit deja livre doit lui rendre SA couverture. Celle
     # d'un modele d'images ne se reproduit pas a l'identique : regenerer, ce
     # serait livrer a un acheteur un livre dont la couverture a change depuis
@@ -202,7 +215,7 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
         # Un sommaire vide ne s'omettait pas : il sortait une page « Sommaire »
         # avec son filet bleu et rien dessous. Personne ne l'avait vu parce
         # qu'aucun produit n'avait, jusqu'au conte, de blocs sans titre PDF.
-        if doc.sommaire:
+        if doc.sommaire and produit.sommaire:
             doc.inserer_sommaire(apres=1)
         chemin = dossier / "{}{}.pdf".format(base, produit.suffixe_pdf)
         doc.enregistrer(chemin)

@@ -279,7 +279,10 @@ def _exporter(ctx: Contexte, titre: str, reseau: str, calendrier: List[Dict[str,
         if post["hashtags"]:
             doc.paragraphe(post["hashtags"], taille=9.5, police="Helvetica-Oblique")
         doc.separateur()
-    doc.inserer_sommaire(apres=1)
+    # Pas de sommaire. Mesure du 15/09/2026 : le PDF faisait quatre pages,
+    # dont une entiere de sommaire — un quart du document pour lister « Mode
+    # d'emploi » et quatre jours numerotes, qu'on trouve en tournant la page.
+    # Un sommaire vaut sa page dans un livre, pas dans un calendrier.
     chemin_pdf = dossier / "{}.pdf".format(slug(titre, 46))
     doc.enregistrer(chemin_pdf)
     fichiers.append(chemin_pdf)

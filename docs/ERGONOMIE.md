@@ -252,3 +252,47 @@ ressemblent, et une seule était posée.
 `tests/test_reglages_arrivent.py` pose la seconde, de deux façons : en suivant
 la déclaration jusqu'à la signature de `fabriquer`, et en **comptant** ce
 qu'une case change réellement. Huit mutations, toutes vues.
+
+## Une page de sommaire dans une fiche de quatre pages
+
+Balayage du 15/09/2026 : les dix-huit types fabriqués, puis les PDF **ouverts**
+— pas seulement comptés.
+
+| type | pages avant | dont sommaire | après |
+|---|---|---|---|
+| `memo` | 6 | 1 | **2** |
+| `quiz` | 5 | 1 | **4** |
+| `social` | 4 | 1 | **3** |
+| `interactive` | 7 | 1 | **6** |
+
+Un sommaire coûte une page pleine. Il la vaut dans un livre, où l'on cherche
+le chapitre neuf. Il ne la vaut pas dans un calendrier de quatre jours, ni
+dans un quiz dont les trois sections — Consignes, Questions, Corrigé — se
+trouvent en tournant la page. Un livre-jeu, lui, se navigue par **numéros de
+section** : son sommaire listait deux entrées.
+
+C'est la chaîne qui déclare, parce qu'elle seule sait si son produit est un
+livre ou une carte. Un seuil en nombre de pages serait un chiffre inventé, et
+il se tromperait sur un ebook court comme sur un mémo long.
+
+### Le mémo faisait exactement ce que sa docstring interdisait
+
+Le module s'ouvre sur « l'antisèche d'une ou deux pages » et « un mémo de neuf
+pages n'est plus un mémo, c'est un ebook raté ». Il en produisait **six** : le
+moteur commun ouvre une nouvelle page à chaque titre de niveau 1, donc quatre
+blocs faisaient quatre pages, plus la couverture, plus le sommaire.
+
+Et sa couverture imprimait « 12 repères **sur une page** » — une promesse
+qu'on lit avant d'ouvrir le fichier, et que le fichier ne tient pas.
+
+### La correction qui a failli être pire
+
+Supprimer tous les sauts de page a ramené le mémo à **une seule page** — le
+compte exact que la docstring réclame. Il a fallu **ouvrir le PDF** pour voir
+que le contenu s'imprimait par-dessus la couverture, texte sombre sur fond
+sombre, illisible.
+
+Compter les pages disait « parfait ». C'est la deuxième fois dans ce dépôt
+qu'une mesure numérique valide un produit qu'un coup d'œil condamne — la
+première était le conte, dont les quatorze illustrations n'arrivaient nulle
+part.

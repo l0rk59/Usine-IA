@@ -110,17 +110,29 @@ def produire(ctx: Contexte, nombre: int = 8,
 
 def _exporter(ctx: Contexte, titre: str, blocs: List[Dict[str, Any]],
               recto_verso: bool) -> List[Path]:
-    sous_titre = "{} reperes sur une page".format(
-        sum(len(b["lignes"]) for b in blocs))
+    # « sur une page » etait imprime sur la couverture d'un PDF de six pages.
+    # Une promesse qu'on lit avant d'ouvrir le fichier, et que le fichier ne
+    # tient pas, coute plus qu'elle ne rapporte : on annonce ce qu'il y a.
+    lignes = sum(len(b["lignes"]) for b in blocs)
+    sous_titre = "{} repere(s) en {} bloc(s)".format(lignes, len(blocs))
     sections = [livraison.Bloc(
         titre=bloc["titre"],
         corps=_markdown_bloc(bloc),
-        rendu_pdf=_mise_en_page(bloc),
+        rendu_pdf=_mise_en_page(bloc, premier=(rang == 0)),
         rendu_html=_html_bloc(bloc),
-    ) for bloc in blocs]
+        # Le titre est compose par « _mise_en_page » : sans cela, chaque
+        # bloc ouvrait sa propre page. Rien a declarer cote sommaire ici —
+        # « titre_pdf=False » fait que le moteur n'inscrit aucune entree.
+        titre_pdf=False,
+    ) for rang, bloc in enumerate(blocs)]
 
     produit = livraison.Produit(
         type="memo", titre=titre, sous_titre=sous_titre,
+        # Rien a declarer cote sommaire : « titre_pdf=False » sur les blocs
+        # fait qu'aucune entree n'est inscrite, donc la page de sommaire ne
+        # sort pas. Poser en plus « sommaire=False » ici serait un drapeau qui
+        # ne garde rien — une campagne de mutation l'a montre, le retirer ne
+        # faisait echouer aucun test.
         promesse="L'essentiel, a garder a cote de soi", blocs=sections,
         tableaux=[livraison.Tableau(
             nom="memo", colonnes=["Bloc", "Genre", "Ligne"],
@@ -149,8 +161,30 @@ def _markdown_bloc(bloc: Dict[str, Any]) -> str:
     return "\n".join("- {}".format(l) for l in bloc["lignes"])
 
 
-def _mise_en_page(bloc: Dict[str, Any]):
+def _mise_en_page(bloc: Dict[str, Any], premier: bool = False):
+    """Un bloc de memo, qui ENCHAINE au lieu d'ouvrir une page.
+
+    Le moteur commun ecrit le titre d'un bloc en corps de chapitre, et un
+    titre de niveau 1 ouvre une nouvelle page. Quatre blocs faisaient donc
+    quatre pages, plus la couverture, plus un sommaire : six pages pour une
+    antiseche, alors que ce module dit en tete « l'antiseche d'une ou deux
+    pages » et « un memo de neuf pages n'est plus un memo, c'est un ebook
+    rate ». Le code faisait exactement ce que sa docstring interdisait.
+
+    Un memo se lit a plat, d'un coup d'oeil : ses blocs se suivent.
+
+    « premier » n'est pas un detail. La premiere version supprimait TOUS les
+    sauts de page, et le memo tombait a une seule page — le compte exact que
+    la docstring reclame. Il a fallu ouvrir le PDF pour voir que le contenu
+    s'imprimait PAR-DESSUS la couverture, texte sombre sur fond sombre. Le
+    seul saut qui compte est celui-la.
+    """
+
     def rendre(doc) -> None:
+        if premier:
+            doc.nouvelle_page()
+        # Niveau 2 : lisible comme un intitule, sans ouvrir de page.
+        doc.titre(bloc["titre"], 2, sommaire=False)
         if bloc["genre"] == "etapes":
             for index, ligne in enumerate(bloc["lignes"], 1):
                 doc.paragraphe("{}. {}".format(index, ligne), taille=10)

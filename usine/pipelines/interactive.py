@@ -462,6 +462,10 @@ def produire(ctx: Contexte, sections: int = 0) -> Dict[str, Any]:
     fins = [s for s in carte if s["fin"]]
     produit = livraison.Produit(
         type="interactive", titre=titre,
+        # Un livre-jeu se navigue par NUMEROS de section, pas par
+        # sommaire : son sommaire listait deux entrees sur sept
+        # pages — « Comment lire ce livre » et « Le livre ».
+        sommaire=False,
         sous_titre="{} sections, {} fins".format(len(carte), len(fins)),
         promesse=bible.get("premisse", ""),
         blocs=[

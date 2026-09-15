@@ -191,7 +191,8 @@ def _exporter(ctx: Contexte, titre: str, questions: List[Dict[str, Any]],
         rendu_html=_html_corrige(questions)))
 
     produit = livraison.Produit(
-        type="quiz", titre=titre, sous_titre=sous_titre,
+        type="quiz",
+        sommaire=False, titre=titre, sous_titre=sous_titre,
         promesse="Se tester, et comprendre ses erreurs", blocs=blocs,
         tableaux=[livraison.Tableau(
             nom="questions",
