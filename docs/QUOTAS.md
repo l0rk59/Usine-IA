@@ -344,3 +344,37 @@ Les identifiants retirés sont inscrits dans `MODELES_RETIRES`
 > comptage par modèle. La même donnée périssable à un deuxième endroit : ils
 > ont cassé le jour où Google a retiré ses « 2.5 ». Ils lisent désormais la
 > configuration — ce qui est testé, c'est le comptage, pas un identifiant.
+
+## « Rien à réparer » ne veut pas dire « tout va bien »
+
+Après correction des identifiants, le rapport donnait :
+
+```
+[ok] Aucun identifiant mort : rien a reparer.
+```
+
+C'était **exact**, et trompeur. Au même instant : GitHub Models retiré (410),
+Cerebras à crédit épuisé (402), Mistral et OpenRouter à quota atteint (429),
+Pollinations à budget épuisé.
+
+La réparation avait raison — aucune de ces pannes ne se corrige en changeant
+de modèle. Mais elle les écartait **en silence**, et son verdict se lisait
+comme un feu vert.
+
+C'est exactement la confusion que ce dépôt passe son temps à supprimer, et
+qu'il avait déjà nommée pour `modeles_disparus` : *« personne n'a répondu » ne
+doit pas se lire « tout va bien »*. Écrite une fois, la règle n'a pas suivi
+jusqu'au contrôle suivant.
+
+Le rapport distingue désormais quatre états :
+
+| état | ce que ça veut dire | le geste |
+|---|---|---|
+| **réparé** | identifiant mort, remplaçant appelé et retenu | rien |
+| **repli** | aucun modèle de ce rang ne répond, un autre a été pris | vérifier que ce rôle reste acceptable |
+| **écarté** | quota, crédit, service retiré | un quota se recharge, un crédit s'achète, un service retiré ne revient pas |
+| **vivant** | le modèle configuré répond | rien |
+
+Et le cas qui ne doit surtout pas passer pour un succès a désormais sa propre
+phrase : *« Aucun identifiant mort — mais aucun modèle n'a répondu non plus.
+Ce contrôle ne dit rien. »*

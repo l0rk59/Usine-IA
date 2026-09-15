@@ -237,6 +237,13 @@ def reparer_modeles(timeout: int = 30) -> Dict[str, Any]:
 
     repares: List[Dict[str, Any]] = []
     sans_recours: List[Dict[str, Any]] = []
+    # Ce que la reparation ECARTE, et pourquoi. Sans cette liste, un rapport
+    # « aucun identifiant mort : rien a reparer » se lit « tout va bien »,
+    # alors qu'un service ferme, un credit epuise et deux quotas atteints
+    # peuvent se cacher derriere. C'est la confusion que ce depot passe son
+    # temps a supprimer : « personne n'a repondu » n'est pas « tout va bien ».
+    ecartes: List[Dict[str, Any]] = []
+    vivants: List[Dict[str, Any]] = []
     for fournisseur in config.active_providers():
         if fournisseur.local:
             continue
@@ -253,13 +260,22 @@ def reparer_modeles(timeout: int = 30) -> Dict[str, Any]:
                 llm.essai_direct(fournisseur, actuel, timeout=timeout)
                 if actuel not in confirmes:
                     confirmes.append(actuel)
+                vivants.append({"fournisseur": fournisseur.name, "role": role,
+                                "modele": actuel})
                 continue  # il repond : rien a reparer
             except HttpErreur as exc:
                 if not llm._modele_inconnu(exc):
                     # Quota, credit, panne : changer de modele n'y peut rien,
-                    # et le faire masquerait la vraie cause.
+                    # et le faire masquerait la vraie cause. On le DIT quand
+                    # meme : c'est une panne, simplement pas de celles qu'on
+                    # repare ici.
+                    ecartes.append({"fournisseur": fournisseur.name,
+                                    "role": role, "modele": actuel,
+                                    "cause": _nommer_le_refus(exc)})
                     continue
-            except Exception:
+            except Exception as exc:
+                ecartes.append({"fournisseur": fournisseur.name, "role": role,
+                                "modele": actuel, "cause": "injoignable"})
                 continue
             if servis is None:
                 servis = module_modeles.catalogue(fournisseur) or []
@@ -316,7 +332,8 @@ def reparer_modeles(timeout: int = 30) -> Dict[str, Any]:
             else:
                 sans_recours.append({"fournisseur": fournisseur.name,
                                      "role": role, "modele": actuel})
-    return {"repares": repares, "sans_recours": sans_recours}
+    return {"repares": repares, "sans_recours": sans_recours,
+            "ecartes": ecartes, "vivants": vivants}
 
 
 def _nommer_le_refus(exc: Any) -> str:

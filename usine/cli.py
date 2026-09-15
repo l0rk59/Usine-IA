@@ -2147,8 +2147,34 @@ def cmd_docteur(args: argparse.Namespace) -> int:
             alerte("{} / {} : « {} » ne repond pas, et rien dans son "
                    "catalogue ne le remplace.".format(
                        ligne["fournisseur"], ligne["role"], ligne["modele"]))
+        # Ce qui a ete ECARTE : ce n'est pas reparable ici, mais le taire
+        # ferait lire « rien a reparer » comme « tout va bien ».
+        par_cause = {}
+        for ligne in bilan.get("ecartes", []):
+            par_cause.setdefault((ligne["fournisseur"], ligne["cause"]),
+                                 []).append(ligne["role"])
+        if par_cause:
+            print()
+            for (fournisseur, cause), roles in sorted(par_cause.items()):
+                alerte("{} : {} — {} role(s) non verifiable(s) ici."
+                       .format(fournisseur, cause, len(roles)))
+            print("      Ces pannes-la ne se reparent pas en changeant de "
+                  "modele :")
+            print("      un quota se recharge, un credit s'achete, un service "
+                  "retire ne revient pas.")
+        vivants = bilan.get("vivants", [])
+        if vivants:
+            noms = sorted({l["fournisseur"] for l in vivants})
+            print()
+            ok("{} modele(s) repondent, chez : {}".format(
+                len(vivants), ", ".join(noms)))
         if not bilan["repares"] and not bilan["sans_recours"]:
-            ok("Aucun identifiant mort : rien a reparer.")
+            if par_cause and not vivants:
+                # Le cas qui ne doit surtout pas se lire « tout va bien ».
+                alerte("Aucun identifiant mort — mais aucun modele n'a "
+                       "repondu non plus. Ce controle ne dit rien.")
+            else:
+                ok("Aucun identifiant mort : rien a reparer.")
         elif bilan["repares"]:
             print("\n      Ces choix sont gardes pour les prochaines "
                   "fabrications.")

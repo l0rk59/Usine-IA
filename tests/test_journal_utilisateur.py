@@ -401,6 +401,52 @@ class LaReparationEssaieAvantDeRetenir(unittest.TestCase):
             self.assertEqual(ligne["apres"], vivant)
             self.assertTrue(ligne["repli"])
 
+    def test_ce_qui_est_ecarte_est_dit(self):
+        """« Rien a reparer » ne doit pas se lire « tout va bien ».
+
+        Rapport du 15/09/2026, apres correction des identifiants : « Aucun
+        identifiant mort : rien a reparer » — alors qu'un service etait
+        ferme (410), un credit epuise et deux quotas atteints. La reparation
+        avait raison, et le rapport donnait tort a la realite.
+
+        C'est la confusion que ce depot passe son temps a supprimer :
+        « personne n'a repondu » n'est pas « tout va bien ».
+        """
+        from usine.core import diagnostic
+
+        fournisseur = config.PROVIDERS_BY_NAME["mistral"]
+
+        def essai(p, modele, timeout=30):
+            raise HttpErreur(429, "Too Many Requests")
+
+        with mock.patch.object(diagnostic.config, "active_providers",
+                               return_value=[fournisseur]), \
+             mock.patch("usine.core.llm.essai_direct", side_effect=essai):
+            bilan = diagnostic.reparer_modeles()
+
+        self.assertEqual(bilan["repares"], [])
+        self.assertEqual(bilan["sans_recours"], [])
+        self.assertTrue(bilan["ecartes"],
+                        "un quota atteint doit etre DIT, pas tu")
+        self.assertEqual({l["cause"] for l in bilan["ecartes"]},
+                         {"quota atteint"})
+        self.assertEqual(bilan["vivants"], [],
+                         "aucun modele n'a repondu : ne pas le pretendre")
+
+    def test_un_modele_qui_repond_est_compte_comme_vivant(self):
+        """L'autre moitie : sans cette liste, on ne peut pas distinguer
+        « tout repond » de « personne n'a pu etre interroge »."""
+        from usine.core import diagnostic
+
+        fournisseur = config.PROVIDERS_BY_NAME["mistral"]
+        with mock.patch.object(diagnostic.config, "active_providers",
+                               return_value=[fournisseur]), \
+             mock.patch("usine.core.llm.essai_direct", return_value="OK"):
+            bilan = diagnostic.reparer_modeles()
+        self.assertEqual(bilan["ecartes"], [])
+        self.assertEqual({l["fournisseur"] for l in bilan["vivants"]},
+                         {"mistral"})
+
     def test_un_quota_atteint_ne_declenche_pas_de_remplacement(self):
         """Changer de modele n'y peut rien, et le faire masquerait la vraie
         cause : c'est le compte qui est a sec, pas l'identifiant."""
