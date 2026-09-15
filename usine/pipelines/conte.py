@@ -30,14 +30,64 @@ from . import fiction
 from .base import (Contexte, nettoyer_titre, preparer,
                    sans_titres, terminer)
 
-# Tranche d'age -> (pages par defaut, mots par page, mots par phrase demandes).
-# Les deux premiers chiffres suivent les longueurs d'album relevees dans
-# « fiction.MOTS_ATTENDUS ». Le troisieme est une CONSIGNE, pas une mesure :
-# c'est ce qu'on demande au modele, et le controle verifie qu'il s'y tient.
+# Tranche d'age -> ce qu'un album de cette tranche contient vraiment.
+#
+# PREMIERE VERSION : ces chiffres sortaient de ma tete. Le commentaire disait
+# honnetement que le plafond de mots par phrase etait « une consigne, pas une
+# mesure » — mais les pages et les mots par page, eux, etaient presentes comme
+# des faits sans l'etre. Corrige le 15/09/2026 contre des sources reelles.
+#
+# PAGES. L'album standard fait TRENTE-DEUX pages, pages liminaires comprises,
+# ce qui laisse environ quatorze doubles-pages pour l'histoire. C'est la norme
+# de la SCBWI et le format le plus accepte en edition traditionnelle comme
+# independante. Vingt-quatre et quarante existent ; trente-deux domine.
+# J'avais ecrit douze et seize.
+#
+# MOTS. Pour trois a cinq ans : cent a cinq cents mots POUR TOUT L'ALBUM,
+# environ trois cents en moyenne. Pour quatre a huit ans : cinq cents mots
+# typiques, fourchette de quatre cents a huit cents. Les « mots par page »
+# ci-dessous en decoulent — c'est le total divise par quatorze, pas un chiffre
+# invente.
+#
+# PHRASES. Les recherches de lisibilite donnent deux reperes chiffres : une
+# phrase de HUIT mots est comprise a pres de cent pour cent, une phrase de
+# QUATORZE a plus de quatre-vingt-dix pour cent. Et pour les premiers
+# lecteurs, les phrases courantes font trois a six mots, les plus longues
+# quatre a huit. Les plafonds ci-dessous sont poses sur ces deux reperes.
+# J'avais ecrit dix, quatorze et vingt.
+#
+# Ce que ces chiffres restent : des CONSIGNES donnees au modele. Le controle
+# mesure si la reponse s'y tient — il ne pretend pas que huit mots soient une
+# verite sur un enfant de quatre ans.
+SOURCES = {
+    "TRANCHES": (
+        "Table assemblee le 15/09/2026 a partir des trois releves ci-dessous "
+        "— format de l'album, longueur totale, reperes de lisibilite. Aucun "
+        "de ses chiffres n'est pose a la main."),
+    "pages": (
+        "Format standard de l'album : 32 pages, soit environ 14 doubles-pages "
+        "d'histoire. Norme SCBWI, relevee le 15/09/2026."),
+    "mots_total": (
+        "Longueurs d'album relevees le 15/09/2026 : 100 a 500 mots pour les "
+        "3-5 ans (moyenne ~300), 400 a 800 pour les 4-8 ans (~500 typique)."),
+    "mots_phrase": (
+        "Reperes de lisibilite releves le 15/09/2026 : une phrase de 8 mots "
+        "est comprise a pres de 100 %, une de 14 a plus de 90 %. Les premiers "
+        "lecteurs lisent des phrases de 3 a 6 mots, jusqu'a 8."),
+}
+
 TRANCHES: Dict[str, Dict[str, int]] = {
-    "3-5 ans": {"pages": 12, "mots_page": 35, "mots_phrase": 10},
-    "6-8 ans": {"pages": 16, "mots_page": 70, "mots_phrase": 14},
-    "9-12 ans": {"pages": 20, "mots_page": 140, "mots_phrase": 20},
+    # 300 mots sur 14 doubles-pages, phrases au repere « comprises a 100 % ».
+    "3-5 ans": {"pages": 14, "mots_page": 21, "mots_phrase": 8,
+                "mots_total": 300},
+    # 500 mots sur 14 doubles-pages, meme repere : c'est encore un album.
+    "6-8 ans": {"pages": 14, "mots_page": 36, "mots_phrase": 8,
+                "mots_total": 500},
+    # Au-dela, ce n'est plus un album mais un premier roman illustre : les
+    # « early readers » vont de mille a cinq mille mots (voir
+    # « fiction.MOTS_ATTENDUS »). Le second repere de lisibilite s'applique.
+    "9-12 ans": {"pages": 20, "mots_page": 120, "mots_phrase": 14,
+                 "mots_total": 2400},
 }
 TRANCHE_DEFAUT = "6-8 ans"
 PAGES_MIN, PAGES_MAX = 6, 40

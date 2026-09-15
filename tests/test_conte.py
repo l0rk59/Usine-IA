@@ -42,7 +42,9 @@ class LeTexteEstCompareALaConsigneQuiLAProduit(unittest.TestCase):
                            "que toute la foret avait change de couleur."}]
         mesure = conte.mesurer_l_age(pages, "3-5 ans")
         lectures = conte.lire_l_age(mesure)
-        self.assertTrue(any("depassent les 10 mots" in l for l in lectures),
+        # Huit mots : le repere « comprise a pres de cent pour cent ». La
+        # premiere version disait dix, un chiffre que personne n'avait mesure.
+        self.assertTrue(any("depassent les 8 mots" in l for l in lectures),
                         lectures)
 
     def test_la_meme_phrase_passe_pour_une_tranche_plus_agee(self):

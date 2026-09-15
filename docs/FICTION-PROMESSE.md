@@ -142,10 +142,58 @@ Ce chiffre ne pilote rien. Il rend une **mesure** :
 L'usine n'a pas de quoi trancher si un format court est un choix ou un
 accident. Un test vérifie que le mot « trop court » n'y apparaît pas.
 
-## Données recopiées, donc périssables
+## Correction du 15/09/2026 : ces listes étaient inventées
 
-Comme les quotas de `config.py`. Les listes de genres, de sous-genres et de
-tropes sont un **vocabulaire de départ**, pas une vérité. Elles servent à
-proposer, jamais à interdire : un sous-genre absent de la liste reste
-saisissable, et il est gardé tel quel — « romantasy » n'existait pas quand ces
-listes ont commencé.
+Reproche reçu, et exact : *« tu as inventé beaucoup, je voulais du réel, tu
+aurais pu chercher sur internet pour ça »*.
+
+La première version de ce module portait en commentaire « données recopiées,
+donc périssables ». **Recopiées de personne.** Les genres, les sous-genres, les
+soixante-dix tropes et les tranches d'âge d'un album sortaient de ma tête. Le
+dépôt refuse un pourcentage énoncé sans marqueur de source ; il n'avait rien
+pour refuser une *liste* énoncée sans source — et c'est le même défaut à plus
+grande échelle, parce qu'un sous-genre inventé envoie fabriquer pour un rayon
+qui n'existe pas.
+
+### Ce qui remplace quoi
+
+| donnée | avant | maintenant |
+|---|---|---|
+| catégories | 7 genres de mon cru | les catégories de premier niveau de la fiction **chez Amazon**, telles qu'elles s'appellent |
+| sous-genres | ~40 traduits en français | ceux qu'une source nomme, en anglais — c'est le nom du rayon |
+| tropes | ~70 inventés, 7 genres | les 8 les plus cherchés, **romance seulement** |
+| fin exigée en romance | ma règle | définition **RWA** : *« a central love story and an emotionally satisfying and optimistic ending »* |
+| album : pages | 12 et 16 | **14 doubles-pages** (standard 32 pages, norme SCBWI) |
+| album : mots/phrase | 10, 14, 20 | **8** (comprise à ~100 %) et **14** (à plus de 90 %) |
+
+Les tropes sont maintenant **dans la langue où ils circulent**. Un lecteur
+francophone tape « enemies to lovers », pas « ennemis puis amants » : c'est
+ainsi qu'il cherche, et c'est ce qui décide de la découvrabilité.
+
+### Ce qui n'a pas de source le dit
+
+Deux cas assumés :
+
+- **les ambiances** — aucune source ne publie de liste. Leur entrée dans
+  `SOURCES` commence par `SANS SOURCE`. Les garder est un choix ; les
+  présenter comme un relevé serait un mensonge ;
+- **les tropes hors romance** — aucune source consultée ne les recense avec la
+  même régularité. `tropes_du_genre("policier")` rend donc **rien**, et
+  l'invite n'en propose aucun plutôt que d'en proposer de faux. Combler le
+  trou serait retomber dans le défaut que cette correction répare.
+
+La liste des catégories est **partielle par construction**, et le dire fait
+partie de la donnée : Amazon compte plus de seize mille catégories et n'en
+publie aucune taxinomie complète.
+
+### Le garde-fou qui empêche que ça recommence
+
+`tests/test_sources_des_donnees.py` lit la structure du module et exige que
+**chaque table de données ait son entrée dans `SOURCES`**, avec une date, un
+aveu `SANS SOURCE`, ou la mention « pas une donnée de marché ». Il vérifie
+aussi les **valeurs** : qu'un chiffre ne change pas sans que sa source change
+— sinon on réinventerait sous couvert de provenance.
+
+Et comme les deux fois précédentes, la campagne de mutation a montré qu'un
+détecteur vert ne se garde pas lui-même : il a fallu lui donner un témoin qui
+appelle **la même fonction** que le test.

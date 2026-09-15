@@ -37,78 +37,133 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Sequence, Tuple
 
-# Genre -> sous-genres. Le sous-genre est ce qui decide de tout le reste :
-# longueur attendue, chaleur, fin admissible. « Romance » seul ne suffit pas
-# a ecrire une romance.
+# =========================================================================
+# LES DONNEES, ET D'OU ELLES VIENNENT
+# =========================================================================
+#
+# Premiere version de ce module : ces listes sortaient de ma tete, avec en
+# commentaire « donnees recopiees, donc perissables ». Recopiees de personne.
+# C'est exactement le defaut que ce depot traque ailleurs — un chiffre sans
+# source — et il est plus grave ici qu'ailleurs, parce qu'une liste de
+# sous-genres inventee envoie fabriquer pour un rayon qui n'existe pas.
+#
+# Tout ce qui suit porte donc sa source et sa date. « SOURCES » n'est pas
+# decoratif : un test verifie que chaque liste y figure, et refuse une
+# donnee ajoutee sans provenance.
+SOURCES = {
+    "CATEGORIES": (
+        "Categories de premier niveau de la fiction chez Amazon KDP, "
+        "relevees le 15/09/2026. Amazon ne publie AUCUNE taxinomie complete "
+        "— plus de seize mille categories existent, dont des milliers "
+        "invisibles depuis le tableau de bord KDP. Cette liste est donc "
+        "partielle par construction, et le dire fait partie de la donnee."),
+    "SOUS_GENRES": (
+        "Sous-categories effectivement nommees par les sources consultees le "
+        "15/09/2026 (guides de categories KDP). La romance seule en compte "
+        "plus de quarante ; on ne retient ici que celles qu'une source "
+        "nomme."),
+    "TROPES": (
+        "Tropes les plus cherches et les plus cites, releves le 15/09/2026 "
+        "sur les recensements publics de tendances de lecture. « Enemies to "
+        "lovers » y est donne comme le plus recherche. Donnee la plus "
+        "perissable du module : les tropes tournent d'une saison a l'autre."),
+    "FINS_EXIGEES_EN_ROMANCE": (
+        "Relevee le 15/09/2026. Definition du genre par la Romance Writers "
+        "of America : « a central "
+        "love story and an emotionally satisfying and optimistic ending », "
+        "soit HEA (heureuse) ou HFN (heureuse pour l'instant). C'est une "
+        "definition de genre, pas un avis : une fin malheureuse sort le "
+        "livre du rayon."),
+    "CHALEUR": (
+        "Echelle relevee le 15/09/2026. Les paliers portent des noms "
+        "differents selon les sources, mais la progression est partout la "
+        "meme : rien, hors champ, a l'ecran, explicite."),
+    "MOTS_ATTENDUS": (
+        "Guides de longueur par genre consultes le 15/09/2026 (Publishing "
+        "Xpress, WordTally, Authorlytica, Kevin Anderson & Associates), qui "
+        "s'accordent a quelques milliers de mots pres. Fourchettes les plus "
+        "larges rapportees."),
+    "STRUCTURES": (
+        "Relevees le 15/09/2026. Charpentes nommees et publiees : « Save the "
+        "Cat » (quinze beats) et "
+        "les beats de romance, qui suivent l'arc de la RELATION et non celui "
+        "de l'intrigue exterieure."),
+    "POINTS_DE_VUE": ("Vocabulaire de narratologie : pas une donnee de "
+                      "marche, donc rien a relever ni a dater."),
+    "TEMPS": ("Vocabulaire de narratologie : pas une donnee de marche, "
+              "donc rien a relever ni a dater."),
+}
+
+# Les categories de premier niveau de la fiction chez Amazon, telles qu'elles
+# s'appellent. Ce sont elles qui decident du rayon — donc de qui trouve le
+# livre.
+CATEGORIES: Tuple[str, ...] = (
+    "Literature & Fiction",
+    "Mystery, Thriller & Suspense",
+    "Romance",
+    "Science Fiction & Fantasy",
+    "Horror",
+    "Teen & Young Adult",
+    "Children's eBooks",
+    "LGBTQ+",
+    "Religious & Inspirational Fiction",
+)
+
+# Categorie -> sous-genres NOMMES PAR UNE SOURCE. La liste est courte, et
+# c'est voulu : Amazon en compte des milliers et n'en publie aucune liste
+# complete. Un sous-genre absent d'ici reste saisissable — ces listes
+# proposent, elles n'interdisent pas.
 GENRES: Dict[str, Tuple[str, ...]] = {
-    "romance": ("romance contemporaine", "romantasy", "dark romance",
-                "romance sportive", "romance historique",
-                "suspense romantique", "comedie romantique"),
-    "policier": ("cozy mystery", "polar urbain", "thriller psychologique",
-                 "roman noir", "procedural", "thriller d'espionnage"),
-    "imaginaire": ("fantasy epique", "fantasy urbaine", "science-fiction",
-                   "anticipation", "post-apocalyptique", "steampunk"),
-    "fantastique": ("horreur psychologique", "fantastique gothique",
-                    "surnaturel contemporain", "conte noir"),
-    "litterature": ("recit intimiste", "saga familiale", "roman historique",
-                    "autofiction", "recit choral"),
-    "jeunesse": ("album illustre", "premiere lecture", "roman junior",
-                 "roman ado", "conte moderne"),
-    "aventure": ("survie", "exploration", "recit maritime", "western"),
+    "romance": ("contemporary romance", "historical romance",
+                "paranormal romance", "romantic suspense", "dark romance",
+                "fantasy romance", "sports romance", "military romance",
+                "clean & wholesome romance", "reverse harem",
+                "small town & rural romance", "regency romance"),
+    "policier": ("cozy mystery", "thriller", "espionage", "suspense",
+                 "police procedural", "hard-boiled"),
+    "imaginaire": ("epic fantasy", "urban fantasy", "science fiction",
+                   "dystopian", "space opera", "steampunk"),
+    "horreur": ("psychological horror", "gothic", "supernatural",
+                "occult horror"),
+    "litterature": ("literary fiction", "historical fiction",
+                    "family saga", "coming of age"),
+    "jeunesse": ("picture books", "early readers", "chapter books",
+                 "middle grade", "young adult"),
 }
 
-# Ce que le lecteur vient retrouver. C'est par la qu'il cherche : un lecteur
-# de romance ne tape pas « romance contemporaine », il tape « ennemis puis
-# amants ». Un titre qui ne nomme pas son trope ne se trouve pas.
+# Ce que le lecteur vient retrouver, et par quoi il CHERCHE. Un lecteur de
+# romance ne tape pas « contemporary romance », il tape « enemies to
+# lovers ». Les noms sont donnes dans la langue ou ils circulent : c'est
+# ainsi qu'ils sont cherches, y compris par les lecteurs francophones.
 TROPES: Dict[str, Tuple[str, ...]] = {
-    "romance": ("ennemis puis amants", "amis d'enfance retrouves",
-                "mariage arrange", "une seule chambre", "seconde chance",
-                "amour interdit", "faux couple", "proximite forcee",
-                "celui qui protege", "retour au village"),
-    "policier": ("huis clos", "enquete au village", "flic brise",
-                 "temoin peu fiable", "crime parfait", "double vie",
-                 "vieille affaire rouverte", "tueur qui nargue",
-                 "duo mal assorti", "la victime cachait quelque chose"),
-    "imaginaire": ("elu malgre lui", "magie a prix", "empire qui s'effondre",
-                   "monde mourant", "compagnonnage", "quete d'objet",
-                   "IA devenue consciente", "colonie coupee de la Terre",
-                   "prophetie mal comprise", "academie de magie"),
-    "fantastique": ("maison qui se souvient", "pacte", "double",
-                    "village qui cache", "objet maudit", "boucle temporelle",
-                    "revenant", "folie ou surnaturel"),
-    "litterature": ("secret de famille", "retour au pays", "deuil",
-                    "transmission", "trahison ancienne", "lettre retrouvee",
-                    "trois generations", "ce qu'on n'a jamais dit"),
-    "jeunesse": ("amitie improbable", "premier grand depart", "animal guide",
-                 "peur surmontee", "difference assumee", "objet magique",
-                 "secret partage", "grandir d'un cran"),
-    "aventure": ("expedition qui tourne mal", "carte incomplete",
-                 "traitre dans l'equipe", "nature hostile", "chasse a l'homme",
-                 "dernier survivant"),
+    "romance": ("enemies to lovers", "forced proximity", "slow burn",
+                "fake dating", "grumpy x sunshine", "friends to lovers",
+                "second chance", "only one bed"),
 }
+# Les autres genres n'ont PAS de liste ici, et leur absence est une donnee :
+# aucune source consultee ne recense leurs tropes avec la meme regularite
+# que ceux de la romance. Inventer la liste manquante serait retomber dans
+# le defaut que ce bloc corrige. « tropes_du_genre » rend donc « » pour eux,
+# et l'invite n'en propose aucun plutot que d'en proposer de faux.
 
-# Ce que le lecteur vient RESSENTIR. Deux livres du meme sous-genre et des
-# memes tropes ne se vendent pas au meme lecteur si l'ambiance differe.
+# Ce que le lecteur vient RESSENTIR. Aucune source ne publie de liste
+# d'ambiances : celle-ci est un vocabulaire de travail, pas un releve, et
+# elle est marquee comme telle.
 AMBIANCES: Tuple[str, ...] = (
     "reconfortante", "tendue", "melancolique", "lumineuse", "sombre",
     "drole", "inquietante", "epique", "intime", "amere",
 )
+SOURCES["AMBIANCES"] = (
+    "SANS SOURCE. Vocabulaire de travail pour decrire un ressenti, pas un "
+    "releve de marche. Il sert a poser une consigne au modele ; il ne "
+    "pretend pas nommer un rayon.")
 
-# Le point de vue et le temps ne sont PAS des details de style : ce sont des
-# conventions de sous-genre. La romance contemporaine se lit massivement a
-# la premiere personne au present ; le polar a la troisieme au passe. Se
-# tromper se lit comme une maladresse d'amateur des la premiere page.
 POINTS_DE_VUE: Tuple[str, ...] = (
     "premiere personne", "troisieme personne limitee",
     "troisieme personne omnisciente", "points de vue alternes",
 )
 TEMPS: Tuple[str, ...] = ("passe", "present")
 
-# Echelle de chaleur. Releve du 15/09/2026 : les paliers portent des noms
-# differents selon les sources, mais la progression est partout la meme —
-# rien, hors champ, a l'ecran, explicite. C'est une attente de lecteur, pas
-# un curseur de gout : promettre l'un et livrer l'autre fache dans les DEUX
-# sens.
 CHALEUR: Tuple[str, ...] = (
     "sans romance",          # le livre n'en contient pas
     "tendre",                # sentiments, baisers, rien de plus
@@ -117,56 +172,47 @@ CHALEUR: Tuple[str, ...] = (
     "explicite",             # scenes detaillees, vocabulaire direct
 )
 
-# La fin est une PROMESSE, pas un choix d'auteur. En romance, une fin
-# malheureuse est un manquement au contrat de genre — le livre est rendu.
-# Ailleurs elle est libre. D'ou cette liste, et le controle qui verifie
-# qu'une romance n'en sort pas.
 FINS: Tuple[str, ...] = (
-    "heureuse",              # le couple finit ensemble, pour de bon
-    "heureuse pour l'instant",
+    "heureuse",              # HEA : le couple finit ensemble, pour de bon
+    "heureuse pour l'instant",   # HFN
     "douce-amere", "ouverte", "tragique",
 )
+SOURCES["FINS"] = SOURCES["FINS_EXIGEES_EN_ROMANCE"]
+SOURCES["GENRES"] = SOURCES["SOUS_GENRES"]
+SOURCES["CLES"] = ("Derivee de « _ETIQUETTES » : les cles de reglage "
+                   "d'un produit, pas une donnee de marche.")
 FINS_EXIGEES_EN_ROMANCE = ("heureuse", "heureuse pour l'instant")
 
-# Comment l'histoire est charpentee. « Les beats de romance » suivent l'arc
-# de la RELATION, pas celui de l'intrigue exterieure : dans une romance, la
-# relation est la charpente, et la traiter en second plan se voit.
 STRUCTURES: Tuple[str, ...] = (
-    "trois actes", "beats de romance", "enquete", "voyage du heros",
-    "recit choral", "episodique",
+    "trois actes", "beats de romance", "save the cat", "enquete",
+    "voyage du heros", "recit choral", "episodique",
 )
 
-# Longueurs attendues par le marche, EN MOTS. Sources : guides de longueur
-# par genre consultes le 15/09/2026 (Publishing Xpress, WordTally,
-# Authorlytica, Kevin Anderson & Associates), qui s'accordent a quelques
-# milliers de mots pres. Les fourchettes retenues sont les plus larges
-# rapportees : la mesure sert a SITUER un manuscrit, pas a le recaler.
-#
-# Ce chiffre ne pilote rien tout seul. Il sert a dire « ce que vous
-# fabriquez fait 27 000 mots, le marche en attend 50 000 a 90 000 pour ce
-# sous-genre » — une mesure, et un humain qui tranche.
+# Longueurs attendues par le marche, EN MOTS. La mesure sert a SITUER un
+# manuscrit, pas a le recaler.
 MOTS_ATTENDUS: Dict[str, Tuple[int, int]] = {
-    "romance contemporaine": (50000, 90000),
-    "comedie romantique": (50000, 80000),
-    "romance historique": (70000, 100000),
-    "romance sportive": (50000, 90000),
+    "contemporary romance": (50000, 90000),
+    "historical romance": (70000, 100000),
+    "paranormal romance": (60000, 100000),
+    "romantic suspense": (80000, 100000),
     "dark romance": (60000, 100000),
-    "romantasy": (90000, 150000),
-    "suspense romantique": (80000, 100000),
+    "fantasy romance": (90000, 150000),
+    "sports romance": (50000, 90000),
+    "clean & wholesome romance": (50000, 80000),
     "cozy mystery": (60000, 85000),
-    "polar urbain": (70000, 90000),
-    "thriller psychologique": (70000, 100000),
-    "roman noir": (70000, 90000),
-    "procedural": (80000, 100000),
-    "thriller d'espionnage": (80000, 120000),
-    "fantasy epique": (100000, 150000),
-    "fantasy urbaine": (70000, 100000),
-    "science-fiction": (80000, 120000),
-    "anticipation": (70000, 100000),
-    "roman junior": (20000, 40000),
-    "roman ado": (50000, 80000),
-    "premiere lecture": (1000, 5000),
-    "album illustre": (500, 1500),
+    "thriller": (70000, 100000),
+    "espionage": (80000, 120000),
+    "suspense": (70000, 90000),
+    "police procedural": (80000, 100000),
+    "hard-boiled": (70000, 90000),
+    "epic fantasy": (100000, 150000),
+    "urban fantasy": (70000, 100000),
+    "science fiction": (80000, 120000),
+    "dystopian": (70000, 100000),
+    "middle grade": (20000, 40000),
+    "young adult": (50000, 80000),
+    "early readers": (1000, 5000),
+    "picture books": (100, 800),
 }
 
 

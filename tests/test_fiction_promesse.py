@@ -38,7 +38,11 @@ class LeVocabulaireDeLaFiction(unittest.TestCase):
 
     def test_le_genre_se_deduit_du_sous_genre(self):
         self.assertEqual(fiction.genre_du_sous_genre("cozy mystery"), "policier")
-        self.assertEqual(fiction.genre_du_sous_genre("Romantasy"), "romance")
+        # « fantasy romance » est le nom du rayon ; « romantasy » est le mot
+        # de la conversation. Le second n'est pas dans la liste : les listes
+        # de ce module ne portent que ce qu'une source nomme.
+        self.assertEqual(fiction.genre_du_sous_genre("Fantasy Romance"),
+                         "romance")
 
     def test_un_sous_genre_inconnu_ne_rend_pas_de_genre(self):
         """Le marche invente des sous-genres plus vite qu'on ne met a jour
@@ -48,7 +52,7 @@ class LeVocabulaireDeLaFiction(unittest.TestCase):
         self.assertEqual(fiction.genre_du_sous_genre(""), "")
 
     def test_la_longueur_est_situee_pas_jugee(self):
-        texte = fiction.situer_la_longueur(27000, "romance contemporaine")
+        texte = fiction.situer_la_longueur(27000, "contemporary romance")
         self.assertIn("27000", texte)
         self.assertIn("50000", texte)
         # Une MESURE, pas un verdict : l'usine n'a pas de quoi trancher si
@@ -225,7 +229,8 @@ class LesDeuxCheminsDeposentLaPromesse(unittest.TestCase):
 
         ctx = base.Contexte(sujet="x")
         fiction.poser_la_promesse(
-            ctx, argparse.Namespace(sous_genre="romantasy", fin="heureuse"))
+            ctx, argparse.Namespace(sous_genre="fantasy romance",
+                                    fin="heureuse"))
         lu = fiction.promesse_du_contexte(ctx)
         self.assertEqual(lu["genre"], "romance")
         self.assertEqual(lu["fin"], "heureuse")
@@ -350,15 +355,23 @@ class LeVocabulaireDuGenreEstProposeQuandRienNEstImpose(unittest.TestCase):
     """
 
     def test_le_genre_connu_apporte_ses_tropes(self):
-        texte = fiction.promesse_pour_ia({"sous_genre": "cozy mystery"})
-        self.assertIn("huis clos", texte)
+        texte = fiction.promesse_pour_ia({"sous_genre": "dark romance"})
+        self.assertIn("enemies to lovers", texte)
 
     def test_des_tropes_imposes_ne_sont_pas_completes(self):
         """Proposer une liste a qui a deja choisi, c'est l'inviter a
         s'ecarter de son choix."""
         texte = fiction.promesse_pour_ia(
-            {"sous_genre": "cozy mystery", "tropes": "duo mal assorti"})
-        self.assertNotIn("huis clos", texte)
+            {"sous_genre": "dark romance", "tropes": "one bed"})
+        self.assertNotIn("enemies to lovers", texte)
+
+    def test_un_genre_sans_trope_recense_n_en_propose_aucun(self):
+        """Le cozy mystery a bien un genre — mais aucune source consultee ne
+        recense les tropes du policier. Le modele n'en recoit donc pas, au
+        lieu d'en recevoir d'inventes."""
+        texte = fiction.promesse_pour_ia({"sous_genre": "cozy mystery"})
+        self.assertIn("cozy mystery", texte)
+        self.assertNotIn("Aucun trope impose", texte)
 
     def test_un_genre_inconnu_n_apporte_aucune_liste(self):
         texte = fiction.promesse_pour_ia({"sous_genre": "biopunk lacustre"})
