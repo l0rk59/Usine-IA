@@ -287,3 +287,60 @@ masquerait la vraie cause — c'est le compte qui est à sec, pas l'identifiant.
 | `github` | HTTP 410 | **le service ferme** — rien à corriger |
 | `ollama` | HTTP 500 / 404 | serveur local, modèle non téléchargé |
 | `llamacpp` | injoignable | serveur local non lancé |
+
+## Trois rôles « sans recours » qui en avaient un
+
+Le rapport de réparation, même jour :
+
+```
+[ok] gemini / long     : « gemini-2.5-flash » -> « models/gemini-3.5-flash »
+[ok] gemini / standard : « gemini-2.5-flash » -> « models/gemini-3.5-flash »
+[!]  gemini / costaud  : « gemini-2.5-flash » ne repond pas,
+                         et rien dans son catalogue ne le remplace.
+```
+
+Les trois partent du **même identifiant mort**. Deux trouvent un remplaçant
+qui répond ; le troisième déclare qu'il n'y en a pas.
+
+Deux causes, et la seconde était invisible sans la première :
+
+1. **Le classement par rôle met les gros modèles en tête.** `costaud` veut le
+   plus fort ; le palier gratuit n'en sert aucun. Les quatre essais partaient
+   tous dessus sans jamais atteindre le petit modèle qui, lui, répond. La
+   borne passe à huit — chaque essai est un vrai appel, donc elle reste, mais
+   elle doit laisser sortir du haut du classement.
+
+2. **L'ordre des rôles décidait du sort.** `costaud` passe avant `long` et
+   `standard` dans l'ordre alphabétique : quand son tour est venu, rien
+   n'avait encore répondu. Un repli lu au fil de l'eau ne l'aurait pas sauvé.
+   D'où une **seconde passe**, une fois le fournisseur entier essayé : un rôle
+   sans solution reprend un modèle qui a déjà répondu ici même — y compris un
+   modèle déjà configuré pour un autre rôle et qui, lui, marchait.
+
+Ce n'est pas le meilleur modèle pour ce rôle — c'en est un qui **marche**, ce
+qui vaut mieux qu'un mort. Le rapport le dit : `(repli : aucun modèle de ce
+rang ne répond)`.
+
+## Les identifiants par défaut, corrigés sur mesure
+
+| fournisseur | rôle | avant (404) | après |
+|---|---|---|---|
+| gemini | standard, costaud, long | `gemini-2.5-flash` | `models/gemini-3.5-flash` |
+| gemini | rapide | `gemini-2.5-flash-lite` | `models/gemini-3.1-flash-lite` |
+| nvidia | rapide | `nvidia/nemotron-nano-3-30b-a3b` | `nvidia/nemotron-3.5-lightning-30b-a3b` |
+| nvidia | creatif | `writer/palmyra-creative-122b` | `meta/muse-glimmer-30b` |
+| nvidia | code | `mistralai/codestral-22b-instruct-v0.1` | `nvidia/nemotron-3-super-120b-a12b` |
+
+**Source : un seul compte, une seule date (15/09/2026).** Chaque remplaçant a
+été appelé sur ce compte-là et a répondu. Un autre palier peut ne pas servir
+les mêmes — c'est `usine docteur --reparer` qui tranche pour chaque
+installation, et ces valeurs ne sont qu'un point de départ moins faux que le
+précédent.
+
+Les identifiants retirés sont inscrits dans `MODELES_RETIRES`
+(`tests/test_routeur.py`) : un test refuse qu'ils reviennent.
+
+> Deux cas de ce même fichier recopiaient `gemini-2.5-flash` pour tester le
+> comptage par modèle. La même donnée périssable à un deuxième endroit : ils
+> ont cassé le jour où Google a retiré ses « 2.5 ». Ils lisent désormais la
+> configuration — ce qui est testé, c'est le comptage, pas un identifiant.

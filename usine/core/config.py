@@ -251,10 +251,19 @@ PROVIDERS: List[Provider] = [
         base_url="https://generativelanguage.googleapis.com/v1beta/openai",
         api_key_env="GEMINI_API_KEY",
         models={
-            "rapide": "gemini-2.5-flash-lite",
-            "standard": "gemini-2.5-flash",
-            "costaud": "gemini-2.5-flash",
-            "long": "gemini-2.5-flash",
+            # Les « 2.5 » ont ete retires : 404 sur les deux, mesure deux
+            # fois a un jour d'intervalle sur un compte reel (15/09/2026).
+            # Les remplacants ci-dessous ont ete APPELES sur ce compte-la et
+            # ont repondu. Le prefixe « models/ » est celui que le catalogue
+            # de Google emploie, et l'endpoint compatible OpenAI l'accepte.
+            #
+            # Source : un seul compte, une seule date. Un autre palier peut
+            # ne pas servir les memes : c'est « usine docteur --reparer » qui
+            # tranche pour chaque installation.
+            "rapide": "models/gemini-3.1-flash-lite",
+            "standard": "models/gemini-3.5-flash",
+            "costaud": "models/gemini-3.5-flash",
+            "long": "models/gemini-3.5-flash",
         },
         rpm=10,
         rpd=250,
@@ -267,9 +276,9 @@ PROVIDERS: List[Provider] = [
         # valeurs ci-dessous sont les plus basses rapportees, parce qu'une
         # sous-estimation coute une attente et une surestimation coute un 429.
         quotas={
-            "gemini-2.5-flash": Quota(rpm=10, rpd=250, tpm=250000,
+            "models/gemini-3.5-flash": Quota(rpm=10, rpd=250, tpm=250000,
                                       portee="modele"),
-            "gemini-2.5-flash-lite": Quota(rpm=15, rpd=1000, tpm=250000,
+            "models/gemini-3.1-flash-lite": Quota(rpm=15, rpd=1000, tpm=250000,
                                            portee="modele"),
         },
         signup="https://aistudio.google.com/apikey",
@@ -386,12 +395,18 @@ PROVIDERS: List[Provider] = [
         # role y a un sens, et « core.modeles » rattrape le prochain
         # renommage tout seul.
         models={
-            "rapide": "nvidia/nemotron-nano-3-30b-a3b",
+            # 404 sur le compte mesure le 15/09/2026. Celui-ci a repondu.
+            "rapide": "nvidia/nemotron-3.5-lightning-30b-a3b",
             "standard": "nvidia/nemotron-3-super-120b-a12b",
             "costaud": "nvidia/nemotron-3-ultra-550b-a55b",
             "long": "nvidia/nemotron-3.5-lightning-30b-a3b",
-            "creatif": "writer/palmyra-creative-122b",
-            "code": "mistralai/codestral-22b-instruct-v0.1",
+            # « writer/palmyra-creative-122b » FIGURE au catalogue public de
+            # NVIDIA — verifie, parmi 81 — et rend 404 sur le compte mesure,
+            # deux fois a un jour d'intervalle. Listé ne veut pas dire
+            # appelable : le catalogue public et ce qu'un palier sert sont
+            # deux choses differentes.
+            "creatif": "meta/muse-glimmer-30b",
+            "code": "nvidia/nemotron-3-super-120b-a12b",
             "raisonnement": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
         },
         rpm=40,

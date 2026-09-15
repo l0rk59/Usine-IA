@@ -45,8 +45,16 @@ class UneSubstitutionNeSeGardePasSurUnMensonge(unittest.TestCase):
     modele plus petit, definitivement, sans que rien ne le dise.
     """
 
-    CATALOGUE = ["writer/palmyra-creative-122b", "meta/muse-glimmer-30b",
-                 "nvidia/nemotron-3-super-120b-a12b"]
+    # Le modele refuse est celui reellement configure pour « creatif » : c'est
+    # la contradiction du fournisseur qu'on teste. Les deux autres sont
+    # neutres — recopier de vrais identifiants ferait casser ce module le
+    # jour ou la configuration les rattrape, ce qui est deja arrive.
+    CATALOGUE: list = []
+
+    @classmethod
+    def setUpClass(cls):
+        configure = config.PROVIDERS_BY_NAME["nvidia"].model_for("creatif")
+        cls.CATALOGUE = [configure, "atelier/autre-un", "atelier/autre-deux"]
 
     def setUp(self):
         modeles.oublier()
@@ -56,7 +64,7 @@ class UneSubstitutionNeSeGardePasSurUnMensonge(unittest.TestCase):
 
     def test_un_modele_encore_liste_ne_fige_pas_la_substitution(self):
         fournisseur = config.PROVIDERS_BY_NAME["nvidia"]
-        refuse = "writer/palmyra-creative-122b"
+        refuse = fournisseur.model_for("creatif")
         remplacant = modeles.substituer(fournisseur, "creatif", refuse)
         self.assertTrue(remplacant, "la fabrication en cours doit aboutir")
         self.assertNotEqual(remplacant, refuse)
@@ -74,7 +82,7 @@ class UneSubstitutionNeSeGardePasSurUnMensonge(unittest.TestCase):
         # « choisir » le reprenait, le remplacant valait le modele de depart,
         # et le cas ne distinguait plus rien.
         modeles.interroger = lambda f, timeout=10: [
-            "meta/muse-glimmer-30b", "nvidia/nemotron-3-super-120b-a12b"]
+            "atelier/remplacant-un", "atelier/remplacant-deux"]
         remplacant = modeles.substituer(fournisseur, "creatif",
                                         "writer/modele-retire-l-an-dernier")
         self.assertTrue(remplacant)
@@ -310,6 +318,88 @@ class LaReparationEssaieAvantDeRetenir(unittest.TestCase):
         for apres in retenus.values():
             self.assertTrue(apres.startswith("vivant"),
                             "un remplacant muet a ete retenu : " + apres)
+
+    def test_un_role_sans_candidat_reprend_ce_qui_a_deja_repondu(self):
+        """Rapport du 15/09/2026 : « gemini / costaud » repartait sans
+        remplacant alors que « long » et « standard » — partis du MEME
+        identifiant mort — venaient d'en trouver un qui repond.
+
+        Le classement par role met les gros modeles en tete ; le palier
+        gratuit ne les sert pas, et les quatre essais partaient tous dessus.
+        Un modele deja appele et qui a repondu ne coute rien a reprendre.
+        """
+        from usine.core import diagnostic
+
+        fournisseur = config.PROVIDERS_BY_NAME["gemini"]
+        # « costaud » passe avant « long » et « standard » dans l'ordre
+        # alphabetique : c'est ce qui rendait le defaut visible.
+        gros = ["gros-un", "gros-deux", "gros-trois", "gros-quatre"]
+        catalogue = gros + ["petit-qui-repond"]
+
+        def essai(p, modele, timeout=30):
+            if modele == "petit-qui-repond":
+                return "OK"
+            raise HttpErreur(404, "Not Found")
+
+        def classer(candidats, role):
+            """Le classement reel : « costaud » ne veut que des gros.
+
+            C'est exactement ce qui s'est passe — les autres roles
+            acceptaient le petit modele et l'ont trouve, « costaud » non.
+            """
+            if role == "costaud":
+                gros_restants = [m for m in gros if m in candidats]
+                return gros_restants[0] if gros_restants else ""
+            ordonnes = [m for m in gros if m in candidats]
+            ordonnes += [m for m in candidats if m not in gros]
+            return ordonnes[0] if ordonnes else ""
+
+        with mock.patch.object(diagnostic.config, "active_providers",
+                               return_value=[fournisseur]), \
+             mock.patch("usine.core.llm.essai_direct", side_effect=essai), \
+             mock.patch.object(modeles, "catalogue", return_value=catalogue), \
+             mock.patch.object(modeles, "choisir", side_effect=classer):
+            bilan = diagnostic.reparer_modeles()
+
+        roles = {l["role"] for l in bilan["repares"]}
+        self.assertEqual(bilan["sans_recours"], [],
+                         "un role repart sans remplacant alors qu'un modele "
+                         "vient de repondre chez le meme fournisseur")
+        self.assertEqual(roles, set(fournisseur.models),
+                         "tous les roles doivent etre reparés")
+        # Et le repli se DIT : ce n'est pas le meilleur modele pour ce role.
+        self.assertTrue(any(l.get("repli") for l in bilan["repares"]))
+
+    def test_un_modele_configure_qui_marche_sert_aussi_de_repli(self):
+        """L'autre moitie du repli, et elle manquait.
+
+        Un modele deja configure et qui REPOND n'a rien a reparer — mais il
+        reste une solution prouvee pour un role qui, lui, n'en a pas. Sans
+        le compter parmi les confirmes, la seconde passe repartait les mains
+        vides alors qu'un modele du meme fournisseur venait de repondre.
+        """
+        from usine.core import diagnostic
+
+        fournisseur = config.PROVIDERS_BY_NAME["gemini"]
+        vivant = fournisseur.model_for("rapide")
+
+        def essai(p, modele, timeout=30):
+            if modele == vivant:
+                return "OK"
+            raise HttpErreur(404, "Not Found")
+
+        with mock.patch.object(diagnostic.config, "active_providers",
+                               return_value=[fournisseur]), \
+             mock.patch("usine.core.llm.essai_direct", side_effect=essai), \
+             mock.patch.object(modeles, "catalogue", return_value=[vivant]), \
+             mock.patch.object(modeles, "choisir", return_value=""):
+            bilan = diagnostic.reparer_modeles()
+
+        self.assertEqual(bilan["sans_recours"], [],
+                         "un modele du meme fournisseur repondait pourtant")
+        for ligne in bilan["repares"]:
+            self.assertEqual(ligne["apres"], vivant)
+            self.assertTrue(ligne["repli"])
 
     def test_un_quota_atteint_ne_declenche_pas_de_remplacement(self):
         """Changer de modele n'y peut rien, et le faire masquerait la vraie

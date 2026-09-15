@@ -2135,9 +2135,14 @@ def cmd_docteur(args: argparse.Namespace) -> int:
               "  verrait qu'a la fabrication suivante.\n")
         bilan = _d.reparer_modeles()
         for ligne in bilan["repares"]:
-            ok("{} / {} : « {} » -> « {} »".format(
+            ok("{} / {} : « {} » -> « {} »{}".format(
                 ligne["fournisseur"], ligne["role"],
-                ligne["avant"], ligne["apres"]))
+                ligne["avant"], ligne["apres"],
+                # Un repli n'est pas le meilleur modele pour ce role : c'en
+                # est un qui marche. Le taire donnerait a croire que le
+                # catalogue a rendu l'equivalent.
+                "  (repli : aucun modele de ce rang ne repond)"
+                if ligne.get("repli") else ""))
         for ligne in bilan["sans_recours"]:
             alerte("{} / {} : « {} » ne repond pas, et rien dans son "
                    "catalogue ne le remplace.".format(

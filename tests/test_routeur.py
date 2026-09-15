@@ -306,6 +306,13 @@ if __name__ == "__main__":
 MODELES_RETIRES = {
     "groq": ("llama-3.1-8b-instant", "llama-3.3-70b-versatile"),
     "cerebras": ("llama3.1-8b", "llama-3.3-70b"),
+    # Mesures sur un compte reel, 15/09/2026 : 404 sur chacun, deux fois a un
+    # jour d'intervalle. « writer/palmyra-creative-122b » figure pourtant au
+    # catalogue public de NVIDIA — liste ne veut pas dire appelable.
+    "gemini": ("gemini-2.5-flash", "gemini-2.5-flash-lite"),
+    "nvidia": ("writer/palmyra-creative-122b",
+               "mistralai/codestral-22b-instruct-v0.1",
+               "nvidia/nemotron-nano-3-30b-a3b"),
 }
 
 
@@ -345,7 +352,12 @@ class TestQuotaParModele(unittest.TestCase):
                             self.gemini.quota("rapide").rpd)
 
     def test_epuiser_flash_ferme_flash(self):
-        self._saturer("gemini-2.5-flash", self.gemini.quota("standard").rpd)
+        # Le nom du modele se LIT dans la configuration : le recopier ici en
+        # faisait la meme donnee perissable a un deuxieme endroit, et ces deux
+        # cas ont casse le jour ou Google a retire ses « 2.5 ». Ce qui est
+        # teste, c'est le comptage PAR MODELE, pas un identifiant precis.
+        self._saturer(self.gemini.model_for("standard"),
+                      self.gemini.quota("standard").rpd)
         self.assertFalse(llm._quota_ok(self.gemini, "standard"))
 
     def test_epuiser_le_modele_le_plus_genereux_n_en_ferme_pas_un_autre(self):
@@ -357,7 +369,8 @@ class TestQuotaParModele(unittest.TestCase):
         et le role « costaud », qui passe par flash, devenait indisponible
         pour une raison qui ne le concernait pas.
         """
-        self._saturer("gemini-2.5-flash-lite", self.gemini.quota("rapide").rpd)
+        self._saturer(self.gemini.model_for("rapide"),
+                      self.gemini.quota("rapide").rpd)
         self.assertFalse(llm._quota_ok(self.gemini, "rapide"))
         self.assertTrue(llm._quota_ok(self.gemini, "standard"))
 

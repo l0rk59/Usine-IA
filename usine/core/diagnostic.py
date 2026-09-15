@@ -241,12 +241,18 @@ def reparer_modeles(timeout: int = 30) -> Dict[str, Any]:
         if fournisseur.local:
             continue
         servis = None
+        # Ce qui a REPONDU chez ce fournisseur pendant cette reparation. On a
+        # deja paye l'appel : s'en resservir ne coute rien.
+        confirmes: List[str] = []
+        restants: List[tuple] = []
         for role, identifiant in sorted(fournisseur.models.items()):
             if not identifiant:
                 continue
             actuel = module_modeles.modele_effectif(fournisseur, role)
             try:
                 llm.essai_direct(fournisseur, actuel, timeout=timeout)
+                if actuel not in confirmes:
+                    confirmes.append(actuel)
                 continue  # il repond : rien a reparer
             except HttpErreur as exc:
                 if not llm._modele_inconnu(exc):
@@ -258,8 +264,13 @@ def reparer_modeles(timeout: int = 30) -> Dict[str, Any]:
             if servis is None:
                 servis = module_modeles.catalogue(fournisseur) or []
             candidats = [m for m in servis if m != actuel]
-            trouve = ""
-            for _ in range(4):
+            trouve, repli = "", False
+            # Huit essais, pas quatre. Le classement par role met les gros
+            # modeles en tete et un palier gratuit n'en sert aucun : quatre
+            # essais partaient tous dessus sans jamais atteindre le petit
+            # modele qui, lui, repond. Chaque essai est un vrai appel, d'ou
+            # une borne — mais elle doit laisser sortir du haut du classement.
+            for _ in range(8):
                 candidat = module_modeles.choisir(candidats, role)
                 if not candidat:
                     break
@@ -269,11 +280,39 @@ def reparer_modeles(timeout: int = 30) -> Dict[str, Any]:
                 except Exception:
                     continue
                 trouve = candidat
+                if candidat not in confirmes:
+                    confirmes.append(candidat)
                 break
             if trouve:
                 module_modeles.retenir(fournisseur.name, role, trouve)
                 repares.append({"fournisseur": fournisseur.name, "role": role,
-                                "avant": actuel, "apres": trouve})
+                                "avant": actuel, "apres": trouve,
+                                "repli": repli})
+            else:
+                restants.append((role, actuel))
+
+        # SECONDE PASSE, une fois le fournisseur entier essaye : un role sans
+        # solution reprend un modele qui a DEJA repondu ici meme.
+        #
+        # Elle est separee parce que l'ordre des roles decidait du sort.
+        # Rapport du 15/09/2026 : « gemini / costaud » repartait sans
+        # remplacant alors que « long » et « standard » — partis du MEME
+        # identifiant mort — venaient d'en trouver un. Le classement par role
+        # met les gros modeles en tete, le palier gratuit ne les sert pas, et
+        # les quatre essais partaient tous dessus. Comme « costaud » passe
+        # avant les deux autres dans l'ordre alphabetique, rien n'avait encore
+        # repondu quand son tour est venu : un repli lu au fil de l'eau ne
+        # l'aurait pas sauve.
+        #
+        # Ce n'est pas le meilleur modele pour ce role — c'en est un qui
+        # MARCHE, ce qui vaut mieux qu'un mort. Le rapport le dit.
+        for role, actuel in restants:
+            secours = next((m for m in confirmes if m != actuel), "")
+            if secours:
+                module_modeles.retenir(fournisseur.name, role, secours)
+                repares.append({"fournisseur": fournisseur.name, "role": role,
+                                "avant": actuel, "apres": secours,
+                                "repli": True})
             else:
                 sans_recours.append({"fournisseur": fournisseur.name,
                                      "role": role, "modele": actuel})
