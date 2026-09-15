@@ -2139,25 +2139,31 @@ def cmd_docteur(args: argparse.Namespace) -> int:
             entete = "  {:12}".format(ligne["fournisseur"])
             if ligne["erreur"] and not any(
                     m.get("annonce") for m in ligne["mesures"]):
-                alerte("{} : {} — rien n'a pu etre lu.".format(
+                alerte("{} : {} — aucun quota lisible.".format(
                     ligne["fournisseur"], ligne["erreur"]))
+                if ligne.get("detail"):
+                    # Le code seul ne dit pas quoi faire ; le message, si.
+                    print("      " + _c(ligne["detail"][:150], "90"))
                 continue
             for mesure in ligne["mesures"]:
                 if mesure["verdict"] == "non publie":
                     muets.append("{}/{}".format(ligne["fournisseur"],
                                                 mesure["genre"]))
                     continue
-                if mesure["verdict"] == "fenetre inconnue":
-                    print("{} {:9} {:>9} annonce — fenetre non deduite"
-                          .format(entete, mesure["genre"], mesure["annonce"]))
-                    continue
                 marque = _c("v", "32") if mesure["verdict"] == "accorde" \
-                    else _c("!", "33")
-                print("{} {} {:9} par {:7} : ecrit {:>9}   annonce {:>9}"
-                      .format(entete, marque, mesure["genre"],
-                              mesure["fenetre"],
-                              "?" if mesure["ecrit"] is None else mesure["ecrit"],
-                              mesure["annonce"]))
+                    else _c("?", "33")
+                if mesure["correspond"]:
+                    print("{} {} {:9} : {:>9} annonce — c'est le quota "
+                          "« {} » ecrit".format(
+                              entete, marque, mesure["genre"],
+                              mesure["annonce"], mesure["correspond"]))
+                else:
+                    print("{} {} {:9} : {:>9} annonce — ne correspond a aucun "
+                          "quota ecrit".format(entete, marque, mesure["genre"],
+                                               mesure["annonce"]))
+                    if mesure["fenetre"]:
+                        print("               (remise a zero : {})".format(
+                            mesure["fenetre"]))
                 if mesure.get("reste") is not None:
                     print("               il en reste {} pour cette fenetre"
                           .format(mesure["reste"]))

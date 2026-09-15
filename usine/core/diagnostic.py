@@ -16,7 +16,7 @@ import sys
 import time
 from typing import Any, Dict, List, Optional
 
-from . import config, llm, store, telephone
+from . import config, llm, securite, store, telephone
 from . import cles as pool_cles
 from . import verification
 
@@ -267,32 +267,73 @@ def _secondes(brut: str) -> Optional[float]:
 
 
 def _fenetre(secondes: Optional[float]) -> str:
-    """Par minute, par jour, ou inconnue — jamais devinee."""
+    """Par minute, par jour, ou inconnue — jamais devinee.
+
+    Ne sert plus a decider d'un verdict, seulement a montrer une duree. La
+    raison est dans « _correspondance » : le temps de remise a zero N'EST PAS
+    la longueur de la fenetre.
+    """
     if secondes is None:
         return ""
     if secondes <= 180:
-        return "minute"
+        return "moins d'une minute"
     if secondes >= 1800:
-        return "jour"
-    # Entre trois et trente minutes : ce n'est ni l'un ni l'autre. Le dire
-    # plutot que de trancher — un quota compare a la mauvaise fenetre est
-    # pire qu'un quota non verifie.
+        return "plus d'une demi-heure"
     return ""
 
 
-def _compte_usine(fournisseur: Any, modele: str, genre: str,
-                  fenetre: str) -> Optional[int]:
-    """Ce que l'usine a compte pour cette fenetre, ou None si indecidable."""
-    if not fenetre:
+def _correspondance(annonce: int, quota: Any) -> str:
+    """A quel quota ECRIT ce chiffre annonce correspond-il ?
+
+    Premiere version : on deduisait la fenetre du temps de remise a zero —
+    « 7.2s » donc par minute, « 23h » donc par jour. Le premier passage sur un
+    vrai compte l'a mise en defaut. Groq annonce 1000 requetes avec une remise
+    a zero de quelques dizaines de secondes, et l'audit a conclu « 1000 par
+    minute, alors que 30 est ecrit : different ». Or 1000 est exactement le
+    « rpd » ecrit, et il est juste.
+
+    La cause : chez un service a seau de jetons, la remise a zero est le temps
+    de RECHARGE de ce qui vient d'etre consomme, pas la longueur de la
+    fenetre. Un appel sur mille d'un quota journalier recharge en une poignee
+    de secondes, ce qui se lit « par minute » et ne l'est pas.
+
+    On ne deduit donc plus rien. On regarde a quel chiffre ecrit le chiffre
+    annonce correspond — et quand il ne correspond a aucun, on le dit sans
+    trancher, parce que c'est la seule chose qu'on sache honnetement.
+    """
+    if annonce == quota.rpm:
+        return "requetes par minute"
+    if annonce == quota.rpd:
+        return "requetes par jour"
+    if annonce == quota.tpm:
+        return "jetons par minute"
+    if annonce == quota.tpd:
+        return "jetons par jour"
+    return ""
+
+
+def _compte_usine(fournisseur: Any, modele: str,
+                  correspond: str) -> Optional[int]:
+    """Ce que l'usine a compte pour cette fenetre, ou None si indecidable.
+
+    Prend la CORRESPONDANCE, pas la duree de remise a zero. La premiere
+    version prenait la seconde, et quand « _fenetre » a cesse de repondre
+    « minute » pour repondre « moins d'une minute », ce comparateur a
+    continue de tourner sans rien casser : il tombait juste toujours dans la
+    branche « jour ». Le chiffre du service, minute, se comparait alors au
+    compteur du jour de l'usine — un ecart invente a chaque appel, et aucun
+    test pour le dire, parce que le resultat restait un entier plausible.
+    """
+    if not correspond:
         return None
+    par_minute = correspond.endswith("par minute")
     try:
-        if genre == "requetes":
+        if correspond.startswith("requetes"):
             return (store.compteur_minute(fournisseur.name, modele)
-                    if fenetre == "minute"
+                    if par_minute
                     else store.compteur_jour(fournisseur.name, modele))
-        utilises, _ancien = (store.jetons_minute(fournisseur.name, modele)
-                             if fenetre == "minute" else (None, None))
-        if fenetre == "minute":
+        if par_minute:
+            utilises, _ancien = store.jetons_minute(fournisseur.name, modele)
             return utilises
         return store.jetons_jour(fournisseur.name, modele)
     except Exception:
@@ -313,10 +354,13 @@ def auditer_quotas(timeout: int = 30) -> Dict[str, Any]:
     reponse. Un appel minimal par fournisseur suffit donc — pas un par
     modele, puisque ces limites valent pour le compte.
 
-    Trois verdicts, et le troisieme compte autant que les deux autres :
+    Trois verdicts, et les deux derniers comptent autant que le premier :
 
-      « accorde »     le service publie un chiffre, et il est celui ecrit ;
-      « different »   il en publie un autre — c'est lui qui a raison ;
+      « accorde »     le chiffre publie est l'un de ceux qu'on a ecrits ;
+      « inconnu »     il n'est aucun des quatre. On ne conclut PAS « faux » :
+                      un service peut publier une limite qu'on n'a pas
+                      recopiee, et accuser sur cette base serait crier a
+                      tort. Le rapport rend alors la mesure, sans verdict ;
       « non publie »  il n'en publie aucun. Ce n'est PAS « tout va bien » :
                       c'est « on ne sait pas », et la difference est la seule
                       chose qui empeche de prendre un silence pour un accord.
@@ -331,36 +375,49 @@ def auditer_quotas(timeout: int = 30) -> Dict[str, Any]:
     for fournisseur in config.active_providers():
         if fournisseur.local:
             continue
-        entetes: Dict[str, str] = {}
+        observe: Dict[str, Any] = {}
         modele = fournisseur.model_for("rapide") or fournisseur.model_for("standard")
-        erreur = ""
+        erreur, detail = "", ""
         try:
             llm.essai_direct(fournisseur, modele, timeout=timeout,
-                             entetes_vus=entetes)
+                             observe=observe)
         except HttpErreur as exc:
             # Un 429 porte justement les en-tetes les plus interessants.
-            entetes.update(getattr(exc, "entetes", {}) or {})
+            observe["entetes"] = dict(getattr(exc, "entetes", {}) or {})
             erreur = "HTTP {}".format(exc.statut)
+            # Le CORPS, pas seulement le code. « opencode : HTTP 400 — rien
+            # n'a pu etre lu » ne dit pas pourquoi, et c'est un fournisseur
+            # paye : sans son message, on ne peut ni le reparer ni savoir
+            # qu'il n'y a rien a reparer.
+            detail = securite.expurger((exc.corps or str(exc))[:300])
         except Exception as exc:
             erreur = type(exc).__name__
+            detail = securite.expurger(str(exc)[:300])
+        entetes = observe.get("entetes") or {}
+        # Ce que CET appel vient de consommer. L'audit doit se retirer de sa
+        # propre mesure : sans cela, il comparait « 333 jetons selon le
+        # service » a « 0 selon l'usine » et criait a l'ecart sur sa propre
+        # requete, qui ne passe volontairement pas par le compteur du routeur.
+        cout_sonde = {"requetes": 1 if not erreur else 0,
+                      "jetons": int(observe.get("jetons") or 0)}
 
         quota = fournisseur.quota("standard")
         mesures = []
-        for genre, noms, restes, remises, ecrit_minute, ecrit_jour in (
+        for genre, noms, restes, remises in (
                 ("requetes", _ENTETES_REQUETES, _ENTETES_REQUETES_RESTE,
-                 _ENTETES_REQUETES_REMISE, quota.rpm, quota.rpd),
+                 _ENTETES_REQUETES_REMISE),
                 ("jetons", _ENTETES_JETONS, _ENTETES_JETONS_RESTE,
-                 _ENTETES_JETONS_REMISE, quota.tpm, quota.tpd)):
+                 _ENTETES_JETONS_REMISE)):
             annonce = _nombre(_premier(entetes, noms))
             if annonce is None:
                 mesures.append({"genre": genre, "verdict": "non publie"})
                 continue
             fenetre = _fenetre(_secondes(_premier(entetes, remises)))
-            ecrit = {"minute": ecrit_minute, "jour": ecrit_jour}.get(fenetre)
             reste = _nombre(_premier(entetes, restes))
+            correspond = _correspondance(annonce, quota)
             mesures.append({
                 "genre": genre, "fenetre": fenetre, "annonce": annonce,
-                "ecrit": ecrit, "reste": reste,
+                "correspond": correspond, "reste": reste,
                 # Ce que le service dit avoir consomme, contre ce que l'usine
                 # a compte. Les deux repondent a la meme question, et c'est
                 # la seule facon de savoir si le comptage de l'usine est
@@ -369,13 +426,21 @@ def auditer_quotas(timeout: int = 30) -> Dict[str, Any]:
                 # ne connait pas les appels faits depuis une autre machine
                 # avec la meme cle, et accuser sur cette base serait crier a
                 # tort.
-                "consomme_service": (annonce - reste
+                #
+                # Plancher a zero : on ne sait pas si le service a calcule
+                # « reste » avant ou apres avoir decompte notre propre sonde.
+                # Les deux existent, l'ecart est d'exactement une requete, et
+                # sur un compte neuf la premiere convention donne « -1
+                # consomme » — un chiffre qui se lit comme un defaut du
+                # service alors qu'il n'est qu'une convention d'en-tete.
+                "consomme_service": (max(0, annonce - reste - cout_sonde[genre])
                                      if reste is not None else None),
-                "compte_usine": _compte_usine(fournisseur, modele, genre,
-                                              fenetre),
-                "verdict": ("fenetre inconnue" if not fenetre
-                            else "accorde" if ecrit == annonce
-                            else "different"),
+                "compte_usine": _compte_usine(fournisseur, modele, correspond),
+                # « accorde » : le chiffre annonce est l'un de ceux qu'on a
+                # ecrits. « inconnu » : il n'en est aucun — ce n'est pas
+                # forcement une erreur, c'est ce qu'on ne sait pas trancher,
+                # et le rapport rend alors la mesure plutot qu'un verdict.
+                "verdict": "accorde" if correspond else "inconnu",
             })
         # Ce qu'on n'a pas su lire, montre tel quel plutot que jete.
         connus = {n for groupe in (_ENTETES_REQUETES, _ENTETES_REQUETES_RESTE,
@@ -386,7 +451,7 @@ def auditer_quotas(timeout: int = 30) -> Dict[str, Any]:
                     if ("ratelimit" in k.lower() or "rate-limit" in k.lower())
                     and k.lower() not in connus}
         lignes.append({"fournisseur": fournisseur.name, "modele": modele,
-                       "erreur": erreur, "mesures": mesures,
+                       "erreur": erreur, "detail": detail, "mesures": mesures,
                        "inconnus": inconnus})
     return {"lignes": lignes}
 

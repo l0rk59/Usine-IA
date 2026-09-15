@@ -400,31 +400,51 @@ puisque ces limites valent pour le compte.
 usine docteur --quotas
 ```
 
-## La fenêtre ne se lit pas dans le nom, mais dans la remise à zéro
+## La fenêtre ne se lit pas dans la remise à zéro — corrigé au premier essai
 
 Aucun en-tête ne dit « par jour ». `x-ratelimit-limit-requests: 1000` ne veut
-rien dire seul : mille par minute et mille par jour sont deux mondes.
+rien dire seul : mille par minute et mille par jour sont deux mondes, et s'y
+tromper se trompe d'un facteur **1 440**.
 
-C'est `x-ratelimit-reset-requests` qui tranche — `7.2s` désigne une limite par
-minute, `23h14m56s` une limite par jour. Comparer un chiffre à `rpm` plutôt
-qu'à `rpd` se trompe d'un facteur **1 440**.
+La première version déduisait la fenêtre du temps de remise à zéro : `7.2s`
+donc par minute, `23h14m56s` donc par jour. Le premier passage sur un vrai
+compte l'a mise en défaut immédiatement :
 
-Entre trois et trente minutes, l'audit **ne tranche pas**. Un quota comparé à
-la mauvaise fenêtre est pire qu'un quota non vérifié : il produit un
-« conforme » ou un « différent » tiré à pile ou face, sur un chiffre que
-personne n'ira revérifier.
+```
+groq  ! requetes  par minute : ecrit        30   annonce      1000
+```
 
-## Trois verdicts, et le troisième compte autant
+Or **1 000 est exactement le `rpd` écrit**, et il est juste. L'audit venait
+d'accuser une configuration correcte.
+
+La cause : chez un service à seau de jetons, la remise à zéro est le temps de
+**recharge de ce qui vient d'être consommé**, pas la longueur de la fenêtre.
+Un appel sur mille d'un quota journalier se recharge en quelques secondes, ce
+qui se lit « par minute » et ne l'est pas.
+
+**On ne déduit donc plus rien.** Le chiffre annoncé est confronté aux quatre
+chiffres écrits — `rpm`, `rpd`, `tpm`, `tpd` — et l'audit dit auquel il
+correspond. La durée de remise à zéro reste affichée, parce qu'elle renseigne
+le lecteur ; elle ne rend plus de verdict.
+
+```
+groq  v requetes  :      1000 annonce — c'est le quota « requetes par jour » ecrit
+```
+
+## Trois verdicts, et les deux derniers comptent autant que le premier
 
 | verdict | ce que ça veut dire |
 |---|---|
-| **accordé** | le service publie un chiffre, et c'est celui qui est écrit |
-| **différent** | il en publie un autre — **c'est lui qui a raison**, c'est lui qui applique |
+| **accordé** | le chiffre publié est l'un des quatre qui sont écrits |
+| **inconnu** | il n'est aucun des quatre. L'audit **ne conclut pas « faux »** : un service peut publier une limite qu'on n'a pas recopiée. Il rend la mesure, sans verdict |
 | **non publié** | il n'en publie aucun. Ce n'est **pas** « tout va bien », c'est « on ne sait pas » |
 
 La distinction n'est pas de la pédanterie : confondre « non publié » et
 « conforme » ferait passer un quota jamais vérifié pour un quota vérifié —
-exactement la fausse assurance que ce dépôt supprime partout ailleurs.
+exactement la fausse assurance que ce dépôt supprime partout ailleurs. Et
+`inconnu` plutôt que `différent` applique l'autre règle du dépôt : **rater un
+défaut plutôt qu'en inventer un.** C'est le « différent » de la première
+version qui a accusé Groq à tort.
 
 ## Le compteur de l'usine, confronté à celui du service
 
@@ -436,6 +456,43 @@ L'écart est **rendu, pas jugé** : l'usine ne connaît pas les appels faits
 depuis une autre machine avec la même clé, et accuser sur cette base serait
 crier à tort.
 
+### La sonde doit se retirer de sa propre mesure
+
+Le premier rapport réel disait aussi :
+
+```
+consomme : 333 selon le service, 0 selon l'usine  — ECART
+```
+
+Les 333 jetons étaient **ceux de la sonde elle-même**. Elle passe
+volontairement hors du routeur — c'est tout l'intérêt : mesurer sans que le
+routeur bascule à sa place — donc elle n'apparaît dans aucun compteur de
+l'usine. L'audit criait à l'écart sur sa propre requête, et il l'aurait fait à
+chaque exécution.
+
+`essai_direct` rend donc ce que son appel vient de coûter (les
+`usage.total_tokens` du service, et la requête), et l'audit le soustrait avant
+de comparer. Un instrument qui se mesure lui-même ne mesure rien.
+
+Le résultat est **planché à zéro** : selon les services, `remaining` est
+calculé avant ou après le décompte de notre propre appel. Sur un compte neuf,
+la première convention donne « −1 consommé », un chiffre qui se lit comme un
+défaut du service alors qu'il n'est qu'une convention d'en-tête.
+
+### Le compteur comparé doit être celui de la bonne fenêtre
+
+Défaut trouvé en relisant la correction elle-même, pas par un test. Quand la
+fonction de fenêtre a cessé de répondre `"minute"` pour répondre `"moins d'une
+minute"`, le comparateur qui lisait cette valeur **n'a rien cassé** : il est
+simplement tombé toujours dans la branche « jour ». Le chiffre par minute du
+service se comparait au compteur du jour de l'usine — un écart inventé à
+chaque appel.
+
+Rien n'échouait, parce que le résultat restait un entier plausible. C'est la
+forme de défaut la plus chère de ce dépôt : **une mesure fausse a l'air d'une
+mesure.** Le comparateur lit désormais la correspondance, qui nomme sa
+fenêtre, et un test distingue les quatre compteurs.
+
 ## Ce qu'on ne sait pas lire est montré tel quel
 
 Les en-têtes de quota non reconnus sont affichés bruts plutôt que jetés. Aucun
@@ -443,6 +500,32 @@ standard ne fixe leur nom, et chaque service a sa forme. Les jeter
 garantirait de ne jamais apprendre celles qu'on ignore ; les montrer, c'est
 les coder demain.
 
-> Ces en-têtes n'apparaissent que sur l'endpoint facturé. Ils n'ont donc pas
-> pu être vérifiés depuis un poste sans clé : la première exécution sur un
-> vrai compte est celle qui nous apprendra quels services publient quoi.
+## Un code HTTP ne dit pas quoi faire, le message du service si
+
+Le premier rapport réel contenait aussi cette ligne, sur un fournisseur
+**payé** :
+
+```
+opencode : HTTP 400 — rien n'a pu etre lu.
+```
+
+« 400 » ne permet ni de réparer, ni de constater qu'il n'y a rien à réparer.
+Le corps de la réponse le permet presque toujours — c'est lui qui distingue
+« ce modèle n'est pas ouvert à votre offre » d'un paramètre mal formé.
+
+Le rapport rend donc le message du service, passé par `securite.expurger` :
+une clé peut se trouver dans un message d'erreur, et un diagnostic ne doit
+jamais être l'endroit où elle sort.
+
+## Ce que le premier passage sur un vrai compte a publié
+
+*15/09/2026, huit clés.*
+
+| fournisseur | ce qu'il publie |
+|---|---|
+| `groq` | requêtes **et** jetons, avec restes et remises à zéro |
+| `gemini`, `openrouter` | aucun chiffre — `non publié`, donc « on ne sait pas » |
+| `opencode` | HTTP 400 : le message était invisible, il l'est maintenant |
+
+Trois services sur huit publient des en-têtes de quota, et il n'existe aucun
+standard sur leur nom. Ceux qu'on ne sait pas lire sont montrés bruts.

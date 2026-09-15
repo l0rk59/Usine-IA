@@ -693,7 +693,7 @@ def generer_json(
 
 
 def essai_direct(p: config.Provider, modele: str, timeout: int = 30,
-                 entetes_vus: Optional[Dict[str, str]] = None) -> str:
+                 observe: Optional[Dict[str, Any]] = None) -> str:
     """Un appel minimal a UN modele nomme, sans routage ni cache.
 
     Le routeur existe pour ne jamais s'arreter : il bascule, substitue,
@@ -731,10 +731,14 @@ def essai_direct(p: config.Provider, modele: str, timeout: int = 30,
         url, "POST", entetes,
         json.dumps(charge, ensure_ascii=False).encode("utf-8"), timeout)
     data = json.loads(brut_reponse.decode("utf-8", "replace"))
-    if entetes_vus is not None:
+    if observe is not None:
         # Les en-tetes portent les quotas que le service applique VRAIMENT.
-        # L'appelant les recupere ici plutot que de refaire l'appel.
-        entetes_vus.update(entetes_recus)
+        # L'appelant les recupere ici plutot que de refaire l'appel — et avec
+        # eux le cout de CET appel : l'audit doit pouvoir se retirer de sa
+        # propre mesure, sinon il se compte lui-meme comme un ecart.
+        observe["entetes"] = dict(entetes_recus)
+        observe["jetons"] = int((data.get("usage") or {})
+                                .get("total_tokens") or 0)
     choix = (data.get("choices") or [{}])[0]
     brut = ((choix.get("message") or {}).get("content") or "").strip()
     texte = module_texte.assainir(brut)
