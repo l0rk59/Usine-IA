@@ -246,10 +246,18 @@ class LesDeuxCheminsDeposentLaPromesse(unittest.TestCase):
 class LaFictionNeReprendPasLesReglagesDuPratique(unittest.TestCase):
 
     def test_chaque_type_de_fiction_recoit_les_champs_de_fiction(self):
+        """AU MOINS ceux-la, pas exactement ceux-la.
+
+        La premiere version exigeait l'egalite, et le conte l'a mise en
+        defaut le jour ou il a ajoute sa tranche d'age — un reglage qui n'a
+        de sens que pour lui. Ce qui doit etre garanti, c'est qu'aucun type
+        de fiction n'en PERDE, pas qu'aucun n'en ajoute.
+        """
         attendus = {c.nom for c in catalogue.champs_de_fiction()}
         for cle in fiction.types_de_fiction():
             fiche = catalogue.obtenir(cle)
-            self.assertEqual({c.nom for c in fiche.champs}, attendus, cle)
+            manquants = attendus - {c.nom for c in fiche.champs}
+            self.assertEqual(manquants, set(), cle)
 
     def test_aucun_type_pratique_ne_recoit_ces_champs(self):
         """« sous-genre » ou « niveau de chaleur » sur un guide de fiscalite

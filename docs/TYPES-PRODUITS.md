@@ -396,3 +396,82 @@ le modèle rendait plus de prémisses que demandé et la chaîne les fabriquait
 toutes. Quatre fois le temps et le quota annoncés, découverts à la fin. Ce qui
 est demandé fait foi maintenant.
 
+## Feuilleton — `usine feuilleton`
+
+*Ajouté le 15/09/2026.*
+
+**Ce que l'acheteur reçoit** : une saison d'épisodes, chacun précédé de son
+« Précédemment » et refermé sur une question ouverte.
+
+**Pourquoi une chaîne à part.** Couper un roman en morceaux ne fait pas un
+feuilleton : cela fait un roman vendu en tranches. Le format tient deux
+promesses que le roman n'a pas à tenir — chaque épisode **se lit sans avoir
+relu le précédent**, et **donne envie du suivant**.
+
+Trois contrôles, tous déterministes :
+
+| ce qu'il voit | pourquoi ça compte |
+|---|---|
+| un épisode sans suspens déclaré | le lecteur n'a aucune raison de revenir |
+| un rappel qui ne nomme personne de la distribution | il ne rappelle rien, il meuble |
+| un rappel qui dépasse le quart de l'épisode | ce n'est plus un rappel, c'est un résumé qui prend la place du récit |
+
+Le **dernier** épisode est exclu du premier contrôle par construction, pas par
+tolérance : il referme l'arc, et lui réclamer un suspens serait lui réclamer
+une saison de plus. Le **premier** est exclu du second : il n'a rien à
+rappeler.
+
+La part se compte sur l'épisode, pas sur un absolu — cinquante mots de rappel
+sont longs devant deux cents mots d'épisode, et courts devant deux mille.
+
+**Le « Précédemment » n'est pas le résumé roulant de la chaîne.** Celui-là sert
+au modèle à ne pas se contredire, il est écrit en notes, et personne ne doit le
+lire. Les confondre livrerait au lecteur une fiche technique — *« Camille :
+veut sauver la ligne ; obstacle : Hakim »* — au lieu d'un rappel.
+
+## Conte jeunesse illustré — `usine conte`
+
+*Ajouté le 15/09/2026.*
+
+**Ce que l'acheteur reçoit** : un album en doubles-pages, avec ses
+illustrations quand le service d'images répond, et ses notes d'illustration
+sinon.
+
+**Pourquoi une chaîne à part.** Un album se compose en doubles-pages : deux ou
+trois phrases par page, une image par page. Le faire passer par la chaîne de
+fiction donnerait un roman court avec des titres de scènes — c'est-à-dire tout
+ce qu'un album n'est pas.
+
+### Le contrôle qui n'invente pas de seuil
+
+La chaîne vérifie que le texte produit correspond à la **tranche d'âge**
+demandée. Et c'est là qu'elle se distingue d'un contrôle fabriqué :
+
+> Le plafond de mots par phrase n'est pas une vérité sur la lecture enfantine.
+> C'est ce que l'usine a **demandé** au modèle.
+
+Il est écrit dans `TRANCHES`, il se modifie, et le contrôle mesure si la
+réponse s'y tient. Comparer une sortie à la consigne qui l'a produite est
+vérifiable ; affirmer « une phrase de plus de douze mots est trop longue pour
+un enfant de cinq ans » demanderait une étude qu'on n'a pas.
+
+| tranche | pages | mots/page | mots/phrase demandés |
+|---|---:|---:|---:|
+| 3-5 ans | 12 | 35 | 10 |
+| 6-8 ans | 16 | 70 | 14 |
+| 9-12 ans | 20 | 140 | 20 |
+
+Conséquence directe, et voulue : **la même phrase passe pour 9-12 ans et est
+signalée pour 3-5 ans.** Le contrôle ne juge pas la phrase, il la compare à ce
+qu'on a demandé. Un test garde ce point.
+
+La **phrase la plus longue** est rendue à côté de la moyenne : une moyenne
+cache une phrase de trente mots au milieu de vingt phrases de trois.
+
+### Les images peuvent manquer, pas les notes
+
+Une illustration qui ne vient pas ne fait pas échouer l'album : la note reste
+dans le livre, et l'acheteur peut la faire dessiner. Un album sans images se
+vend mal ; un album dont l'acheteur ne sait pas quoi faire dessiner ne se vend
+pas du tout.
+

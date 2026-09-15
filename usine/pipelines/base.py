@@ -666,6 +666,25 @@ def nettoyer_titre(texte: str) -> str:
     return texte or "Sans titre"
 
 
+def sans_titres(texte: str) -> str:
+    """Retire les titres qu'un modele ajoute malgre la consigne.
+
+    Ce n'est pas de la cosmetique pour les chaines qui NUMEROTENT leurs
+    sections. Le numero de section y est un titre de niveau 2 dans le
+    document rendu : un « ## Le principe de base » laisse dans le corps
+    fabrique une section fantome au sommaire, et le lecteur a qui l'on dit
+    « rendez-vous au 7 » trouve deux entrees entre le 6 et le 8.
+
+    Mesure du 15/09/2026 sur le livre-jeu : un livre de douze sections en
+    declarait vingt-quatre. Le meme defaut est apparu la semaine suivante
+    dans le rappel d'un feuilleton, ecrit par une autre fonction — d'ou ce
+    passage ici plutot qu'une seconde copie.
+    """
+    lignes = [l for l in (texte or "").split("\n")
+              if not l.lstrip().startswith("#")]
+    return "\n".join(lignes).strip()
+
+
 def elaguer_markdown(texte: str) -> str:
     """Supprime le bavardage et les cloture de code laisses autour d'un markdown."""
     indesirables = (

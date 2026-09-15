@@ -178,7 +178,9 @@ class LeTexteDUneSectionNeFabriquePasDeSectionFantome(unittest.TestCase):
     """
 
     def test_les_titres_sont_retires_du_corps(self):
-        propre = interactive._sans_titres(
+        # La fonction a demenage dans « base » le jour ou le feuilleton a
+        # eu le meme besoin : deux copies auraient diverge.
+        propre = base.sans_titres(
             "Un couloir.\n\n## Le principe de base\n\nUne porte.")
         self.assertNotIn("##", propre)
         self.assertIn("Un couloir.", propre)

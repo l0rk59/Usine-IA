@@ -57,6 +57,12 @@ SCENARIOS = [
     # de fumee en fabrique sept.
     ("recueil", ["recueil", "une ville du nord", "--chapitres", "3",
                  "--mots", "150", "--sans-image"]),
+    ("feuilleton", ["feuilleton", "un depot de trains qui ferme",
+                    "--chapitres", "3", "--mots", "150", "--sans-image"]),
+    # Le conte : la seule chaine dont le controle compare la sortie a la
+    # CONSIGNE qui l'a produite, tranche d'age par tranche d'age.
+    ("conte", ["conte", "un ourson et la neige", "--chapitres", "6",
+               "--tranche", "3-5 ans", "--sans-image"]),
     ("prompts", ["prompts", "la gestion de projet", "-n", "8", "--sans-image"]),
     ("formation", ["formation", "le copywriting", "-m", "4", "--sans-image"]),
     ("outils", ["outils", "la facturation", "-n", "5", "--sans-image"]),
@@ -130,6 +136,8 @@ ATTENDUS = {
     # et c'est ce qui permet de rouvrir le livre pour en corriger un chemin.
     "interactive": [".pdf", ".epub", "carte.json", "lire.html"],
     "recueil": [".pdf", ".epub", "recueil.json", "lire.html"],
+    "feuilleton": [".pdf", ".epub", "saison.json", "lire.html"],
+    "conte": [".pdf", ".epub", "conte.json", "lire.html"],
     "prompts": [".pdf", "prompts.csv", "prompts.json", "lire.html"],
     "formation": ["-manuel.pdf", "-cahier-exercices.pdf", "formation.md",
                   "quiz.html"],

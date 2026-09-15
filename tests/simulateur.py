@@ -51,6 +51,8 @@ def _combien(invite: str, defaut: int) -> int:
                   # vingt. Le test passait — il n'exercait simplement pas ce
                   # qu'il croyait.
                   r"RECUEIL de\s+(\d+)\s+nouvelles",
+                  r"FEUILLETON en\s+(\d+)\s+episodes",
+                  r"en\s+(\d+)\s+doubles-pages",
                   r"sections numerotees de 1 a\s+(\d+)"):
         trouve = re.search(motif, invite, re.IGNORECASE)
         if trouve:
@@ -158,6 +160,66 @@ def simulateur(messages, role):
              "acheteur": "quelqu'un qui a arrete dix ans",
              "pourquoi_maintenant": "la rentree"},
         ]}, ensure_ascii=False)
+
+    # --- feuilleton : le « Precedemment », ecrit POUR LE LECTEUR ---------
+    #
+    # Sans ce cas, le simulateur rendait de la prose de guide pratique en
+    # guise de rappel, et le controle du feuilleton signalait a chaque test
+    # de fumee que le rappel ne nommait personne. Il avait raison — mais le
+    # test n'exercait alors que le chemin degrade.
+    if "precedemment" in bas and "rappel" in bas:
+        return ("Camille Renard avait pousse la porte du depot, et Hakim "
+                "Oussaid l'attendait avec une date : sept jours. Lucie "
+                "Renard, elle, klaxonnait dehors sans descendre de voiture. "
+                "Camille n'avait rien demande — elle n'avait jamais rien "
+                "demande. Restait la question que personne n'osait poser : "
+                "qui a signe l'ordre de fermeture ?")
+
+    # --- feuilleton : un arc dont chaque episode ouvre une question ------
+    if '"suspens"' in invite and '"episodes"' in invite:
+        combien = _combien(invite, 8)
+        return json.dumps({
+            "titre": "Le dernier train",
+            "promesse": "Sept jours avant la fermeture, et personne ne "
+                        "veut le dire.",
+            "episodes": [
+                {"titre": "Jour {}".format(rang),
+                 "question": "que cache le depot ce jour-la ?",
+                 "evenement": "Camille avance d'un cran",
+                 # Le dernier episode referme l'arc : lui reclamer un suspens
+                 # reviendrait a reclamer une saison de plus.
+                 "suspens": ("" if rang == combien
+                             else "qui a signe l'ordre de fermeture ?")}
+                for rang in range(1, combien + 1)],
+        }, ensure_ascii=False)
+
+    # --- conte jeunesse : des doubles-pages, pas des chapitres -----------
+    #
+    # Les phrases sont VOLONTAIREMENT courtes : un simulateur qui rendrait de
+    # la prose d'adulte ferait echouer le controle d'age a chaque test de
+    # fumee, et on finirait par le desactiver — alors que c'est lui la raison
+    # d'etre de la chaine.
+    if '"illustration"' in invite and '"pages"' in invite:
+        combien = _combien(invite, 16)
+        moments = [
+            ("Le petit ours dort.", "un ourson roule en boule"),
+            ("Dehors, la neige tombe.", "des flocons devant une fenetre"),
+            ("Il ouvre un oeil.", "un oeil brillant dans le noir"),
+            ("La foret est blanche.", "des sapins sous la neige"),
+            ("Une trace file vers l'eau.", "des empreintes au sol"),
+            ("L'ours suit la trace.", "un ourson de dos qui marche"),
+            ("Au bout, un renard.", "un renard roux assis"),
+            ("Le renard a froid.", "un renard qui tremble"),
+        ]
+        return json.dumps({
+            "titre": "Le petit ours et la neige",
+            "heros": "un ourson curieux",
+            "pages": [
+                {"numero": rang,
+                 "texte": moments[(rang - 1) % len(moments)][0],
+                 "illustration": moments[(rang - 1) % len(moments)][1]}
+                for rang in range(1, combien + 1)],
+        }, ensure_ascii=False)
 
     # --- recueil : des premisses qui DIFFERENT ---------------------------
     #

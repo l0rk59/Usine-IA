@@ -39,7 +39,8 @@ from typing import Any, Dict, List, Sequence, Set
 from ..agents import equipe
 from ..render import livraison
 from . import fiction
-from .base import Contexte, elaguer_markdown, jetons_pour, preparer, terminer
+from .base import (Contexte, elaguer_markdown, jetons_pour, preparer,
+                   sans_titres, terminer)
 
 # Combien de sections par defaut. Un livre-jeu court se lit en une soiree ;
 # en dessous de douze, l'arbre n'a pas la place de se ramifier et le lecteur
@@ -321,20 +322,7 @@ def _rediger_section(ctx: Contexte, bible: Dict[str, Any],
              promesse=fiction.consignes_de_scene(ctx),
              consigne=consigne, mots=mots)
     reponse = equipe.REDACTEUR.travailler(ctx, invite, max_tokens=jetons_pour(mots))
-    return _sans_titres(elaguer_markdown(reponse.texte))
-
-
-def _sans_titres(texte: str) -> str:
-    """Retire les titres que le modele ajoute malgre la consigne.
-
-    Ce n'est pas de la cosmetique ici, contrairement aux autres chaines. Le
-    numero de section EST un titre de niveau 2 dans le document rendu : un
-    « ## Le principe de base » laisse dans le corps d'une section fabrique une
-    section fantome au sommaire, et le lecteur a qui l'on dit « rendez-vous
-    au 7 » trouve deux entrees entre le 6 et le 8.
-    """
-    lignes = [l for l in texte.split("\n") if not l.lstrip().startswith("#")]
-    return "\n".join(lignes).strip()
+    return sans_titres(elaguer_markdown(reponse.texte))
 
 
 def _markdown(carte: List[Dict[str, Any]]) -> str:

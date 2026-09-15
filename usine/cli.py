@@ -23,10 +23,10 @@ from .core import empreinte, reglages, securite, store, telephone, ventes
 from .core import verification
 from .marketing import vente
 from .packaging import livraison
-from .pipelines import (boite_outils, catalogue, ebook, formation, idees,
-                        emails, impression, interactive, logiciel, memo,
-                        modeles, nouvelle, pack_prompts, quiz,
-                        recueil, social)
+from .pipelines import (boite_outils, catalogue, conte, ebook, feuilleton,
+                        formation, idees, emails, impression, interactive,
+                        logiciel, memo, modeles, nouvelle, pack_prompts,
+                        quiz, recueil, social)
 from .pipelines.base import (CHAPITRES_MAX, CHAPITRES_MIN, Contexte, MOTS_MAX,
                              MOTS_MIN, TAILLES, TONS)
 
@@ -616,6 +616,44 @@ def cmd_recueil(args: argparse.Namespace) -> int:
     for lecture in resume.get("lectures") or []:
         alerte(lecture)
     _resume_console(_apres_production(args, ctx, resume, description))
+    return 0
+
+
+def cmd_feuilleton(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication d'un feuilleton")
+    resume = feuilleton.produire(ctx)
+    for lecture in resume.get("lectures") or []:
+        alerte(lecture)
+    if resume.get("episodes_sans_suspens"):
+        alerte("Episodes sans suspens declare : {} — le lecteur n'a aucune "
+               "raison de revenir.".format(", ".join(
+                   str(e) for e in resume["episodes_sans_suspens"])))
+    _resume_console(_apres_production(
+        args, ctx, resume,
+        "{} episodes, {} mots.".format(resume["episodes"], resume["mots"])))
+    return 0
+
+
+def cmd_conte(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication d'un conte jeunesse")
+    resume = conte.produire(
+        ctx, tranche=getattr(args, "tranche", "") or conte.TRANCHE_DEFAUT)
+    lisibilite = resume["lisibilite"]
+    print("  {} mots par phrase en moyenne, pour {} demandes au maximum "
+          "({}).".format(lisibilite["mots_par_phrase"],
+                         lisibilite["plafond_demande"], resume["tranche"]))
+    for lecture in resume.get("lectures") or []:
+        alerte(lecture)
+    _resume_console(_apres_production(
+        args, ctx, resume,
+        "{} doubles-pages, {} illustration(s).".format(
+            resume["pages"], resume["illustrations"])))
     return 0
 
 
@@ -2757,6 +2795,18 @@ def construire_parseur() -> argparse.ArgumentParser:
     _options_communes(p)
     _options_du_type(p, "recueil")
     p.set_defaults(fonction=cmd_recueil, _type="recueil")
+
+    p = sous_parseurs.add_parser(
+        "feuilleton", help="un feuilleton : des episodes qui se lisent seuls")
+    _options_communes(p)
+    _options_du_type(p, "feuilleton")
+    p.set_defaults(fonction=cmd_feuilleton, _type="feuilleton")
+
+    p = sous_parseurs.add_parser(
+        "conte", help="un conte jeunesse illustre, en doubles-pages")
+    _options_communes(p)
+    _options_du_type(p, "conte")
+    p.set_defaults(fonction=cmd_conte, _type="conte")
 
     p = sous_parseurs.add_parser(
         "journal", help="ce que l'usine a fait pendant qu'on ne regardait pas")

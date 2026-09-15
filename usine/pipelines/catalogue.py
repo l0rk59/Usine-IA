@@ -69,6 +69,20 @@ def nouvelle_scenes() -> int:
     return ROMAN_SCENES
 
 
+def conte_tranches() -> Tuple[str, ...]:
+    """Les tranches d'age qu'un conte sait viser, lues la ou elles vivent."""
+    from .conte import TRANCHES
+
+    return tuple(TRANCHES)
+
+
+def feuilleton_episodes() -> int:
+    """Le nombre d'episodes d'une saison, lu la ou il est decide."""
+    from .feuilleton import EPISODES
+
+    return EPISODES
+
+
 def recueil_recits() -> int:
     """Le nombre de nouvelles d'un recueil, lu la ou il est decide."""
     from .recueil import RECITS
@@ -279,9 +293,10 @@ class TypeProduit:
 
 def _chaines() -> Dict[str, Callable]:
     """Import tardif : le catalogue est lu par des modules que les chaines importent."""
-    from . import (boite_outils, ebook, emails, formation, idees, impression,
-                   interactive, logiciel, memo, modeles, nouvelle,
-                   pack_prompts, quiz, recueil, social)
+    from . import (boite_outils, conte, ebook, emails, feuilleton,
+                   formation, idees, impression, interactive, logiciel,
+                   memo, modeles, nouvelle, pack_prompts, quiz,
+                   recueil, social)
 
     return {
         "ebook": ebook.produire,
@@ -289,6 +304,8 @@ def _chaines() -> Dict[str, Callable]:
         "roman": nouvelle.produire_roman,
         "interactive": interactive.produire,
         "recueil": recueil.produire,
+        "feuilleton": feuilleton.produire,
+        "conte": conte.produire,
         "prompts": pack_prompts.produire,
         "formation": formation.produire,
         "outils": boite_outils.produire,
@@ -379,6 +396,34 @@ TYPES: List[TypeProduit] = [
         quantite=("recits", "Combien de nouvelles", str(recueil_recits())),
         mots_cles=("recueil", "nouvelles", "anthologie", "textes courts"),
         champs=champs_de_fiction(),
+    ),
+    TypeProduit(
+        cle="feuilleton", nom="Feuilleton (episodes)", famille="fiction",
+        resume="Des episodes qui se lisent seuls et appellent le suivant",
+        detail="PDF + EPUB + HTML + Markdown + couverture",
+        formats=("pdf", "epub", "html", "md", "txt"),
+        minutes=(40, 110),
+        quantite=("episodes", "Combien d'episodes",
+                  str(feuilleton_episodes())),
+        mots_cles=("feuilleton", "episodes", "serie", "saison"),
+        champs=champs_de_fiction(),
+    ),
+    TypeProduit(
+        cle="conte", nom="Conte jeunesse illustre", famille="fiction",
+        resume="Un album en doubles-pages, verifie contre sa tranche d'age",
+        detail="PDF + EPUB + HTML + Markdown + illustrations",
+        formats=("pdf", "epub", "html", "md", "txt"),
+        minutes=(10, 30),
+        quantite=("pages", "Combien de doubles-pages", "16"),
+        mots_cles=("conte", "album", "jeunesse", "enfants", "histoire du soir"),
+        options={"tranche": None},
+        champs=champs_de_fiction() + (
+            Champ("tranche", "--tranche", "Tranche d'age", genre="choix",
+                  choix=conte_tranches(), defaut="6-8 ans",
+                  aide="Elle decide de tout : nombre de pages, longueur des "
+                       "phrases, vocabulaire. Le controle verifie ensuite que "
+                       "le texte s'y tient."),
+        ),
     ),
     TypeProduit(
         cle="prompts", nom="Pack de prompts",

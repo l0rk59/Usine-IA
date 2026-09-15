@@ -294,6 +294,22 @@ def _options_du_type(cle: str) -> Dict[str, object]:
     if cle == "nouvelle":
         nom_serie = _demander_serie()
         return {"serie": nom_serie} if nom_serie else {}
+    if cle == "conte":
+        # La tranche d'age decide de TOUT pour un album : nombre de pages,
+        # longueur des phrases, vocabulaire. La demander en dernier, ou pas
+        # du tout, reviendrait a fabriquer pour un enfant qu'on n'a pas
+        # choisi — et le controle de lisibilite se comparerait alors a une
+        # consigne que personne n'a voulue.
+        from .pipelines import conte as chaine_conte
+
+        tranches = list(chaine_conte.TRANCHES)
+        index = choisir(
+            "Tranche d'age",
+            [(t, "{} pages, phrases de {} mots au maximum".format(
+                chaine_conte.TRANCHES[t]["pages"],
+                chaine_conte.TRANCHES[t]["mots_phrase"])) for t in tranches],
+            defaut=tranches.index(chaine_conte.TRANCHE_DEFAUT) + 1)
+        return {"tranche": tranches[index - 1]} if index else {}
     if cle == "ebook":
         return {"relecture_ensemble": True} if demander_oui(
             "Relire le livre entier a la recherche des contradictions "
