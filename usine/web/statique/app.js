@@ -641,6 +641,21 @@ $('file-prospecter').addEventListener('click', async () => {
   $('file-prospecter').textContent = 'Trouver des niches maintenant';
 });
 
+$('file-prospecter-fiction').addEventListener('click', async () => {
+  /* Le bouton jumeau, et il ne pose pas la meme question. Une fiction ne se
+     cherche pas comme une niche : le lecteur n'achete pas la solution d'un
+     probleme, il achete un sous-genre, des tropes et une fin qu'on ne lui
+     refuse pas. Sans ce bouton, cette recherche n'existait qu'en ligne de
+     commande — donc pas pour qui pilote l'usine depuis son telephone. */
+  const bouton = $('file-prospecter-fiction');
+  bouton.disabled = true;
+  bouton.textContent = 'recherche...';
+  const donnees = await envoyerFile({ action: 'prospecter-fiction' });
+  if (donnees.travail) surveiller(donnees.travail);
+  bouton.disabled = false;
+  bouton.textContent = 'Trouver des idées de fiction';
+});
+
 $('file-ajouter').addEventListener('click', async () => {
   const sujet = $('sujet').value.trim();
   /* Le champ « sujet » vit dans l'onglet « Fabriquer ». Y faire « focus() »

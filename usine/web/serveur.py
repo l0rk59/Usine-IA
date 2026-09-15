@@ -242,18 +242,26 @@ def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None
         evenements.publier("produit", etat="echec", detail=message)
 
 
-def _lancer_prospection(travail_id: str) -> None:
-    """Remplit la file de niches, hors du fil HTTP."""
+def _lancer_prospection(travail_id: str, fiction: bool = False) -> None:
+    """Remplit la file, hors du fil HTTP.
+
+    « fiction » choisit la QUESTION posee, pas seulement le type de produit.
+    Une fiction ne se cherche pas comme une niche : le lecteur n'achete pas
+    la solution d'un probleme. Sans ce chemin, la recherche de promesses
+    n'existait qu'en ligne de commande — donc pas pour qui pilote l'usine
+    depuis son telephone, c'est-a-dire l'usage normal.
+    """
     def journal(message: str) -> None:
         with _VERROU:
             TRAVAUX[travail_id]["journal"].append(
                 {"ts": time.time(), "texte": securite.expurger(message)})
         evenements.publier("journal", message=message, travail=travail_id)
 
-    from ..production import prospecter
+    from ..production import prospecter, prospecter_fiction
 
     try:
-        resultat = prospecter(nombre=8, journal=journal)
+        resultat = (prospecter_fiction(nombre=8, journal=journal) if fiction
+                    else prospecter(nombre=8, journal=journal))
         with _VERROU:
             TRAVAUX[travail_id].update(statut="termine", resultat=resultat)
         if resultat["ajoutees"]:
@@ -534,23 +542,26 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 priorite=5, source="web")
             return {"ajoute": identifiant, "doublon": identifiant is None,
                     "file": file_prod.compter()}
-        if action == "prospecter":
+        if action in ("prospecter", "prospecter-fiction"):
             # Le jumeau manuel de « remplir seule » : la boucle continue sait
             # deja chercher des niches, mais seulement quand elle tourne. On
             # ne peut pas prospecter dans le fil HTTP — un sondage de marche
             # par domaine met des dizaines de secondes et le navigateur
             # verrait une page figee —, donc un fil dedie, comme une
             # fabrication.
+            fiction = action == "prospecter-fiction"
             travail_id = uuid.uuid4().hex[:12]
             with _VERROU:
                 TRAVAUX[travail_id] = {
                     "id": travail_id, "type": "prospection",
-                    "sujet": "recherche de niches", "statut": "en_cours",
+                    "sujet": ("recherche de promesses de lecture" if fiction
+                              else "recherche de niches"),
+                    "statut": "en_cours",
                     "debut": time.time(), "journal": [], "resultat": None,
                     "erreur": "",
                 }
-            threading.Thread(target=_lancer_prospection, args=(travail_id,),
-                             daemon=True).start()
+            threading.Thread(target=_lancer_prospection,
+                             args=(travail_id, fiction), daemon=True).start()
             return {"travail": travail_id}
         if action == "retirer":
             try:
