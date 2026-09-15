@@ -14,11 +14,14 @@ from typing import Dict, List
 
 @dataclass
 class Bloc:
-    type: str                       # h1 h2 h3 p ul ol quote callout hr code image
+    type: str      # h1 h2 h3 p ul ol quote callout hr code image table
     texte: str = ""
     elements: List[str] = field(default_factory=list)
     titre: str = ""                 # utilise par 'callout'
     url: str = ""                   # utilise par 'image'
+    # utilises par 'table' : la ligne d'en-tete, puis les lignes de donnees
+    entetes: List[str] = field(default_factory=list)
+    rangees: List[List[str]] = field(default_factory=list)
 
 
 _TITRE = re.compile(r"^(#{1,6})\s+(.*)$")
@@ -41,6 +44,22 @@ _LIEN = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 # nulle part. Le defaut ne se voyait qu'en OUVRANT le produit : le markdown,
 # lui, etait correct depuis le debut.
 _IMAGE_SEULE = re.compile(r"^!\[([^\]]*)\]\(([^)\s]+)\)$")
+# Un tableau markdown : une ligne d'en-tete, une ligne de separation faite de
+# tirets, puis les rangees. Le modele de document l'ignorait, et trois chaines
+# en produisent — la notice d'un outil logiciel, la boite a outils, les
+# modeles. Le tableau sortait donc en TUYAUX ET TIRETS BRUTS :
+#
+#     | Fichier | Verification | Resultat | | --- | --- | --- | | outil.py |
+#
+# dans le PDF, dans le HTML et dans le texte brut. Le markdown, lui, etait
+# correct — le defaut ne se voyait qu'en ouvrant le produit.
+_LIGNE_TABLEAU = re.compile(r"^\s*\|(.+)\|\s*$")
+_SEPARATEUR_TABLEAU = re.compile(r"^\s*\|[\s:|-]+\|\s*$")
+
+
+def _cellules(ligne: str) -> List[str]:
+    corps = _LIGNE_TABLEAU.match(ligne)
+    return [c.strip() for c in corps.group(1).split("|")] if corps else []
 
 
 def nettoyer_inline(texte: str) -> str:
@@ -165,6 +184,19 @@ def analyser(markdown: str) -> List[Bloc]:
             blocs.append(Bloc("quote", " ".join(morceaux).strip()))
             continue
 
+        if _LIGNE_TABLEAU.match(nu) and i + 1 < len(lignes) \
+                and _SEPARATEUR_TABLEAU.match(lignes[i + 1].strip()):
+            vider()
+            entetes = [nettoyer_inline(c) for c in _cellules(nu)]
+            i += 2
+            rangees = []
+            while i < len(lignes) and _LIGNE_TABLEAU.match(lignes[i].strip()):
+                rangees.append([nettoyer_inline(c)
+                                for c in _cellules(lignes[i].strip())])
+                i += 1
+            blocs.append(Bloc("table", entetes=entetes, rangees=rangees))
+            continue
+
         image = _IMAGE_SEULE.match(nu)
         if image:
             vider()
@@ -204,6 +236,19 @@ def vers_texte(blocs: List[Bloc]) -> str:
             sortie.append("\n" + "* * *")
         elif bloc.type == "code":
             sortie.extend("    " + l for l in bloc.texte.split("\n"))
+        elif bloc.type == "table":
+            # En texte brut, les tuyaux sont la forme la plus lisible qui
+            # existe : on les garde, alignes sur la largeur de chaque colonne.
+            colonnes = [bloc.entetes] + bloc.rangees
+            largeurs = [max(len(str(r[i])) if i < len(r) else 0 for r in colonnes)
+                        for i in range(len(bloc.entetes))]
+            def _ligne(valeurs):
+                return "  " + " | ".join(
+                    str(valeurs[i] if i < len(valeurs) else "").ljust(largeurs[i])
+                    for i in range(len(largeurs)))
+            sortie.append(_ligne(bloc.entetes))
+            sortie.append("  " + "-+-".join("-" * l for l in largeurs))
+            sortie.extend(_ligne(r) for r in bloc.rangees)
         elif bloc.type == "image":
             # Le texte brut ne montre pas d'image : il dit qu'il y en a une,
             # et ce qu'elle represente quand le texte de remplacement le dit.
@@ -237,6 +282,15 @@ def vers_html(blocs: List[Bloc], niveau_depart: int = 1) -> str:
             sortie.append("<hr/>")
         elif bloc.type == "code":
             sortie.append("<pre><code>{}</code></pre>".format(html.escape(bloc.texte)))
+        elif bloc.type == "table":
+            entete = "".join("<th>{}</th>".format(inline_html(c))
+                             for c in bloc.entetes)
+            corps = "".join(
+                "<tr>{}</tr>".format("".join(
+                    "<td>{}</td>".format(inline_html(str(c))) for c in rangee))
+                for rangee in bloc.rangees)
+            sortie.append("<table><thead><tr>{}</tr></thead>"
+                          "<tbody>{}</tbody></table>".format(entete, corps))
         elif bloc.type == "image":
             sortie.append(
                 '<p class="illustration"><img src="{}" alt="{}"/></p>'.format(
@@ -272,6 +326,12 @@ def vers_pdf(blocs: List[Bloc], doc, sauter_h1: bool = False) -> None:
             doc.separateur()
         elif bloc.type == "code":
             doc.paragraphe(bloc.texte, taille=9.5, police="Helvetica", justifier=False)
+        elif bloc.type == "table":
+            # « doc.tableau » existait depuis le debut, avec ses colonnes
+            # egales et son en-tete colore. Rien ne l'appelait depuis le
+            # markdown : le tableau passait par « paragraphe » et sortait en
+            # tuyaux.
+            doc.tableau(bloc.entetes, bloc.rangees)
         elif bloc.type == "image":
             # Le modele de document ne porte qu'un CHEMIN, pas les octets : il
             # ne sait pas ou est le dossier du produit et n'ouvre aucun

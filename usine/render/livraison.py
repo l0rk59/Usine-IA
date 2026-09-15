@@ -103,6 +103,19 @@ class Produit:
     # un livre ou une carte. Un seuil en nombre de pages serait un chiffre
     # invente, et il se tromperait sur un ebook court comme sur un memo long.
     sommaire: bool = True
+    # Les sections s'ENCHAINENT au lieu d'ouvrir chacune leur page.
+    #
+    # Un titre de niveau 1 ouvre une page neuve, et c'est juste dans un livre :
+    # un chapitre commence en haut d'une page. Ce ne l'est pas dans une
+    # documentation qu'on lit a l'ecran. Mesure du 15/09/2026 sur la notice
+    # d'un outil logiciel : trois sections, trois pages, et les deux tiers
+    # bas de chacune blancs — cinq pages dont trois quasi vides.
+    #
+    # Ce qui n'est PAS un defaut, et que la meme mesure signale : un episode
+    # de feuilleton qui se termine par « A suivre » au milieu de la page. Un
+    # chapitre finit ou il finit. La mesure compte le blanc ; elle ne dit pas
+    # s'il est de trop.
+    sections_enchainees: bool = False
     # Refabriquer un produit deja livre doit lui rendre SA couverture. Celle
     # d'un modele d'images ne se reproduit pas a l'identique : regenerer, ce
     # serait livrer a un acheteur un livre dont la couverture a change depuis
@@ -205,9 +218,18 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
     # --- PDF --------------------------------------------------------------
     if "pdf" in formats:
         doc = _document(produit, ctx, page_couverture)
-        for bloc, blocs_analysees in blocs_analyses:
+        for rang, (bloc, blocs_analysees) in enumerate(blocs_analyses):
             if bloc.titre_pdf:
-                doc.titre(bloc.titre, 1, sommaire=bloc.sommaire)
+                if produit.sections_enchainees:
+                    # La premiere ouvre une page — sinon le texte se dessine
+                    # par-dessus la couverture. Le memo l'a appris : le PDF
+                    # tombait a une page, le compte semblait parfait, et le
+                    # contenu etait imprime sur la couverture.
+                    if rang == 0:
+                        doc.nouvelle_page()
+                    doc.titre(bloc.titre, 2, sommaire=bloc.sommaire)
+                else:
+                    doc.titre(bloc.titre, 1, sommaire=bloc.sommaire)
             if bloc.rendu_pdf is not None:
                 bloc.rendu_pdf(doc)
             elif blocs_analysees:

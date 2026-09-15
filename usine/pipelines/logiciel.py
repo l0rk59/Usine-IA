@@ -327,6 +327,11 @@ def _livrer(ctx: Contexte, specification: Dict[str, Any], cible: str,
     ]
     produit = livraison.Produit(
         type="logiciel", titre=specification["titre"],
+        # Une notice d'outil se lit a l'ecran, comme un fichier « LISEZ-MOI » :
+        # ses trois sections s'enchainent. Chacune sur sa page donnait cinq
+        # pages dont trois aux deux tiers blanches, et un sommaire de trois
+        # entrees par-dessus.
+        sections_enchainees=True, sommaire=False,
         sous_titre=specification.get("promesse", ""),
         promesse=specification.get("promesse", ""),
         blocs=blocs,

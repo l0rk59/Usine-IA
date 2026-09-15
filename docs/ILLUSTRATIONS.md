@@ -112,3 +112,42 @@ C'est le pire verdict possible pour un outil dont le rôle est de ne pas se
 laisser rassurer : il annonce que tout est gardé au moment précis où plus rien
 ne l'est. `muter.py` lance désormais les modules de la campagne **sans muter**
 avant de commencer, et refuse de continuer s'ils échouent.
+
+## Le même défaut, deuxième forme : les tableaux
+
+En ouvrant la notice d'un outil logiciel — pour vérifier une *autre*
+correction, celle de la mise en page — le tableau de vérification s'est
+présenté ainsi, en corps de texte :
+
+```
+| Fichier | Verification | Resultat | | --- | --- | --- | | outil.py |
+syntaxe + arbre syntaxique | correct | | notice.md | ...
+```
+
+Exactement la famille de `![](images/page-01.jpg)` : une construction markdown
+que `document.py` ne connaissait pas, donc un paragraphe, donc imprimée telle
+quelle. Et comme pour l'image, le format `.md` était le seul juste — celui que
+lisent les tests de chaîne.
+
+Deux chaînes en produisent : `logiciel` (le tableau des fichiers vérifiés) et
+`modeles` (celui des onglets d'un classeur). La fuite atteignait le PDF, le
+HTML (`<p>| Fichier | Verification |…`), l'EPUB et le texte brut.
+
+Ce qui rend ce défaut instructif : **`doc.tableau()` existait depuis le début
+du moteur PDF**, et dessine un vrai tableau, en-tête bleu compris. Il était
+appelé par `impression.py`, qui construit ses colonnes en Python. Rien ne le
+reliait au markdown, et rien ne pouvait le signaler — une méthode avec un
+appelant n'est pas du code mort.
+
+La correction est un troisième type de bloc, `table`, avec la même prudence
+que pour l'image : une ligne à barres verticales n'en devient un que si la
+ligne **suivante** est un séparateur `| --- |`. Une phrase qui contient des
+barres reste une phrase.
+
+`tests/test_illustrations.py` compte maintenant vingt-quatre tests ; campagne
+de mutation : huit mutations, toutes vues.
+
+Et la leçon de méthode, qui est la même que pour le conte : ce défaut n'a été
+trouvé qu'en **regardant la page corrigée** d'une correction précédente. Une
+vérification en amène une autre ; s'arrêter au premier vert, c'est livrer le
+deuxième défaut.

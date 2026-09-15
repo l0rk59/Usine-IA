@@ -325,3 +325,66 @@ class LesIllustrationsDUnConteArriventDansLeLivre(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UnTableauMarkdownNeSortPasEnTuyaux(unittest.TestCase):
+    """Meme defaut que l'image, trouve de la meme facon : en regardant.
+
+    Trois chaines produisent des tableaux markdown — la notice d'un outil
+    logiciel, la boite a outils, les modeles. Le modele de document ne
+    connaissait pas cette forme, et le tableau sortait en TUYAUX ET TIRETS
+    BRUTS dans le PDF, dans le HTML et dans le texte brut :
+
+        | Fichier | Verification | Resultat | | --- | --- | --- | | outil.py |
+
+    « doc.tableau » existait pourtant depuis le debut, avec son en-tete colore
+    et ses colonnes egales. Rien ne l'appelait depuis le markdown.
+    """
+
+    MD = ("Ce code a ete verifie.\n\n"
+          "| Fichier | Verification | Resultat |\n"
+          "| --- | --- | --- |\n"
+          "| outil.py | syntaxe | correct |\n"
+          "| test_outil.py | execution | demarre |\n")
+
+    def test_un_tableau_devient_un_bloc_tableau(self):
+        blocs = D.analyser(self.MD)
+        self.assertEqual([b.type for b in blocs], ["p", "table"])
+        self.assertEqual(blocs[1].entetes,
+                         ["Fichier", "Verification", "Resultat"])
+        self.assertEqual(len(blocs[1].rangees), 2)
+
+    def test_une_ligne_a_tuyaux_sans_separateur_reste_un_paragraphe(self):
+        # Sans la ligne de tirets, ce n'est pas un tableau : c'est une phrase
+        # qui contient des barres verticales. Un detecteur qui les confond
+        # avalerait du texte ordinaire.
+        # Deux lignes : sans cela le detecteur s'arrete sur « pas de ligne
+        # suivante » et le test ne mesure pas ce qu'il croit. Une campagne de
+        # mutation l'a montre — neutraliser la verification du separateur ne
+        # faisait echouer personne.
+        blocs = D.analyser("| ceci n'est pas un tableau |\n"
+                           "| ni celle-ci non plus |")
+        self.assertNotIn("table", [b.type for b in blocs])
+
+    def test_le_html_porte_une_vraie_table(self):
+        sortie = D.vers_html(D.analyser(self.MD))
+        self.assertIn("<table>", sortie)
+        self.assertIn("<th>Fichier</th>", sortie)
+        self.assertNotIn("<p>|", sortie)
+
+    def test_le_texte_brut_aligne_les_colonnes(self):
+        sortie = D.vers_texte(D.analyser(self.MD))
+        self.assertNotIn("| --- |", sortie)
+        self.assertIn("Fichier", sortie)
+        self.assertIn("outil.py", sortie)
+
+    def test_le_pdf_dessine_le_tableau_au_lieu_de_l_imprimer(self):
+        doc = moteur_pdf.DocumentPDF()
+        D.vers_pdf(D.analyser(self.MD), doc)
+        chemin = DOSSIER / "tableau.pdf"
+        doc.enregistrer(chemin)
+        contenu = flux_du_pdf(chemin)
+        self.assertNotIn("---", contenu)
+        self.assertIn("Fichier", contenu)
+        # L'en-tete colore de « doc.tableau » : un rectangle plein.
+        self.assertIn(" re f", contenu)

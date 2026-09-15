@@ -134,5 +134,96 @@ class UnMemoTientSurUneFeuille(unittest.TestCase):
         self.assertIn("bloc(s)", markdown)
 
 
+class UneNoticeTechniqueNEstPasUnLivre(unittest.TestCase):
+    """Un titre de niveau 1 ouvre une page neuve — juste dans un livre.
+
+    Mesure du 15/09/2026 sur la notice d'un outil logiciel : trois sections,
+    trois pages, et les deux tiers bas de chacune blancs. Cinq pages dont
+    trois quasi vides, pour un document qu'on lit a l'ecran comme un fichier
+    « LISEZ-MOI ».
+    """
+
+    def test_les_sections_d_une_notice_s_enchainent(self):
+        dossier, _ = _fabriquer("logiciel", "un convertisseur de devises")
+        pdf = next(dossier.glob("*.pdf"))
+        self.assertLessEqual(_pages(pdf), 3, (
+            "{} pages pour trois sections courtes".format(_pages(pdf))))
+
+    def test_le_contenu_ne_s_imprime_pas_sur_la_couverture(self):
+        """Compter les pages ne suffit pas : un document assez long deborde
+        de la couverture sur une deuxieme page, et le compte parait juste
+        pendant que la premiere page est illisible. On regarde donc ce que la
+        page de couverture PORTE."""
+        import zlib
+
+        dossier, _ = _fabriquer("logiciel", "un verificateur de liens")
+        pdf = next(dossier.glob("*.pdf"))
+        flux = re.findall(rb"stream\r?\n(.*?)\r?\nendstream",
+                          pdf.read_bytes(), re.DOTALL)
+        premiere = ""
+        for brut in flux:
+            try:
+                contenu = zlib.decompress(brut).decode("latin-1")
+            except zlib.error:
+                continue
+            if " Tm " in contenu:
+                premiere = contenu
+                break
+        self.assertNotIn("Ce que fait cet outil", premiere, (
+            "le contenu est dessine sur la couverture"))
+
+    def test_une_notice_garde_une_couverture_a_elle(self):
+        dossier, _ = _fabriquer("logiciel", "un renommeur de fichiers")
+        self.assertGreaterEqual(_pages(next(dossier.glob("*.pdf"))), 2)
+
+    def test_un_livre_garde_une_page_par_chapitre(self):
+        """La correction vise UNE chaine. Le defaut par defaut doit rester
+        « une page par chapitre », sinon les chapitres d'un roman coulent les
+        uns dans les autres.
+
+        Mesure sur le MECANISME et non sur un produit : le texte d'un ebook
+        reel remplit ses pages de toute facon, et le compte ne distingue alors
+        plus les deux mises en page. Une campagne de mutation l'a montre —
+        basculer le defaut ne faisait echouer aucun test.
+
+        Et il faut une mesure qui NE PASSE PAS le reglage : les chaines qui ne
+        declarent rien sont justement celles que le defaut protege. Tant que
+        les deux mesures le passaient toutes les deux, basculer le defaut a
+        « enchainees » restait invisible — les dix-sept autres chaines
+        auraient coule leurs chapitres les uns dans les autres sans qu'un seul
+        test bronche.
+        """
+        from usine.render import livraison
+
+        blocs = [livraison.Bloc(titre="Chapitre {}".format(rang),
+                                corps="Une ligne.") for rang in range(1, 6)]
+        contexte = base.Contexte(sujet="essai", sans_image=True,
+                                 journal=lambda m: None)
+        contexte.dossier = Path(atelier.isoler("mise-en-page")) / "livre"
+        contexte.dossier.mkdir(parents=True, exist_ok=True)
+
+        def pages_pour(enchainees, nom):
+            reglage = {} if enchainees is None else {
+                "sections_enchainees": enchainees}
+            produit = livraison.Produit(
+                type="ebook", titre="Essai", blocs=blocs, formats=("pdf",),
+                sommaire=False, nom_fichier=nom, **reglage)
+            fichiers = livraison.livrer(contexte, produit)
+            return _pages(next(f for f in fichiers if f.suffix == ".pdf"))
+
+        separees = pages_pour(False, "separe")
+        enchainees = pages_pour(True, "enchaine")
+        self.assertGreater(separees, enchainees, (
+            "cinq chapitres d'une ligne tiennent en {} page(s) enchainees et "
+            "{} separees : les deux mises en page ne se distinguent pas"
+            .format(enchainees, separees)))
+        self.assertGreaterEqual(separees, 5)
+
+        # Sans rien declarer : c'est ce que recoivent les dix-sept chaines qui
+        # ne parlent pas de mise en page.
+        self.assertEqual(pages_pour(None, "defaut"), separees, (
+            "une chaine qui ne declare rien n'a plus une page par chapitre"))
+
+
 if __name__ == "__main__":
     unittest.main()
