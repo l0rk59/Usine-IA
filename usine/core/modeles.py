@@ -273,12 +273,39 @@ def substituer(fournisseur: config.Provider, role: str,
     remplacant = choisir(restants, role)
     if not remplacant or remplacant == refuse:
         return ""
-    retenir(fournisseur.name, role, remplacant)
+    # Le fournisseur se contredit-il ? S'il LISTE encore le modele qu'il
+    # vient de refuser, son 404 ne veut pas dire « ce modele n'existe
+    # plus » : il dit autre chose — un palier qui n'y donne pas droit, une
+    # panne d'un instant, un routage interne. Journal d'un utilisateur, le
+    # 15/09/2026 : NVIDIA a rendu 404 sur « writer/palmyra-creative-122b »,
+    # qui figure pourtant dans les 81 modeles de son catalogue public, et
+    # l'usine a RETENU le remplacant. Ce modele existe exactement pour
+    # ecrire de la fiction ; toutes les nouvelles suivantes auraient ete
+    # ecrites par un modele plus petit, definitivement, sans que rien ne le
+    # dise. Une substitution gardee pour toujours demande une preuve que le
+    # modele est parti, pas un code de retour qui le pretend.
+    #
+    # On substitue quand meme — la fabrication en cours doit aboutir — mais
+    # pour cette session seulement. Le prochain lancement redemandera le
+    # modele configure.
+    if refuse in servis:
+        retenir_pour_la_session(fournisseur.name, role, remplacant)
+    else:
+        retenir(fournisseur.name, role, remplacant)
     return remplacant
+
+
+def retenir_pour_la_session(fournisseur: str, role: str, modele: str) -> None:
+    """Substitution valable jusqu'a la fin du programme, et pas au-dela."""
+    with _verrou:
+        _substitutions[(fournisseur, role)] = modele
 
 
 def retenir(fournisseur: str, role: str, modele: str) -> None:
     """Garde la substitution pour la session ET pour les suivantes.
+
+    Reservee au cas ou le modele a VRAIMENT disparu du catalogue. Quand le
+    fournisseur le liste encore, voir « retenir_pour_la_session ».
 
     Sans memoire, chaque appel refait le meme 404, la meme interrogation du
     catalogue, et le meme choix — trois fois par chapitre.
@@ -327,6 +354,20 @@ def substitutions() -> Dict[str, str]:
         for (f, r), m in _substitutions.items():
             trouvees["{} / {}".format(f, r)] = m
     return trouvees
+
+
+def oublier_la_session() -> None:
+    """Vide la memoire vive, garde ce qui est ecrit sur le disque.
+
+    C'est ce que fait un redemarrage de l'usine, et c'est la seule facon de
+    distinguer les deux memoires : une substitution RETENUE survit, une
+    substitution gardee pour la session seulement disparait. Sans cette
+    difference, un modele refuse une fois par erreur restait remplace pour
+    toujours — et personne ne pouvait le voir sans relancer le programme.
+    """
+    with _verrou:
+        _memoire.clear()
+        _substitutions.clear()
 
 
 def oublier() -> None:

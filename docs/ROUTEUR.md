@@ -190,3 +190,93 @@ Le message d'échec a changé aussi. *« JSON introuvable dans la réponse du
 modèle »* n'apprend rien à qui produit depuis un téléphone ; il nomme
 désormais les fournisseurs tentés et dit quoi faire.
 
+
+---
+
+# Ce qu'un journal de fabrication a révélé
+
+*Nouvelle de cinq scènes, 15/09/2026. Une scène écrite sur cinq, note 4,33.*
+
+Le journal disait tout ce qu'il fallait — à condition de le lire dans le bon
+ordre. Les trois causes étaient à deux étapes de l'endroit où le défaut se
+voyait.
+
+## 1. Une substitution retenue sur un mensonge
+
+```
+nvidia : « writer/palmyra-creative-122b » n'est plus servi,
+         l'usine passe a « meta/muse-glimmer-30b »
+```
+
+Le lendemain, le catalogue public de NVIDIA servait ce modèle — **parmi 81**.
+Le 404 disait donc autre chose : un palier qui n'y donne pas droit, une panne
+d'un instant, un routage interne.
+
+Et la substitution était **retenue** : écrite en base, valable pour toutes les
+sessions suivantes. `writer/palmyra-creative-122b` existe exactement pour
+écrire de la fiction — toutes les nouvelles suivantes auraient été écrites par
+un modèle plus petit, **définitivement**, sans que rien ne le dise.
+
+La règle : *une substitution gardée pour toujours demande une preuve que le
+modèle est parti, pas un code de retour qui le prétend.* Si le fournisseur
+**liste encore** le modèle qu'il vient de refuser, il se contredit — on
+substitue pour que la fabrication en cours aboutisse, mais **pour cette
+session seulement**. Le lancement suivant redemande le modèle configuré.
+
+C'est la deuxième règle du dépôt appliquée un cran plus loin : ne pas croire
+le code de retour, et ne pas croire non plus ce qu'on en a déduit.
+
+> Si votre atelier a déjà figé une substitution, `usine cache --catalogues`
+> l'oublie sans toucher aux réponses payées.
+
+## 2. Un service retiré n'est pas une panne
+
+```
+github/ghp_xN***Zj8 : HTTP 410 : Gone
+```
+
+Le corps disait `github_models_retirement_brownout` : **GitHub Models est en
+cours de retrait**. Le message brut donnait à chercher une clé ou un
+identifiant de modèle, alors qu'il n'y avait rien à corriger.
+
+HTTP 410 est la seule réponse qui dise « parti, et ne reviendra pas ». La
+distinguer d'un 404 ou d'un 503 change le geste : il n'y a rien à réparer, il
+faut cesser de compter dessus.
+
+## 3. Une grille de beats coupée, et la résolution perdue
+
+```
+01:44:04 reponse coupee au plafond (groq, 2250 jetons)
+...
+[majeur] aucune scene ne livre le beat « resolution »
+```
+
+Les deux lignes sont séparées par quatre minutes et trois étapes, et c'est la
+même cause. Pour cinq scènes, la formule accordait `1600 + 5 × 130 = 2250`
+jetons — exactement le chiffre du journal.
+
+Le JSON tronqué **se relit en partie**, donc rien n'échouait : la grille
+perdait ses derniers beats, et le contrôle de continuité signalait le manque
+deux étapes plus loin.
+
+La part fixe de cette grille — les huit beats, les intrigues, la charpente
+JSON — ne dépend pas du nombre de scènes : c'était le **plancher** qui était
+trop bas, pas la pente. Il passe à `2600 + n × 150`.
+
+Mais un chiffre choisi à la main finit toujours par être trop petit pour un
+cas qu'on n'avait pas vu — celui-ci l'a été. Le routeur **mesure déjà** la
+coupe (`finish_reason: length`) : la chaîne la lit désormais et **redemande
+une fois**, au double. Une seule : si le double ne suffit pas, insister
+coûterait un troisième appel pour le même résultat.
+
+## Deux tests qui ne gardaient rien
+
+La campagne de mutation en a trouvé deux, et les deux pour la même raison —
+un cas de test qui contient une **seconde façon de réussir** :
+
+- le catalogue du test faisait choisir à `choisir()` le modèle déjà
+  configuré : l'égalité finale tenait des deux côtés de la mutation, et
+  supprimer la persistance ne changeait rien ;
+- le corps de l'erreur portait le mot `retirement`, ce qui rattrapait la
+  lecture du code : retirer la branche du 410 ne changeait rien. Un `Gone` nu
+  est la forme minimale, et c'est elle qu'il faut garder.

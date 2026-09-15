@@ -93,6 +93,21 @@ _AVEUX_DE_MODELE_INCONNU = (
 )
 
 
+def _service_ferme(exc: Exception) -> bool:
+    """Le fournisseur a-t-il ete retire, plutot que d'etre en panne ?
+
+    HTTP 410 veut dire « parti, et ne reviendra pas » — c'est la seule
+    reponse HTTP qui le dise. La distinguer d'un 404 ou d'un 503 change le
+    geste a faire : il n'y a rien a reparer, il faut arreter de compter
+    dessus.
+    """
+    if not isinstance(exc, HttpErreur):
+        return False
+    if exc.statut == 410:
+        return True
+    return "retirement" in (exc.corps or "").lower()
+
+
 def _modele_inconnu(exc: Exception) -> bool:
     """Le fournisseur dit-il que l'identifiant de modele ne lui dit rien ?
 
@@ -131,6 +146,17 @@ def _expliquer(p: config.Provider, exc: Exception, modele: str = "") -> str:
     """
     texte = str(exc)
     if not p.local:
+        if _service_ferme(exc):
+            # Un 410 n'est pas une panne : c'est un service qui a ete retire.
+            # Journal d'un utilisateur, le 15/09/2026 : GitHub Models rendait
+            # « HTTP 410 : Gone », et le corps disait
+            # « github_models_retirement_brownout ». Le message brut donnait a
+            # chercher une cle ou un identifiant de modele, alors qu'il n'y
+            # avait rien a corriger — le service ferme.
+            return ("{} ne sert plus : le service a ete retire par son "
+                    "editeur. Ce n'est ni votre cle ni votre configuration. "
+                    "Retirez-le de usine/core/config.py, ou laissez l'usine "
+                    "passer au suivant.".format(p.name))
         if _modele_inconnu(exc):
             return ("le modele « {} » n'existe plus chez {}. Les fournisseurs "
                     "retirent leurs modeles sans prevenir : verifiez avec "

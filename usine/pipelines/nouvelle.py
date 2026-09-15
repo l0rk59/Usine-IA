@@ -233,6 +233,37 @@ def _intrigues_a_demander(nombre_scenes: int) -> int:
     return 1 if nombre_scenes < 18 else 2
 
 
+def _grille_ou_retente(ctx, invite: str, budget: int):
+    """La grille de beats, redemandee une fois si elle revient coupee.
+
+    Un chiffre choisi a la main finit toujours par etre trop petit pour un
+    cas qu'on n'avait pas vu : celui-ci l'a ete pour cinq scenes. Plutot que
+    d'en inventer un plus gros et d'esperer, on lit le fait que le routeur
+    mesure DEJA — « finish_reason: length » — et on redemande.
+
+    Une seule fois : si le double ne suffit toujours pas, insister couterait
+    un troisieme appel pour le meme resultat, et la grille partiellement
+    lue vaut mieux que rien. Le produit livre dira ce qui manque.
+    """
+    def coupees() -> int:
+        meta = getattr(ctx, "meta", None) or {}
+        return len(meta.get("tronquees") or [])
+
+    avant = coupees()
+    grille = equipe.ARCHITECTE.travailler_json(ctx, invite, max_tokens=budget)
+    if coupees() == avant:
+        return grille
+    plus = min(8000, budget * 2)
+    if plus <= budget:
+        return grille
+    ctx.journal("  grille coupee a {} jetons : on redemande a {}."
+                .format(budget, plus))
+    # La reponse coupee n'a pas ete mise en cache par le routeur : la
+    # relance repart bien vers le modele, pas vers la reponse tronquee.
+    seconde = equipe.ARCHITECTE.travailler_json(ctx, invite, max_tokens=plus)
+    return seconde if isinstance(seconde, dict) and seconde.get("scenes") else grille
+
+
 def construire_grille(ctx: Contexte, bible: Dict[str, Any]) -> Dict[str, Any]:
     """Les tournants, les scenes qui les livrent, et ce qui les relie.
 
@@ -291,8 +322,20 @@ def construire_grille(ctx: Contexte, bible: Dict[str, Any]) -> Dict[str, Any]:
 
     # Le budget suit la longueur : une grille de vingt-quatre scenes tronquee
     # a mi-chemin est une grille perdue, et l'appel avec elle.
-    grille = equipe.ARCHITECTE.travailler_json(
-        ctx, invite, max_tokens=min(8000, 1600 + total * 130))
+    #
+    # Le plancher vient d'une panne reelle. Journal d'un utilisateur, le
+    # 15/09/2026, pour une nouvelle de cinq scenes : l'ancienne formule
+    # accordait 1600 + 5 x 130 = 2250 jetons, et la reponse est revenue
+    # coupee. Le JSON tronque se relit quand meme — en partie — donc rien
+    # n'echouait : la grille perdait ses derniers beats, et le controle de
+    # continuite signalait plus loin « aucune scene ne livre le beat
+    # resolution ». La cause etait a deux etapes de la ou le defaut se
+    # voyait.
+    #
+    # La part fixe de cette grille — les huit beats, les intrigues, la
+    # charpente JSON — ne depend pas du nombre de scenes : c'est le plancher
+    # qui etait trop bas, pas la pente.
+    grille = _grille_ou_retente(ctx, invite, min(8000, 2600 + total * 150))
     if not isinstance(grille, dict) or not grille.get("scenes"):
         raise ValueError("Grille de scenes invalide renvoyee par le modele")
 
