@@ -251,7 +251,18 @@ def _lancer_prospection(travail_id: str) -> None:
         resultat = prospecter(nombre=8, journal=journal)
         with _VERROU:
             TRAVAUX[travail_id].update(statut="termine", resultat=resultat)
-        journal("{} niche(s) mise(s) en file.".format(resultat["ajoutees"]))
+        if resultat["ajoutees"]:
+            journal("{} niche(s) mise(s) en file.".format(resultat["ajoutees"]))
+        elif resultat.get("en_file"):
+            # Le tableau de bord disait « 0 niche(s) mise(s) en file » sans
+            # dire pourquoi. Sur un ecran de telephone, c'est indiscernable
+            # d'une panne.
+            journal("Aucune niche neuve : les {} pistes sont deja en file. "
+                    "Lancez la production, ou explorez une autre graine."
+                    .format(resultat["en_file"]))
+        else:
+            journal("Aucune niche neuve : les pistes recouvrent des produits "
+                    "deja fabriques.")
     except Exception as exc:
         message = securite.expurger(str(exc))
         with _VERROU:

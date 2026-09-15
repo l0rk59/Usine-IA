@@ -583,10 +583,29 @@ l'écart vaut exactement la réservation non consommée (217) :
 ce service décompte la sortie DEMANDÉE, pas celle produite.
 ```
 
-Cette ligne ne s'affiche que si les deux nombres sont **exactement** égaux.
-Tant qu'elle ne s'est pas affichée sur un vrai compte, l'hypothèse reste une
-hypothèse : la prochaine exécution la confirme ou la réfute, et c'est elle qui
-décidera s'il faut compter les réservations dans le budget de la minute.
+**Confirmé le 15/09/2026**, à l'exécution suivante : la ligne s'est affichée.
+Et relue avec les chiffres complets, elle dit plus que prévu — le seau était
+**plein** avant l'appel (8000 − 7667 = 333, soit exactement la réservation).
+Les 333 étaient donc *entièrement* ceux de la sonde, et les 217 restants
+n'étaient rien d'autre que la mauvaise soustraction.
+
+La sonde se retire désormais de sa mesure **au bon tarif** : la réservation
+quand le service en applique une, la consommation réelle sinon. C'est la même
+faute que la première fois, d'un cran plus fin — l'audit se retirait de sa
+propre mesure, mais pas au prix que le service facture.
+
+L'écart disparu, la ligne qui l'expliquait n'avait plus de cas où s'afficher :
+elle a servi à trancher l'hypothèse, elle est retirée. Un test garde qu'une
+consommation venue d'ailleurs, elle, reste visible — le but n'est pas de faire
+disparaître tout écart.
+
+> **Conséquence ouverte, non traitée ici.** Si Groq débite la réservation,
+> alors le compteur de l'usine — qui enregistre les `usage.total_tokens`
+> rendus — sous-estime ce que le service décompte. Avec `max_sortie` à 8192
+> pour 8 000 jetons par minute, un seul appel peut épuiser la minute pendant
+> que l'usine se croit à 3 000. Une seule mesure, sur un seul service : pas
+> de quoi changer le comptage du routeur. À vérifier sur un second service
+> qui publie ses en-têtes.
 
 ## Un code HTTP ne dit pas quoi faire, le message du service si
 

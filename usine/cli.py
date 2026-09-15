@@ -1070,8 +1070,18 @@ def cmd_file(args: argparse.Namespace) -> int:
         if rapport["ajoutees"]:
             ok("{} niche(s) ajoutee(s) a la file.".format(rapport["ajoutees"]))
         elif rapport["pistes"]:
-            alerte("Aucune piste retenue : toutes recouvrent un produit deja "
-                   "fabrique.")
+            # Nommer la VRAIE cause. « Toutes recouvrent un produit deja
+            # fabrique » etait affiche meme quand aucune ne recouvrait quoi
+            # que ce soit : elles etaient deja en file, ce qui appelle un
+            # autre geste — produire ce qui attend, pas chercher ailleurs.
+            if rapport.get("en_file") and not rapport["ecartees"]:
+                alerte("Aucune piste NEUVE : les {} pistes sont deja en file "
+                       "d'attente.".format(rapport["en_file"]))
+                print("      Lancez « usine produire » pour les fabriquer, ou "
+                      "explorez une autre graine.")
+            else:
+                alerte("Aucune piste retenue : toutes recouvrent un produit "
+                       "deja fabrique, ou sont deja en file.")
         print("\n  File : " + _resume_file())
         return 0 if rapport["ajoutees"] else 1
 
@@ -2188,18 +2198,6 @@ def cmd_docteur(args: argparse.Namespace) -> int:
                         1, service // 10) else _c("ECART", "33")
                     print("               consomme : {} selon le service, "
                           "{} selon l'usine — {}".format(service, usine, accord))
-                    # Un ecart qui vaut EXACTEMENT la reservation non
-                    # consommee n'est pas un compteur qui derive : c'est un
-                    # service qui decompte la sortie DEMANDEE et non celle
-                    # produite. Les deux se ressemblent dans le rapport et
-                    # n'appellent pas le meme geste — d'ou cette ligne, qui
-                    # constate l'egalite au lieu de la supposer.
-                    reserve = mesure.get("reservation_inutilisee")
-                    if reserve and service - usine == reserve:
-                        print("               l'ecart vaut exactement la "
-                              "reservation non consommee ({}) :".format(reserve))
-                        print("               ce service decompte la sortie "
-                              "DEMANDEE, pas celle produite.")
             for nom, valeur in sorted(ligne["inconnus"].items()):
                 print("               {} {} : {}".format(
                     _c("?", "90"), nom, str(valeur)[:44]))

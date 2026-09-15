@@ -436,8 +436,19 @@ def auditer_quotas(timeout: int = 30) -> Dict[str, Any]:
         # propre mesure : sans cela, il comparait « 333 jetons selon le
         # service » a « 0 selon l'usine » et criait a l'ecart sur sa propre
         # requete, qui ne passe volontairement pas par le compteur du routeur.
+        # Les jetons se comptent en RESERVATION quand le service en applique
+        # une. Mesure du 15/09/2026 sur un vrai compte : seau plein a 8000,
+        # « remaining » a 7667 juste apres la sonde, soit 333 debites — et
+        # 333 est exactement l'invite plus le plafond demande, alors que la
+        # sonde n'avait produit que 116 jetons. Soustraire les 116 laissait
+        # 217 « consommes par quelqu'un d'autre », c'est-a-dire un ecart
+        # invente par la sonde a chaque execution.
+        reserve = int(observe.get("plafond_demande") or 0)
+        produit = int(observe.get("jetons") or 0)
+        sortie = int(observe.get("jetons_sortie") or 0)
         cout_sonde = {"requetes": 1 if not erreur else 0,
-                      "jetons": int(observe.get("jetons") or 0)}
+                      "jetons": (produit - sortie + reserve) if reserve
+                      else produit}
 
         quota = fournisseur.quota("standard")
         mesures = []
@@ -453,15 +464,7 @@ def auditer_quotas(timeout: int = 30) -> Dict[str, Any]:
             fenetre = _fenetre(_secondes(_premier(entetes, remises)))
             reste = _nombre(_premier(entetes, restes))
             correspond = _correspondance(annonce, quota)
-            # La part de la sonde que le service a peut-etre decomptee sans
-            # qu'elle soit produite. Rendue, pas jugee : c'est a l'execution
-            # suivante de dire si l'ecart lui est exactement egal.
-            reservation = None
-            if genre == "jetons" and observe.get("plafond_demande"):
-                reservation = (int(observe["plafond_demande"])
-                               - int(observe.get("jetons_sortie") or 0))
             mesures.append({
-                "reservation_inutilisee": reservation,
                 "genre": genre, "fenetre": fenetre, "annonce": annonce,
                 "correspond": correspond, "reste": reste,
                 # Ce que le service dit avoir consomme, contre ce que l'usine

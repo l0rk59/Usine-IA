@@ -113,6 +113,7 @@ class Agent:
         eviter: Optional[Sequence[str]] = None,
         avec_fournisseur: bool = False,
         role_modele: Optional[str] = None,
+        cache: bool = True,
     ) -> Any:
         """Rend l'objet decode, ou (objet, fournisseur) si on le demande.
 
@@ -132,6 +133,7 @@ class Agent:
             max_tokens=max_tokens,
             eviter=eviter,
             avec_fournisseur=True,
+            cache=cache,
         )
         evenements.publier("agent", agent=self.nom, etat="fin", emoji=self.emoji,
                            fournisseur=fournisseur)

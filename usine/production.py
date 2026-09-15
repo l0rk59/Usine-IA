@@ -432,6 +432,13 @@ def prospecter(nombre: int = 8, graine: str = "",
 
     pistes = resultat.get("idees", [])
     ajoutees, ecartees = 0, []
+    # Deja fabrique et deja en file sont deux refus DIFFERENTS, et les
+    # confondre envoyait sur une fausse piste : le rapport disait « toutes
+    # recouvrent un produit deja fabrique » alors que l'atelier etait vide et
+    # que les pistes etaient simplement celles du tour precedent, encore en
+    # attente. On cherchait un defaut de dedoublonnage la ou il n'y en avait
+    # pas.
+    en_file = 0
     for idee in pistes:
         titre = idee.get("titre") or ""
         type_produit = idee.get("type", "ebook")
@@ -443,13 +450,18 @@ def prospecter(nombre: int = 8, graine: str = "",
                         options={"audience": idee.get("acheteur", "")},
                         priorite=5, source="auto"):
             ajoutees += 1
+        else:
+            en_file += 1
 
     dire("{} piste(s) explorees, {} mise(s) en file.".format(
         len(pistes), ajoutees))
     for titre, deja in ecartees[:4]:
         dire("  ecartee : « {} » recouvre « {} »".format(
             titre[:38], (deja or "")[:38]))
+    if en_file:
+        dire("  {} piste(s) etaient deja en file d'attente.".format(en_file))
     return {"graine": graine, "ajoutees": ajoutees, "ecartees": ecartees,
+            "en_file": en_file,
             "pistes": len(pistes), "froid": depart_a_froid}
 
 

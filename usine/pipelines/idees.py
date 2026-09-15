@@ -15,6 +15,39 @@ from ..render.page import ecrire_page
 from .base import Contexte, nettoyer_titre
 
 
+def deja_connu(limite: int = 40) -> List[str]:
+    """Les intitules deja fabriques ou deja en file.
+
+    Ils servent a deux choses a la fois, et c'est ce qui rend cette fonction
+    utile plutot que decorative :
+
+      1. le modele cesse de reproposer ce qui existe. Il ne le savait pas :
+         on lui demandait des idees sans jamais lui dire ce qui etait deja
+         fait, puis on jetait ses propositions en double apres coup ;
+      2. l'invite CHANGE des que l'atelier change. Le cache des reponses est
+         indexe sur l'invite : avec une invite figee, trois prospections de
+         suite ne faisaient qu'UN appel au modele et rendaient trois fois la
+         meme liste. Mesure du 15/09/2026 : trois tours, un appel, huit
+         propositions identiques, zero mise en file. L'utilisateur voyait
+         « 8 pistes explorees, 0 mise(s) en file » sans fin.
+    """
+    from ..core import file, store
+
+    titres: List[str] = []
+    vus = set()
+    for ligne in store.lister_empreintes("", limite=limite):
+        titre = str(ligne["sujet"] or ligne["titre"] or "").strip()
+        if titre and titre.lower() not in vus:
+            vus.add(titre.lower())
+            titres.append(titre)
+    for entree in file.lister(limite=limite):
+        titre = str(entree.get("sujet") or "").strip()
+        if titre and titre.lower() not in vus:
+            vus.add(titre.lower())
+            titres.append(titre)
+    return titres[:limite]
+
+
 def explorer(ctx: Contexte, nombre: int = 12,
              donnees_marche: str = "",
              terrain: str = "") -> List[Dict[str, Any]]:
@@ -33,9 +66,16 @@ def explorer(ctx: Contexte, nombre: int = 12,
     historique = ("\n\n{}\n\nTiens-en compte : ce qui s'est deja vendu chez "
                   "ce vendeur vaut mieux qu'une intuition de marche.\n"
                   .format(constate) if constate else "")
+    # Ce que l'atelier contient deja. Injecte dans l'invite, et non filtre
+    # apres coup : un modele qui ignore ce qui existe repropose ce qui
+    # existe, et huit propositions sur huit finissent a la poubelle.
+    connus = deja_connu()
+    evite = ("\n\nDEJA FABRIQUE OU DEJA EN FILE — ne propose rien qui "
+             "recouvre l'un de ces intitules, ni une simple reformulation :\n"
+             + "\n".join("- " + t for t in connus) + "\n") if connus else ""
     invite = (
         "NICHE : {niche}\nAUDIENCE VISEE : {audience}\n"
-        "{marche}{constate}{terrain}\n"
+        "{marche}{constate}{terrain}{evite}\n"
         "Propose {n} idees de produits digitaux realisables par une seule personne, "
         "sans stock ni equipe. Le type doit etre l'un de ceux que l'usine sait "
         "reellement fabriquer :\n{catalogue}\n\n"
@@ -51,12 +91,19 @@ def explorer(ctx: Contexte, nombre: int = 12,
         'acheteurs"}}]}}'
     ).format(niche=ctx.sujet, audience=ctx.audience, n=nombre,
              marche=contexte_marche, constate=historique,
-             terrain=discussions,
+             terrain=discussions, evite=evite,
              catalogue=catalogue.resume_pour_ia(),
              types="|".join(catalogue.cles(vendables=True)))
     donnees = equipe.PROSPECTEUR.travailler_json(
         ctx, invite, role_modele="costaud",
-                               temperature=0.85, max_tokens=4096)
+        temperature=0.85, max_tokens=4096,
+        # L'exploration est la seule operation de l'usine dont le BUT est de
+        # rendre autre chose que la fois d'avant. La mettre en cache la vide
+        # de son sens : elle rendrait a jamais la premiere reponse obtenue.
+        # L'invite porte deja ce qui existe, donc la cle changerait de
+        # toute facon des qu'un produit est fait — mais deux prospections
+        # dans le meme etat d'atelier doivent explorer deux fois.
+        cache=False)
     idees = donnees.get("idees") if isinstance(donnees, dict) else donnees
     propres: List[Dict[str, Any]] = []
     for idee in idees or []:

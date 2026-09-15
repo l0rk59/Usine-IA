@@ -447,23 +447,21 @@ class LeMessageDuServiceEstExtraitDeSonEnveloppe(unittest.TestCase):
                             for l in lignes), lignes)
 
 
-class LaReservationNonConsommeeEstMesuree(unittest.TestCase):
-    """Un ecart qui vaut exactement la reservation n'est pas une derive.
+class LaSondeSeCompteEnReservation(unittest.TestCase):
+    """Un service qui RESERVE debite plus que ce qu'il produit.
 
-    Premier rapport reel, Groq : 8000 annonces, 7667 restants, donc 333
-    decomptes — alors que la sonde n'avait produit que 116 jetons. Deux
-    lectures possibles, et elles n'appellent pas le meme geste :
+    Mesure du 15/09/2026 sur un vrai compte Groq : seau plein a 8000,
+    « remaining » a 7667 juste apres la sonde, soit 333 debites — alors que
+    la reponse annoncait 116 jetons produits. 333 est exactement l'invite
+    (77) plus le plafond demande (256).
 
-      soit le compteur de l'usine derive ;
-      soit le service decompte la sortie DEMANDEE et non celle produite.
-
-    On ne tranche pas a la place de la mesure : la sonde rend ce qu'elle a
-    demande et ce qu'elle a produit, et le rapport constate l'egalite quand
-    elle a lieu. A 8000 jetons par minute, reserver 8192 par appel epuiserait
-    la minute en un seul appel — la difference n'est pas academique.
+    Soustraire les 116 laissait donc 217 « consommes par quelqu'un d'autre »,
+    et le rapport criait a l'ecart sur sa propre requete, a chaque execution.
+    C'est la meme faute que la premiere fois, d'un cran plus fin : l'audit se
+    retirait de sa mesure, mais pas au bon tarif.
     """
 
-    def _mesurer(self, total, sortie, plafond, reste):
+    def _mesurer(self, produit, sortie, plafond, reste):
         p = config.PROVIDERS_BY_NAME["groq"]
         quota = p.quota("standard")
 
@@ -473,7 +471,7 @@ class LaReservationNonConsommeeEstMesuree(unittest.TestCase):
                     "x-ratelimit-limit-tokens": str(quota.tpm),
                     "x-ratelimit-remaining-tokens": str(reste),
                 }
-                observe["jetons"] = total
+                observe["jetons"] = produit
                 observe["jetons_sortie"] = sortie
                 observe["plafond_demande"] = plafond
             return "OK"
@@ -484,38 +482,25 @@ class LaReservationNonConsommeeEstMesuree(unittest.TestCase):
             ligne = diagnostic.auditer_quotas()["lignes"][0]
         return next(m for m in ligne["mesures"] if m["genre"] == "jetons")
 
-    def test_ce_que_la_sonde_a_demande_sans_le_produire_est_rendu(self):
-        mesure = self._mesurer(total=116, sortie=39, plafond=256, reste=7667)
-        self.assertEqual(mesure["reservation_inutilisee"], 256 - 39)
+    def test_les_chiffres_reels_du_15_09_ne_rendent_plus_d_ecart(self):
+        mesure = self._mesurer(produit=116, sortie=39, plafond=256, reste=7667)
+        self.assertEqual(mesure["consomme_service"], 0)
 
-    def test_un_service_muet_sur_l_usage_ne_rend_pas_de_reservation(self):
-        """Sans plafond releve, il n'y a rien a constater — et rendre zero
-        ferait croire a une reservation entierement consommee."""
-        mesure = self._mesurer(total=0, sortie=0, plafond=0, reste=7667)
-        self.assertIsNone(mesure["reservation_inutilisee"])
+    def test_un_service_qui_ne_reserve_pas_est_compte_au_reel(self):
+        """Tous ne reservent pas. Facturer la reservation partout inventerait
+        un ecart en sens inverse, ce qui ne vaut pas mieux."""
+        mesure = self._mesurer(produit=116, sortie=39, plafond=0, reste=7884)
+        self.assertEqual(mesure["consomme_service"], 0)
 
-    def test_les_requetes_n_ont_pas_de_reservation(self):
-        """Une requete ne se reserve pas : elle a lieu ou non."""
-        p = config.PROVIDERS_BY_NAME["groq"]
-        quota = p.quota("standard")
-
-        def essai(prov, modele, timeout=30, observe=None):
-            if observe is not None:
-                observe["entetes"] = {
-                    "x-ratelimit-limit-requests": str(quota.rpd)}
-                observe.update(jetons=116, jetons_sortie=39,
-                               plafond_demande=256)
-            return "OK"
-
-        with mock.patch.object(diagnostic.config, "active_providers",
-                               return_value=[p]), \
-             mock.patch("usine.core.llm.essai_direct", side_effect=essai):
-            ligne = diagnostic.auditer_quotas()["lignes"][0]
-        requetes = next(m for m in ligne["mesures"] if m["genre"] == "requetes")
-        self.assertIsNone(requetes["reservation_inutilisee"])
+    def test_une_consommation_venue_d_ailleurs_reste_visible(self):
+        """Le but n'est pas de faire disparaitre tout ecart : un appel fait
+        depuis une autre machine avec la meme cle doit encore se voir."""
+        mesure = self._mesurer(produit=116, sortie=39, plafond=256,
+                               reste=7667 - 500)
+        self.assertEqual(mesure["consomme_service"], 500)
 
     def test_la_sonde_releve_vraiment_ces_deux_chiffres(self):
-        """Posés a la main, ils ne prouveraient rien : ils doivent venir de
+        """Poses a la main, ils ne prouveraient rien : ils doivent venir de
         la reponse du service et du plafond reellement demande."""
         import json as _json
         from usine.core import llm as module_llm

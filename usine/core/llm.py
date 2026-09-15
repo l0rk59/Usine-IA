@@ -640,6 +640,7 @@ def generer_json(
     essais: int = 3,
     eviter: Optional[Sequence[str]] = None,
     avec_fournisseur: bool = False,
+    cache: bool = True,
 ) -> Any:
     """Comme generer(), mais garantit un objet Python decode depuis du JSON.
 
@@ -667,7 +668,10 @@ def generer_json(
             temperature=temperature + 0.1 * tentative,
             max_tokens=max_tokens,
             json_mode=True,
-            cache=(tentative == 0),
+            # La premiere tentative seule peut lire le cache : une reponse
+            # illisible relue depuis le cache le resterait a chaque essai.
+            # Et un appelant qui refuse le cache le refuse pour toutes.
+            cache=cache and tentative == 0,
             eviter=ecartes,
         )
         try:
