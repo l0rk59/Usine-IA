@@ -161,6 +161,31 @@ def simulateur(messages, role):
              "pourquoi_maintenant": "la rentree"},
         ]}, ensure_ascii=False)
 
+    # --- l'usine decide les reglages que personne n'a remplis -------------
+    #
+    # Sans ce cas, le simulateur rendait une reponse illisible, l'usine
+    # journalisait honnetement « n'a pas pu decider », et les tests
+    # n'exercaient que le chemin degrade — celui ou rien n'est decide.
+    if "Ces reglages n'ont pas ete choisis" in invite:
+        # On repond avec une valeur PRISE DANS LA LISTE que l'invite propose :
+        # repondre a cote ferait passer pour un defaut du modele ce qui est un
+        # defaut du simulateur.
+        reponse = {}
+        for ligne in invite.splitlines():
+            if not ligne.startswith("- "):
+                continue
+            nom = ligne[2:].split(" (", 1)[0].strip()
+            attendu = ligne.split("(", 1)[1].split(")", 1)[0] if "(" in ligne else ""
+            if attendu.startswith("un de : "):
+                reponse[nom] = attendu[len("un de : "):].split(",")[0].strip()
+            elif attendu == "un entier":
+                reponse[nom] = 7
+            elif attendu == "oui ou non":
+                reponse[nom] = "non"
+            else:
+                reponse[nom] = "decide par le simulateur"
+        return json.dumps(reponse, ensure_ascii=False)
+
     # --- la lecture en lecteur de fiction --------------------------------
     #
     # Sans ce cas, le simulateur rendait un objet sans rapport et la lecture

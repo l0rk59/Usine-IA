@@ -114,6 +114,119 @@ def demander(sujet: str, genre: str = "produit",
     }
 
 
+_INVITE_REGLAGES = """Tu prepares la fabrication de ce produit :
+
+TYPE : {type_nom} — {type_resume}
+SUJET : {sujet}
+{connu}
+Ces reglages n'ont pas ete choisis. Decide chacun d'apres le SUJET, pas
+d'apres ce qui conviendrait a n'importe quoi :
+
+{a_decider}
+
+Reponds en JSON strict, une cle par reglage, rien d'autre :
+{{{schema}}}"""
+
+
+def decider_les_reglages(ctx: Any, type_produit: Any,
+                         options: Dict[str, Any]) -> Dict[str, Any]:
+    """Fait choisir a l'usine les reglages du type que personne n'a remplis.
+
+    Pourquoi cette etape existe. Le brief automatique decidait trois choses —
+    audience, ton, taille — et tout le reste tombait sur une valeur en dur :
+    tout pack de posts partait sur LinkedIn, toute sequence d'e-mails etait
+    une sequence de bienvenue, tout quiz etait de niveau intermediaire, tout
+    outil logiciel etait une ligne de commande, tout album visait les 6-8 ans.
+
+    Ces valeurs ne se voyaient nulle part. Un reglage par defaut n'est pas
+    neutre, il est juste invisible — et l'usine est faite pour produire depuis
+    ZERO, en decidant elle-meme a partir du sujet.
+
+    Ce qui n'est PAS fait ici : deviner a la place de l'utilisateur. Un champ
+    qu'il a rempli n'est jamais touche. Et si le modele ne repond pas, on rend
+    {{}} : la chaine garde alors ce qu'elle avait, et le journal le dit — un
+    reglage a moitie devine serait pire que pas de reglage, parce qu'on
+    croirait que le sujet a ete lu.
+    """
+    champs = [c for c in (getattr(type_produit, "champs", None) or ())
+              if not str(options.get(c.nom) or "").strip()
+              and getattr(c, "decide_par_l_usine", True)
+              # Un booleen decoche veut dire « fais-le », pas « decide a ma
+              # place » : ce sont les seuls champs qui parlent de ce que
+              # l'utilisateur veut depenser ou sauter, pas du produit.
+              and c.genre != "booleen"]
+    if not champs or not (ctx.sujet or "").strip():
+        return {}
+
+    lignes, schema = [], []
+    for champ in champs:
+        choix = [v for v in (champ.choix or ()) if v]
+        attendu = ("un de : " + ", ".join(choix) if choix
+                   else "un entier" if champ.genre == "entier"
+                   else "oui ou non" if champ.genre == "booleen"
+                   else "texte libre, court")
+        lignes.append("- {} ({}) : {}".format(
+            champ.nom, attendu, (champ.aide or champ.libelle)[:150]))
+        schema.append('"{}": ""'.format(champ.nom))
+
+    deja = [(c.libelle, options[c.nom]) for c in (type_produit.champs or ())
+            if str(options.get(c.nom) or "").strip()]
+    connu = ("DEJA CHOISI, a respecter : "
+             + " ; ".join("{} = {}".format(n, v) for n, v in deja) + "\n"
+             if deja else "")
+
+    ctx.journal("L'usine decide {} reglage(s) : {}...".format(
+        len(champs), ", ".join(c.nom for c in champs[:6])))
+    try:
+        brut = llm.generer_json(
+            _INVITE_REGLAGES.format(
+                type_nom=type_produit.nom, type_resume=type_produit.resume,
+                sujet=(ctx.sujet or "").strip()[:400], connu=connu,
+                a_decider="\n".join(lignes), schema=", ".join(schema)),
+            systeme="Tu es un directeur editorial. Tu reponds en JSON strict, "
+                    "en francais, sans commentaire autour.",
+            role="raisonnement", temperature=0.4, max_tokens=700)
+    except Exception as exc:
+        ctx.journal("  l'usine n'a pas pu decider ({}) — les reglages "
+                    "restent vides".format(type(exc).__name__))
+        return {}
+    if not isinstance(brut, dict):
+        return {}
+
+    decides: Dict[str, Any] = {}
+    for champ in champs:
+        valeur = str(brut.get(champ.nom) or "").strip()
+        if not valeur:
+            continue
+        choix = [v for v in (champ.choix or ()) if v]
+        if choix:
+            # Le modele rend parfois une variante proche. On ne la corrige
+            # pas : on l'ecarte. Accepter « thriller psychologique » la ou le
+            # champ attend « thriller » ferait entrer dans la fiche une valeur
+            # que rien d'autre ne sait relire.
+            correspond = [v for v in choix if v.lower() == valeur.lower()]
+            if not correspond:
+                continue
+            valeur = correspond[0]
+        elif champ.genre in ("entier", "decimal"):
+            # Un modele rend « 12 », « 12 mm » ou « douze ». Les deux premiers
+            # se lisent, le troisieme est ecarte plutot que devine. Oublier le
+            # decimal faisait partir « reliure » en chaine de caracteres, et la
+            # chaine d'impression comparait un texte a zero.
+            try:
+                nombre = float(str(valeur).replace(",", ".").split()[0])
+            except (TypeError, ValueError, IndexError):
+                continue
+            valeur = int(nombre) if champ.genre == "entier" else nombre
+        elif champ.genre == "booleen":
+            valeur = valeur.lower() in ("oui", "true", "vrai", "1")
+        decides[champ.nom] = valeur
+
+    for nom, valeur in decides.items():
+        ctx.journal("  {} : {}".format(nom, valeur))
+    return decides
+
+
 def a_decider(ctx: Any) -> List[str]:
     """Les champs que l'utilisateur a laisses a l'usine.
 

@@ -189,10 +189,12 @@ class ChaqueChampSaitCeQuIlEst(unittest.TestCase):
 
         reseaux = next(c for c in catalogue.obtenir("social").champs
                        if c.nom == "reseau")
-        self.assertEqual(set(reseaux.choix), set(social.RESEAUX))
+        # Le vide est l'option « que l'usine decide » : il ne vient pas de
+        # la liste du module, et sa presence ne dit rien d'une recopie.
+        self.assertEqual({c for c in reseaux.choix if c}, set(social.RESEAUX))
         cibles = next(c for c in catalogue.obtenir("logiciel").champs
                       if c.nom == "cible")
-        self.assertEqual(set(cibles.choix), set(logiciel.CIBLES))
+        self.assertEqual({c for c in cibles.choix if c}, set(logiciel.CIBLES))
 
     def test_chaque_champ_a_un_libelle_lisible(self):
         """Le nom technique — « sans_essai » — ne se montre pas a

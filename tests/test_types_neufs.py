@@ -70,7 +70,9 @@ class LeCatalogueLesConnait(unittest.TestCase):
         self.assertEqual(set(catalogue.niveaux_quiz()), set(quiz.NIVEAUX))
         champ = next(c for c in catalogue.obtenir("quiz").champs
                      if c.nom == "niveau")
-        self.assertEqual(set(champ.choix), set(quiz.NIVEAUX))
+        # Le vide est l'option « que l'usine decide » : il ne vient pas
+        # de la liste du module, et ne dit rien d'une recopie.
+        self.assertEqual({c for c in champ.choix if c}, set(quiz.NIVEAUX))
 
     def test_le_memo_et_le_quiz_ne_sont_pas_notes_comme_de_la_prose(self):
         """Le controle deterministe mesure le rythme des phrases et la

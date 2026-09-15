@@ -164,6 +164,18 @@ class Champ:
     # chemins — ligne de commande, menu Termux, tableau de bord.
     argument: str = ""
     inverse: bool = False
+    # L'usine decide-t-elle ce champ quand personne ne le remplit ?
+    #
+    # Vrai pour ce qui faconne LE PRODUIT : le genre d'un roman, le reseau
+    # d'un pack de posts, le niveau d'un quiz, le nombre de sections. C'est le
+    # coeur de l'usine — elle produit depuis zero, a partir du sujet seul.
+    #
+    # Faux pour ce qui dit ce que l'UTILISATEUR veut depenser ou sauter. Une
+    # case « ne pas mesurer le marche » decochee veut dire « fais-le », pas
+    # « decide a ma place ». Faux aussi la ou vide veut dire AUCUN : un champ
+    # « serie » vide est un recit isole, et la premiere version faisait
+    # inventer un nom de serie a chaque nouvelle.
+    decide_par_l_usine: bool = True
 
     @property
     def drapeaux(self) -> Tuple[str, ...]:
@@ -281,7 +293,7 @@ def champs_de_fiction(jeunesse: bool = False,
               aide="« Beats de romance » suit l'arc de la RELATION : dans "
                    "une romance, c'est elle la charpente, et la traiter en "
                    "second plan se voit."),
-        Champ("serie", "--serie", "Serie",
+        Champ("serie", "--serie", "Serie", decide_par_l_usine=False,
               aide="Laissez vide pour un recit isole. Un tome reprend le "
                    "monde, la distribution et les faits des precedents."),
     )
@@ -360,6 +372,38 @@ class TypeProduit:
         if self.fabriquer is None:
             raise RuntimeError("type « {} » sans chaine de fabrication".format(self.cle))
         options = dict(options or {})
+        # Ce que personne n'a rempli, l'usine le decide — a partir du sujet,
+        # et une seule fois, ici : « executer » est le point unique par lequel
+        # passent la ligne de commande, le menu Termux, le tableau de bord et
+        # la boucle continue.
+        #
+        # Avant, chaque reglage vide tombait sur une valeur en dur : tout pack
+        # de posts partait sur LinkedIn, toute sequence d'e-mails etait une
+        # sequence de bienvenue, tout quiz etait de niveau intermediaire. Un
+        # reglage par defaut n'est pas neutre, il est juste invisible.
+        from . import brief
+
+        decides = brief.decider_les_reglages(contexte, self, options)
+        if decides:
+            options.update(decides)
+            # Les reglages de fiction ne voyagent pas en arguments : ils sont
+            # deposes dans « ctx.meta["fiction"] », et la promesse a ete posee
+            # AVANT cette decision. Sans ce rappel, l'usine choisissait un
+            # genre, une ambiance et une fin — et la chaine ecrivait sans les
+            # voir. Mesure : promesse VIDE apres une fabrication depuis zero.
+            from . import fiction
+
+            if self.famille == "fiction" and any(
+                    cle in fiction.CLES for cle in decides):
+                fiction.poser_la_promesse(
+                    contexte,
+                    {**fiction.promesse_du_contexte(contexte), **decides})
+            # La decision se retrouve dans la fiche du produit : une decision
+            # qu'on ne retrouve plus six mois apres n'aide pas a comprendre le
+            # resultat.
+            meta = getattr(contexte, "meta", None)
+            if isinstance(meta, dict):
+                meta.setdefault("reglages_decides", {}).update(decides)
         arguments: Dict[str, Any] = {}
         if self.quantite:
             nom_argument = self.quantite[0]
@@ -515,7 +559,7 @@ TYPES: List[TypeProduit] = [
         options={"tranche": None},
         champs=champs_de_fiction(jeunesse=True) + (
             Champ("tranche", "--tranche", "Tranche d'age", genre="choix",
-                  choix=conte_tranches(), defaut="6-8 ans",
+                  choix=("",) + conte_tranches(), defaut="",
                   aide="Elle decide de tout : nombre de pages, longueur des "
                        "phrases, vocabulaire. Le controle verifie ensuite que "
                        "le texte s'y tient."),
@@ -600,6 +644,10 @@ TYPES: List[TypeProduit] = [
                   genre="entier", defaut=12),
             Champ("reliure", "--reliure", "Marge de reliure",
                   genre="decimal", defaut=0, unite="mm",
+                  # La marge depend de l'IMPRIMEUR, pas du sujet : lui la
+                  # publie, le sujet n'en dit rien. Zero veut dire « aucune »,
+                  # pas « decide pour moi ».
+                  decide_par_l_usine=False,
                   aide="Marge intérieure pour l'impression à la demande. "
                        "0 = aucune ; votre imprimeur publie la sienne."),
         ),
@@ -620,9 +668,11 @@ TYPES: List[TypeProduit] = [
             Champ("nombre", "-n/--nombre", "Nombre de publications",
                   genre="entier", defaut=30),
             Champ("reseau", "-r/--reseau", "Réseau visé", genre="choix",
-                  defaut="linkedin", choix=reseaux_sociaux()),
+                  defaut="", choix=("",) + reseaux_sociaux(),
+                  aide="Laissez vide : l'usine choisit le réseau d'après le sujet."),
             Champ("visuels", "--visuels", "Visuels à générer",
                   genre="entier", defaut=0, argument="visuels",
+                  decide_par_l_usine=False,
                   aide="0 : aucun. Chacun coûte un appel d'image."),
         ),
     ),
@@ -640,7 +690,7 @@ TYPES: List[TypeProduit] = [
         prose=False,
         champs=(
             Champ("cible", "-c/--cible", "Ce que vous livrez", genre="choix",
-                  defaut="cli", choix=cibles_logiciel(),
+                  defaut="", choix=("",) + cibles_logiciel(),
                   aide="cli : outil en ligne de commande. web : page "
                        "autonome. extension : Chrome Manifest V3."),
             Champ("sans_essai", "--sans-essai", "Ne pas exécuter le code",
@@ -664,7 +714,7 @@ TYPES: List[TypeProduit] = [
             Champ("nombre", "-n/--nombre", "Nombre de messages",
                   genre="entier", defaut=7),
             Champ("intention", "-o/--intention", "Ce que la sequence cherche",
-                  genre="choix", defaut="bienvenue", choix=objectifs_email(),
+                  genre="choix", defaut="", choix=("",) + objectifs_email(),
                   aide="Une sequence de bienvenue ne demande presque rien ; "
                        "une sequence de vente construit vers un achat."),
             Champ("rythme", "--rythme", "Un message tous les", genre="entier",
@@ -714,7 +764,8 @@ TYPES: List[TypeProduit] = [
             Champ("nombre", "-n/--nombre", "Nombre de questions",
                   genre="entier", defaut=20),
             Champ("niveau", "--niveau", "Niveau vise", genre="choix",
-                  defaut="intermediaire", choix=niveaux_quiz()),
+                  defaut="", choix=("",) + niveaux_quiz(),
+                  aide="Laissez vide : l'usine juge le niveau d'après le sujet."),
             Champ("sans_bareme", "--sans-bareme", "Ne pas inclure de bareme",
                   genre="booleen", defaut=False,
                   aide="Le bareme donne des seuils en nombre de bonnes "
