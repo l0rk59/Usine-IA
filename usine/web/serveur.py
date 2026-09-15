@@ -19,7 +19,7 @@ import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from .. import __version__
@@ -162,12 +162,26 @@ def _entier(valeur: Any) -> int:
         return 0
 
 
-def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None:
+def _journal_de(travail_id: str) -> Callable[[str], None]:
+    """La voix d'un travail : ce qu'il ecrit va au navigateur et au flux.
+
+    Cette fermeture etait recopiee CINQ fois dans ce fichier, a l'octet pres
+    — une par lanceur de travail. Trois choses y sont enchainees et doivent
+    le rester : le verrou, l'expurgation, et la publication. Le jour ou l'une
+    manque a une copie, une cle d'API part dans le journal d'un seul type de
+    travail, et rien ne le dit.
+    """
     def journal(message: str) -> None:
         with _VERROU:
             TRAVAUX[travail_id]["journal"].append(
                 {"ts": time.time(), "texte": securite.expurger(message)})
         evenements.publier("journal", message=message, travail=travail_id)
+
+    return journal
+
+
+def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None:
+    journal = _journal_de(travail_id)
 
     profil = reglages.charger()
     sujet = str(options.get("sujet") or "").strip()
@@ -251,11 +265,7 @@ def _lancer_prospection(travail_id: str, fiction: bool = False) -> None:
     n'existait qu'en ligne de commande — donc pas pour qui pilote l'usine
     depuis son telephone, c'est-a-dire l'usage normal.
     """
-    def journal(message: str) -> None:
-        with _VERROU:
-            TRAVAUX[travail_id]["journal"].append(
-                {"ts": time.time(), "texte": securite.expurger(message)})
-        evenements.publier("journal", message=message, travail=travail_id)
+    journal = _journal_de(travail_id)
 
     from ..production import prospecter, prospecter_fiction
 
@@ -1160,11 +1170,7 @@ def _lancer_ab(travail_id: str, options: Dict[str, Any]) -> None:
     """Fabrique les variantes d'un test. Lent : IA, et parfois des images."""
     from ..pipelines import variantes as pipeline_variantes
 
-    def journal(message: str) -> None:
-        with _VERROU:
-            TRAVAUX[travail_id]["journal"].append(
-                {"ts": time.time(), "texte": securite.expurger(message)})
-        evenements.publier("journal", message=message, travail=travail_id)
+    journal = _journal_de(travail_id)
 
     try:
         produit_id = str(options.get("produit") or "")
@@ -1209,11 +1215,7 @@ def _lancer_marketing(travail_id: str, produit_id: str, prix: str) -> None:
     """Kit de vente d'un produit deja fabrique."""
     from ..marketing import vente
 
-    def journal(message: str) -> None:
-        with _VERROU:
-            TRAVAUX[travail_id]["journal"].append(
-                {"ts": time.time(), "texte": securite.expurger(message)})
-        evenements.publier("journal", message=message, travail=travail_id)
+    journal = _journal_de(travail_id)
 
     try:
         produit = store.lire_produit(produit_id)
@@ -1257,11 +1259,7 @@ def _lancer_reprise(travail_id: str, produit_id: str) -> None:
     from .. import cli
     from ..pipelines import carnet
 
-    def journal(message: str) -> None:
-        with _VERROU:
-            TRAVAUX[travail_id]["journal"].append(
-                {"ts": time.time(), "texte": securite.expurger(message)})
-        evenements.publier("journal", message=message, travail=travail_id)
+    journal = _journal_de(travail_id)
 
     try:
         produit = store.lire_produit(produit_id) or {}

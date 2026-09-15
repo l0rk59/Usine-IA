@@ -49,7 +49,8 @@ from . import faits
 from . import memoire as M
 from . import voix
 from .base import (PLUS_RIEN_A_DEMANDER, Contexte, elaguer_markdown,
-                   jetons_pour, nettoyer_titre, preparer, terminer)
+                   jetons_pour, nettoyer_titre, preparer, sans_titres,
+                   terminer)
 
 ROLE = ("un auteur de fiction courte publie en revue, qui tient la continuite "
         "et montre plutot que de raconter")
@@ -827,11 +828,16 @@ def rediger_scene(ctx: Contexte, bible: Dict[str, Any], grille: Dict[str, Any],
 
     reponse = equipe.REDACTEUR.travailler(
         ctx, invite, max_tokens=jetons_pour(ctx.mots_par_chapitre))
-    texte = elaguer_markdown(reponse.texte)
-    lignes = [l for l in texte.split("\n")]
-    while lignes and lignes[0].startswith("#"):
-        lignes.pop(0)
-    return "\n".join(lignes).strip(), reponse.fournisseur
+    # TOUS les titres, pas seulement ceux du debut. Le titre de la scene est
+    # ajoute par la chaine ; un titre laisse dans le corps en fabrique un
+    # second, qui entre au sommaire du PDF et dans la navigation de l'EPUB.
+    #
+    # Mesure du 15/09/2026, avec un modele qui place « ## Le principe de
+    # base » au milieu de chaque scene : une nouvelle annoncant trois scenes
+    # rendait SIX entrees. La consigne interdit deja ces titres — ce qui
+    # suit rattrape le modele qui ne l'ecoute pas, et l'ancienne version ne
+    # rattrapait que le cas ou il commencait par la.
+    return sans_titres(elaguer_markdown(reponse.texte)), reponse.fournisseur
 
 
 # --------------------------------------------------------------------------

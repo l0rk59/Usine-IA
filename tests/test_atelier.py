@@ -181,18 +181,38 @@ class TestDrapeauxDeSchema(unittest.TestCase):
     """Les « tables deja creees » ne valent que pour la base ouverte."""
 
     def test_fermer_la_base_fait_tomber_les_drapeaux(self):
-        file_prod._assurer()
-        experience._assurer()
-        apprentissage._assurer()
-        self.assertTrue(file_prod._pret)
-        self.assertTrue(experience._pret)
-        self.assertTrue(apprentissage._pret)
+        """Mesure le COMPORTEMENT, pas le drapeau.
 
+        La premiere version lisait « module._pret ». Elle est tombee le jour
+        ou les trois modules ont cesse de recopier le meme couple
+        assurer/oublier pour partager celui de « store » — alors que rien
+        n'avait change pour l'utilisateur. Un test qui garde un detail
+        d'implementation interdit de ranger le code sans le reecrire.
+
+        Ce qui doit rester vrai : apres « close() », chaque module refait ses
+        tables au lieu de croire qu'elles sont la.
+        """
+        modules = (file_prod, experience, apprentissage)
+        for module in modules:
+            module._assurer()
+        executions = []
+        vrai_connect = store.connect
+
+        def compter():
+            executions.append(1)
+            return vrai_connect()
+
+        # Sans remise a zero, « _assurer » ne rouvrirait rien : il croirait
+        # ses tables deja creees.
         store.close()
-
-        self.assertFalse(file_prod._pret, "la file croit encore ses tables la")
-        self.assertFalse(experience._pret)
-        self.assertFalse(apprentissage._pret)
+        store.connect = compter
+        try:
+            for module in modules:
+                module._assurer()
+        finally:
+            store.connect = vrai_connect
+        self.assertEqual(len(executions), len(modules),
+                         "un module croit encore ses tables la")
 
     def test_les_tables_renaissent_dans_une_base_neuve(self):
         """Le vrai risque : une base changee sous les pieds du processus."""

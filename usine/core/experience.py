@@ -78,29 +78,15 @@ CERTITUDE_TENDANCE = 0.80
 PERTE_ACCEPTABLE = 0.005      # 0,5 point de taux de conversion
 MINIMUM_ACTIONS = 25          # en dessous, aucune conclusion n'est publiee
 
-_pret = False
+def _colonnes_de_periode(connexion) -> None:
+    """Les tables d'experience naissent a la demande : si elles existaient
+    deja avant l'ajout des colonnes de periode, le schema ne les a pas
+    touchees."""
+    store._ajouter_colonnes(connexion, "variantes",
+                            (("debut", "TEXT"), ("fin", "TEXT")))
 
 
-def _assurer() -> None:
-    global _pret
-    if not _pret:
-        connexion = store.connect()
-        connexion.executescript(SCHEMA)
-        # Les tables d'experience naissent a la demande : si elles existaient
-        # deja avant l'ajout des colonnes de periode, le script ci-dessus ne
-        # les a pas touchees.
-        store._ajouter_colonnes(connexion, "variantes",
-                                (("debut", "TEXT"), ("fin", "TEXT")))
-        _pret = True
-
-
-def _oublier() -> None:
-    """La base a change : les tables de ce module sont a recreer."""
-    global _pret
-    _pret = False
-
-
-store.oublier_avec_la_base(_oublier)
+_assurer = store.tables_a_la_demande(SCHEMA, _colonnes_de_periode)
 
 
 # --------------------------------------------------------------------------

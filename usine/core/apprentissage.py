@@ -42,23 +42,9 @@ CREATE INDEX IF NOT EXISTS idx_productions_type ON productions(type);
 CREATE INDEX IF NOT EXISTS idx_productions_ts ON productions(ts);
 """
 
-_pret = False
+_assurer = store.tables_a_la_demande(SCHEMA)
 
 
-def _assurer() -> None:
-    global _pret
-    if not _pret:
-        store.connect().executescript(SCHEMA)
-        _pret = True
-
-
-def _oublier() -> None:
-    """La base a change : les tables de ce module sont a recreer."""
-    global _pret
-    _pret = False
-
-
-store.oublier_avec_la_base(_oublier)
 
 
 def enregistrer(

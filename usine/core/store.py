@@ -251,6 +251,44 @@ def oublier_avec_la_base(rappel: Callable[[], None]) -> None:
     _oublis.append(rappel)
 
 
+def tables_a_la_demande(schema: str,
+                        complement: Optional[Callable[[Any], None]] = None
+                        ) -> Callable[[], None]:
+    """Rend la fonction « assurer » d'un module qui cree ses tables au besoin.
+
+    Trois modules — la file, les experiences, l'apprentissage — repetaient
+    mot pour mot le meme couple : un drapeau de module, une fonction qui
+    execute le schema une fois, et une autre qui remet le drapeau a zero
+    quand la base change. Mesure du 15/09/2026 : les corps etaient
+    IDENTIQUES a l'octet pres.
+
+    Trois copies d'un mecanisme de remise a zero, c'est trois endroits ou
+    corriger le jour ou il se trompe, et deux qu'on oubliera — or ce
+    mecanisme existe precisement parce qu'un drapeau qui ment sur une base
+    restauree est un defaut invisible.
+
+    « complement » sert au seul module qui fait plus que son schema : les
+    experiences ajoutent des colonnes a une table deja creee. Le prevoir ici
+    evite qu'il reste a l'ecart et diverge a son tour.
+    """
+    etat = {"pret": False}
+
+    def assurer() -> None:
+        if etat["pret"]:
+            return
+        connexion = connect()
+        connexion.executescript(schema)
+        if complement is not None:
+            complement(connexion)
+        etat["pret"] = True
+
+    def oublier() -> None:
+        etat["pret"] = False
+
+    oublier_avec_la_base(oublier)
+    return assurer
+
+
 def connect() -> sqlite3.Connection:
     global _schema_pret
     conn = getattr(_local, "conn", None)

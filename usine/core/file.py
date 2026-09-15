@@ -35,23 +35,10 @@ CREATE INDEX IF NOT EXISTS idx_file_statut ON file_production(statut, priorite, 
 
 STATUTS = ("en_attente", "en_cours", "fait", "echec", "annule")
 
-_pret = False
-
-
-def _assurer() -> None:
-    global _pret
-    if not _pret:
-        store.connect().executescript(SCHEMA)
-        _pret = True
-
-
-def _oublier() -> None:
-    """La base a change : les tables de ce module sont a recreer."""
-    global _pret
-    _pret = False
-
-
-store.oublier_avec_la_base(_oublier)
+# Les tables de ce module se creent au premier usage, et le drapeau qui dit
+# « c'est fait » retombe quand la base change. Le mecanisme etait recopie ici,
+# dans « experience » et dans « apprentissage » — a l'octet pres.
+_assurer = store.tables_a_la_demande(SCHEMA)
 
 
 def ajouter(
