@@ -11,7 +11,8 @@ from ..agents import equipe
 from ..core import images
 from ..render import livraison, tableur
 from ..render.page import ecrire_page
-from .base import Contexte, nettoyer_titre, preparer, slug, terminer
+from .base import (Contexte, nettoyer_titre, preparer, renommer, slug,
+                   terminer)
 
 
 SOURCES = {
@@ -158,14 +159,29 @@ def _rediger_lot(ctx: Contexte, lot: List[Dict[str, Any]], reseau: str) -> List[
     return resultat
 
 
+def _titre(ctx: Contexte, combien: int, reseau: str) -> str:
+    """Le titre annonce le nombre de posts REELLEMENT rediges.
+
+    Il annoncait le nombre demande, arrete avant la redaction — le meme defaut
+    que le pack de prompts, et pour la meme raison : c'est la seule des deux
+    chaines qui se nomme par un chiffre. Un lot qui echoue est rattrape par
+    ses accroches, mais un post rendu sans texte disparait sans que le titre
+    bouge.
+    """
+    return "{} posts {} — {}".format(combien, reseau.capitalize(), ctx.sujet)
+
+
 def produire(ctx: Contexte, nombre: int = 30, reseau: str = "linkedin",
              visuels: int = 0) -> Dict[str, Any]:
     reseau = reseau.lower()
     ctx.journal("Etape 1/4 — calendrier editorial ({} posts, {})...".format(nombre, reseau))
     calendrier = _calendrier(ctx, nombre, reseau)
-    titre = "{} posts {} — {}".format(nombre, reseau.capitalize(), ctx.sujet)
+    titre = _titre(ctx, len(calendrier), reseau)
     dossier = preparer(ctx, "social", titre)
-    ctx.etape("calendrier", "ok", "{} publications".format(len(calendrier)))
+    ctx.etape("calendrier",
+              "anomalie" if len(calendrier) < nombre else "ok",
+              "{} publications sur {} demandees".format(
+                  len(calendrier), nombre))
 
     ctx.journal("Etape 2/4 — redaction des publications...")
     posts: List[Dict[str, str]] = []
@@ -182,7 +198,10 @@ def produire(ctx: Contexte, nombre: int = 30, reseau: str = "linkedin",
                 {"jour": str(p["jour"]), "texte": p["accroche"], "hashtags": "", "visuel": ""}
                 for p in lot
             )
-    ctx.etape("redaction", "ok", "{} posts".format(len(posts)))
+    ctx.etape("redaction",
+              "anomalie" if len(posts) < len(calendrier) else "ok",
+              "{} posts pour {} au calendrier".format(
+                  len(posts), len(calendrier)))
 
     ctx.journal("Etape 3/4 — visuels...")
     chemins_visuels: List[Path] = []
@@ -202,6 +221,8 @@ def produire(ctx: Contexte, nombre: int = 30, reseau: str = "linkedin",
     ctx.etape("visuels", "ok", "{} images".format(len(chemins_visuels)))
 
     ctx.journal("Etape 4/4 — export...")
+    if len(posts) != len(calendrier):
+        titre = renommer(ctx, _titre(ctx, len(posts), reseau))
     fichiers = _exporter(ctx, titre, reseau, calendrier, posts)
     resume = {
         "produit_id": ctx.produit_id,

@@ -10,7 +10,8 @@ from typing import Any, Dict, List
 from ..agents import equipe
 from ..render import document as D
 from ..render import livraison
-from .base import Contexte, nettoyer_titre, preparer, slug, terminer
+from .base import (Contexte, nettoyer_titre, preparer, renommer, slug,
+                   terminer)
 
 
 def _categories(ctx: Contexte, nombre: int) -> List[Dict[str, Any]]:
@@ -75,7 +76,21 @@ def _rediger_lot(ctx: Contexte, categorie: Dict[str, Any]) -> List[Dict[str, str
                                temperature=0.72, max_tokens=4096)
     elements = donnees.get("prompts") if isinstance(donnees, dict) else donnees
     resultat: List[Dict[str, str]] = []
+    # Le plan est le contrat : on a demande la version complete de CES
+    # intitules-la, pas d'autres. Un modele qui en rend davantage rend autre
+    # chose — mesure du 15/09/2026 : deux intitules planifies, six prompts
+    # rendus, dont quatre etaient des morceaux de la consigne elle-meme
+    # (« 'titre' : l'intitule, reformule pour etre vendeur et clair. ») promus
+    # au rang de prompt vendu.
+    #
+    # On coupe sur le NOMBRE et non sur les intitules : la consigne demande
+    # justement de reformuler le titre, donc comparer les libelles ecarterait
+    # les bonnes reformulations en meme temps que les mauvaises — le garde-fou
+    # qui crie a tort.
+    plafond = len(categorie["prompts"])
     for element in elements or []:
+        if len(resultat) >= plafond:
+            break
         if not isinstance(element, dict) or not element.get("prompt"):
             continue
         resultat.append(
@@ -89,12 +104,35 @@ def _rediger_lot(ctx: Contexte, categorie: Dict[str, Any]) -> List[Dict[str, str
     return resultat
 
 
+def _titre(ctx: Contexte, combien: int) -> str:
+    """Le titre annonce ce que le pack CONTIENT.
+
+    Il annoncait le nombre demande, fixe avant la redaction. Mesure du
+    15/09/2026 : couverture « 7 prompts », pack de douze. L'acheteur compte —
+    c'est meme la seule chose qu'il puisse verifier d'un coup d'oeil.
+    """
+    return "{} prompts pour {}".format(combien, ctx.sujet.lower())
+
+
 def produire(ctx: Contexte, nombre: int = 50) -> Dict[str, Any]:
     ctx.journal("Etape 1/3 — plan du pack ({} prompts)...".format(nombre))
     categories = _categories(ctx, nombre)
-    titre = "{} prompts pour {}".format(nombre, ctx.sujet.lower())
+    planifies = sum(len(c["prompts"]) for c in categories)
+    titre = _titre(ctx, planifies)
     dossier = preparer(ctx, "prompts", titre)
-    ctx.etape("plan", "ok", "{} categories".format(len(categories)))
+    # « anomalie » et non « echec » : le pack sera complet — chaque prompt
+    # planifie sera redige — mais l'acheteur en a commande cinquante. Sans
+    # cette ligne la difference ne vivait que dans le defilement du terminal,
+    # c'est-a-dire nulle part sur un telephone.
+    #
+    # On signale le MANQUE, pas l'ecart : un plan qui rend cinquante-deux
+    # prompts pour cinquante n'a lese personne, et un garde-fou qui crie a
+    # tort finit ignore. Aucun seuil : les deux nombres sont rendus, un humain
+    # juge si quatre prompts sur cinquante valent d'etre vendus.
+    ctx.etape("plan",
+              "anomalie" if planifies < nombre else "ok",
+              "{} categories, {} prompts sur {} demandes".format(
+                  len(categories), planifies, nombre))
 
     ctx.journal("Etape 2/3 — redaction des prompts...")
     for index, categorie in enumerate(categories, 1):
@@ -120,8 +158,15 @@ def produire(ctx: Contexte, nombre: int = 50) -> Dict[str, Any]:
                   perdu or categorie["nom"])
 
     ctx.journal("Etape 3/3 — export...")
-    fichiers = _exporter(ctx, titre, categories)
     total = sum(len(c.get("details", [])) for c in categories)
+    if total != planifies:
+        titre = renommer(ctx, _titre(ctx, total))
+        # Une categorie perdue est rattrapee par ses intitules, donc le compte
+        # tient. S'il ne tient pas, c'est que le modele a rendu des entrees
+        # sans prompt : le pack est plus court que son plan.
+        ctx.etape("redaction", "anomalie" if total < planifies else "ok",
+                  "{} prompts ecrits pour {} planifies".format(total, planifies))
+    fichiers = _exporter(ctx, titre, categories)
     resume = {
         "produit_id": ctx.produit_id,
         "titre": titre,

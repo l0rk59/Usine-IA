@@ -287,6 +287,25 @@ def preparer(ctx: Contexte, type_produit: str, titre: str) -> Path:
     return dossier
 
 
+def renommer(ctx: Contexte, titre: str) -> str:
+    """Corrige le titre du produit une fois qu'on sait ce qu'il contient.
+
+    Deux chaines se nomment par un NOMBRE — « 50 prompts pour… », « 30 posts
+    LinkedIn — … » — et le fixaient au nombre DEMANDE, avant d'avoir ecrit
+    quoi que ce soit. Mesure du 15/09/2026 sur un pack de prompts : la
+    couverture annoncait « 7 prompts », le pack en contenait douze. Le
+    chiffre doit venir du produit, pas de la commande.
+
+    Le dossier garde son nom : il est cree avant la redaction — il le faut,
+    « usine reprendre » s'appuie dessus — et le renommer casserait une reprise
+    en cours. C'est le titre VU par l'acheteur et par le tableau de bord qu'on
+    remet d'aplomb.
+    """
+    if ctx.produit_id:
+        store.maj_produit(ctx.produit_id, titre=titre)
+    return titre
+
+
 _ENTETE = re.compile(r"^#{1,3}\s+(.+?)\s*$", re.MULTILINE)
 
 
