@@ -100,6 +100,9 @@ class UnAlbumNePorteAucunReglageDAdulte(unittest.TestCase):
                     "interactive"):
             with self.subTest(type=cle):
                 for champ in catalogue.SANS_OBJET_EN_JEUNESSE:
+                    if (champ == "serie"
+                            and cle not in catalogue.TYPES_A_TOMES):
+                        continue   # voir « TYPES_A_TOMES »
                     self.assertIn(champ, _champs(cle))
 
 

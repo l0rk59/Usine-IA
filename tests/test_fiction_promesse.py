@@ -276,7 +276,11 @@ class LaFictionNeReprendPasLesReglagesDuPratique(unittest.TestCase):
                         noms & set(catalogue.SANS_OBJET_EN_JEUNESSE), set())
                     self.assertIn("tranche", noms)
                 else:
-                    self.assertTrue(attendus <= noms, attendus - noms)
+                    # « serie » n'existe que la ou des tomes s'enchainent.
+                    exiges = attendus - (
+                        set() if produit.cle in catalogue.TYPES_A_TOMES
+                        else {"serie"})
+                    self.assertTrue(exiges <= noms, exiges - noms)
 
 
     def test_aucun_type_pratique_ne_recoit_ces_champs(self):

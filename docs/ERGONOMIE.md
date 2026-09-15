@@ -202,3 +202,53 @@ déclaré « incliquable » parce que la sonde ne faisait pas défiler la page, 
 une suppression déclarée sans effet parce que je comptais tous les boutons de
 l'onglet au lieu de l'entrée visée. Une mesure qui accuse est aussi une mesure
 à vérifier.
+
+## Cinq cases qui ne faisaient rien
+
+Audit du 15/09/2026, en suivant chaque réglage déclaré **jusqu'à la fonction
+qui fabrique** — et non en vérifiant qu'il est atteignable, ce qu'un test
+faisait déjà.
+
+| type | réglage | effet réel |
+|---|---|---|
+| `logiciel` | Ne pas exécuter le code | aucun |
+| `idees` | Ne pas mesurer le marché | aucun |
+| `idees` | Ne pas lire les discussions | aucun |
+| `social` | Visuels à générer | aucun |
+| `interactive` | Série | aucun |
+| `recueil` | Série | aucun |
+| `feuilleton` | Série | aucun |
+
+### Deux causes différentes
+
+**La traduction de nom, faite à un seul endroit.** La case s'appelle
+`sans_marche` ; la chaîne attend `avec_marche`. Seule la ligne de commande
+faisait la conversion — `avec_marche=not args.sans_marche`. Le serveur, lui,
+passe les options telles quelles à `executer`, qui ne transmet que les clés
+déclarées dans `options`. La case était donc **affichée, cochée, enregistrée,
+et jetée en chemin**.
+
+Vérifié en comptant les sondages de marché, pas en lisant le code : un
+sondage avec la case cochée, un sondage sans.
+
+La traduction se déclare maintenant sur le champ lui-même —
+`argument="avec_marche", inverse=True` — donc elle vaut pour les trois
+chemins : ligne de commande, menu Termux, tableau de bord.
+
+S'y ajoute une conversion que personne n'avait écrite : un navigateur envoie
+`on`, la ligne de commande un vrai booléen, la file relit du JSON. Les trois
+doivent vouloir dire la même chose, et `0` ou vide doivent vouloir dire non.
+
+**Un argument que la chaîne n'accepte pas.** `produire` ne prend un paramètre
+`serie` que dans `nouvelle` et `roman` — les seules à porter la machinerie de
+tomes. Les trois autres affichaient le champ sans que rien ne puisse le lire.
+
+### Pourquoi le garde-fou existant n'a rien vu
+
+Il vérifiait qu'un réglage est **atteignable** depuis les trois interfaces.
+C'est une autre question que « sert-il à quelque chose ». Les deux se
+ressemblent, et une seule était posée.
+
+`tests/test_reglages_arrivent.py` pose la seconde, de deux façons : en suivant
+la déclaration jusqu'à la signature de `fabriquer`, et en **comptant** ce
+qu'une case change réellement. Huit mutations, toutes vues.

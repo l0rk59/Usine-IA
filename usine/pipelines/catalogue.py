@@ -101,6 +101,18 @@ def interactive_sections() -> int:
     return SECTIONS
 
 
+def _vrai(valeur: Any) -> bool:
+    """Ce qu'un booleen vaut, quel que soit le chemin qui l'apporte.
+
+    La ligne de commande pose un vrai « True », le formulaire HTML envoie
+    « on » ou « 1 », et la file de production relit du JSON. Les trois
+    doivent vouloir dire la meme chose.
+    """
+    if isinstance(valeur, str):
+        return valeur.strip().lower() not in ("", "0", "false", "non", "off")
+    return bool(valeur)
+
+
 @dataclass(frozen=True)
 class Champ:
     """Une option propre a UN type de produit, declaree une seule fois.
@@ -136,6 +148,22 @@ class Champ:
     choix: Tuple[str, ...] = ()
     aide: str = ""
     unite: str = ""                   # « mm », « mots »... affiche apres le champ
+    # Le nom de l'ARGUMENT de la chaine, quand il differe du nom du champ, et
+    # s'il faut inverser la valeur en chemin.
+    #
+    # Mesure du 15/09/2026 : cinq cases du tableau de bord ne faisaient rien.
+    # « Ne pas sonder le marche » etait declaree « sans_marche », la chaine
+    # attend « avec_marche », et seule la ligne de commande faisait la
+    # traduction — « avec_marche=not args.sans_marche ». Le serveur, lui,
+    # passait les options telles quelles a « executer », qui ne transmet que
+    # les cles declarees dans « options » : la case etait donc affichee,
+    # cochee, enregistree, et sans effet. Verifie en comptant les sondages :
+    # un sondage avec la case, un sondage sans.
+    #
+    # La traduction est declaree ICI, une fois, donc elle vaut pour les trois
+    # chemins — ligne de commande, menu Termux, tableau de bord.
+    argument: str = ""
+    inverse: bool = False
 
     @property
     def drapeaux(self) -> Tuple[str, ...]:
@@ -165,8 +193,18 @@ class Champ:
 SANS_OBJET_EN_JEUNESSE = ("tropes", "point_de_vue", "temps", "chaleur",
                           "fin", "structure", "serie")
 
+# Les seuls types qui savent enchainer des tomes : bible reprise, distribution
+# et faits acquis du tome precedent. Ce sont aussi les seuls dont « produire »
+# accepte un argument « serie ».
+#
+# Le livre-jeu, le recueil et le feuilleton affichaient le champ quand meme.
+# Il etait saisi, enregistre, et jete avant d'arriver a la chaine — mesure du
+# 15/09/2026, en suivant chaque champ jusqu'a « fabriquer ».
+TYPES_A_TOMES = ("nouvelle", "roman")
 
-def champs_de_fiction(jeunesse: bool = False) -> Tuple[Champ, ...]:
+
+def champs_de_fiction(jeunesse: bool = False,
+                      serie: bool = True) -> Tuple[Champ, ...]:
     """Les reglages que TOUTE fiction comprend, et qu'aucun guide ne comprend.
 
     Declares une fois, partages par les types de la famille « fiction ». Les
@@ -182,6 +220,13 @@ def champs_de_fiction(jeunesse: bool = False) -> Tuple[Champ, ...]:
 
     « jeunesse » retire ce qu'un album ne comprend pas, et restreint les
     sous-genres a ceux de la jeunesse — voir « SANS_OBJET_EN_JEUNESSE ».
+
+    « serie » vaut faux pour les chaines qui ne savent pas enchainer des
+    tomes. Seules « nouvelle » et « roman » portent la machinerie de serie —
+    bible reprise, distribution, faits acquis — et sont les seules dont
+    « produire » accepte un argument « serie ». Le livre-jeu, le recueil et
+    le feuilleton l'affichaient quand meme : le champ etait saisi,
+    enregistre, et jete avant d'arriver a la chaine. Mesure du 15/09/2026.
     """
     from . import fiction
 
@@ -240,8 +285,11 @@ def champs_de_fiction(jeunesse: bool = False) -> Tuple[Champ, ...]:
               aide="Laissez vide pour un recit isole. Un tome reprend le "
                    "monde, la distribution et les faits des precedents."),
     )
-    if jeunesse:
-        return tuple(c for c in champs if c.nom not in SANS_OBJET_EN_JEUNESSE)
+    retires = set(SANS_OBJET_EN_JEUNESSE) if jeunesse else set()
+    if not serie:
+        retires.add("serie")
+    if retires:
+        return tuple(c for c in champs if c.nom not in retires)
     return champs
 
 
@@ -326,6 +374,16 @@ class TypeProduit:
                 arguments[nom] = options[nom]
             elif valeur is not None:
                 arguments[nom] = valeur
+        # Les champs qui portent un autre nom cote chaine, ou une valeur a
+        # inverser. Sans ce passage, une case « ne pas faire X » declaree
+        # « sans_x » n'atteignait jamais une chaine qui attend « avec_x ».
+        for champ in (self.champs or ()):
+            if not champ.argument or champ.nom not in options:
+                continue
+            brut = options[champ.nom]
+            if champ.genre == "booleen" or champ.inverse:
+                brut = _vrai(brut)
+            arguments[champ.argument] = (not brut) if champ.inverse else brut
         return self.fabriquer(contexte, **arguments)
 
 
@@ -421,7 +479,7 @@ TYPES: List[TypeProduit] = [
         # ci-dessus. Le declarer deux fois donnait deux chemins pour le meme
         # chiffre — et un garde-fou du depot l'a vu tout de suite, parce que
         # le menu n'en proposait qu'un des deux.
-        champs=champs_de_fiction(),
+        champs=champs_de_fiction(serie=False),
     ),
     TypeProduit(
         cle="recueil", nom="Recueil de nouvelles", famille="fiction",
@@ -433,7 +491,7 @@ TYPES: List[TypeProduit] = [
         minutes=(45, 120),
         quantite=("recits", "Combien de nouvelles", str(recueil_recits())),
         mots_cles=("recueil", "nouvelles", "anthologie", "textes courts"),
-        champs=champs_de_fiction(),
+        champs=champs_de_fiction(serie=False),
     ),
     TypeProduit(
         cle="feuilleton", nom="Feuilleton (episodes)", famille="fiction",
@@ -444,7 +502,7 @@ TYPES: List[TypeProduit] = [
         quantite=("episodes", "Combien d'episodes",
                   str(feuilleton_episodes())),
         mots_cles=("feuilleton", "episodes", "serie", "saison"),
-        champs=champs_de_fiction(),
+        champs=champs_de_fiction(serie=False),
     ),
     TypeProduit(
         cle="conte", nom="Conte jeunesse illustre", famille="fiction",
@@ -564,7 +622,7 @@ TYPES: List[TypeProduit] = [
             Champ("reseau", "-r/--reseau", "Réseau visé", genre="choix",
                   defaut="linkedin", choix=reseaux_sociaux()),
             Champ("visuels", "--visuels", "Visuels à générer",
-                  genre="entier", defaut=0,
+                  genre="entier", defaut=0, argument="visuels",
                   aide="0 : aucun. Chacun coûte un appel d'image."),
         ),
     ),
@@ -587,6 +645,7 @@ TYPES: List[TypeProduit] = [
                        "autonome. extension : Chrome Manifest V3."),
             Champ("sans_essai", "--sans-essai", "Ne pas exécuter le code",
                   genre="booleen", defaut=False,
+                  argument="executer", inverse=True,
                   aide="L'usine analyse le code sans jamais le lancer. Plus "
                        "prudent, mais elle ne saura pas s'il démarre."),
         ),
@@ -676,10 +735,12 @@ TYPES: List[TypeProduit] = [
                   genre="entier", defaut=12),
             Champ("sans_marche", "--sans-marche", "Ne pas mesurer le marché",
                   genre="booleen", defaut=False,
+                  argument="avec_marche", inverse=True,
                   aide="Plus rapide, et les pistes ne sont alors appuyées sur "
                        "aucune mesure."),
             Champ("sans_veille", "--sans-veille", "Ne pas lire les discussions",
                   genre="booleen", defaut=False,
+                  argument="avec_veille", inverse=True,
                   aide="La veille est lente par construction : trois secondes "
                        "entre deux communautés."),
         ),
