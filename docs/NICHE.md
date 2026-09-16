@@ -318,3 +318,82 @@ mutations, toutes vues.
 Une mutation a montré qu'un `_sans_accent` dans le retrait d'article ne servait
 à rien — aucun article français ne porte d'accent. C'est la casse qui comptait.
 Retiré.
+
+
+---
+
+# « Ça cherchera toujours les mêmes huit ? »
+
+Deux craintes, et elles n'avaient pas le même sort.
+
+## Les sujets ne sont pas écrits dans le code
+
+« la facturation des indépendants », « le potager en bac sur balcon » —
+ces domaines n'existent **que dans `tests/simulateur.py`**. C'est la réponse
+figée que le simulateur rend aux tests, pour qu'aucun d'eux ne sorte sur le
+réseau. En production, les domaines sont écrits par le modèle, à partir d'une
+consigne qui ne nomme aucun sujet : « propose des domaines où un particulier
+peut vendre un produit digital fait seul », en évitant ce qui exige une
+certification, un stock ou une équipe.
+
+## Mais ils étaient bel et bien figés, et pour une autre raison
+
+Mesure du 16/09/2026, avec un modèle qui rend des domaines **différents à
+chaque appel** :
+
+```
+tour 1 : ['domaine 1-1', 'domaine 1-2', 'domaine 1-3']
+tour 2 : ['domaine 1-1', 'domaine 1-2', 'domaine 1-3']
+tour 3 : ['domaine 1-1', 'domaine 1-2', 'domaine 1-3']
+appels reellement passes au modele : 1 sur 3
+```
+
+Ce n'était donc pas le modèle qui se répétait : **c'était le cache**. La clé
+du cache est un hachage de l'invite, et l'invite du démarrage à froid ne
+variait jamais — ni sujet, ni historique, rien que le nombre demandé. Le
+premier écran de tout le monde rendait la même liste jusqu'à la fin des temps.
+
+`idees.explorer` avait reçu cette correction en septembre, et son commentaire
+la raconte. Le démarrage à froid ne l'avait jamais eue.
+
+La correction est la même, parce qu'il ne doit y en avoir qu'une : on injecte
+dans l'invite ce que l'atelier contient déjà — produit ou seulement mis en
+file. D'une pierre deux coups, et c'est ce qui rend le mécanisme honnête
+plutôt que décoratif :
+
+1. le modèle cesse de reproposer ce qui existe ;
+2. **l'invite change dès que l'atelier change**, donc la clé de cache aussi.
+
+Après :
+
+```
+tour 1 : ['domaine 1-1', ...]   tour 2 : ['domaine 2-1', ...]
+tour 3 : ['domaine 3-1', ...]   appels au modele : 3 sur 3
+```
+
+Et le cas réel — installation neuve, deux appuis de suite sur « Trouver des
+niches » sans rien produire entre les deux — repart bien de deux graines
+différentes : le premier appui met une idée en file, ce qui suffit à faire
+changer l'invite du second.
+
+## Le huit
+
+`DOMAINES_A_MESURER = 8`, dans `usine/production.py`. C'est un coût, pas une
+opinion : chaque domaine est sondé sur quatre sources publiques, donc huit
+domaines font trente-deux appels réseau avant qu'une seule ligne ne soit
+écrite. Sur un téléphone en 4G, c'est ce qu'on attend devant l'écran.
+
+Ce n'est pas une liste de huit sujets : c'est le nombre de propositions
+**neuves** demandées à chaque tour, et elles diffèrent maintenant à chaque
+fois. Le chiffre se change en une ligne si l'attente vaut le coup.
+
+## Ce qui garde la correction
+
+`tests/test_niches_variees.py`, quatre tests, aucun sur le réseau. Campagne de
+mutation : quatre mutations, toutes vues — dont une qui neutralise la clé de
+cache elle-même.
+
+Trois de ces tests ont d'abord échoué, et pour la bonne raison : ils
+partageaient le cache de réponses d'un test à l'autre. Le piège que ce dépôt
+documente, retombé dans le test qui le documente. Chaque test repart d'un
+atelier et d'un cache vides.

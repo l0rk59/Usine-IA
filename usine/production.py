@@ -216,9 +216,24 @@ def domaines_de_depart(
     """
     dire = journal or (lambda message: None)
     contexte = Contexte(sujet="", journal=lambda _m: None, sans_image=True)
+    # Ce que l'atelier contient deja — fabrique ou seulement mis en file.
+    #
+    # Deux effets, et le second est celui qui manquait ici. Le modele cesse de
+    # reproposer ce qui existe ; et surtout L'INVITE CHANGE des que l'atelier
+    # change. Le cache des reponses est indexe sur l'invite : avec une invite
+    # figee, le demarrage a froid rendait les MEMES domaines pour toujours.
+    #
+    # Mesure du 16/09/2026, modele rendant des domaines differents a chaque
+    # appel : trois tours, UN seul appel reellement passe au modele, trois
+    # fois la meme liste. « idees.explorer » avait recu cette correction en
+    # septembre ; le demarrage a froid, qui est pourtant le premier ecran de
+    # tout le monde, ne l'avait jamais eue.
+    connus = idees.deja_connu()
+    deja = ("\n\nL'atelier connait deja ceci — propose AUTRE CHOSE :\n"
+            + "\n".join("- " + t for t in connus) + "\n") if connus else ""
     invite = (
         "Un vendeur installe l'usine et n'a encore rien produit : aucun "
-        "historique, aucune vente, aucune niche de depart.\n\n"
+        "historique, aucune vente, aucune niche de depart.{deja}\n\n"
         "Propose {n} DOMAINES de depart differents les uns des autres — pas "
         "des titres de produits, des domaines ou un particulier peut vendre "
         "un produit digital fait seul. Chacun en trois a six mots, tel qu'un "
@@ -228,7 +243,7 @@ def domaines_de_depart(
         'Schema JSON exact :\n'
         '{{"domaines": [{{"domaine": "...", "acheteur": "qui paie et pourquoi", '
         '"pourquoi_maintenant": "..."}}]}}'
-    ).format(n=nombre)
+    ).format(n=nombre, deja=deja)
     try:
         donnees = idees.equipe.PROSPECTEUR.travailler_json(
             contexte, invite, role_modele="raisonnement",
