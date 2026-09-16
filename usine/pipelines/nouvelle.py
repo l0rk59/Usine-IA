@@ -628,8 +628,14 @@ def mettre_a_jour_resume(ctx: Contexte, etat: str, intitule: str,
     # appel de l'usine qui gagne vraiment a un modele de long contexte, et le
     # seul ou tronquer la matiere a six mille caracteres perdait des scenes
     # entieres. Les fournisseurs sans modele dedie retombent sur « standard ».
+    # Le plafond vient du NOMBRE DE MOTS demande, pas d'un chiffre choisi.
+    # Il valait 320 pour une consigne de 90 mots — soit 234 jetons de contenu
+    # en francais, et 86 de marge. Journal reel du 16/09/2026 : coupe a chaque
+    # scene, dix-huit fois de suite, sans exception. « jetons_pour » existe
+    # pour cette conversion et porte deja la marge ; l'oublier ici revenait a
+    # recopier le calcul de travers.
     reponse = equipe.SCENARISTE.travailler(
-        ctx, invite, max_tokens=320,
+        ctx, invite, max_tokens=jetons_pour(MOTS_RESUME),
         # « creatif » quand il s'agit d'ecrire la scene, « long » quand il
         # s'agit de fermer une partie entiere : ce ne sont pas les memes
         # qualites, et les fournisseurs bien pourvus servent les deux.

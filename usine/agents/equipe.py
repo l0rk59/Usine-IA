@@ -133,10 +133,13 @@ def critiquer(
         )
     except Exception as exc:
         evenements.publier("qualite", etat="critique_indisponible", detail=str(exc))
-        return Critique(note=7.5, verdict="relecture indisponible")
+        return Critique(note=0.0, mesuree=False,
+                        verdict="relecture indisponible : {}".format(
+                            str(exc)[:80]))
 
     if not isinstance(donnees, dict):
-        return Critique(note=7.5, verdict="relecture illisible",
+        return Critique(note=0.0, mesuree=False,
+                        verdict="relecture illisible",
                         fournisseur_auteur=fournisseur_auteur,
                         fournisseur_relecteur=relecteur)
 
@@ -813,8 +816,13 @@ def rapport_qualite(historiques: Dict[str, List[Critique]]) -> Dict[str, Any]:
     for intitule, critiques in historiques.items():
         if not critiques:
             continue
-        notes_avant.append(critiques[0].note)
-        notes_apres.append(critiques[-1].note)
+        # Une note non mesuree vaut zero et tirerait la moyenne vers le bas
+        # en faisant croire a une mesure. On ne la compte pas, et le compte
+        # des relectures perdues est rendu a cote.
+        if critiques[0].mesuree:
+            notes_avant.append(critiques[0].note)
+        if critiques[-1].mesuree:
+            notes_apres.append(critiques[-1].note)
         lignes.append({
             "section": intitule,
             "note_initiale": critiques[0].note,

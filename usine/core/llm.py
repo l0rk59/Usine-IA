@@ -549,6 +549,21 @@ def generer(
                         p.name, "/" + cle.affichage if cle else "",
                         _expliquer(p, exc, module_modeles.modele_effectif(p, role))))
 
+                    if _service_ferme(exc):
+                        # Le seul echec vraiment definitif du lot, et le seul
+                        # qui n'avait aucun repos : un service retire repondait
+                        # « retire » a chaque bascule, sur chaque scene, pour
+                        # toujours. Journal du 15/09/2026 puis du 16/09/2026,
+                        # meme fournisseur, meme reponse — deux observations,
+                        # un jour d'ecart.
+                        #
+                        # Vingt-quatre heures et non « pour toujours » : une
+                        # fermeture progressive peut se reouvrir, et l'usine
+                        # n'a pas a trancher a la place de l'editeur. Ce qu'elle
+                        # peut trancher, c'est qu'un service qui se declare
+                        # retire ne reviendra pas dans l'heure.
+                        _reposer(p.name, 86400, "service retire")
+                        break
                     if exc.statut in (401, 403):
                         # Cle refusee : on ecarte la cle, pas le fournisseur.
                         if cle:

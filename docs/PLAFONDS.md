@@ -105,3 +105,81 @@ Un de ces tests a d'abord échoué, et pour la raison que ce dépôt documente :
 trois cas partageaient un sujet, donc une entrée de cache, donc le cas « tout
 passe » recevait la réponse fautive du cas précédent. Chaque cas a maintenant
 son sujet.
+
+---
+
+# Ce qu'un journal de roman a montré le lendemain
+
+Dix-huit scènes, sur un téléphone. Trois défauts de plus, dont un de la pire
+famille : celle où tous les signaux disent « valide ».
+
+## Le 7,5 fabriqué — l'éditeur n'a relu aucune scène
+
+```
+relecture « L'atelier qui tousse » : 7.5/10, 0 correction(s)
+relecture « L'inspection qui tombe » : 7.5/10, 0 correction(s)
+... six fois de plus, identiques au dixième près ...
+```
+
+Huit scènes, huit notes rigoureusement égales. Ce n'était pas un éditeur
+indulgent : c'était la branche d'erreur.
+
+```python
+except Exception:
+    return Critique(note=7.5, verdict="relecture indisponible")
+```
+
+Sa réponse revenait coupée au plafond, donc illisible, donc l'exception. Le
+journal affichait alors une note qui n'avait été mesurée sur rien, avec zéro
+correction, exactement comme une relecture réussie sans reproche.
+
+Et **7,5 ≥ 7,5** rend la critique `acceptable` — ce qui arrête la boucle
+d'amélioration en annonçant que le texte est assez bon. La relecture ratée ne
+se contentait pas de mentir : elle empêchait la correction.
+
+`Critique` porte maintenant `mesuree`. Non mesurée n'est pas acceptable — c'est
+inconnu. Le résumé le dit, et le rapport qualité ne moyenne plus ce qui n'a pas
+été mesuré.
+
+*(Le plafond lui-même est réparé par la correction de la veille : `2600 →
+5200`, vérifié — la relecture passe.)*
+
+## Le plafond de 320, coupé dix-huit fois sur dix-huit
+
+La mémoire hiérarchique demande un état **« en 90 mots maximum »**. Quatre-vingt-dix
+mots français font environ 234 jetons. Le plafond en laissait **320** — 86 de
+marge. Coupé à chaque scène, sans une exception.
+
+`jetons_pour()` existe pour cette conversion et porte déjà la marge :
+`jetons_pour(90)` rend 634. L'oublier ici revenait à recopier le calcul de
+travers — exactement ce que le docstring de cette fonction raconte avoir déjà
+coûté une fois.
+
+## Le service retiré, réinterrogé à chaque bascule
+
+```
+github : le service a ete retire par son editeur. [...]
+         Retirez-le de usine/core/config.py
+```
+
+Le dépôt **savait déjà** : ce message et son commentaire datent du 15/09, et
+le journal du 16/09 le montre encore. Pourtant aucun repos n'était posé pour
+ce cas. Une clé refusée se repose une heure, un quota une minute, un crédit
+épuisé une demi-heure — et le seul échec vraiment définitif du lot était le
+seul réinterrogé à chaque bascule, sur chaque scène, indéfiniment.
+
+Vingt-quatre heures, et non « pour toujours » : une fermeture progressive peut
+se rouvrir, et l'usine n'a pas à trancher à la place de l'éditeur. Ce qu'elle
+peut trancher, c'est qu'un service qui se déclare retiré ne reviendra pas dans
+l'heure.
+
+## Ce qui garde ces corrections
+
+`tests/test_journal_roman.py`, dix tests, aucun sur le réseau. Campagne de
+mutation : huit mutations, toutes vues.
+
+Deux `[RATE]` au premier tour, tous deux dans mes tests. Le pire était celui-ci :
+`Critique(note=0.0, mesuree=False).acceptable` est faux **avec ou sans la
+correction**, puisque zéro est déjà sous le seuil. Le test ne mesurait rien. Le
+défaut d'origine rendait justement **7,5** — il fallait une note haute pour que
+la vérification ait un sens.

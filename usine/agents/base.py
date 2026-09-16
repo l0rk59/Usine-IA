@@ -154,6 +154,17 @@ class Critique:
     # « eviter » se desactive pour ne pas perdre la relecture.
     fournisseur_auteur: str = ""
     fournisseur_relecteur: str = ""
+    # La relecture a-t-elle EU LIEU ? Une relecture qui echoue rendait une
+    # note de 7,5 — pile le seuil d'acceptation — avec zero probleme. Journal
+    # reel du 16/09/2026 : huit scenes, huit « relecture : 7,5/10, 0
+    # correction(s) », identiques au dixieme pres. L'editeur n'avait pas relu
+    # une seule fois, et rien ne le disait.
+    #
+    # C'est la pire forme de defaut de ce depot : tous les signaux disent
+    # « valide ». Pire encore, 7,5 >= 7,5 rendait la critique « acceptable »,
+    # ce qui arretait la boucle d'amelioration en annoncant que le texte etait
+    # assez bon.
+    mesuree: bool = True
 
     @property
     def croisee(self) -> bool:
@@ -163,7 +174,12 @@ class Critique:
 
     @property
     def acceptable(self) -> bool:
-        return self.note >= 7.5
+        """Non mesuree n'est pas acceptable : c'est inconnu.
+
+        Le contraire arretait la boucle d'amelioration sur une relecture qui
+        n'avait jamais eu lieu.
+        """
+        return self.mesuree and self.note >= 7.5
 
     @property
     def bloquants(self) -> List[Dict[str, str]]:
@@ -171,6 +187,9 @@ class Critique:
                 if str(p.get("gravite", "")).lower() in ("bloquant", "majeur", "eleve")]
 
     def resume(self) -> str:
+        if not self.mesuree:
+            return "relecture indisponible — pas de note ({})".format(
+                self.verdict or "aucune reponse")
         if not self.problemes:
             return "{}/10 — rien a corriger".format(self.note)
         return "{}/10 — {} correction(s), dont {} majeure(s)".format(
