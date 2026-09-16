@@ -194,9 +194,20 @@ def decider_les_reglages(ctx: Any, type_produit: Any,
         return {}
 
     decides: Dict[str, Any] = {}
+    # Ce que le modele a repondu et qu'on n'a pas su lire. Ecarter est la
+    # bonne decision ; se taire ne l'est pas.
+    #
+    # Journal reel du 16/09/2026, roman : « L'usine decide 9 reglage(s) »
+    # puis HUIT valeurs. Le neuvieme etait « genre » — le plus structurant de
+    # tous — auquel le modele avait repondu « drame contemporain », qui n'est
+    # pas dans la liste fermee. Le roman est parti sans contrat de genre, et
+    # rien ne l'a dit : il fallait compter les lignes du journal pour s'en
+    # apercevoir.
+    ecartes: List[str] = []
     for champ in champs:
         valeur = str(brut.get(champ.nom) or "").strip()
         if not valeur:
+            ecartes.append("{} (sans reponse)".format(champ.nom))
             continue
         choix = [v for v in (champ.choix or ()) if v]
         if choix:
@@ -206,6 +217,8 @@ def decider_les_reglages(ctx: Any, type_produit: Any,
             # que rien d'autre ne sait relire.
             correspond = [v for v in choix if v.lower() == valeur.lower()]
             if not correspond:
+                ecartes.append("{} : « {} » hors de la liste ({})".format(
+                    champ.nom, valeur[:40], ", ".join(choix[:5])))
                 continue
             valeur = correspond[0]
         elif champ.genre in ("entier", "decimal"):
@@ -216,6 +229,8 @@ def decider_les_reglages(ctx: Any, type_produit: Any,
             try:
                 nombre = float(str(valeur).replace(",", ".").split()[0])
             except (TypeError, ValueError, IndexError):
+                ecartes.append("{} : « {} » n'est pas un nombre".format(
+                    champ.nom, valeur[:40]))
                 continue
             valeur = int(nombre) if champ.genre == "entier" else nombre
         elif champ.genre == "booleen":
@@ -224,6 +239,13 @@ def decider_les_reglages(ctx: Any, type_produit: Any,
 
     for nom, valeur in decides.items():
         ctx.journal("  {} : {}".format(nom, valeur))
+    for perdu in ecartes:
+        ctx.journal("  [!] non retenu — {}".format(perdu))
+    if ecartes:
+        # Le compte, parce que huit lignes sous une annonce de neuf ne se
+        # remarquent pas sur un ecran de telephone.
+        ctx.journal("  {} reglage(s) sur {} restent a la charge de la chaine."
+                    .format(len(ecartes), len(champs)))
     return decides
 
 

@@ -637,6 +637,15 @@ def generer(
 _BLOC = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
 
+# Jusqu'ou le plafond d'une demande JSON peut grandir quand la reponse revient
+# coupee. C'est le plafond de sortie le plus large qu'un fournisseur du
+# catalogue accepte (« Provider.max_sortie »), et le routeur le ramene de
+# toute facon a ce que le fournisseur choisi sait reellement emettre : monter
+# plus haut ne produirait pas plus, cela produirait une erreur chez certains
+# et un silence chez d'autres.
+PLAFOND_RELANCE = max(p.max_sortie for p in config.PROVIDERS)
+
+
 def extraire_json(texte: str) -> Any:
     """Recupere un objet JSON meme noye dans du bavardage ou un bloc markdown."""
     candidats: List[str] = []
@@ -691,13 +700,26 @@ def generer_json(
     # et qu'il en reste neuf autres. On l'ecarte donc au fur et a mesure.
     ecartes = list(eviter or [])
     tentes: List[str] = []
+    # Le plafond peut GRANDIR en cours de route, et c'est ce qui manquait.
+    # Quand une reponse revient coupee, le JSON est incomplet donc illisible —
+    # et l'ancienne version en concluait que le fournisseur ne savait pas
+    # tenir un format, l'ecartait, et recommencait AU MEME PLAFOND chez le
+    # suivant. Trois fournisseurs brules pour une limite que nous avions
+    # posee nous-memes.
+    #
+    # « nouvelle._grille_ou_retente » avait deja trouve la bonne reponse pour
+    # un seul appel : ne pas inventer un plafond plus gros et esperer, mais
+    # lire ce que le routeur mesure DEJA — « finish_reason: length » — et
+    # redemander avec de la place. Ce qui valait pour la grille de beats vaut
+    # pour les quarante autres appels JSON du depot.
+    plafond = max_tokens
     for tentative in range(essais):
         rep = generer(
             invite + consigne,
             systeme=systeme,
             role=role,
             temperature=temperature + 0.1 * tentative,
-            max_tokens=max_tokens,
+            max_tokens=plafond,
             json_mode=True,
             # La premiere tentative seule peut lire le cache : une reponse
             # illisible relue depuis le cache le resterait a chaque essai.
@@ -711,6 +733,13 @@ def generer_json(
             derniere = exc
             if rep.fournisseur not in tentes:
                 tentes.append(rep.fournisseur)
+            # Coupee au plafond : la faute est a NOUS, pas au fournisseur. On
+            # lui redonne sa chance avec de la place, une seule fois — si le
+            # double ne suffit pas, c'est autre chose, et le traitement
+            # ordinaire reprend.
+            if rep.tronquee and plafond < PLAFOND_RELANCE:
+                plafond = min(PLAFOND_RELANCE, plafond * 2)
+                continue
             if rep.fournisseur not in ecartes:
                 ecartes.append(rep.fournisseur)
             continue

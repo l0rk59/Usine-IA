@@ -316,6 +316,7 @@ Une note par sujet, chacune racontant un défaut **mesuré** et sa correction.
 | [COMPTES.md](docs/COMPTES.md) | la couverture annonçait sept prompts, le pack en contenait douze |
 | [UN-BOUTON.md](docs/UN-BOUTON.md) | un type, un clic : ce que la mesure a dit, et les deux choses qui ne suivaient pas |
 | [AUDIT-AGENTS-FOURNISSEURS.md](docs/AUDIT-AGENTS-FOURNISSEURS.md) | les dix-sept agents, les onze fournisseurs, et quatre réglages qui ne faisaient rien |
+| [PLAFONDS.md](docs/PLAFONDS.md) | les plafonds de jetons sont les nôtres, et une coupure ne lève aucune erreur |
 | [PROSE.md](docs/PROSE.md) | la phrase, que les contrôles de charpente ne regardaient pas |
 | [RESEAU.md](docs/RESEAU.md) | ce qui se passe quand une API échoue : réessais, attente, bascule |
 | [DEPUIS-ZERO.md](docs/DEPUIS-ZERO.md) | l'usine décide tout à partir du sujet : plus aucun réglage par défaut |
