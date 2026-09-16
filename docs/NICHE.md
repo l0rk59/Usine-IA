@@ -221,3 +221,100 @@ exercer le calcul qui la produit. Remettre `demande = "faible"` dans Hacker
 News ne faisait échouer aucun test — le défaut vivait précisément là où rien
 ne regardait. `UneSourceAnglophoneNePeutPasRefuterUneNiche` teste désormais
 `marche.interpreter` lui-même. Cinq mutations, toutes vues.
+
+
+---
+
+# Combien de sources, et laquelle mentait
+
+Audit du 16/09/2026, en interrogeant les vraies API depuis une machine réelle.
+
+## Quatre sources, et ce qu'elles couvrent vraiment
+
+`hacker_news`, `wikipedia`, `stack_exchange`, `open_library`. Mesurées sur six
+noms de niches françaises réalistes :
+
+| source | répond | ce que ça vaut |
+|---|---|---|
+| hacker_news | 6/6 | des **zéros** sur du français |
+| stack_exchange | 6/6 | des **zéros** sur du français |
+| open_library | 6/6 | des **zéros** sur du français |
+| wikipedia | **1/6** | et la seule réponse était fausse |
+
+**Répondre n'est pas mesurer.** Trois sources sur quatre répondent toujours, et
+répondent zéro dès que le mot-clé n'est ni anglais ni un terme de développeur.
+`demande` vaut `None` sur les six.
+
+## Le défaut : la seule source francophone rendait un chiffre inventé
+
+Wikipedia est la seule des quatre à interroger le domaine **`fr`**. C'est donc
+la seule qui puisse dire quelque chose d'une niche française. Elle disait faux.
+
+| niche | article retenu | vues/mois |
+|---|---|---|
+| « le tricot » | **Le Tricheur à l'as de carreau** | 2 218 |
+| « la facturation des indépendants » | **DKV Euro Service** | 145 |
+
+Un tableau de Georges de La Tour, et une société de cartes carburant. Deux
+défauts empilés, le second caché derrière le premier.
+
+**1. `opensearch` compare des préfixes de titres.** Interrogée avec « le
+tricot », l'API rend « Le Tricheur… » et **jamais** « Tricot » : l'article
+défini français rend la bonne page inatteignable. On l'interroge maintenant
+avec le nom nu — accents compris, car demander « meditation » rendait un
+homonyme à 10 vues/mois quand « Méditation » en fait plusieurs milliers.
+
+**2. Quand aucun titre ne correspondait, le code départageait les candidats à
+la fréquentation** — c'est-à-dire qu'il élisait le plus consulté des articles
+sans rapport. Le nombre avait l'air d'une mesure. On ne lui attribue plus rien,
+et le rapport le dit.
+
+## Ce que la recherche plein texte apporte
+
+`opensearch` cherche des titres ; `list=search` cherche dans le texte. En
+repli, elle trouve ce qu'un nom de niche ne titre jamais :
+
+```
+le tricot                             2 209 articles
+la facturation des independants          232
+la meditation pour debutants             183
+le potager en bac sur balcon              21
+la reparation de theremines a vapeur       0      (inventée)
+le pliage de serviettes pour chats         0      (inventée)
+```
+
+Elle sépare le réel de l'inventé. Le compte est **rendu, jamais interprété** :
+six points de relevé ne font pas un seuil, et un verdict non mesuré vaut moins
+qu'une mesure honnête.
+
+En repli et non en remplacement : quand le sujet **est** un titre d'article,
+`opensearch` le trouve mieux, et le classement par proximité a été réglé sur
+lui.
+
+## Les sources écartées, et pourquoi
+
+Testées en vrai le 16/09/2026, sans clé, depuis cet environnement :
+
+| candidate | verdict |
+|---|---|
+| **iTunes podcasts** (`country=fr`) | **écartée** — 30 podcasts pour « le pliage de serviettes pour chats », 10 pour « le tricot ». Elle apparie des mots isolés. Un garde-fou qui crie à tort finit ignoré. |
+| iTunes ebooks | plausible (0 sur les deux niches inventées) mais elle mesure la **concurrence éditoriale**, l'axe qu'`open_library` couvre déjà |
+| Reddit | HTTP 403 — l'API publique refuse les adresses de centre de données |
+| Google Books | HTTP 429 sans clé |
+| OpenAlex | HTTP 429, et un axe académique sans rapport avec un marché |
+| archive.org | 1 document sur une niche vivante : ne discrimine pas |
+
+**La conclusion de l'audit n'est pas « il manque des sources ».** C'est que la
+seule source capable de parler français mentait, et qu'une cinquième source
+anglophone n'aurait rien changé. Ajouter une source qui apparie des mots au
+hasard aurait ajouté du bruit en croyant ajouter du signal.
+
+## Ce qui garde la correction
+
+`tests/test_wikipedia_niche.py`, onze tests, **aucun ne sort sur le réseau** :
+les réponses des deux API sont figées. Campagnes de mutation : 9 puis 3
+mutations, toutes vues.
+
+Une mutation a montré qu'un `_sans_accent` dans le retrait d'article ne servait
+à rien — aucun article français ne porte d'accent. C'est la casse qui comptait.
+Retiré.

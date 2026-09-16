@@ -137,16 +137,102 @@ def hacker_news(sujet: str, timeout: int = 20) -> Source:
     return source
 
 
+# Les mots qui ouvrent un nom de niche sans rien en dire. « le tricot » ne
+# titre aucun article ; « Tricot » si. Sans cette liste, les deux n'avaient
+# aucune proximite, et le classement se rabattait sur la frequentation — qui
+# elisait un tableau de Georges de La Tour.
+_ARTICLES = ("le ", "la ", "les ", "l'", "un ", "une ", "des ", "du ",
+             "de la ", "de l'", "d'")
+
+
+def _sans_article(texte: str) -> str:
+    """Le nom sans son article defini, ACCENTS COMPRIS.
+
+    Deux usages qu'il ne faut pas confondre. Pour COMPARER deux titres, on
+    retire les accents — « Meditation » et « Méditation » sont le meme mot.
+    Pour INTERROGER Wikipedia, il faut les garder : demander « meditation »
+    rendait un article homonyme a 10 vues par mois la ou « Méditation » en
+    fait plusieurs milliers. Un chiffre qui a l'air d'une mesure et n'en est
+    pas une — exactement le defaut que ce module vient de corriger ailleurs.
+    """
+    propre = texte.strip()
+    change = True
+    while change:
+        change = False
+        for article in _ARTICLES:
+            # « .lower() » et rien de plus : aucun article francais ne
+            # porte d'accent, donc les retirer ici ne faisait rien — une
+            # campagne de mutation l'a montre en le supprimant sans qu'un
+            # test bronche.
+            if propre.lower().startswith(article):
+                propre = propre[len(article):].strip()
+                change = True
+                break
+    return propre
+
+
+def _nu(texte: str) -> str:
+    """Le nom, sans accent, sans casse et sans son article defini."""
+    propre = _sans_accent(texte).lower().strip()
+    # En boucle : « d'une niche » en porte deux. Bornee par la longueur, donc
+    # elle s'arrete — et un titre qui ne serait fait que d'articles se reduit
+    # a rien, ce qui est la bonne reponse.
+    change = True
+    while change:
+        change = False
+        for article in _ARTICLES:
+            if propre.startswith(article):
+                propre = propre[len(article):].strip()
+                change = True
+                break
+    return propre
+
+
 def wikipedia_interet(sujet: str, langue: str = "fr", mois: int = 12,
                       timeout: int = 20) -> Source:
     """Interet reel dans le temps. Remplace Google Trends, dont l'API est fermee."""
     source = Source("wikipedia")
     try:
+        # « opensearch » compare des PREFIXES de titres. Interroge avec
+        # « le tricot », il rend « Le Tricheur a l'as de carreau » et jamais
+        # « Tricot » : l'article defini rend la bonne page inatteignable. On
+        # l'interroge donc avec le nom nu, qui est ce qui titre les articles.
         recherche = ("https://{}.wikipedia.org/w/api.php?action=opensearch"
                      "&search={}&limit=4&format=json").format(
-                         langue, urllib.parse.quote(sujet))
+                         langue, urllib.parse.quote(_sans_article(sujet)))
         resultat = _json(recherche, timeout)
         titres = resultat[1] if len(resultat) > 1 else []
+        articles = 0
+        if not titres:
+            # « opensearch » ne compare que des TITRES. Un nom de niche n'en
+            # est pas un : « la facturation des independants » ne titre aucun
+            # article, donc la source abandonnait ici — avant meme d'atteindre
+            # les vues, qui sont pourtant la mesure qu'elle existe pour rendre.
+            #
+            # Mesure du 16/09/2026 sur six noms de niches realistes : Wikipedia
+            # ne repondait que sur UN — « le tricot », qui se trouve etre un
+            # titre d'article. La recherche plein texte les trouve tous, et
+            # elle separe le reel de l'invente :
+            #
+            #     le tricot                             2 209 articles
+            #     la facturation des independants          232
+            #     la meditation pour debutants             183
+            #     le potager en bac sur balcon              21
+            #     la reparation de theremines a vapeur       0
+            #     le pliage de serviettes pour chats         0
+            #
+            # En REPLI et non en remplacement : quand le sujet EST un titre
+            # d'article, « opensearch » le trouve mieux, et le classement par
+            # proximite ci-dessous a ete regle sur lui.
+            # Ici la phrase ENTIERE, et non le nom nu : la recherche plein
+            # texte se nourrit des mots, c'est ce qui la rend capable de
+            # trouver « Jardinage en carres » a partir de « potager en bac ».
+            plein_texte = ("https://{}.wikipedia.org/w/api.php?action=query"
+                           "&list=search&srsearch={}&srlimit=4&format=json"
+                           ).format(langue, urllib.parse.quote(sujet))
+            trouve = _json(plein_texte, timeout).get("query") or {}
+            titres = [p["title"] for p in (trouve.get("search") or [])]
+            articles = int((trouve.get("searchinfo") or {}).get("totalhits", 0))
         if not titres:
             source.erreur = "aucun article correspondant"
             return source
@@ -159,10 +245,10 @@ def wikipedia_interet(sujet: str, langue: str = "fr", mois: int = 12,
         # plus consulte ne l'est pas non plus (« Freelance » renverrait le film
         # de 2023). On classe donc d'abord sur la proximite du titre, et la
         # frequentation ne sert qu'a departager a proximite egale.
-        cible = _sans_accent(sujet).lower().strip()
+        cible = _nu(sujet)
 
         def proximite(titre: str) -> int:
-            nom = _sans_accent(titre).lower().strip()
+            nom = _nu(titre)
             if "(" in nom and "(" not in cible:
                 return 0            # page homonyme : film, album, personne
             if nom == cible:
@@ -173,6 +259,23 @@ def wikipedia_interet(sujet: str, langue: str = "fr", mois: int = 12,
 
         classes = sorted(titres[:4], key=lambda t: -proximite(t))
         meilleure_proximite = proximite(classes[0]) if classes else 0
+        # Aucun titre n'a de rapport avec le sujet : on ne lui attribue PAS
+        # une frequentation. Departager par les vues des candidats restants,
+        # c'est ce qui donnait « la facturation des independants » -> « DKV
+        # Euro Service » (145 vues/mois, une societe de cartes carburant) et
+        # « le tricot » -> « Le Tricheur a l'as de carreau » (2 218 vues/mois,
+        # un tableau de Georges de La Tour). Le nombre avait l'air d'une
+        # mesure et n'en etait pas une.
+        #
+        # Le compte d'articles, lui, reste vrai : il ne pretend rien attribuer.
+        if meilleure_proximite < 2:
+            source.disponible = bool(articles)
+            source.donnees = {"article": "", "articles_fr": articles,
+                              "frequentation": "non attribuee",
+                              "candidats": classes[:3]}
+            if not articles:
+                source.erreur = "aucun article correspondant"
+            return source
         retenus = [t for t in classes if proximite(t) == meilleure_proximite]
 
         article, vues = "", []
@@ -189,7 +292,15 @@ def wikipedia_interet(sujet: str, langue: str = "fr", mois: int = 12,
             if mesures and sum(mesures) > sum(vues):
                 article, vues = candidat, mesures
         if not vues:
-            source.erreur = "aucune mesure de frequentation"
+            # Le titre correspond, mais l'API des vues n'a rien rendu. Le
+            # compte d'articles reste vrai et ne doit pas partir avec :
+            # l'ancienne version renvoyait une source vide, donc « 3/4 » au
+            # lieu de « 4/4 », pour une mesure qu'on avait pourtant.
+            source.disponible = bool(articles)
+            source.donnees = {"article": "", "articles_fr": articles,
+                              "frequentation": "non attribuee"}
+            if not articles:
+                source.erreur = "aucune mesure de frequentation"
             return source
 
         moitie = max(1, len(vues) // 2)
@@ -199,6 +310,11 @@ def wikipedia_interet(sujet: str, langue: str = "fr", mois: int = 12,
         source.disponible = True
         source.donnees = {
             "article": article,
+            # Combien d'articles francophones parlent du sujet. Rendu, jamais
+            # interprete : six points de releve ne font pas un seuil, et un
+            # verdict non mesure vaut moins qu'une mesure honnete. Il sert a
+            # l'humain qui lit le rapport.
+            "articles_fr": articles,
             # Sous 200 vues/mois, l'article est trop confidentiel : la tendance
             # devient du bruit statistique et ne doit pas peser dans le verdict.
             "significatif": moyenne_vues >= 200,
@@ -348,7 +464,15 @@ def interpreter(rapport: Dict[str, Any]) -> Dict[str, Any]:
 
     wiki = sources.get("wikipedia", {})
     if wiki.get("disponible"):
-        if wiki.get("significatif"):
+        if wiki.get("frequentation") == "non attribuee":
+            # Le cas le plus frequent sur un nom de niche : des articles
+            # parlent du sujet, mais aucun ne s'intitule comme lui. On rend le
+            # compte, qui est vrai, et on ne fabrique pas de frequentation.
+            signaux.append(
+                "Wikipedia : {} article(s) francophones citent ce sujet, mais "
+                "aucun ne lui correspond assez pour lui attribuer une "
+                "frequentation".format(wiki.get("articles_fr", 0)))
+        elif wiki.get("significatif"):
             tendance = wiki.get("tendance")
             signaux.append(
                 "Wikipedia « {} » : {} vues/mois, tendance {} ({:+.0f} %)".format(
