@@ -133,6 +133,12 @@ def sujet_ou_choix(args: argparse.Namespace) -> str:
         alerte("Aucune source de marche n'a repondu : cette niche est "
                "proposee, pas mesuree.")
     args.sujet = choix["sujet"]
+    # Les reglages de fiction voyagent avec la promesse : ils sont poses sur
+    # « args » pour que « contexte_depuis » les trouve comme s'ils avaient ete
+    # tapes. Sans cela la chaine les re-devinerait a partir du seul titre.
+    for cle, valeur in (choix.get("options") or {}).items():
+        if not getattr(args, cle, ""):
+            setattr(args, cle, valeur)
     return choix["sujet"]
 
 

@@ -558,3 +558,93 @@ pratique sur une fiction se repère immédiatement.
   l'exigent (KDP le demande explicitement depuis 2023). Le réglage
   `signature_ia` inscrit la mention dans la licence et dans la page de
   copyright ; le déclarer au dépôt reste votre geste.
+
+
+---
+
+# Un roman sur un cours de montage vidéo
+
+Journal réel du 16/09/2026. Type demandé : **roman**. Aucun sujet donné.
+
+```
+L'usine choisit la niche...
+Exploration autour de ce qui a le mieux marche : « Cannabis »...
+Toutes les pistes recouvrent un produit deja fait.
+8 domaines proposes — mesure sur les sources publiques...
+  garde « cours video montage video » ...
+  garde « ebook strategie marketing TikTok » ...
+Premiere niche, choisie par l'usine : « cours video montage video ».
+L'usine decide 9 reglage(s) : genre, sous_genre, tropes, ambiance...
+Titre retenu : « L'Ame du Montage »
+```
+
+Trois défauts dans dix lignes.
+
+## 1. On a posé la question des niches à un roman
+
+Pour un guide, on cherche un problème que quelqu'un paie pour résoudre. Pour un
+roman, cette question n'a pas de réponse honnête — et un modèle à qui l'on pose
+une question sans réponse en fabrique une.
+
+`fiction.explorer_promesses` existait depuis septembre et son docstring
+annonçait le défaut mot pour mot : *« on obtenait donc des fictions habillées en
+produits pratiques »*. Mais **rien ne l'appelait depuis ce chemin**. Seuls le
+bouton « Trouver des idées de fiction » et `usine prospecter --fiction` y
+menaient. Le chemin le plus court — choisir un type, appuyer sur **Lancer** —
+passait entièrement par les niches.
+
+Une fonction sans appelant ne protège personne. Celle-ci en avait deux, et
+aucun sur le chemin qu'on emprunte vraiment.
+
+`choisir_une_niche` lit maintenant la **famille** du type au catalogue. Pour la
+fiction, elle demande une promesse de lecture : où le livre se range, ce que le
+lecteur vient y retrouver, ce qu'il vient ressentir. La source est le catalogue
+et non une liste écrite à la main, pour qu'un type de fiction ajouté demain en
+hérite sans qu'on y pense.
+
+La file d'attente passe toujours avant : une promesse qui attend déjà ne doit
+pas coûter un appel de modèle.
+
+## 2. Les neuf réglages étaient devinés sur un malentendu
+
+`L'usine decide 9 reglage(s) : genre, sous_genre, tropes, ambiance...` — après
+avoir choisi « cours vidéo montage vidéo ». Neuf réglages de genre déduits
+d'une niche pratique, puis un roman écrit dessus.
+
+Les réglages voyagent maintenant **avec** la promesse : genre, sous-genre,
+tropes, ambiance, point de vue, temps, chaleur, fin, structure, et le lecteur
+visé en guise d'audience. Ils arrivent avec le sujet et lui sont accordés, au
+lieu d'être recalculés à partir de lui.
+
+Le type demandé reste une contrainte, pas une préférence : une promesse écrite
+pour un conte jeunesse ne fait pas un roman. Le dépôt avait déjà payé cette
+leçon sur les niches, où « 30 posts LinkedIn » devenait un ebook intitulé
+« 30 posts LinkedIn ».
+
+## 3. « Ce qui a le mieux marché » alors que rien n'a été vendu
+
+Le classement des niches retombe sur la **note qualité** quand il n'y a aucune
+vente. La note est une mesure de l'usine ; le chiffre d'affaires est une mesure
+du marché. Le journal annonçait la première en employant les mots de la seconde,
+à quelqu'un dont « Cannabis » était un essai.
+
+Ce n'est pas le classement qui est faux, c'est la phrase. Le journal dit
+désormais ce qui classe :
+
+```
+Rien n'a encore ete vendu : exploration autour du produit le mieux NOTE,
+« Cannabis » — c'est une note de l'usine, pas une mesure du marche.
+```
+
+et, quand il y a eu une vente, il la chiffre.
+
+## Ce qui garde la correction
+
+`tests/test_fiction_pas_une_niche.py`, neuf tests, aucun sur le réseau.
+Campagnes de mutation : sept puis trois mutations, toutes vues.
+
+Deux `[RATE]` au premier tour, tous deux instructifs. Le premier venait d'un
+trou réel : aucun test ne vérifiait qu'une promesse écrite pour un autre type
+est refusée, parce que le modèle simulé rendait toujours le bon type. Le second
+venait d'une mutation qui ne mutait rien — elle ajoutait un commentaire en
+croyant déplacer un bloc.

@@ -227,6 +227,12 @@ def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None
             journal("Aucune source de marche n'a repondu : cette niche est "
                     "proposee, pas mesuree.")
         options["sujet"] = sujet
+        # Les reglages qui voyagent avec une promesse de lecture. Sans cette
+        # ligne, la chaine RE-DEVINE genre, tropes, ambiance et fin a partir
+        # du seul titre — neuf reglages decides une seconde fois, et sans le
+        # contexte qui les avait fait choisir.
+        for cle, valeur in (choix.get("options") or {}).items():
+            options.setdefault(cle, valeur)
         with _VERROU:
             TRAVAUX[travail_id]["sujet"] = sujet[:300]
         evenements.publier("niche", sujet=sujet, source=choix.get("source", ""))

@@ -185,8 +185,24 @@ def graine_de_depart() -> str:
     ensuite : le revenu est une mesure du marche, la note une mesure de
     l'usine, et quand les deux existent c'est le marche qui tranche.
     """
+    meilleure = meilleure_niche()
+    return meilleure["sujet"] if meilleure else ""
+
+
+def meilleure_niche() -> Optional[Dict[str, Any]]:
+    """La meilleure niche AVEC ce qui la rend meilleure.
+
+    Le classement retombe sur la note qualite quand rien n'a ete vendu — et
+    la note est une mesure de l'usine, pas du marche. Le journal disait
+    pourtant « Exploration autour de ce qui a le mieux marche : « Cannabis » »
+    a quelqu'un qui n'avait jamais rien vendu et dont « Cannabis » etait un
+    essai. Journal reel du 16/09/2026.
+
+    Ce n'est pas le classement qui est faux, c'est la phrase : on rend donc
+    de quoi la dire juste, et l'appelant choisit ses mots.
+    """
     meilleures = apprentissage.meilleures_niches(1)
-    return meilleures[0]["sujet"] if meilleures else ""
+    return meilleures[0] if meilleures else None
 
 
 # Le catalogue de depart n'est pas ecrit ici : l'usine le DEMANDE, puis le
@@ -328,6 +344,50 @@ def domaines_de_depart(
 AUTO = "auto"
 
 
+def _une_promesse_de_lecture(
+        type_produit: str,
+        dire: Callable[[str], None]) -> Optional[Dict[str, Any]]:
+    """Ce qu'on cherche pour une fiction : un lecteur, pas un acheteur.
+
+    Les neuf reglages de genre voyagent avec la promesse. C'est tout
+    l'interet : le journal montrait l'usine trouver une niche pratique, puis
+    RE-DEVINER genre, tropes, ambiance et fin a partir d'elle — neuf reglages
+    decides sur un malentendu. Ici, ils arrivent avec le sujet et lui sont
+    accordes.
+    """
+    from .pipelines import fiction
+
+    dire("Recherche d'une promesse de lecture...")
+    contexte = Contexte(sujet="", journal=lambda _m: None, sans_image=True)
+    try:
+        promesses = fiction.explorer_promesses(
+            contexte, nombre=4, connus=idees.deja_connu())
+    except Exception as exc:
+        dire("Recherche de promesse impossible : {}".format(exc))
+        return None
+    for piste in promesses:
+        titre = (piste.get("titre") or "").strip()
+        if not titre:
+            continue
+        propose = str(piste.get("type") or "") or type_produit
+        # Le type demande est une contrainte : une promesse concue pour un
+        # conte jeunesse ne fait pas un roman.
+        if propose != type_produit:
+            continue
+        if empreinte.sujets_proches(titre, type_produit):
+            continue
+        options = {cle: piste[cle] for cle in
+                   ("genre", "sous_genre", "tropes", "ambiance",
+                    "point_de_vue", "temps", "chaleur", "fin", "structure")
+                   if piste.get(cle)}
+        if piste.get("lecteur"):
+            options["audience"] = piste["lecteur"]
+        dire("Promesse retenue : « {} ».".format(titre))
+        return {"sujet": titre, "type": type_produit, "source": "fiction",
+                "options": options}
+    return None
+
+
 def choisir_une_niche(
         journal: Optional[Callable[[str], None]] = None,
         type_produit: str = "ebook") -> Dict[str, Any]:
@@ -338,6 +398,25 @@ def choisir_une_niche(
     la seule facon de ne pas en donner etait de ne pas produire. L'usine
     savait deja chercher des niches — mais seulement dans la boucle continue,
     et seulement une fois qu'il existait un historique.
+
+    DEUX QUESTIONS, ET NON UNE. Pour un guide, on cherche un probleme que
+    quelqu'un paie pour resoudre. Pour un roman, cette question n'a pas de
+    reponse honnete — et un modele a qui l'on pose une question sans reponse
+    en fabrique une. Journal reel du 16/09/2026, « roman » demande, aucun
+    sujet donne :
+
+        Exploration autour de ce qui a le mieux marche : « Cannabis »...
+        8 domaines proposes — mesure sur les sources publiques...
+          garde « cours video montage video » ...
+        Premiere niche, choisie par l'usine : « cours video montage video ».
+        Titre retenu : « L'Ame du Montage »
+
+    Un roman sur un cours de montage video. « fiction.explorer_promesses »
+    existait deja pour cela, et son docstring annoncait exactement ce
+    defaut — mais rien ne l'appelait depuis ce chemin-ci : seuls le bouton
+    « Trouver des idees de fiction » et la ligne de commande y menaient. Le
+    chemin le plus court, celui du bouton « Lancer », posait la question des
+    niches a un roman.
 
     Trois sources, dans cet ordre, parce qu'elles ne valent pas la meme chose :
 
@@ -380,10 +459,30 @@ def choisir_une_niche(
                 "type": entree.get("type") or type_produit or "ebook",
                 "source": "file"}
 
-    graine = graine_de_depart()
+    # 2. Pour une fiction, la question change. On ne la pose qu'ici, apres la
+    # file : une promesse qui attend deja vaut mieux qu'une neuve, et le
+    # filtre par type a deja fait le tri.
+    fiche = catalogue.obtenir(vise) if vise else None
+    if fiche is not None and fiche.famille == "fiction":
+        promesse = _une_promesse_de_lecture(vise, dire)
+        if promesse:
+            return promesse
+        dire("Aucune promesse neuve : l'usine cherche autrement.")
+
+    meilleure = meilleure_niche()
+    graine = meilleure["sujet"] if meilleure else ""
     if graine:
-        dire("Exploration autour de ce qui a le mieux marche : « {} »..."
-             .format(graine))
+        # « ce qui a le mieux marche » ne se dit que si quelque chose s'est
+        # VENDU. Sinon c'est la note de l'usine qui classe, et l'annoncer
+        # comme un resultat de marche envoie explorer autour d'un essai.
+        if (meilleure or {}).get("brut"):
+            dire("Exploration autour de ce qui a le mieux marche : "
+                 "« {} » ({} EUR encaisses)...".format(
+                     graine, meilleure["brut"]))
+        else:
+            dire("Rien n'a encore ete vendu : exploration autour du produit "
+                 "le mieux NOTE, « {} » — c'est une note de l'usine, pas une "
+                 "mesure du marche.".format(graine))
         contexte = Contexte(sujet=graine, journal=lambda _m: None,
                             sans_image=True)
         try:
