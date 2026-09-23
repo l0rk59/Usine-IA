@@ -71,7 +71,12 @@ class Compteur:
         self.produits_faits = 0
         self._debut_produit = 0.0
         self._appels_debut_produit = 0
-        self._motif_arret = ""
+        # Le plafond de l'UTILISATEUR qui a coupe le produit en cours, s'il y
+        # en a un. Les chaines attrapent de la meme facon ce refus et le
+        # silence des fournisseurs (« PLUS_RIEN_A_DEMANDER ») ; l'usine
+        # continue doit pourtant les distinguer : l'un l'arrete, l'autre la
+        # fait attendre que les quotas repartent.
+        self.refus = ""
 
     # -- consommation reelle ---------------------------------------------
     def appels_aujourdhui(self) -> int:
@@ -96,6 +101,7 @@ class Compteur:
 
     # -- cycle de vie ------------------------------------------------------
     def demarrer_produit(self) -> None:
+        self.refus = ""
         self._debut_produit = time.time()
         self._appels_debut_produit = self.appels_aujourdhui()
 
@@ -126,6 +132,13 @@ class Compteur:
 
     def verifier_appel(self) -> None:
         """Appele avant chaque requete IA. Leve BudgetEpuise si un plafond tombe."""
+        try:
+            self._verifier_appel()
+        except BudgetEpuise as exc:
+            self.refus = str(exc)
+            raise
+
+    def _verifier_appel(self) -> None:
         p = self.plafonds
         if p.jetons_jour:
             consommes = self.jetons_aujourdhui()

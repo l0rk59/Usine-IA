@@ -28,7 +28,6 @@ from ..core import cles as pool_cles
 from ..core import config, empreinte, evenements, experience
 from ..core import file as file_prod, llm
 from ..core import reglages, securite, store, ventes
-from ..pipelines import apres
 from ..pipelines import catalogue, social
 from ..production import AUTO
 from ..pipelines.base import TAILLES, TONS, Contexte
@@ -184,7 +183,6 @@ def _journal_de(travail_id: str) -> Callable[[str], None]:
 def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None:
     journal = _journal_de(travail_id)
 
-    profil = reglages.charger()
     sujet = str(options.get("sujet") or "").strip()
     if type_produit == AUTO and sujet:
         # Sujet donne, type a decider : la question la plus utile, et celle
@@ -237,44 +235,15 @@ def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None
             TRAVAUX[travail_id]["sujet"] = sujet[:300]
         evenements.publier("niche", sujet=sujet, source=choix.get("source", ""))
 
-    ctx = Contexte(
-        sujet=sujet,
-        audience=options.get("audience") or profil["audience"],
-        ton=options.get("ton") or profil["ton"],
-        taille=options.get("taille") or profil["taille"],
-        qualite=options.get("qualite") or profil["qualite"],
-        chapitres=_entier(options.get("chapitres")),
-        mots_section=_entier(options.get("mots")),
-        auteur=options.get("auteur") or profil["auteur"],
-        sans_image=bool(options.get("sans_image")) or not profil["images"],
-        journal=journal,
-    )
-    # Les reglages de fabrication que la chaine prend en OPTION. Le tableau de
-    # bord les affichait, les enregistrait, et ne les passait pas : coche,
-    # « relecture_ensemble » ne faisait rien, et l'agent LECTEUR — celui qui
-    # lit le produit comme l'acheteur — n'a jamais parle une seule fois quand
-    # on fabrique depuis le telephone.
-    for cle in ("relecture_ensemble",):
-        if options.get(cle) is None and profil.get(cle):
-            options[cle] = profil[cle]
+    # Le meme chemin que l'usine continue : contexte, brief, fabrication,
+    # kit et archive. Les deux portes le recopiaient chacune, et la boucle
+    # avait perdu en route trois reglages « a chaque produit ».
+    from ..pipelines import porte
+
+    ctx = porte.contexte(sujet, options, journal)
     try:
         journal("Demarrage...")
-        # La meme preparation que la ligne de commande. Sans elle, le bouton
-        # « Generer » envoyait « TON : auto » et « PUBLIC : auto » dans
-        # chacune des invites, et les reglages de fiction choisis dans le
-        # formulaire n'atteignaient pas la chaine.
-        from ..pipelines import brief
-
-        brief.completer(ctx, type_produit, options)
-        resultat = catalogue.executer(type_produit, ctx, options)
-        # Kit de vente, extrait offert, archive : le meme travail que la ligne
-        # de commande, par le meme chemin. Le recopier ici ferait diverger les
-        # deux, et c'est exactement ainsi que ces reglages avaient vieilli.
-        apres.apres_production(
-            ctx, resultat, str(resultat.get("promesse") or ctx.sujet),
-            type_produit=type_produit,
-            kit=options.get("marketing"), archive=options.get("zip"),
-            journal=journal)
+        resultat = porte.fabriquer(type_produit, ctx, options, journal)
         with _VERROU:
             TRAVAUX[travail_id].update(statut="termine", resultat=resultat)
         journal("Termine.")

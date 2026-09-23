@@ -299,6 +299,55 @@ def _au_repos(p: config.Provider) -> bool:
     return _REPOS.get(p.name, 0) > time.time()
 
 
+def prochaine_ouverture(role: str = "standard") -> Optional[float]:
+    """Secondes avant qu'un fournisseur puisse servir ce role.
+
+    0 : il y en a un des maintenant. None : aucun ne le pourra sans un geste
+    de l'utilisateur — pas de cle, et aucun serveur local qui ecoute.
+
+    Rien n'est devine : ce sont les repos que le routeur a lui-meme poses,
+    par fournisseur et par cle, et les quotas du jour, qui repartent a minuit
+    UTC comme le compteur de la base (« store._jour »). Un serveur local n'a
+    ni repos ni quota : il ecoute ou il n'ecoute pas, et on le lui demande.
+
+    Ce que cela ne sait pas voir : un reseau coupe, un credit epuise sans
+    repos pose. Le fournisseur y parait ouvert ; l'appelant doit donc garder
+    une attente minimale, et ne pas prendre « 0 » pour une promesse.
+    """
+    maintenant = time.time()
+    minuit_utc = (int(maintenant // 86400) + 1) * 86400.0
+    ouvertures: List[float] = []
+    locaux: List[str] = []
+    for p in config.active_providers():
+        if p.local:
+            locaux.append(p.name)
+            continue
+        if _au_repos(p):
+            ouvertures.append(_REPOS[p.name])
+            continue
+        lot = pool_cles.pool(p.name, p.api_key_env)
+        if p.api_key_env and len(lot):
+            for cle in lot.cles:
+                if not cle.disponible(maintenant):
+                    ouvertures.append(cle.repos_jusqu_a)
+                elif _quota_ok(p, role, cle.id):
+                    return 0.0
+                else:
+                    ouvertures.append(minuit_utc)
+        elif _quota_ok(p, role):
+            return 0.0
+        else:
+            ouvertures.append(minuit_utc)
+    if locaux:
+        from . import diagnostic
+
+        if set(locaux) & set(diagnostic.locaux_actifs(timeout=3)):
+            return 0.0
+    if not ouvertures:
+        return None
+    return max(0.0, min(ouvertures) - maintenant)
+
+
 def _quota_ok(p: config.Provider, role: str = "standard",
               cle_id: str = "") -> bool:
     """Ce quota est-il encore ouvert pour CETTE cle ?

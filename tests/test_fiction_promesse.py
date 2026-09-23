@@ -244,7 +244,8 @@ class LesDeuxCheminsDeposentLaPromesse(unittest.TestCase):
         la file. La troisieme, le tableau de bord, ne posait pas la
         promesse — mesure du 23/09/2026 : un reglage de fiction choisi dans
         le formulaire atteignait une invite sur vingt-huit. Les trois
-        passent maintenant par « brief.completer », qui pose la promesse.
+        passent maintenant par « brief.completer », qui pose la promesse : la
+        ligne de commande directement, les deux autres par « porte.fabriquer ».
         """
         def appelle(chemin, nom):
             arbre = ast.parse((RACINE / chemin).read_text(encoding="utf-8"))
@@ -253,9 +254,10 @@ class LesDeuxCheminsDeposentLaPromesse(unittest.TestCase):
                        and n.func.attr == nom
                        for n in ast.walk(arbre))
 
-        for chemin in ("usine/cli.py", "usine/production.py",
-                       "usine/web/serveur.py"):
-            self.assertTrue(appelle(chemin, "completer"), chemin)
+        self.assertTrue(appelle("usine/cli.py", "completer"))
+        for chemin in ("usine/production.py", "usine/web/serveur.py"):
+            self.assertTrue(appelle(chemin, "fabriquer"), chemin)
+        self.assertTrue(appelle("usine/pipelines/porte.py", "completer"))
         self.assertTrue(appelle("usine/pipelines/brief.py", "poser_la_promesse"))
 
 

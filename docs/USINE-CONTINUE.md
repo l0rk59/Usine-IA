@@ -134,7 +134,79 @@ servie par le cache n'est jamais refusée : elle ne coûte rien.
 **Pendant un produit.** Si un plafond tombe au dixième chapitre, **le livre
 sort quand même** : les chapitres déjà rédigés sont conservés, les suivants
 sont réduits à leur plan, le PDF et l'EPUB sont générés. Perdre neuf chapitres
-parce que le dixième a dépassé n'aurait aucun sens. L'usine s'arrête ensuite.
+parce que le dixième a dépassé n'aurait aucun sens. L'usine s'arrête ensuite :
+c'est **votre** plafond, c'est à vous de le lever.
+
+## Quand les fournisseurs se taisent : attendre, puis finir
+
+Les quotas gratuits des fournisseurs ne sont pas votre budget. Ils se vident
+en pleine fabrication, et ils se remplissent seuls — au bout d'une minute pour
+un 429, à minuit UTC pour un quota du jour.
+
+Journal réel du 16/09/2026, roman de dix-huit scènes : tous les fournisseurs
+épuisés à la huitième, dix scènes à écrire. L'usine marquait alors la niche
+**« faite »** et s'arrêtait. Le roman attendait sur le disque, inachevé, qu'on
+pense à appuyer sur « Reprendre ». Pour une usine dont la promesse est
+« appuyer sur Générer et rien d'autre », c'était la panne la plus probable,
+et la plus silencieuse.
+
+Désormais, un produit resté inachevé **repart en tête de file**, avec de quoi
+reprendre *ce* produit plutôt qu'en fabriquer un autre. L'usine demande au
+routeur quand un fournisseur rouvrira (`llm.prochaine_ouverture`) — il le sait
+sans rien deviner : ce sont les repos qu'il a lui-même posés, par fournisseur
+et par clé, et les quotas du jour — puis elle attend, et finit le produit
+depuis son carnet :
+
+```
+[1] ebook — « la facturation des independants »
+    [!] 1 section(s) non ecrites : conclusion. Le produit reste inacheve — ...
+  inacheve : 1 section(s) a ecrire — il repart en tete de file et sera fini automatiquement.
+  plus rien a demander aux fournisseurs : reprise automatique vers 22:59 (5 min).
+[1] ebook — « la facturation des independants »
+  reprise du produit inacheve, depuis son carnet (1 section(s) a ecrire)
+  livre : « Le systeme du freelance rentable » — note 3.79/10 en 0 s
+```
+
+(Journal du scénario de `tests/test_reprise_auto.py`, fournisseurs coupés au
+neuvième appel, routeur annonçant une réouverture dans cinq minutes.)
+
+Trois garde-fous :
+
+- **Un plancher.** Le routeur ne voit ni un réseau coupé ni un crédit épuisé
+  sans repos posé : pour lui, le fournisseur paraît ouvert. « Tout de suite »
+  n'est donc pas une promesse, et l'attente vaut au moins une minute, puis
+  cinq, quinze, trente, une heure tant que les reprises ne font rien avancer.
+- **Le verrou de veille est relâché pendant l'attente.** Elle peut durer
+  jusqu'à minuit UTC ; garder le téléphone éveillé pour ne rien calculer
+  viderait la batterie. Android peut endormir Termux, et l'attente se termine
+  au premier réveil après l'heure.
+- **Renoncer, mais seulement quand rien ne s'épuisait.** Une section qui
+  échoue trois reprises de suite alors que les fournisseurs répondent ne
+  réussira pas à la quatrième : la niche sort de la file, le produit reste
+  inachevé, et le journal dit d'essayer `usine reprendre` à la main. Un quota
+  vide, lui, se remplit — attendre est la bonne réponse, aussi longtemps qu'il
+  le faut.
+
+Et si aucun fournisseur ne peut revenir — aucune clé, aucun serveur local qui
+écoute — l'usine le dit et s'arrête ; la niche attend en tête de file la
+prochaine session.
+
+## Ce que la boucle oubliait de faire
+
+Le tableau de bord et l'usine continue reçoivent la même chose — un type, un
+sujet, des options — et fabriquaient chacun à sa façon. Mesure du 23/09/2026,
+mêmes réglages activés des deux côtés :
+
+| Réglage « à chaque produit » | tableau de bord | usine continue |
+|---|---|---|
+| `relecture_ensemble` | 1 | **0** |
+| `archive_auto` | 1 | **0** |
+| `marketing_auto` | 1 | **0** |
+
+La boucle — précisément là où l'on fabrique sans surveiller — ignorait aussi
+les chapitres, les mots et l'auteur passés en options. Les deux portes passent
+maintenant par `pipelines/porte.py`, qui n'invente rien : c'est ce que faisait
+le tableau de bord, sorti de son fichier.
 
 ## Piloter
 

@@ -136,6 +136,27 @@ class AucunePorteNEnvoieAuto(unittest.TestCase):
         self.assertGreater(espion.avec("brume et sel"), 3)
 
 
+class LaBoucleLitLesMemesOptionsQueLeBouton(unittest.TestCase):
+    """La boucle construisait son contexte a part, et ignorait les chapitres,
+    les mots et l'auteur passes en options."""
+
+    def setUp(self):
+        _atelier_du_cas(self)
+
+    def tearDown(self):
+        llm.definir_simulateur(None)
+
+    def test_les_chapitres_et_l_auteur_de_la_file_sont_tenus(self):
+        llm.definir_simulateur(Espion())
+        _par_la_file("le budget des familles", "ebook",
+                     {"chapitres": 4, "auteur": "Camille Delmas"})
+        produit = store.lister_produits()[0]
+        plan = carnet.plan(Path(produit["dossier"]))
+        self.assertEqual(len(plan["chapitres"]), 4)
+        self.assertEqual(carnet.contexte_garde(Path(produit["dossier"]))["auteur"],
+                         "Camille Delmas")
+
+
 class LaRepriseMarcheQuelleQueSoitLaPorte(unittest.TestCase):
 
     def setUp(self):
@@ -173,9 +194,18 @@ class LaRepriseMarcheQuelleQueSoitLaPorte(unittest.TestCase):
         self._reprendre_et_verifier(produit)
 
     def test_un_produit_de_l_usine_continue_se_reprend(self):
+        """A la main, cette fois. L'usine continue attendrait que les
+        fournisseurs reviennent et finirait seule (« test_reprise_auto ») ;
+        on lui fait dire qu'aucun ne reviendra, pour qu'elle s'arrete et
+        laisse le produit a « usine reprendre »."""
         carnet.retenir_commande(["usine", "demarrer"])
         llm.definir_simulateur(Espion(coupe_apres=9))
-        _par_la_file("la comptabilite des artisans", "ebook", {"chapitres": 6})
+        vraie = llm.prochaine_ouverture
+        llm.prochaine_ouverture = lambda role="standard": None
+        try:
+            _par_la_file("la comptabilite des artisans", "ebook", {"chapitres": 6})
+        finally:
+            llm.prochaine_ouverture = vraie
         self._reprendre_et_verifier(self._coupe())
 
     def test_la_reprise_garde_la_voix_decidee_au_brief(self):

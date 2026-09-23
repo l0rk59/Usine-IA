@@ -29,6 +29,15 @@ from .core import (apprentissage, budget, config, empreinte, evenements,
 from .pipelines import catalogue, idees
 from .pipelines.base import Contexte
 
+# Combien de reprises sans une section de plus, fournisseurs disponibles,
+# avant de renoncer a finir un produit tout seul.
+REPRISES_SANS_PROGRES = 3
+# Attente minimale entre deux reprises, en secondes, selon le nombre de
+# reprises restees sans progres. Une minute d'abord : un 429 se leve vite. Une
+# heure au plus : au-dela, c'est le quota du jour, et le routeur le sait.
+PALIERS_D_ATTENTE = (60, 300, 900, 1800, 3600)
+
+
 def types_disponibles() -> List[str]:
     """Types que la file accepte. Lu du catalogue, jamais recopie."""
     return catalogue.cles(en_file=True)
@@ -793,32 +802,28 @@ class UsineContinue:
             self.journal("  type inconnu : {}".format(type_produit))
             return False
 
-        profil = reglages.charger()
         options = entree.get("options") or {}
-        contexte = Contexte(
-            sujet=entree["sujet"],
-            audience=options.get("audience") or profil["audience"],
-            ton=options.get("ton") or profil["ton"],
-            taille=options.get("taille") or profil["taille"],
-            qualite=options.get("qualite") or profil["qualite"],
-            auteur=profil["auteur"],
-            sans_image=not profil["images"],
-            journal=lambda message: self.journal("    " + message),
-        )
-        # La meme preparation que par la ligne de commande : promesse de
-        # lecture, puis brief. Une promesse trouvee par « prospecter_fiction »
-        # voyage dans les options de la file ; sans elle, elle arrivait
-        # jusqu'a la fabrication et s'y perdait. Sans le brief, le ton et le
-        # public partaient « auto » dans chaque invite.
-        from .pipelines import brief as _brief
 
-        _brief.completer(contexte, type_produit, options)
+        def journal(message: str) -> None:
+            self.journal("    " + message)
 
+        from .pipelines import porte
+        from .pipelines import reprise as module_reprise
+
+        reprise_id = str(options.get("reprendre_id") or "")
         self.compteur.demarrer_produit()
         budget.brancher(self.compteur)
         debut = time.time()
         try:
-            resume = catalogue.executer(type_produit, contexte, options)
+            if reprise_id and module_reprise.par_le_catalogue(reprise_id):
+                self.journal("  reprise du produit inacheve, depuis son carnet "
+                             "({} section(s) a ecrire)".format(
+                                 options.get("manquants", "?")))
+                resume = module_reprise.reprendre(reprise_id, journal=journal)
+            else:
+                # Le meme chemin que le bouton « Generer » du tableau de bord.
+                contexte = porte.contexte(entree["sujet"], options, journal)
+                resume = porte.fabriquer(type_produit, contexte, options, journal)
         except budget.BudgetEpuise as exc:
             # Un plafond atteint n'est pas une faute de la niche : elle repart
             # en file, intacte, pour la prochaine session.
@@ -837,19 +842,25 @@ class UsineContinue:
         finally:
             budget.brancher(None)
 
+        fiche = store.lire_produit(resume.get("produit_id", "")) or {}
+        if fiche.get("statut") == "en_cours" and not self.compteur.refus:
+            return self._inacheve(entree, resume, fiche)
+
         file.terminer(entree["id"], resume.get("produit_id", ""))
         self.compteur.terminer_produit(reussi=True)
-        if resume.get("budget_epuise"):
-            # Le produit est sorti, mais degrade : on s'arrete la plutot que
-            # d'en entamer un autre qui sortirait plus abime encore.
+        if self.compteur.refus:
+            # Le plafond que l'utilisateur s'est fixe : c'est a lui de le
+            # lever, pas a l'usine d'attendre qu'il disparaisse.
             self.motif_fin = "budget epuise pendant la fabrication"
             self.arret_demande = True
-            self.journal("  budget epuise : produit exporte en l'etat, "
-                         "l'usine s'arrete.")
+            self.journal("  budget epuise ({}) : produit exporte en l'etat, "
+                         "l'usine s'arrete.".format(self.compteur.refus))
+        elif resume.get("budget_epuise"):
+            self.journal("  plus rien a demander pendant la fabrication : "
+                         "produit exporte en l'etat.")
         # Le signalement de doublon est pose par la chaine de fabrication
         # dans la fiche du produit : on le relit ici pour en tenir compte au
         # bilan de session, la ou la decision de publier se prend.
-        fiche = store.lire_produit(resume.get("produit_id", "")) or {}
         meta = fiche.get("meta") or {}
         self.faits.append({
             "sujet": entree["sujet"], "type": type_produit,
@@ -868,7 +879,91 @@ class UsineContinue:
                 resume.get("titre", entree["sujet"])[:70],
                 " — note {}/10".format(resume["note"]) if resume.get("note") else ""),
             ouvrir=self._fichier_a_montrer(resume))
+        if resume.get("budget_epuise") and not self.compteur.refus:
+            # Le produit est complet ; seule une etape facultative a ete
+            # perdue. Le suivant ne ferait pas mieux tant que rien n'a rouvert.
+            self._attendre_de_quoi_continuer(0, entree)
         return True
+
+    # -- produit inacheve : le reprendre, sans qu'on le demande -----------------
+    def _inacheve(self, entree: Dict[str, Any], resume: Dict[str, Any],
+                  fiche: Dict[str, Any]) -> bool:
+        """Un produit sorti avec des sections manquantes.
+
+        Journal reel du 16/09/2026, roman de dix-huit scenes : les quotas
+        s'epuisent a la huitieme, dix scenes restent a ecrire, et l'usine
+        continue marquait la niche « faite » avant de s'arreter. Le produit
+        attendait sur le disque qu'on pense a appuyer sur « Reprendre ».
+        Pour une usine dont la promesse est « appuyer sur Generer et rien
+        d'autre », c'etait la panne la plus probable, et la plus silencieuse.
+        """
+        manquants = len((fiche.get("meta") or {}).get("manquants") or [])
+        options = file.a_finir(entree["id"], fiche["id"], manquants)
+        self.compteur.terminer_produit(reussi=False)
+        sans_progres = int(options.get("sans_progres") or 0)
+        epuise = bool(resume.get("budget_epuise"))
+        # Renoncer seulement quand rien ne s'epuisait : la meme section qui
+        # echoue trois fois de suite, fournisseurs disponibles, ne reussira
+        # pas a la quatrieme. Un quota vide, lui, se remplit — attendre est
+        # la bonne reponse, aussi longtemps qu'il le faut.
+        if sans_progres >= REPRISES_SANS_PROGRES and not epuise:
+            file.abandonner(entree["id"], "inacheve : {} section(s) echouent "
+                            "encore apres {} reprises".format(manquants, sans_progres))
+            self.journal("  {} section(s) echouent encore apres {} reprises : le "
+                         "produit reste inacheve (« usine reprendre » pour "
+                         "reessayer a la main).".format(manquants, sans_progres))
+            return False
+        self.journal("  inacheve : {} section(s) a ecrire — il repart en tete de "
+                     "file et sera fini automatiquement.".format(manquants))
+        if epuise:
+            self._attendre_de_quoi_continuer(sans_progres, entree)
+        return False
+
+    def _attendre_de_quoi_continuer(self, sans_progres: int,
+                                    entree: Dict[str, Any]) -> None:
+        """Attendre qu'un fournisseur rouvre, plutot que de s'arreter.
+
+        Avant, un quota epuise arretait l'usine : « budget epuise pendant la
+        fabrication ». C'est juste pour le budget de l'UTILISATEUR, qu'il
+        s'est fixe lui-meme ; la boucle s'arrete alors d'elle-meme au tour
+        suivant. Pour les quotas des fournisseurs, qui repartent seuls, c'est
+        attendre qu'il faut — et c'est le routeur qui sait jusqu'a quand.
+        """
+        if self.compteur.peut_demarrer_produit():
+            return                 # budget de l'utilisateur : la boucle s'arrete
+        ouverture = llm.prochaine_ouverture()
+        if ouverture is None:
+            self.motif_fin = ("aucun fournisseur ne pourra repondre : ajoutez "
+                              "une cle (« usine cles ») ou lancez un serveur local")
+            self.arret_demande = True
+            self.journal("  " + self.motif_fin)
+            return
+        # Le routeur ne voit ni un reseau coupe ni un credit epuise sans
+        # repos : « 0 » n'y est pas une promesse. D'ou un plancher, qui
+        # s'allonge tant que les reprises ne font rien avancer.
+        palier = PALIERS_D_ATTENTE[min(sans_progres, len(PALIERS_D_ATTENTE) - 1)]
+        attente = max(ouverture, palier)
+        fin = time.time() + attente
+        self.journal("  plus rien a demander aux fournisseurs : reprise "
+                     "automatique vers {} ({} min).".format(
+                         time.strftime("%H:%M", time.localtime(fin)),
+                         int(round(attente / 60.0))))
+        self._publier(courant={"id": entree["id"], "sujet": entree["sujet"],
+                               "type": entree["type"], "depuis": time.time(),
+                               "attente_jusqu_a": fin})
+        # Pendant une longue attente, le verrou de veille ne sert qu'a vider
+        # la batterie : rien ne calcule. Relache, Android peut endormir
+        # Termux, et l'attente se termine au premier reveil apres l'heure —
+        # « time.time() » a avance pendant le sommeil.
+        relache = self._veille_prise
+        if relache:
+            telephone.verrou_veille(False)
+            self._veille_prise = False
+        try:
+            self._dormir(int(attente))
+        finally:
+            if relache:
+                self._veille_prise = telephone.verrou_veille(True)
 
     # -- boucle principale ---------------------------------------------------
     def tourner(self) -> int:
