@@ -354,6 +354,64 @@ class Gestionnaire(BaseHTTPRequestHandler):
             self._json({"erreur": "corps illisible"}, 400)
             return None
 
+    def _hotes_admis(self) -> set:
+        """Les noms sous lesquels CE serveur peut legitimement etre joint."""
+        hote, port = self.server.server_address[:2]
+        noms = {"127.0.0.1", "localhost", "[::1]", "::1"}
+        if hote not in ("0.0.0.0", "::", ""):
+            noms.add(hote)
+        return {"{}:{}".format(n, port) for n in noms} | noms
+
+    def _origine_sure(self, modifie: bool) -> bool:
+        """Refuse ce qu'un SITE ETRANGER fait envoyer par le navigateur.
+
+        Le tableau de bord local n'a pas de mot de passe, parce que
+        « 127.0.0.1, c'est moi ». Sur un telephone, c'est faux : n'importe
+        quelle page ouverte dans le navigateur peut ecrire a 127.0.0.1:8777.
+        Mesure du 23/09/2026 : un POST « text/plain » — une requete que le
+        navigateur envoie sans verification prealable — venu de
+        https://evil.example a reecrit « marque » et « site ». Or « site »
+        part dans la notice et le kit de vente de CHAQUE produit livre : une
+        page visitee au hasard aurait signe les produits de quelqu'un d'autre.
+        Le meme essai sous un faux nom d'hote (« DNS rebinding ») passait aussi.
+
+        Deux verifications, les memes que celles des carnets Jupyter :
+
+          - l'en-tete Host doit nommer ce serveur. Un domaine etranger qui
+            resout vers 127.0.0.1 garde son nom dans Host : c'est ce qui
+            trahit le rebinding, y compris pour une simple LECTURE ;
+          - sur ce qui MODIFIE, l'en-tete Origin, quand il est present, doit
+            designer ce serveur. Un navigateur l'envoie toujours sur un POST
+            venu d'un autre site, meme en « no-cors ».
+
+        Ce qui n'envoie pas d'Origin — la ligne de commande, un script Termux,
+        curl — reste admis : c'est un processus du telephone, et c'est la
+        frontiere de confiance que ce tableau de bord a toujours eue.
+        """
+        admis = self._hotes_admis()
+        hote = (self.headers.get("Host") or "").strip().lower()
+        if hote and hote not in admis:
+            self._json({"erreur": "hote refuse : {}".format(hote[:60])}, 403)
+            return False
+        if not modifie:
+            return True
+        if (self.headers.get("Sec-Fetch-Site") or "").lower() == "cross-site":
+            self._json({"erreur": "requete venue d'un autre site"}, 403)
+            return False
+        origine = (self.headers.get("Origin") or "").strip().lower()
+        if origine and origine != "null":
+            nom = urlparse(origine).netloc
+            if nom not in admis:
+                self._json({"erreur": "origine refusee : {}".format(
+                    origine[:60])}, 403)
+                return False
+        elif origine == "null":
+            # Une page ouverte depuis un fichier, un iframe isole : aucune
+            # raison legitime de modifier l'atelier depuis la.
+            self._json({"erreur": "origine opaque refusee"}, 403)
+            return False
+        return True
+
     def _autorise(self) -> bool:
         """Verifie le jeton quand le tableau de bord n'est pas purement local."""
         attendu = reglages.lire("jeton_web", "")
@@ -376,7 +434,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
     # -- routes ----------------------------------------------------------
     def do_GET(self) -> None:
         chemin = urlparse(self.path).path
-        if not self._autorise():
+        if not self._origine_sure(modifie=False) or not self._autorise():
             return
         if chemin in ("/", "/index.html"):
             self._servir_statique("tableau.html", "text/html; charset=utf-8")
@@ -448,7 +506,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         chemin = urlparse(self.path).path
-        if not self._autorise():
+        if not self._origine_sure(modifie=True) or not self._autorise():
             return
         if chemin == "/api/fabriquer":
             self._fabriquer()
