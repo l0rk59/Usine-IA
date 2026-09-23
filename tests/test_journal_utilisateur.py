@@ -106,8 +106,12 @@ class UnServiceRetireSeNommeAinsi(unittest.TestCase):
     """
 
     def test_un_410_distant_dit_que_le_service_ferme(self):
-        github = config.PROVIDERS_BY_NAME["github"]
-        texte = llm._expliquer(github, HttpErreur(
+        # N'importe quel fournisseur DISTANT : GitHub Models lui-meme a ete
+        # retire du catalogue le 23/09/2026, une fois la fermeture confirmee.
+        # Ce qu'on garde ici, c'est la lecture d'un 410 — le prochain service
+        # qui fermera repondra de la meme facon.
+        distant = next(p for p in config.PROVIDERS if not p.local)
+        texte = llm._expliquer(distant, HttpErreur(
             410, "Gone",
             corps='{"error":{"code":"github_models_retirement_brownout"}}'))
         self.assertIn("retire par son editeur", texte)

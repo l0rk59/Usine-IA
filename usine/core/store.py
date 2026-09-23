@@ -454,7 +454,23 @@ def lister_empreintes(type_produit: str = "", sauf: str = "",
 
 
 def _jour(ts: Optional[float] = None) -> str:
-    return time.strftime("%Y-%m-%d", time.localtime(ts or time.time()))
+    """Le jour DU FOURNISSEUR, pas celui de l'utilisateur.
+
+    Cette colonne ne sert qu'a compter les quotas quotidiens des services, et
+    ils se remettent a zero a heure fixe en temps universel — « All limits
+    reset daily at 00:00 UTC » pour Cloudflare Workers AI (documentation
+    officielle, relevee le 23/09/2026). Compter en heure locale decalait le
+    jour de l'usine de celui du service : en France l'ete, notre compteur
+    repartait a zero deux heures AVANT le fournisseur. Pendant ces deux
+    heures, l'usine croyait disposer d'un quota neuf que le service lui
+    refusait ; puis, les appels de la nuit restant imputes au mauvais jour,
+    elle s'arretait avant d'avoir utilise ce qui restait.
+
+    Le budget que l'utilisateur se fixe, lui, reste en heure locale : il le
+    calcule a partir d'horodatages dans « budget.py », pas de cette colonne.
+    Ce sont deux journees differentes, et c'est voulu.
+    """
+    return time.strftime("%Y-%m-%d", time.gmtime(ts or time.time()))
 
 
 def enregistrer_appel(

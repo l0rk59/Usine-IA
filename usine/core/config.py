@@ -11,7 +11,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Tuple, Dict, List, Optional
 
 # --------------------------------------------------------------------------
 # Chemins
@@ -128,6 +128,12 @@ class Provider:
     signup: str = ""                # ou obtenir une cle gratuite
     notes: str = ""
     extra_headers: Dict[str, str] = field(default_factory=dict)
+    # Variables d'environnement qui, en plus de la cle, doivent etre
+    # renseignees pour que le fournisseur fonctionne. Cloudflare met
+    # l'identifiant de compte dans l'URL : avec la cle seule, chaque appel
+    # partait vers une adresse fausse, et le routeur l'aurait mis au repos
+    # comme une panne — au lieu de dire qu'il manque un reglage.
+    autres_variables: Tuple[str, ...] = ()
     # En-tete de session exige par le service, s'il en exige un. Sa valeur ne
     # peut pas etre ecrite ici : elle se derive de la cle, et la cle n'est
     # connue qu'a l'appel. « entetes_appel » s'en charge.
@@ -168,6 +174,8 @@ class Provider:
         return len(pool_cles.pool(self.name, self.api_key_env))
 
     def available(self) -> bool:
+        if any(not env(nom) for nom in self.autres_variables):
+            return False
         if self.local or self.keyless:
             return True
         return self.nb_cles() > 0
@@ -254,9 +262,18 @@ PROVIDERS: List[Provider] = [
             "gpt-oss-120b": Quota(rpm=5, rpd=200, tpm=30000, tpd=1000000),
             "qwen-3.8-27b": Quota(rpm=5, rpd=200, tpm=30000, tpd=1000000),
         },
-        signup="https://cloud.cerebras.ai/",
-        notes="Tres rapide. 1 million de jetons par jour, mais seulement "
-              "5 requetes par minute : le routeur espace les appels.",
+        signup="https://cloud.cerebras.ai/ (carte bancaire exigee)",
+        # Le palier gratuit SANS CARTE a pris fin : Cerebras l'a remplace par un
+        # essai de 5 dollars qui exige une carte bancaire, et une cle sans
+        # credit repond 402. Releve du 11/09/2026 (klymentiev.com/blog/free-llm-
+        # api), qui recoupe exactement nos propres chiffres Groq — c'est ce qui
+        # permet de s'y fier.
+        #
+        # Le fournisseur reste declare : une cle creditee fonctionne, et la
+        # vitesse est reelle. Mais il n'est plus « gratuit », et le dire
+        # ailleurs serait envoyer quelqu'un creer un compte pour un 402.
+        notes="PAYANT depuis septembre 2026 : essai de 5 $ avec carte. Tres "
+              "rapide, 5 requetes par minute.",
     ),
     Provider(
         name="gemini",
@@ -344,23 +361,44 @@ PROVIDERS: List[Provider] = [
         },
     ),
     Provider(
-        name="github",
-        base_url="https://models.github.ai/inference",
-        api_key_env="GITHUB_MODELS_TOKEN",
+        name="cloudflare",
+        # L'identifiant de compte fait partie de l'URL : sans lui, l'adresse
+        # est fausse. D'ou « autres_variables » plus bas — le fournisseur ne se
+        # dit disponible que si le jeton ET le compte sont renseignes.
+        base_url="https://api.cloudflare.com/client/v4/accounts/{}/ai/v1".format(
+            env("CLOUDFLARE_ACCOUNT_ID")),
+        api_key_env="CLOUDFLARE_API_TOKEN",
+        autres_variables=("CLOUDFLARE_ACCOUNT_ID",),
+        # Identifiants et tarifs releves le 23/09/2026 sur la documentation
+        # officielle (developers.cloudflare.com/workers-ai/models/ et
+        # /platform/pricing/). Les trois sont servis par /v1/chat/completions.
         models={
-            "rapide": "openai/gpt-4o-mini",
-            "standard": "openai/gpt-4o-mini",
-            "costaud": "openai/gpt-4o",
+            "rapide": "@cf/openai/gpt-oss-20b",
+            "standard": "@cf/openai/gpt-oss-120b",
+            "costaud": "@cf/openai/gpt-oss-120b",
+            "long": "@cf/openai/gpt-oss-120b",
         },
-        # Poses le 11/09/2026, sans releve : GitHub Models publie ses limites
-        # par palier de modele et non par compte, donc ces deux nombres sont
-        # une borne basse choisie pour ne pas declencher de 429 — pas une
-        # mesure. A revalider sur docs.github.com/github-models, ou avec
-        # « usine docteur --modeles ».
-        rpm=14,
-        rpd=140,
-        signup="https://github.com/settings/tokens (token classique, scope models:read)",
-        notes="GitHub Models : gratuit avec un simple token GitHub.",
+        # 10 000 « neurones » par jour, gratuits, sans carte, remis a zero a
+        # 00:00 UTC. gpt-oss-120b coute 68 182 neurones par million de jetons
+        # de sortie et 31 818 par million en entree : un appel typique de
+        # l'usine (3 000 jetons lus, 3 000 ecrits) en consomme environ 300,
+        # soit une trentaine d'appels par jour — un roman court, a peu pres.
+        #
+        # Le plafond par minute publie est 300 ; on declare le quotidien que
+        # le budget en neurones permet vraiment, pour que le routeur ne brule
+        # pas la reserve du jour sur les premiers appels.
+        rpm=60,
+        rpd=33,
+        quotas={
+            "@cf/openai/gpt-oss-120b": Quota(rpm=60, rpd=33),
+            # 27 273 neurones par million en sortie : quatre fois moins cher.
+            "@cf/openai/gpt-oss-20b": Quota(rpm=60, rpd=140),
+        },
+        signup="https://dash.cloudflare.com/ : Workers AI, puis « Use REST "
+               "API » pour le jeton et l'identifiant de compte",
+        notes="Gratuit sans carte : 10 000 neurones par jour, soit environ "
+              "trente appels a gpt-oss-120b. Demande DEUX valeurs : le jeton "
+              "et l'identifiant de compte.",
     ),
     Provider(
         name="opencode",
@@ -509,15 +547,20 @@ PROVIDERS_BY_NAME: Dict[str, Provider] = {p.name: p for p in PROVIDERS}
 
 DEFAULT_ORDER = [
     "groq",
-    "cerebras",
     "gemini",
     "mistral",
     "nvidia",
     # Paye et genereux : 600 requetes par jour. Il passe avant les paliers
     # gratuits, qui s'epuisent en une fabrication.
     "opencode",
-    "github",
+    # Une trentaine d'appels par jour, pas davantage : en tete de liste, il
+    # s'epuiserait sur les titres et les reglages avant la premiere scene. Il
+    # sert de reserve quand les gros quotas sont tombes.
+    "cloudflare",
     "openrouter",
+    # Payant depuis septembre 2026 : n'est appele que si une cle creditee
+    # est posee, et alors tard, parce qu'il coute.
+    "cerebras",
     "pollinations",
     "ollama",
     "llamacpp",
@@ -541,7 +584,13 @@ def provider_order() -> List[str]:
     # C'est le defaut que ce depot appelle un reglage orphelin, deplace d'un
     # cran : une chose declaree, visible, et que rien ne lit. Deriver l'ordre
     # du catalogue rend l'oubli impossible au lieu de le corriger une fois.
-    connus = list(DEFAULT_ORDER)
+    # Et l'inverse : un nom de l'ordre qui n'est plus DECLARE est ignore
+    # plutot que de faire tomber l'usine. Le retrait de GitHub Models, le
+    # 23/09/2026, a laisse son nom dans cette liste le temps d'une
+    # modification — et « active_providers » levait KeyError, c'est-a-dire que
+    # plus aucune fabrication ne demarrait. Retirer un fournisseur ferme ne
+    # doit jamais couter la production entiere.
+    connus = [n for n in DEFAULT_ORDER if n in PROVIDERS_BY_NAME]
     return connus + [p.name for p in PROVIDERS if p.name not in connus]
 
 
