@@ -54,6 +54,31 @@ TICS = [
     r"le monde (fascinant|passionnant) de",
 ]
 
+def tics_lisibles() -> List[str]:
+    """Les tics de TICS, ecrits comme un auteur les lirait.
+
+    Une seule liste pour les deux usages. Le detecteur en connaissait
+    vingt-neuf ; la consigne envoyee aux agents en citait DEUX — « dans un
+    monde ou », « il est important de noter ». Les vingt-sept autres n'etaient
+    appris qu'apres coup, au prix d'une passe de correction par section : un
+    appel de modele complet pour retirer « plongeons dans ». Les deux listes
+    etaient tenues a la main, separement, et divergeaient deja.
+
+    Chaque motif donne sa premiere variante : « (noter|souligner) » devient
+    « noter », un groupe facultatif est garde (« il ne faut pas oublier »), et
+    un intervalle libre devient « … ». Un test verifie qu'aucune syntaxe de
+    motif ne passe dans la consigne quand on ajoute un tic.
+    """
+    rendus = []
+    for motif in TICS:
+        m = re.sub(r"\(([^()|]+)\)\?", r"\1", motif)            # facultatif garde
+        m = re.sub(r"\(([^()|]+)(?:\|[^()]+)?\)", r"\1", m)      # 1re variante
+        m = m.replace(".{3,40}", "…").replace(r"\b", "").replace(r"\s?", " ")
+        m = m.replace("game.changer", "game changer")
+        rendus.append(re.sub(r"\s+", " ", m).strip(" ,"))
+    return rendus
+
+
 # Promesses de resultat : risque commercial et juridique pour le vendeur.
 PROMESSES = [
     r"garanti(e|s|es)?\b",

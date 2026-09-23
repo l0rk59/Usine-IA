@@ -202,3 +202,42 @@ class UnServiceRetireSeRepose(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UneNoteAbsenteNEstPasUnSept(unittest.TestCase):
+    """« float(donnees.get("note") or 7.0) » : deux defauts en une ligne.
+
+    Une note absente devenait 7 — la meme famille que le 7,5 de la branche
+    d'erreur. Et parce que « 0 or 7.0 » vaut 7.0, un 0/10 devenait 7/10 : un
+    editeur qui demolissait un chapitre voyait son avis retourne.
+    """
+
+    def _critique(self, reponse):
+        vrai = equipe.EDITEUR.travailler_json
+        equipe.EDITEUR.travailler_json = lambda *a, **k: (reponse, "faux")
+        try:
+            ctx = base.Contexte(sujet="un moulin", journal=lambda m: None)
+            return equipe.critiquer(ctx, "un texte", "une scene")
+        finally:
+            equipe.EDITEUR.travailler_json = vrai
+
+    def test_un_zero_reste_un_zero(self):
+        critique = self._critique({"note": 0, "problemes": [], "verdict": "a refaire"})
+        self.assertEqual(critique.note, 0.0, (
+            "un 0/10 de l'editeur est devenu {}/10".format(critique.note)))
+        self.assertTrue(critique.mesuree)
+        self.assertFalse(critique.acceptable)
+
+    def test_une_note_absente_n_est_pas_mesuree(self):
+        critique = self._critique({"problemes": [
+            {"passage": "x", "probleme": "y", "gravite": "majeur",
+             "correction": "z"}], "verdict": "sans note"})
+        self.assertFalse(critique.mesuree, (
+            "une note absente est devenue {}".format(critique.note)))
+        # Les problemes restent : ils sont vrais, meme sans note.
+        self.assertEqual(len(critique.problemes), 1)
+
+    def test_une_vraie_note_passe_telle_quelle(self):
+        critique = self._critique({"note": 8.5, "problemes": []})
+        self.assertEqual(critique.note, 8.5)
+        self.assertTrue(critique.acceptable)

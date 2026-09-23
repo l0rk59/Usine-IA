@@ -72,6 +72,13 @@ EQUIPE: Dict[str, Agent] = {
                        SCENARISTE, ROMANCIER, CONTEUR, LECTEUR_DE_FICTION)
 }
 
+# Le texte de ces trois-la passe par « controler_et_corriger » : le redacteur
+# et le romancier l'ecrivent, le reviseur le corrige. C'est la que chaque tic
+# evite en amont epargne un appel de correction en aval.
+for _agent_suivi in (REDACTEUR, ROMANCIER, REVISEUR):
+    _agent_suivi.tics = True
+
+
 
 # --------------------------------------------------------------------------
 # La boucle qualite
@@ -143,10 +150,20 @@ def critiquer(
                         fournisseur_auteur=fournisseur_auteur,
                         fournisseur_relecteur=relecteur)
 
+    # Une note absente ou illisible n'est PAS une note de 7. L'ancienne ligne
+    # « float(donnees.get("note") or 7.0) » avait deux defauts : elle
+    # fabriquait une mesure quand le relecteur n'en donnait pas — la meme
+    # famille que le 7,5 de la branche d'erreur — et, parce que « 0 or 7.0 »
+    # vaut 7.0, elle changeait un 0/10 en 7/10. Un editeur qui demolissait un
+    # chapitre voyait son avis retourne en approbation.
+    #
+    # Les problemes, eux, restent : ils sont une information vraie, meme
+    # sans note, et la boucle d'amelioration peut les appliquer.
     try:
-        note = float(donnees.get("note") or 7.0)
+        note = float(donnees.get("note"))
+        mesuree = True
     except (TypeError, ValueError):
-        note = 7.0
+        note, mesuree = 0.0, False
     problemes = [
         {
             "passage": str(p.get("passage") or "")[:300],
@@ -160,6 +177,7 @@ def critiquer(
     return Critique(
         fournisseur_auteur=fournisseur_auteur,
         fournisseur_relecteur=relecteur,
+        mesuree=mesuree,
         note=max(0.0, min(10.0, note)),
         problemes=problemes[:6],
         points_forts=[str(x) for x in (donnees.get("points_forts") or [])][:5],

@@ -53,9 +53,23 @@ class Agent:
     role_modele: str = "standard"        # rapide | standard | costaud
     temperature: float = 0.75
     emoji: str = "*"
+    # Les agents dont le texte passe ensuite par le detecteur de tics. Pour
+    # eux, et pour eux seuls, la liste complete va dans la consigne : chaque
+    # tic qu'ils ecrivent coute une passe de correction, soit un appel entier.
+    # Pour les autres, quatre cents jetons de plus a chaque appel ne se
+    # rembourseraient pas — un agent qui rend un titre ou un plan JSON n'ecrit
+    # pas « plongeons dans ».
+    tics: bool = False
 
     def systeme(self, contexte: Any) -> str:
         regles = "\n".join("- " + r for r in self.regles)
+        interdits = prompts.modele("interdits")
+        if self.tics:
+            from ..core import controle
+
+            interdits += ("\n- Jamais ces tournures, que le controle retire "
+                          "ensuite une a une : {}.".format(", ".join(
+                              "« {} »".format(t) for t in controle.tics_lisibles())))
         return (
             "Tu es {metier}.\n"
             "MISSION : {mission}\n"
@@ -70,7 +84,7 @@ class Agent:
             ton=getattr(contexte, "description_ton", "professionnel"),
             audience=getattr(contexte, "audience", "un public francophone"),
             regles=regles or "- Aucune regle specifique.",
-            interdits=prompts.modele("interdits"),
+            interdits=interdits,
         )
 
     def travailler(
