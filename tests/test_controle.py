@@ -142,6 +142,41 @@ class TestControle(unittest.TestCase):
         self.assertEqual(a.mesures, b.mesures)
 
 
+class TestMarqueursDeTravail(unittest.TestCase):
+    """Une consigne a l'auteur laissee dans le livre : « [Inserer un exemple
+    concret ici] ». Comparee le 23/09/2026, la chaine ebook-factory verifie
+    TODO et LOREM avant de livrer ; notre controle ne le faisait pas."""
+
+    def _marqueurs(self, texte):
+        return [a for a in ctrl.controler(texte * 3, exiger_structure=False)
+                .anomalies if a.genre == "marqueur"]
+
+    def test_une_consigne_a_l_auteur_est_bloquante(self):
+        for texte in ("Voici un cas. [Insérer un exemple concret ici] La suite.",
+                      "Lorem ipsum dolor sit amet, la suite du chapitre.",
+                      "Le tarif moyen est de [TODO : chiffre] euros.",
+                      "Une idée forte (à développer : trois exemples).",
+                      "Le nombre exact reste [TBD] pour l'instant."):
+            with self.subTest(texte=texte):
+                trouves = self._marqueurs(texte)
+                self.assertEqual(len(trouves), 1)
+                self.assertEqual(trouves[0].gravite, "bloquant")
+                self.assertTrue(trouves[0].consigne)
+
+    def test_ce_qui_parle_au_lecteur_n_est_pas_un_marqueur(self):
+        """Le pendant, et c'est lui qui garde l'etroitesse du vocabulaire :
+        un exercice, une variable de modele, une indication de lecture a voix
+        haute, une liste de taches, un renvoi."""
+        for texte in ("Votre objectif pour ce mois : [à compléter].",
+                      "Remplacez [VOTRE PRODUIT] par ce que vous vendez.",
+                      "[PAUSE] Respirez. [INSISTER] C'est le point clé.",
+                      "Ouvrez votre todo list chaque matin, avant le café.",
+                      "Le mot lorem vient d'une coupure de Cicéron.",
+                      "Nous y reviendrons (voir le chapitre 3)."):
+            with self.subTest(texte=texte):
+                self.assertEqual(self._marqueurs(texte), [])
+
+
 class TestMarche(unittest.TestCase):
     """Sources figees : aucun appel reseau, resultat reproductible."""
 

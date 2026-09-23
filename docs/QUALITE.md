@@ -24,6 +24,7 @@ le détecter, un pour le corriger) mais un seul.
 |---|---|---|
 | **Tics** | 30 tournures d'IA en français | ≥ 3 occurrences ou 2,5 ‰ |
 | **Promesses** | « garanti », « sans risque », « du jour au lendemain » | 1 suffit, bloquant |
+| **Marqueurs de travail** | une consigne laissée à l'auteur : « [Insérer un exemple ici] », « [TODO …] », « lorem ipsum » | 1 suffit, bloquant |
 | **Chiffres sans source** | un `%` ou un « 3× plus » sans « par exemple » ni « selon » | 1 → mineur, 2 → majeur |
 | **Répétition** | n-grammes de 4 et 6 mots réapparaissant | > 6 % / > 2 % |
 | **Diversité lexicale** | vocabulaire pauvre, normalisé par fenêtres de 300 mots | < 0,42 |
@@ -31,6 +32,17 @@ le détecter, un pour le corriger) mais un seul.
 | **Continuité** | recouvrement du vocabulaire avec les sections précédentes | < 0,35 |
 | **Volume** | mots produits / mots visés | < 60 % |
 | **Structure** | sous-titres et listes présents | aucun `##` au-delà de 400 mots |
+
+### Un vocabulaire volontairement étroit
+
+Les marqueurs de travail viennent de la comparaison du 23/09/2026 : la chaîne
+ebook-factory vérifie l'absence de « TODO » et « LOREM » avant de livrer, la
+nôtre ne le faisait pas. Mais un crochet n'est pas un défaut en soi : un guide
+pratique met « [à compléter] » dans ses exercices — c'est au lecteur qu'il
+parle —, un modèle porte « [VOTRE PRODUIT] », un script de formation
+« [PAUSE] ». Aucun de ceux-là n'est signalé, et un test le garde : élargir la
+liste pour y ajouter « [à compléter] » fait échouer la suite. On rate un
+marqueur plutôt que d'accuser un exercice.
 
 ### Trois choix expliqués
 

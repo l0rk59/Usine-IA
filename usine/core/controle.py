@@ -54,6 +54,24 @@ TICS = [
     r"le monde (fascinant|passionnant) de",
 ]
 
+# Ce qu'un modele laisse quand il n'a pas fini : une consigne a l'AUTEUR,
+# jamais une phrase pour le lecteur. « [Inserer un exemple concret ici] » dans
+# un livre vendu le fait paraitre inacheve, et rien ne le signalait. La
+# chaine « ebook-factory », comparee le 23/09/2026, verifie l'absence de
+# « TODO » et « LOREM » avant de livrer ; nous non.
+#
+# Vocabulaire ferme, et volontairement etroit. « [a completer] » n'y est pas :
+# un guide pratique en met dans ses exercices, et c'est au lecteur qu'il
+# parle. « [VOTRE PRODUIT] » non plus : c'est la variable d'un modele. Ni un
+# « todo » nu : « ma todo list » est une phrase. On rate un marqueur plutot
+# que d'accuser un exercice. Lu sur le texte sans accents.
+_MARQUEURS_DE_TRAVAIL = re.compile(
+    r"\blorem ipsum\b"
+    r"|[\[(]\s*(?:inserer|todo|tbd|xxx+|placeholder|a rediger|a developper)"
+    r"\b[^\])\n]{0,120}[\])]",
+    re.IGNORECASE)
+
+
 def tics_lisibles() -> List[str]:
     """Les tics de TICS, ecrits comme un auteur les lirait.
 
@@ -295,6 +313,19 @@ def controler(
         anomalies.append(Anomalie(
             "tics", "mineur", "{} tic(s) d'ecriture".format(len(trouves)),
             consigne="Retirer les quelques formules de transition generiques restantes."))
+
+    # --- marqueurs de travail laisses par le modele --------------------------
+    marqueurs = [m.group(0) for m in _MARQUEURS_DE_TRAVAIL.finditer(normalise)]
+    if marqueurs:
+        anomalies.append(Anomalie(
+            "marqueur", "bloquant",
+            "{} marqueur(s) de travail laisse(s) dans le texte".format(len(marqueurs)),
+            extrait=marqueurs[0][:160],
+            consigne="Remplacer chaque marqueur provisoire ([Inserer ...], "
+                     "[TODO], lorem ipsum) par le contenu qu'il annonce, ecrit "
+                     "en entier. Si ce contenu n'existe pas, supprimer la phrase.",
+            poids=min(6.0, 3.0 + len(marqueurs)),
+        ))
 
     # --- promesses de resultat ---------------------------------------------
     promesses = []
