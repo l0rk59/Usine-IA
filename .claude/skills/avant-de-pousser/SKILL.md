@@ -6,8 +6,8 @@ allowed-tools: Bash, Read, Grep
 
 # Ce que la CI verifie, en local
 
-Un aller-retour GitHub coute plusieurs minutes et une notification ; les cinq
-controles ci-dessous prennent moins d'une minute sur une machine, quelques-unes
+Un aller-retour GitHub coute plusieurs minutes et une notification ; les six
+controles ci-dessous prennent moins de deux minutes sur une machine, quelques-unes
 sur un telephone. Ils sont la copie fidele de `.github/workflows/tests.yml`.
 
 ```bash
@@ -15,16 +15,15 @@ python3 -m unittest discover -s tests -t . -q   # la suite
 python3 tests/fumee.py                          # les chaines via la vraie CLI
 python3 -m compileall -q usine tests            # tout doit compiler
 python3 scripts/dependances.py                  # aucun import hors stdlib
+python3 scripts/fuites.py                       # aucune cle API suivie par git
 python3 -m usine --version                      # le module se lance tel quel
 ```
 
-Et le controle des secrets, que la CI fait aussi :
-
-```bash
-git ls-files | grep -qx '.env' && echo "DANGER: .env est suivi par git"
-git grep -nE '\b(gsk_|sk-[A-Za-z0-9]{20}|AIza[0-9A-Za-z_-]{30})' \
-  -- . ':!.github/workflows' && echo "DANGER: cle API apparente"
-```
+**Puis regarder la CI elle-meme**, pas seulement le local. Du 12 au 23/09/2026
+elle a ete rouge a chaque poussee sans que personne ne le remarque : le
+controle des secrets cherchait « gsk_ » seul et signalait la documentation et
+les cles factices des tests. Un controle toujours rouge n'est plus lu — et il
+a cache pendant huit jours un echec reel, sous Python 3.9 seulement.
 
 ## Pourquoi chacun existe
 
@@ -48,6 +47,11 @@ compiler de roue native, et une dependance ajoutee par megarde ne se voit
 qu'au moment ou quelqu'un installe sur un telephone neuf, c'est-a-dire trop
 tard.
 
+**`fuites.py`** cherche une cle d'API dans les fichiers suivis, avec les
+motifs qui la masquent dans le journal (`usine/core/securite.py`) : une seule
+definition de ce qu'est une cle. Une cle factice de test s'assemble a
+l'execution (`"gsk_" + "A" * 32`) ; ecrite en clair, elle serait signalee.
+
 **`python3 -m usine --version`** verifie que le paquet se lance sans etre
 installe. C'est ainsi qu'il tourne sur un telephone.
 
@@ -67,7 +71,7 @@ Trois causes, dans cet ordre de frequence :
 
 ## Apres une correction de bug
 
-Les cinq controles disent que rien n'est casse. Ils ne disent pas que la
+Les six controles disent que rien n'est casse. Ils ne disent pas que la
 correction est **gardee** : un test peut passer sans jamais exercer le chemin
 qu'il croit couvrir. Pour cela, remettre le defaut et verifier que la suite
 echoue — voir la skill `mutation`.

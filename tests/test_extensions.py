@@ -53,7 +53,9 @@ class TestPoolDeCles(unittest.TestCase):
         self.assertEqual(len(pool_cles.charger("essai", "ESSAI_KEY")), 1)
 
     def test_la_cle_n_est_jamais_affichee_en_clair(self):
-        secret = "gsk_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"
+        # Assemblee a l'execution : ecrite en clair, elle a la forme d'une
+        # vraie cle, et « scripts/fuites.py » la signalerait — a raison.
+        secret = "gsk_" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"
         os.environ["ESSAI_KEY"] = secret
         pool = pool_cles.charger("essai", "ESSAI_KEY")
         affichage = pool.cles[0].affichage
@@ -138,7 +140,8 @@ class TestRotationDansLeRouteur(unittest.TestCase):
                         tentatives_par_fournisseur=1)
 
     def test_le_secret_ne_fuit_pas_dans_le_message_d_erreur(self):
-        os.environ["GROQ_API_KEY"] = "gsk_SECRET0123456789ABCDEFGHIJKLMNOP"
+        secret = "gsk_" + "SECRET0123456789ABCDEFGHIJKLMNOP"
+        os.environ["GROQ_API_KEY"] = secret
         pool_cles.oublier()
 
         def faux_post(url, charge, entetes=None, timeout=120):
@@ -148,7 +151,7 @@ class TestRotationDansLeRouteur(unittest.TestCase):
         try:
             llm.generer("question", cache=False, tentatives_par_fournisseur=1)
         except llm.PlusDeFournisseur as exc:
-            self.assertNotIn("gsk_SECRET0123456789ABCDEFGHIJKLMNOP", str(exc))
+            self.assertNotIn(secret, str(exc))
         else:
             self.fail("une erreur etait attendue")
 

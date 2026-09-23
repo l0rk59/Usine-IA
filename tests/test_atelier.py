@@ -176,6 +176,87 @@ class TestDependances(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("requests", dit.getvalue())
 
+    def test_sans_la_liste_officielle_la_verification_a_lieu_quand_meme(self):
+        """Python 3.9 n'a pas « sys.stdlib_module_names ». Le verificateur
+        rendait alors 0 sans rien lire, et le job 3.9 de la CI etait vert
+        pour cette seule raison. On retire la liste ici pour exercer la
+        deduction sur n'importe quelle version."""
+        sys.path.insert(0, str(RACINE / "scripts"))
+        import dependances
+
+        officielle = getattr(sys, "stdlib_module_names", None)
+        if officielle is not None:
+            del sys.stdlib_module_names
+            self.addCleanup(setattr, sys, "stdlib_module_names", officielle)
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(dependances.principal(), 0)
+        intrus = RACINE / "usine" / "_essai_dependance_39.py"
+        intrus.write_text("import requests\n", encoding="utf-8")
+        self.addCleanup(intrus.unlink, True)
+        with redirect_stdout(io.StringIO()) as dit:
+            code = dependances.principal()
+        self.assertEqual(code, 1)
+        self.assertIn("requests", dit.getvalue())
+
+
+class TestFuites(unittest.TestCase):
+    """Aucune cle d'API dans le depot — et aucune alerte sur ce qui n'en est
+    pas une. Le controle precedent cherchait « gsk_ » seul et fut rouge
+    quatorze lignes durant, sans une seule cle : il ne gardait plus rien."""
+
+    def setUp(self):
+        sys.path.insert(0, str(RACINE / "scripts"))
+        import fuites
+
+        self.fuites = fuites
+
+    def test_le_depot_ne_contient_aucune_cle(self):
+        with redirect_stdout(io.StringIO()) as dit:
+            code = self.fuites.principal()
+        self.assertEqual(code, 0, dit.getvalue())
+
+    def test_une_cle_ajoutee_serait_vue_sans_etre_recopiee(self):
+        import tempfile
+
+        cle = "gsk_" + "Zq7" * 18
+        dossier = Path(tempfile.mkdtemp())
+        fichier = dossier / "notes.md"
+        fichier.write_text("rappel\nGROQ_API_KEY={}\n".format(cle), encoding="utf-8")
+        trouvees = self.fuites.fuites([fichier])
+        self.assertEqual(len(trouvees), 1)
+        self.assertTrue(trouvees[0].endswith(":2"))
+        self.assertNotIn(cle, " ".join(trouvees))
+
+    def test_un_prefixe_seul_n_est_pas_une_cle(self):
+        """Ce que l'ancien controle signalait : documentation, aide, cles
+        factices courtes. Aucune n'est un secret."""
+        import tempfile
+
+        dossier = Path(tempfile.mkdtemp())
+        fichier = dossier / "aide.md"
+        fichier.write_text("GROQ_API_KEY=gsk_...\naffichage `gsk_ab***xyz`\n"
+                           "GROQ_API_KEY=gsk_secrete\n", encoding="utf-8")
+        self.assertEqual(self.fuites.fuites([fichier]), [])
+
+    def test_sans_liste_de_fichiers_rien_n_est_declare_propre(self):
+        """Sans git, rendre 0 annoncerait « aucune fuite » sans avoir lu un
+        seul fichier — le defaut que « dependances.py » avait sous 3.9."""
+        def sans_git():
+            raise OSError("git introuvable")
+
+        vrai = self.fuites.fichiers_suivis
+        self.fuites.fichiers_suivis = sans_git
+        self.addCleanup(setattr, self.fuites, "fichiers_suivis", vrai)
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(self.fuites.principal(), 2)
+
+    def test_un_env_suivi_est_signale(self):
+        import tempfile
+
+        fichier = Path(tempfile.mkdtemp()) / ".env"
+        fichier.write_text("GROQ_API_KEY=\n", encoding="utf-8")
+        self.assertEqual(len(self.fuites.fuites([fichier])), 1)
+
 
 class TestDrapeauxDeSchema(unittest.TestCase):
     """Les « tables deja creees » ne valent que pour la base ouverte."""

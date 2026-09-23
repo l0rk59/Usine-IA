@@ -53,13 +53,47 @@ def modules_importes(fichier: Path):
                 yield noeud.module.split(".")[0], noeud.lineno
 
 
-def principal() -> int:
+def bibliotheque_standard() -> set:
+    """Les modules que l'interpreteur livre lui-meme.
+
+    Python 3.10 en tient la liste (« sys.stdlib_module_names »). Avant, on
+    la deduit du dossier ou il range sa bibliotheque, sans descendre dans
+    « site-packages » : c'est la que pip installe, donc la que serait une
+    dependance.
+
+    Mesure du 23/09/2026 : sans cette deduction, Python 3.9 rendait
+    « verification impossible » et le code 0 — un succes. Le job 3.9 de la
+    CI, qui garde les telephones jamais mis a jour, ne verifiait rien et
+    restait vert. Un test l'a vu le 15/09 ; la CI etait deja rouge pour une
+    autre raison (« scripts/fuites.py » raconte laquelle), et personne n'a
+    lu le second echec sous le premier.
+
+    La deduction manque les modules propres a Windows et ceux que
+    l'installation n'a pas (tkinter, souvent) : les importer serait de toute
+    facon une dependance pour un telephone.
+    """
     noms = getattr(sys, "stdlib_module_names", None)
-    if noms is None:                   # Python < 3.10
-        print("Python {}.{} ne connait pas la liste de sa bibliotheque "
-              "standard : verification impossible.".format(*sys.version_info[:2]))
-        return 0
-    standard = set(noms)
+    if noms is not None:
+        return set(noms)
+    import sysconfig
+
+    standard = set(sys.builtin_module_names)
+    racine = Path(sysconfig.get_paths()["stdlib"])
+    for dossier in (racine, racine / "lib-dynload"):
+        if not dossier.is_dir():
+            continue
+        for entree in dossier.iterdir():
+            if entree.suffix == ".py":
+                standard.add(entree.stem)
+            elif entree.is_dir() and (entree / "__init__.py").exists():
+                standard.add(entree.name)
+            elif entree.suffix in (".so", ".pyd"):
+                standard.add(entree.name.split(".")[0])
+    return standard
+
+
+def principal() -> int:
+    standard = bibliotheque_standard()
     etrangers = []
     for fichier in sorted(RACINE.rglob("*.py")):
         if "__pycache__" in fichier.parts or "atelier" in fichier.parts:

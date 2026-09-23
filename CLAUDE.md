@@ -122,7 +122,7 @@ regulierement et ou l'on se trompe de la meme facon.
 | | |
 |---|---|
 | `mutation` | remettre le defaut et verifier que la suite le remarque ; outil livre |
-| `avant-de-pousser` | rejouer en local les cinq controles de la CI |
+| `avant-de-pousser` | rejouer en local les six controles de la CI, puis regarder la CI |
 | `fournisseurs` | modeles et quotas : la donnee la plus perissable du depot |
 | `nouveau-produit` | ajouter une chaine de fabrication, via le catalogue |
 | `migration-base` | changer le schema SQLite sans detruire l'atelier d'un utilisateur |
@@ -141,6 +141,7 @@ perdre une heure a qui la suit.
 python3 -m unittest discover -s tests -t . -q
 python3 tests/fumee.py
 python3 scripts/dependances.py
+python3 scripts/fuites.py
 ```
 
 Le detail et le pourquoi : skill `avant-de-pousser`.
