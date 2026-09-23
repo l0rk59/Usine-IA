@@ -269,6 +269,36 @@ coupe (`finish_reason: length`) : la chaîne la lit désormais et **redemande
 une fois**, au double. Une seule : si le double ne suffit pas, insister
 coûterait un troisième appel pour le même résultat.
 
+## 4. Un serveur local éteint coûtait onze secondes par appel
+
+Le refus de connexion devient, dans `core/http.py`, une `HttpErreur` de statut
+0 marquée temporaire. C'est juste pour un service distant : sur un téléphone qui
+passe du wifi à la 4G, la connexion revient vraiment une seconde plus tard.
+C'est faux pour `127.0.0.1` : rien n'écoute sur ce port, et rien n'y écoutera
+1,5 seconde plus tard — seul l'utilisateur peut lancer ollama.
+
+Mesure du 23/09/2026, ollama et llama.cpp déclarés mais éteints : deux essais
+par serveur, attente entre les deux, **onze secondes par appel**. Et le routeur
+ne descend jusqu'au repli local que quand les services distants sont épuisés —
+donc à chaque appel d'une fin de roman. Après : **0,04 s**, un essai par serveur.
+
+Le routeur descend la chaîne des causes (`URLError.reason`, `__context__`)
+plutôt que de lire le message, qui change selon le système et la langue. Pas de
+repos pour autant : un refus est instantané, et c'est ce qui permet de
+reprendre ollama à la seconde où on le lance. Un délai dépassé en local reste
+rejoué — un modèle en cours de chargement répond parfois au second essai —, et
+un refus chez un service distant aussi.
+
+## 5. Le routeur sait quand un fournisseur rouvrira
+
+`llm.prochaine_ouverture()` relit ce que le routeur a lui-même posé — repos par
+fournisseur et par clé, quotas du jour qui repartent à minuit UTC — et rend le
+délai avant qu'un fournisseur puisse servir, `0` s'il le peut déjà, `None` si
+aucun ne le pourra sans geste humain. C'est ce qui permet à l'usine continue
+d'attendre au lieu de s'arrêter ([USINE-CONTINUE.md](USINE-CONTINUE.md)). Ce
+qu'il ne voit pas est écrit dans sa docstring : un réseau coupé, un crédit
+épuisé sans repos posé. D'où le plancher d'attente côté boucle.
+
 ## Deux tests qui ne gardaient rien
 
 La campagne de mutation en a trouvé deux, et les deux pour la même raison —

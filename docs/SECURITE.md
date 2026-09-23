@@ -58,6 +58,16 @@ Toute chaîne ressemblant à une clé (`gsk_`, `sk-or-v1-`, `AIza`, `nvapi-`,
 console, le fichier de log, le tableau de bord ou un message d'erreur. C'est
 ce qui évite qu'une capture d'écran du tableau de bord publie votre clé.
 
+Les mêmes motifs gardent le dépôt : `scripts/fuites.py`, lancé par la CI,
+cherche une clé dans les fichiers suivis par git. Ils exigent la **longueur**
+d'une clé après le préfixe. Le contrôle précédent cherchait `gsk_` seul : il
+signalait cette page, l'aide de la ligne de commande et les clés factices des
+tests, et fut rouge du 12 au 23/09/2026 sans une seule vraie clé — assez
+longtemps pour qu'on cesse de le lire, et qu'il cache un échec réel sous
+Python 3.9. Il affichait aussi ce qu'il trouvait : sur une vraie fuite, il
+aurait recopié la clé dans le journal public de la CI. Le nouveau ne donne que
+le fichier et la ligne.
+
 ## Le tableau de bord
 
 Par défaut il écoute sur `127.0.0.1` : inaccessible depuis le réseau.
@@ -73,6 +83,28 @@ usine reglages --definir jeton_web=votre-mot-de-passe   # jeton fixe
 
 Les chemins de fichiers sont résolus puis vérifiés comme descendant du dossier
 des produits : les formes `..`, `%2e%2e` et les chemins absolus sont refusées.
+
+### `127.0.0.1` n'est pas une protection
+
+C'était tenu pour une. Mais le navigateur du téléphone, lui, **est** sur
+`127.0.0.1`. Mesure du 23/09/2026 : un `POST` en `text/plain` envoyé depuis
+une page quelconque (`https://evil.example`) — une requête « simple », que le
+navigateur émet sans demander la permission à personne — a réécrit `marque` et
+`site` dans les réglages. Le jeton ne protégeait que le mode réseau local.
+
+Deux défenses, parce qu'il y a deux attaques :
+
+- **L'origine.** Une requête qui modifie doit venir du tableau de bord lui-même :
+  `Sec-Fetch-Site: cross-site`, un `Origin` étranger et `Origin: null` (iframe
+  isolée, fichier local) sont refusés. Une requête sans `Origin` passe : c'est
+  `curl` ou un script sur le téléphone, qui a déjà la main sur l'atelier.
+- **Le nom d'hôte.** Un domaine qu'on contrôle peut se faire résoudre vers
+  `127.0.0.1` (*DNS rebinding*) ; la page est alors de même origine pour le
+  navigateur, et le contrôle précédent ne voit rien. Seul l'en-tête `Host` la
+  trahit : il porte le nom de l'attaquant. Il doit être `127.0.0.1`,
+  `localhost`, `::1` ou l'adresse d'écoute.
+
+`tests/test_tableau_origine.py`, sept mutations vues.
 
 ## Les domaines sensibles
 

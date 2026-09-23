@@ -132,3 +132,51 @@ Un test de ce module a d'abord cassé un module voisin : le harnais posait dans
 `serveur.TRAVAUX`, partagé par tout le processus, une fiche incomplète qu'il ne
 retirait pas. Un harnais de test qui abîme l'état d'autrui fait perdre plus de
 temps qu'il n'en fait gagner.
+
+## La seconde moitié : le local, la CI, les trois portes
+
+Suite du même audit, le 23/09/2026. Chaque ligne a été mesurée avant d'être
+corrigée, et chaque correction vue échouer quand on remet le défaut.
+
+| Ce qui allait mal | Mesure | Où c'est expliqué |
+|---|---|---|
+| Une page web quelconque réécrivait les réglages du tableau de bord | `POST text/plain` depuis `evil.example` : `marque` et `site` modifiés | [SECURITE.md](SECURITE.md) |
+| Un ollama éteint coûtait 11 s à chaque appel | 11 s → 0,04 s | [ROUTEUR.md](ROUTEUR.md) |
+| La CI était rouge depuis sa création, et cachait un vrai échec sous Python 3.9 | 14 faux secrets dès le 12/09 ; `dependances.py` rendait 0 sans vérifier | [SECURITE.md](SECURITE.md) |
+| Le bouton « Générer » et la boucle envoyaient « TON : auto » au rédacteur | 15 invites sur 15, contre 0 sur 13 en ligne de commande | [UN-BOUTON.md](UN-BOUTON.md) |
+| Un réglage de fiction du formulaire n'atteignait pas l'écriture | 1 invite sur 28 → 11 sur 23 | [UN-BOUTON.md](UN-BOUTON.md) |
+| « Reprendre » ne reprenait rien hors ligne de commande | `unrecognized arguments`, code 2 ; travail figé « en cours » | [UN-BOUTON.md](UN-BOUTON.md) |
+| Un roman coupé par les quotas attendait qu'on revienne | niche marquée « faite », dix scènes jamais écrites | [USINE-CONTINUE.md](USINE-CONTINUE.md) |
+| Trois réglages « à chaque produit » ignorés par la boucle | 1, 1, 1 au tableau de bord ; 0, 0, 0 dans la boucle | [USINE-CONTINUE.md](USINE-CONTINUE.md) |
+| Kit de vente et test A/B parlaient d'une voix « auto » | toutes leurs invites | [UN-BOUTON.md](UN-BOUTON.md) |
+| Deux reprises du même produit se tuaient l'une l'autre | vu dans la suite de tests, une passe sur trois | [UN-BOUTON.md](UN-BOUTON.md) |
+| Une consigne laissée à l'auteur partait dans le livre | rien ne la signalait | [QUALITE.md](QUALITE.md) |
+
+### Lu quelque part n'est pas appliqué partout
+
+Deux garde-fous étaient verts sur ces défauts, et avaient raison selon leurs
+propres termes.
+
+Le détecteur de réglages orphelins exige que chaque réglage soit **lu**
+quelque part. `marketing_auto` l'était — par `apres.veut`, qu'appelaient la
+ligne de commande et le tableau de bord. La boucle ne l'appelait pas. Le
+réglage n'était pas orphelin ; il était appliqué par deux portes sur trois.
+
+Le garde-fou de la promesse de lecture vérifiait que deux chemins la posaient :
+la ligne de commande et la file. Le troisième, le tableau de bord, ne la posait
+pas, et ce garde-fou ne le regardait pas.
+
+C'est la même leçon que l'homonymie (voir `CLAUDE.md`), sous une autre forme :
+un contrôle qui énumère les chemins à la main vieillit dès qu'un chemin
+s'ajoute. La réponse n'a pas été un contrôle de plus, mais un chemin de moins :
+le tableau de bord et la boucle passent maintenant par `pipelines/porte.py`,
+et les trois portes par `brief.completer`.
+
+### Ce qui reste à faire de votre côté
+
+- Vérifier les modèles OpenRouter `:free` et les quotas sans date de
+  vérification : `usine docteur --modeles`, avec une clé — ce sont des données
+  recopiées, et elles vieillissent sans rien casser.
+- Si vous voulez Cloudflare Workers AI : `CLOUDFLARE_API_TOKEN` et
+  `CLOUDFLARE_ACCOUNT_ID` dans `.env`.
+

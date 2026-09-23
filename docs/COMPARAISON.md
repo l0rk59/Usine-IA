@@ -162,3 +162,43 @@ Trois choses, honnêtement :
 - **Les quotas datés à la main.** Aucun fournisseur ne les publie sous une
   forme lisible par un programme. Ils porteront donc toujours une date de
   vérification dans le commentaire, et ils vieilliront.
+
+---
+
+## 6. Seconde comparaison, 23 septembre 2026
+
+Trois projets de plus, lus sur leur dépôt, et comparés sur ce que cette passe
+d'audit a trouvé cassé chez nous : ce qui se passe quand les quotas
+s'épuisent, comment on reprend, ce qu'on vérifie avant de livrer.
+
+| | Usine-IA | autonovel | ebook-factory | free-llm-gateway |
+|---|---|---|---|---|
+| Installation | Python seul | Python + `uv`, LaTeX ; API Anthropic, fal.ai, ElevenLabs | Python (FastAPI, SQLite) ; Typst, pdftotext, Codex CLI ou Claude Code en option | Python, Docker Compose, SQLite |
+| Quotas épuisés en cours de livre | attend la réouverture annoncée par le routeur, puis finit **le même** produit | non documenté | « usage limits » à la charge de l'utilisateur ; pas de reprise documentée | bascule vers le suivant ; le cas « tous épuisés » n'est pas documenté |
+| Reprise | carnet par section, contexte résolu gardé, par les trois portes | `state.json` | 12 étapes, reprise à la première inachevée, 3 essais puis `failed` | — |
+| Texte provisoire laissé | marqueurs de travail, bloquant (depuis cette passe) | — | `TODO` / `LOREM` vérifiés au contrôle qualité | — |
+| Réponse coupée au plafond | lue (`finish_reason: length`), plafond doublé | — | — | non documenté |
+| Anti-« slop » | déterministe | expressions régulières **et** notation par modèle | signaux statistiques, déterministe | — |
+| Quotas suivis | par clé, par modèle quand le fournisseur compte ainsi, requêtes et jetons | — | — | par clé : RPM, RPD, TPM, TPD, estimation avant l'appel |
+
+« — » : rien de tel dans la documentation du dépôt, ce qui ne prouve pas
+que le code ne le fait pas.
+
+Ce qu'on en retient :
+
+- **ebook-factory avait ce qui nous manquait**, et c'est la seule ligne qu'on
+  a recopiée : la vérification du texte provisoire. Nous l'avons faite plus
+  étroite que la leur — un guide pratique met légitimement « [à compléter] »
+  dans ses exercices ([QUALITE.md](QUALITE.md)).
+- **Personne ne documente le cas « tous les fournisseurs épuisés au milieu
+  d'un livre »**, alors que c'est l'état normal d'une usine qui tourne sur des
+  paliers gratuits. C'était aussi notre angle mort jusqu'à cette passe.
+- **Ce qu'autonovel a et que nous n'avons pas** reste ce qu'on avait noté le
+  12 : un livre audio à plusieurs voix, une composition LaTeX. Tous deux
+  supposent un service payant ou une installation qu'un téléphone n'a pas.
+
+Sources, consultées le 23/09/2026 :
+[NousResearch/autonovel](https://github.com/NousResearch/autonovel),
+[aievolutionpl/ebook-factory](https://github.com/aievolutionpl/ebook-factory),
+[MrFadiAi/free-llm-gateway](https://github.com/MrFadiAi/free-llm-gateway).
+
