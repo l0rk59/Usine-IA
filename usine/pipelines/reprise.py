@@ -17,9 +17,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
-from ..core import config, store
+from ..core import config, store, verrou
 from . import apres, carnet, catalogue
 from .base import Contexte, depuis_instantane
+
+
+class DejaEnReprise(RuntimeError):
+    """Un autre fil ou un autre processus finit deja ce produit."""
 
 
 def dossier_de(produit_id: str) -> Path:
@@ -67,9 +71,21 @@ def reprendre(produit_id: str,
                          "sa ligne de commande")
     options: Dict[str, Any] = dict(recette.get("options") or {})
     type_produit = str(recette["type"])
-    resultat = catalogue.executer(type_produit, ctx, options)
-    return apres.apres_production(
-        ctx, resultat, str(resultat.get("promesse") or ctx.sujet),
-        type_produit=type_produit,
-        kit=options.get("marketing"), archive=options.get("zip"),
-        journal=journal)
+    # Une reprise a la fois par produit. Vu le 23/09/2026, dans la suite de
+    # tests : la boucle a qui le tableau de bord confie un produit coupe, et
+    # une reprise manuelle lancee entre-temps, ecrivaient le meme carnet en
+    # meme temps. L'un deplacait « carnet.json.tmp » sous les pieds de
+    # l'autre, qui mourait sur « No such file ».
+    garde = Path(dossier) / ".reprise.pid"
+    if not verrou.prendre(garde):
+        raise DejaEnReprise("ce produit est deja en train d'etre fini "
+                            "(processus {})".format(verrou.detenteur(garde)))
+    try:
+        resultat = catalogue.executer(type_produit, ctx, options)
+        return apres.apres_production(
+            ctx, resultat, str(resultat.get("promesse") or ctx.sujet),
+            type_produit=type_produit,
+            kit=options.get("marketing"), archive=options.get("zip"),
+            journal=journal)
+    finally:
+        garde.unlink(missing_ok=True)

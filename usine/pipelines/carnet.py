@@ -24,6 +24,8 @@ a une base remise a zero.
 from __future__ import annotations
 
 import json
+import os
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -68,7 +70,12 @@ def _ecrire(dossier: Path, carnet: Dict[str, Any]) -> None:
     reprise repart de zero — exactement ce qu'il devait empecher.
     """
     fichier = chemin(dossier)
-    provisoire = fichier.with_suffix(".json.tmp")
+    # Un nom propre a l'ecrivain : deux fils qui partageaient « .json.tmp »
+    # se le deplacaient l'un a l'autre, et le second mourait sur « No such
+    # file ». La reprise est verrouillee par produit ; ceci est la seconde
+    # ceinture, pour ce qui ecrirait le carnet par un autre chemin.
+    provisoire = fichier.with_suffix(".json.{}-{}.tmp".format(
+        os.getpid(), threading.get_ident()))
     provisoire.write_text(json.dumps(carnet, ensure_ascii=False, indent=1),
                           encoding="utf-8")
     provisoire.replace(fichier)

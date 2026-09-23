@@ -180,6 +180,45 @@ def _journal_de(travail_id: str) -> Callable[[str], None]:
     return journal
 
 
+def _lancer_la_boucle(auto: bool = False, maximum: int = 0) -> threading.Thread:
+    """L'usine continue, dans un fil a part, qui parle au flux du navigateur."""
+    from ..production import UsineContinue
+
+    def tourner() -> None:
+        UsineContinue(
+            auto=auto, maximum=maximum,
+            journal=lambda message: evenements.publier("journal", message=message),
+        ).tourner()
+
+    fil = threading.Thread(target=tourner, daemon=True)
+    fil.start()
+    return fil
+
+
+def _finir_plus_tard(type_produit: str, resultat: Dict[str, Any],
+                     sujet: str, journal: Callable[[str], None]) -> None:
+    """Un produit coupe par les quotas est confie a la boucle, qui attendra.
+
+    Seulement quand les fournisseurs se sont tus : un produit inacheve pour
+    une autre raison (une section illisible) se reprend a la main, parce
+    qu'attendre ne le reparerait pas.
+    """
+    from ..production import confier_a_la_boucle, verrou_actif
+
+    fiche = store.lire_produit(resultat.get("produit_id", "")) or {}
+    if fiche.get("statut") != "en_cours" or not resultat.get("budget_epuise"):
+        return
+    manquants = len((fiche.get("meta") or {}).get("manquants") or [])
+    confier_a_la_boucle(type_produit, sujet, fiche["id"], manquants)
+    journal("Les fournisseurs n'ont plus rien a donner : {} section(s) a "
+            "ecrire. L'usine finira ce produit seule des qu'ils rouvrent — "
+            "rien a faire.".format(manquants))
+    if verrou_actif() is None:
+        # Pour ce produit seulement : la file peut contenir d'autres niches,
+        # que personne n'a demande de fabriquer maintenant.
+        _lancer_la_boucle(maximum=1)
+
+
 def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None:
     journal = _journal_de(travail_id)
 
@@ -244,6 +283,7 @@ def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None
     try:
         journal("Demarrage...")
         resultat = porte.fabriquer(type_produit, ctx, options, journal)
+        _finir_plus_tard(type_produit, resultat, sujet, journal)
         with _VERROU:
             TRAVAUX[travail_id].update(statut="termine", resultat=resultat)
         journal("Termine.")
@@ -644,7 +684,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
         return {"erreur": "action inconnue"}
 
     def _gerer_usine(self, options: Dict[str, Any]) -> Dict[str, Any]:
-        from ..production import UsineContinue, demander_arret, verrou_actif
+        from ..production import demander_arret, verrou_actif
 
         action = str(options.get("action") or "")
         if action == "arreter":
@@ -660,16 +700,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
             maximum = int(options.get("max") or 0)
         except (TypeError, ValueError):
             maximum = 0
-
-        def tourner() -> None:
-            moteur = UsineContinue(
-                auto=bool(options.get("auto")), maximum=maximum,
-                journal=lambda message: evenements.publier(
-                    "journal", message=message),
-            )
-            moteur.tourner()
-
-        threading.Thread(target=tourner, daemon=True).start()
+        _lancer_la_boucle(auto=bool(options.get("auto")), maximum=maximum)
         return {"demarre": True}
 
     def _flux(self) -> None:

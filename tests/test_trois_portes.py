@@ -75,13 +75,20 @@ def _atelier_du_cas(cas):
 
 
 def _par_le_tableau(type_produit, options):
+    """Le bouton « Generer ». La boucle a qui il confie un produit coupe
+    n'est PAS lancee ici : ces tests reprennent a la main, et une boucle
+    reelle dans un fil reprendrait le meme produit en meme temps (voir
+    « test_reprise_auto » pour ce relais)."""
     travail = "t-{}".format(len(serveur.TRAVAUX) + 1)
     serveur.TRAVAUX[travail] = {"statut": "en_cours", "journal": [],
                                 "type": type_produit, "sujet": ""}
+    vraie_boucle = serveur._lancer_la_boucle
+    serveur._lancer_la_boucle = lambda **_kw: None
     try:
         serveur._lancer(travail, type_produit, dict(options))
         return dict(serveur.TRAVAUX[travail])
     finally:
+        serveur._lancer_la_boucle = vraie_boucle
         serveur.TRAVAUX.pop(travail, None)
 
 

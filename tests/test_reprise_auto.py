@@ -176,6 +176,91 @@ class UnProduitCoupeEstFiniSeul(_Cas):
         self.assertEqual(appels, [True, False, True, False])
 
 
+class LeBoutonGenererNeLaissePasDeTrou(_Cas):
+    """Le bouton « Generer » fabrique hors de la boucle. Coupe par les
+    quotas, son produit attendait qu'on revienne appuyer sur « Reprendre »."""
+
+    def test_le_produit_coupe_est_confie_a_la_boucle_et_fini(self):
+        from usine.web import serveur
+
+        fournisseurs = Fournisseurs(coupe_apres=9)
+        llm.definir_simulateur(fournisseurs)
+        sommeils = []
+
+        def dormir(moteur, secondes):
+            sommeils.append(secondes)
+            fournisseurs.ouverts, fournisseurs.coupe_apres = True, None
+            return True
+
+        vrai_dormir = production.UsineContinue._dormir
+        vraie_boucle = serveur._lancer_la_boucle
+        fils = []
+        production.UsineContinue._dormir = dormir
+        serveur._lancer_la_boucle = lambda **kw: fils.append(vraie_boucle(**kw)) or fils[-1]
+        # Une autre niche attend dans la file : personne n'a demande de la
+        # fabriquer maintenant, la boucle ne doit finir QUE le produit coupe.
+        file.ajouter("une autre niche", "ebook", options={"chapitres": 6})
+        serveur.TRAVAUX["g1"] = {"statut": "en_cours", "journal": []}
+        try:
+            serveur._lancer("g1", "ebook", {"sujet": "le devis des artisans",
+                                           "chapitres": 6})
+            for fil in fils:
+                fil.join(60)
+            journal = " ".join(str(l) for l in serveur.TRAVAUX["g1"]["journal"])
+        finally:
+            production.UsineContinue._dormir = vrai_dormir
+            serveur._lancer_la_boucle = vraie_boucle
+            serveur.TRAVAUX.pop("g1", None)
+
+        self.assertEqual(len(fils), 1, "la boucle doit etre lancee, une fois")
+        self.assertIn("rien a faire", journal)
+        produits = store.lister_produits()
+        self.assertEqual(len(produits), 1)
+        self.assertEqual(produits[0]["statut"], "pret")
+        self.assertEqual(sommeils, [300])
+        self.assertEqual(file.compter()["en_attente"], 1,
+                         "l'autre niche attend toujours qu'on la demande")
+
+    def test_un_produit_complet_ne_derange_pas_la_boucle(self):
+        from usine.web import serveur
+
+        llm.definir_simulateur(Fournisseurs())
+        vraie_boucle = serveur._lancer_la_boucle
+        lances = []
+        serveur._lancer_la_boucle = lambda **kw: lances.append(kw)
+        serveur.TRAVAUX["g2"] = {"statut": "en_cours", "journal": []}
+        try:
+            serveur._lancer("g2", "ebook", {"sujet": "la paie des associations",
+                                           "chapitres": 6})
+        finally:
+            serveur._lancer_la_boucle = vraie_boucle
+            serveur.TRAVAUX.pop("g2", None)
+        self.assertEqual(lances, [])
+        self.assertEqual(file.compter()["total"], 0)
+
+
+    def test_un_trou_qui_n_est_pas_un_quota_reste_a_la_main(self):
+        """Une section illisible a chaque essai : attendre ne la reparera
+        pas, et la confier a la boucle la ferait tourner pour rien."""
+        from usine.web import serveur
+
+        llm.definir_simulateur(Fournisseurs(
+            toujours_en_echec="Redige le chapitre 2 sur"))
+        vraie_boucle = serveur._lancer_la_boucle
+        lances = []
+        serveur._lancer_la_boucle = lambda **kw: lances.append(kw)
+        serveur.TRAVAUX["g3"] = {"statut": "en_cours", "journal": []}
+        try:
+            serveur._lancer("g3", "ebook", {"sujet": "la note de frais",
+                                           "chapitres": 6})
+        finally:
+            serveur._lancer_la_boucle = vraie_boucle
+            serveur.TRAVAUX.pop("g3", None)
+        self.assertEqual(store.lister_produits()[0]["statut"], "en_cours")
+        self.assertEqual(lances, [])
+        self.assertEqual(file.compter()["total"], 0)
+
+
 class LesDeuxLimites(_Cas):
 
     def test_le_plafond_de_l_utilisateur_arrete_sans_attendre(self):
@@ -202,6 +287,88 @@ class LesDeuxLimites(_Cas):
         self.assertEqual(file.compter()["echec"], 1)
         self.assertEqual(store.lister_produits()[0]["statut"], "en_cours")
         self.assertTrue(any("reessayer a la main" in l for l in moteur.lignes))
+
+
+class UneSeuleRepriseParProduit(_Cas):
+    """La boucle finit un produit confie par le bouton « Generer » ; si l'on
+    appuie aussi sur « Reprendre », deux reprises ecrivaient le meme carnet
+    en meme temps, et l'une mourait sur « carnet.json.tmp »."""
+
+    def _produit_coupe(self, sujet):
+        from usine.web import serveur
+
+        llm.definir_simulateur(Fournisseurs(coupe_apres=9))
+        vraie_boucle = serveur._lancer_la_boucle
+        serveur._lancer_la_boucle = lambda **_kw: None
+        serveur.TRAVAUX["v"] = {"statut": "en_cours", "journal": []}
+        try:
+            serveur._lancer("v", "ebook", {"sujet": sujet, "chapitres": 6})
+        finally:
+            serveur._lancer_la_boucle = vraie_boucle
+            serveur.TRAVAUX.pop("v", None)
+        return store.lister_produits()[0]
+
+    def test_une_seconde_reprise_est_refusee_pendant_la_premiere(self):
+        from usine.core import verrou
+        from usine.pipelines import reprise
+
+        produit = self._produit_coupe("la note de frais des artisans")
+        llm.definir_simulateur(Fournisseurs())
+        garde = Path(produit["dossier"]) / ".reprise.pid"
+        self.assertTrue(verrou.prendre(garde))    # la premiere, en cours
+        try:
+            with self.assertRaises(reprise.DejaEnReprise):
+                reprise.reprendre(produit["id"], journal=lambda _m: None)
+        finally:
+            garde.unlink(missing_ok=True)
+        reprise.reprendre(produit["id"], journal=lambda _m: None)
+        self.assertEqual(store.lire_produit(produit["id"])["statut"], "pret")
+        self.assertFalse(garde.exists(), "le verrou est rendu apres la reprise")
+
+    def test_la_boucle_laisse_faire_qui_finit_deja(self):
+        """Compter « deja en reprise » comme un echec ferait abandonner une
+        niche dont le produit est justement en train d'aboutir."""
+        from usine.core import verrou
+
+        produit = self._produit_coupe("le budget des artisans")
+        production.confier_a_la_boucle("ebook", produit["sujet"], produit["id"], 1)
+        garde = Path(produit["dossier"]) / ".reprise.pid"
+        self.assertTrue(verrou.prendre(garde))
+        fournisseurs = Fournisseurs()
+        llm.definir_simulateur(fournisseurs)
+        try:
+            moteur = Moteur(fournisseurs)
+            moteur.tourner()
+        finally:
+            garde.unlink(missing_ok=True)
+        self.assertEqual(file.compter()["echec"], 0)
+        self.assertEqual(file.compter()["fait"], 1)
+        self.assertTrue(any("la boucle le laisse faire" in l for l in moteur.lignes))
+
+    def test_deux_ecrivains_du_meme_carnet_ne_se_tuent_pas(self):
+        """La seconde ceinture : deux fils qui ecrivent le carnet ensemble."""
+        import tempfile
+        import threading
+
+        from usine.pipelines import carnet
+
+        dossier = Path(tempfile.mkdtemp())
+        erreurs = []
+
+        def ecrire(n):
+            for i in range(60):
+                try:
+                    carnet.noter_section(dossier, "s{}-{}".format(n, i),
+                                         "titre", "corps " * 50)
+                except Exception as exc:          # noqa: BLE001
+                    erreurs.append(repr(exc))
+
+        fils = [threading.Thread(target=ecrire, args=(n,)) for n in range(6)]
+        for fil in fils:
+            fil.start()
+        for fil in fils:
+            fil.join()
+        self.assertEqual(erreurs, [])
 
 
 class LeProgresSeCompteEnSections(unittest.TestCase):

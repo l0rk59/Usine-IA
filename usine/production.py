@@ -25,7 +25,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from .core import (apprentissage, budget, config, empreinte, evenements,
-                   file, llm, marche, reglages, store, telephone, trace)
+                   file, llm, marche, reglages, store, telephone, trace,
+                   verrou)
 from .pipelines import catalogue, idees
 from .pipelines.base import Contexte
 
@@ -56,33 +57,9 @@ def chemin_verrou() -> Path:
 # --------------------------------------------------------------------------
 
 
-def _processus_vivant(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True  # existe, mais appartient a quelqu'un d'autre
-    except OSError:
-        return False
-    return True
-
-
 def verrou_actif() -> Optional[int]:
     """PID de l'usine en cours, ou None. Nettoie un verrou orphelin."""
-    chemin = chemin_verrou()
-    if not chemin.exists():
-        return None
-    try:
-        pid = int(chemin.read_text(encoding="utf-8").strip())
-    except (ValueError, OSError):
-        chemin.unlink(missing_ok=True)
-        return None
-    if _processus_vivant(pid):
-        return pid
-    # Le processus a ete tue (Android le fait sans preavis) : le verrou ment.
-    chemin.unlink(missing_ok=True)
-    return None
+    return verrou.detenteur(chemin_verrou()) or None
 
 
 def _poser_verrou() -> bool:
@@ -93,31 +70,10 @@ def _poser_verrou() -> bool:
     voyaient toutes deux le verrou libre, et toutes deux l'ecrivaient. La
     seconde ecrasait le PID de la premiere — « usine usine arreter » n'en
     arretait donc qu'une, et l'autre continuait a consommer le budget et a
-    tirer sur la meme file.
-
-    La creation exclusive est atomique : c'est le systeme de fichiers qui
-    tranche, pas nous.
+    tirer sur la meme file. Voir « core.verrou ».
     """
     config.ensure_dirs()
-    chemin = chemin_verrou()
-    if _creer_exclusif(chemin):
-        return True
-    # Le fichier existe. Peut-etre ment-il : Android tue les processus sans
-    # preavis, et un verrou orphelin interdirait toute production jusqu'au
-    # prochain redemarrage. « verrou_actif » le nettoie dans ce cas.
-    if verrou_actif() is not None:
-        return False
-    return _creer_exclusif(chemin)
-
-
-def _creer_exclusif(chemin: Path) -> bool:
-    """Cree le fichier et y met notre PID, ou rend False s'il existe deja."""
-    try:
-        with open(chemin, "x", encoding="utf-8") as sortie:
-            sortie.write(str(os.getpid()))
-        return True
-    except (FileExistsError, OSError):
-        return False
+    return verrou.prendre(chemin_verrou())
 
 
 def _lever_verrou() -> None:
@@ -684,6 +640,23 @@ def prospecter(nombre: int = 8, graine: str = "",
             "pistes": len(pistes), "froid": depart_a_froid}
 
 
+def confier_a_la_boucle(type_produit: str, sujet: str, produit_id: str,
+                        manquants: int) -> Optional[int]:
+    """Met en tete de file un produit inacheve fabrique HORS de la boucle.
+
+    Le bouton « Generer » du tableau de bord fabrique un produit a part. Coupe
+    par les quotas, ce produit attendait qu'on revienne appuyer sur
+    « Reprendre » — c'est-a-dire, dans l'usage reel, qu'on s'apercoive
+    qu'il manquait dix scenes. La boucle sait deja attendre qu'un fournisseur
+    rouvre et finir un produit depuis son carnet : on le lui confie, plutot
+    que de recopier cette attente dans le serveur.
+    """
+    identifiant = file.ajouter(sujet, type_produit, priorite=0, source="reprise")
+    if identifiant is not None:
+        file.a_finir(identifiant, produit_id, manquants)
+    return identifiant
+
+
 class UsineContinue:
     def __init__(
         self,
@@ -824,6 +797,15 @@ class UsineContinue:
                 # Le meme chemin que le bouton « Generer » du tableau de bord.
                 contexte = porte.contexte(entree["sujet"], options, journal)
                 resume = porte.fabriquer(type_produit, contexte, options, journal)
+        except module_reprise.DejaEnReprise as exc:
+            # Quelqu'un finit deja ce produit — le bouton « Reprendre »,
+            # presse pendant que la boucle attendait. Il n'y a rien a faire
+            # de plus, et le compter comme un echec de la niche la ferait
+            # abandonner alors que le produit est en train d'aboutir.
+            file.terminer(entree["id"], reprise_id)
+            self.compteur.terminer_produit(reussi=False)
+            self.journal("  {} : la boucle le laisse faire.".format(exc))
+            return False
         except budget.BudgetEpuise as exc:
             # Un plafond atteint n'est pas une faute de la niche : elle repart
             # en file, intacte, pour la prochaine session.

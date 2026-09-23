@@ -148,3 +148,24 @@ décisions — et, pour ce qui passe par le catalogue, le type et les options un
 fois décidées. À la reprise, c'est lui qui fait foi, quelle que soit la porte
 (`pipelines/reprise.py`) ; rien n'est redemandé au modèle. Treize mutations,
 treize vues (`tests/test_trois_portes.py`).
+
+## Coupé par les quotas, fini sans qu'on revienne
+
+Un produit lancé par « Générer » et coupé par les quotas restait inachevé,
+avec un bouton « Reprendre » — qu'il fallait penser à presser, c'est-à-dire
+s'apercevoir d'abord qu'il manquait dix scènes. L'usine continue sait déjà
+attendre qu'un fournisseur rouvre et finir un produit depuis son carnet
+([USINE-CONTINUE.md](USINE-CONTINUE.md)) : le tableau de bord le lui confie, et
+la démarre pour ce seul produit si elle ne tourne pas — les autres niches de la
+file attendent qu'on les demande. Seulement quand les fournisseurs se sont
+tus : un trou d'une autre nature (une section illisible à chaque essai) ne se
+répare pas en attendant, et reste à la main.
+
+En l'écrivant, une course est apparue dans la suite de tests : la boucle et
+une reprise manuelle finissaient le même produit en même temps, et l'une
+mourait sur `carnet.json.tmp`, déplacé sous ses pieds par l'autre. Sur un
+téléphone, c'est la boucle qui attend et l'utilisateur qui appuie quand même
+sur « Reprendre ». Une reprise à la fois par produit, désormais
+(`core/verrou.py`, le mécanisme du verrou de l'usine, sorti de
+`production.py` plutôt que recopié) ; la boucle laisse faire celui qui finit
+déjà. Et chaque écrivain du carnet a son propre fichier provisoire.
