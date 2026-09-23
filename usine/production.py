@@ -805,12 +805,14 @@ class UsineContinue:
             sans_image=not profil["images"],
             journal=lambda message: self.journal("    " + message),
         )
-        # Meme depot que par la ligne de commande. Une promesse trouvee par
-        # « prospecter_fiction » voyage dans les options de la file : sans
-        # cette ligne, elle arrivait jusqu'a la fabrication et s'y perdait.
-        from .pipelines import fiction as _fiction
+        # La meme preparation que par la ligne de commande : promesse de
+        # lecture, puis brief. Une promesse trouvee par « prospecter_fiction »
+        # voyage dans les options de la file ; sans elle, elle arrivait
+        # jusqu'a la fabrication et s'y perdait. Sans le brief, le ton et le
+        # public partaient « auto » dans chaque invite.
+        from .pipelines import brief as _brief
 
-        _fiction.poser_la_promesse(contexte, options)
+        _brief.completer(contexte, type_produit, options)
 
         self.compteur.demarrer_produit()
         budget.brancher(self.compteur)

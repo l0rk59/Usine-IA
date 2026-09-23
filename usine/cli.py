@@ -144,6 +144,18 @@ def sujet_ou_choix(args: argparse.Namespace) -> str:
 
 def contexte_depuis(args: argparse.Namespace) -> Contexte:
     """Construit le contexte : options de la commande, puis reglages, puis defauts."""
+    # Une reprise d'abord, et avant tout le reste : c'est le contexte de la
+    # premiere fabrication qui fait foi. Passer par « sujet_ou_choix » avec
+    # un sujet laisse vide a l'origine faisait choisir une NOUVELLE niche,
+    # ecrite ensuite dans le dossier de l'ancienne.
+    reprise = getattr(args, "reprendre_id", "") or ""
+    if reprise:
+        from .pipelines import reprise as module_reprise
+
+        garde = module_reprise.contexte_garde(
+            reprise, journal=lambda message: print("  " + message))
+        if garde is not None:
+            return garde
     # Le sujet d'abord, et ici plutot que dans chaque commande : les quatorze
     # chaines passent toutes par cette fonction, et aucune autre ligne n'est
     # commune aux quatorze. Une niche choisie par l'usine doit ensuite passer
@@ -177,23 +189,18 @@ def contexte_depuis(args: argparse.Namespace) -> Contexte:
         sans_image=args.sans_image or args.hors_ligne or not profil.get("images", True),
         journal=lambda message: print("  " + message),
     )
-    reprise = getattr(args, "reprendre_id", "") or ""
     if reprise:
+        # Produit d'avant le contexte garde au carnet : on reprend depuis les
+        # arguments. Sans rebriefer — redecider donnerait au second tiers du
+        # livre un autre ton que le premier.
         contexte.produit_id = reprise
         contexte.dossier = config.PRODUITS_DIR / reprise
-        # Une reprise ne rebriefe pas : le brief a deja decide, et redecider
-        # donnerait au second tiers du livre un autre ton que le premier.
         return contexte
     # Ce que l'utilisateur n'a pas choisi, l'usine le decide en lisant le
     # sujet — ici, en un seul endroit, pour les dix chaines a la fois.
-    from .pipelines import brief, fiction
+    from .pipelines import brief
 
-    # La promesse de lecture AVANT le brief : le brief decide de ce que
-    # l'utilisateur n'a pas choisi, et pour une fiction ce qu'il a choisi est
-    # justement le sous-genre et la fin.
-    fiction.poser_la_promesse(contexte, args)
-    contexte.meta["brief"] = brief.appliquer(
-        contexte, getattr(args, "commande", "produit"))
+    brief.completer(contexte, getattr(args, "commande", "produit"), args)
     return contexte
 
 
@@ -2029,14 +2036,26 @@ def cmd_reprendre(args: argparse.Namespace) -> int:
         return 1
     dossier = Path(produit["dossier"] or "")
     from .pipelines import carnet
+    from .pipelines import reprise as module_reprise
 
+    manquants = (produit.get("meta") or {}).get("manquants") or []
+    if module_reprise.par_le_catalogue(produit["id"]):
+        # Fabrique depuis le tableau de bord ou l'usine continue : il n'y a
+        # pas de ligne de commande a rejouer, et il n'en faut pas.
+        titre_console("Reprise — {}".format(produit["titre"]))
+        print("  {} section(s) a refaire : {}".format(
+            len(manquants), ", ".join(str(m) for m in manquants[:8]) or "inconnues"))
+        print("  {} deja au carnet, elles ne seront pas repayees."
+              .format(carnet.compte(dossier)))
+        _resume_console(module_reprise.reprendre(
+            produit["id"], journal=lambda message: print("  " + message)))
+        return 0
     commande = carnet.commande(dossier)
     if not commande:
         erreur("Ce produit n'a pas garde la commande qui l'a fabrique.")
         print("  Il date d'avant le carnet de reprise. Relancez la commande "
               "d'origine : les reponses deja obtenues sont en cache.")
         return 1
-    manquants = (produit.get("meta") or {}).get("manquants") or []
     titre_console("Reprise — {}".format(produit["titre"]))
     print("  {} section(s) a refaire : {}".format(
         len(manquants), ", ".join(str(m) for m in manquants[:8]) or "inconnues"))

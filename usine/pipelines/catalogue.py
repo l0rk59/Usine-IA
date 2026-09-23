@@ -428,6 +428,13 @@ class TypeProduit:
             if champ.genre == "booleen" or champ.inverse:
                 brut = _vrai(brut)
             arguments[champ.argument] = (not brut) if champ.inverse else brut
+        # De quoi refaire CE produit : le type et les options une fois
+        # decidees. Le tableau de bord et l'usine continue n'ont pas de ligne
+        # de commande a rejouer, et une reprise qui redeciderait les reglages
+        # donnerait au second tiers d'un roman un autre genre que le premier.
+        meta = getattr(contexte, "meta", None)
+        if isinstance(meta, dict):
+            meta["relance"] = {"type": self.cle, "options": dict(options)}
         return self.fabriquer(contexte, **arguments)
 
 

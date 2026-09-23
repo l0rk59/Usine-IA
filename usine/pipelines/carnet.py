@@ -152,3 +152,55 @@ def commande(dossier: Path) -> List[str]:
     if not isinstance(garde, list):
         return []
     return [str(a) for a in garde]
+
+
+# --------------------------------------------------------------------------
+# Le contexte tel qu'il etait, et la recette pour les autres portes
+# --------------------------------------------------------------------------
+#
+# Mesure du 23/09/2026. La commande ci-dessus vient de « sys.argv », donc de
+# la ligne de commande. Or le tableau de bord et l'usine continue fabriquent
+# sans en passer par elle :
+#
+#   usine continue       carnet : ["usine", "demarrer"]
+#   tableau de bord      carnet : la derniere commande vue par le processus,
+#                        c'est-a-dire « web », ou celle d'un AUTRE produit
+#
+# « usine reprendre » rejouait donc « usine demarrer --reprendre-id ... » et
+# mourait sur « unrecognized arguments » (code 2). Depuis le telephone, le
+# bouton « Reprendre » d'un produit coupe par les quotas ne pouvait rien
+# reprendre du tout.
+#
+# Et meme par la ligne de commande, la reprise reconstruisait le contexte
+# depuis les arguments : le public, le ton et le volume que le brief avait
+# decides n'y etaient pas. Les chapitres repris partaient « auto », d'une
+# autre voix que les premiers.
+#
+# D'ou deux entrees de plus : le contexte RESOLU, tel que la chaine l'a recu
+# — il fait foi a la reprise, quelle que soit la porte —, et pour les
+# fabrications passees par le catalogue, le type et les options finales.
+
+
+def noter_fabrication(dossier: Path, contexte: Dict[str, Any],
+                      relance: Optional[Dict[str, Any]] = None) -> None:
+    carnet = lire(dossier)
+    # Aller-retour JSON : une option qui ne s'ecrit pas (un chemin, un objet)
+    # ne doit pas rendre le carnet entier illisible a la reprise.
+    carnet["contexte"] = json.loads(json.dumps(contexte, default=str))
+    if relance:
+        carnet["relance"] = json.loads(json.dumps(relance, default=str))
+        # La commande vue par le processus n'est pas celle de ce produit.
+        carnet.pop("commande", None)
+    _ecrire(dossier, carnet)
+
+
+def contexte_garde(dossier: Path) -> Optional[Dict[str, Any]]:
+    garde = lire(dossier).get("contexte")
+    return garde if isinstance(garde, dict) and garde.get("sujet") else None
+
+
+def relance(dossier: Path) -> Optional[Dict[str, Any]]:
+    garde = lire(dossier).get("relance")
+    if isinstance(garde, dict) and garde.get("type"):
+        return garde
+    return None

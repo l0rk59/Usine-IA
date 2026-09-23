@@ -87,3 +87,64 @@ Le journal reste honnête là où il pourrait se taire : aucune source de march�
 n'ayant répondu, il dit que la niche est **proposée, pas mesurée**. Une usine
 qui se tait sur ce qu'elle n'a pas pu vérifier est une usine qu'on cesse de
 croire.
+
+## Livré n'est pas bien fait : le bouton envoyait « auto » au rédacteur
+
+La vérification ci-dessus regardait le disque et le statut. Elle ne regardait
+pas **ce que le modèle avait reçu**. Mesure du 23/09/2026, en gardant chaque
+invite envoyée par un ebook fabriqué à partir du seul sujet :
+
+| Porte | Invites | « TON : auto » / « PUBLIC : auto » |
+|---|---|---|
+| ligne de commande | 13 | 0 |
+| tableau de bord (`serveur._lancer`) | 15 | **15** |
+| usine continue (`UsineContinue._fabriquer`) | 15 | **15** |
+
+Seule la ligne de commande appelait le brief — l'appel qui décide, d'après le
+sujet, à qui l'on parle, sur quel ton et en combien de sections. Or les
+réglages par défaut valent `auto` depuis que l'usine décide tout
+([DEPUIS-ZERO.md](DEPUIS-ZERO.md)). Par le bouton « Générer », c'est-à-dire
+l'usage réel sur un téléphone, le modèle de rédaction lisait donc un mot sans
+sens là où il attendait une consigne. Rien n'échouait : le livre s'écrivait,
+d'une voix que personne n'avait choisie.
+
+Même cause, second effet : un réglage de fiction choisi dans le formulaire
+(« ambiance : brume et sel ») n'atteignait qu'**une invite sur vingt-huit** —
+celle qui décide des *autres* réglages —, jamais celles qui écrivent. Un
+garde-fou de structure vérifiait pourtant que la promesse de lecture était
+posée… par deux portes sur trois. Il ignorait le tableau de bord.
+
+Les trois portes passent maintenant par une seule préparation,
+`brief.completer` : promesse de lecture, puis brief. Après : **0 « auto »**
+sur les trois, et l'ambiance choisie dans **11 invites sur 23**.
+
+Et quand le brief ne peut pas répondre, « auto » ne part pas non plus. La règle
+d'échec disait « on garde les valeurs par défaut » — qui valent `auto`. Le
+public et le ton deviennent alors une consigne en toutes lettres (« celui qui
+sert le mieux ce sujet et ce public »), et le journal dit qu'ils ont été
+laissés au rédacteur.
+
+## Le bouton « Reprendre » ne reprenait rien
+
+Un produit coupé par les quotas reste « inachevé » : c'est voulu, et c'est ce
+qui le rend reprenable. La reprise rejouait la commande gardée au carnet. Mais
+cette commande venait de `sys.argv`, donc de la ligne de commande — et les deux
+autres portes n'en ont pas :
+
+| Fabriqué par | Commande gardée | `usine reprendre` |
+|---|---|---|
+| usine continue | `usine demarrer` | `unrecognized arguments: --reprendre-id`, code 2 |
+| tableau de bord | celle que le processus a vue en dernier : `web`, ou celle d'un **autre** produit | idem, et le travail restait « en cours » pour toujours : argparse sort par `SystemExit`, qu'un `except Exception` laisse passer |
+
+Même par la ligne de commande, la reprise reconstruisait le contexte depuis les
+arguments : les décisions du brief n'y figuraient pas, et les chapitres repris
+partaient `auto`, d'une autre voix que les premiers. Un sujet laissé vide à
+l'origine faisait même choisir une **nouvelle** niche, écrite dans le dossier
+de l'ancienne.
+
+Le carnet garde désormais, au premier instant où le dossier existe, le
+**contexte résolu** — sujet, public, ton, volume, promesse de lecture,
+décisions — et, pour ce qui passe par le catalogue, le type et les options une
+fois décidées. À la reprise, c'est lui qui fait foi, quelle que soit la porte
+(`pipelines/reprise.py`) ; rien n'est redemandé au modèle. Treize mutations,
+treize vues (`tests/test_trois_portes.py`).

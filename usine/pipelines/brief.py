@@ -17,9 +17,10 @@ gouvernent :
    que les cases laissees vides. « --ton punchy » gagne toujours.
 2. **Le brief se montre.** Une decision prise en silence ne se corrige pas :
    l'usine ecrit ce qu'elle a choisi et sous quel nom le redemander autrement.
-3. **Il doit pouvoir echouer.** Un seul appel, court, et si le modele ne
-   repond pas on garde les valeurs par defaut. Personne n'attend cinq minutes
-   pour se voir proposer un ton.
+3. **Il doit pouvoir echouer.** Un seul appel, court. Si le modele ne
+   repond pas, le public et le ton deviennent une consigne explicite — « celui
+   qui sert le mieux ce sujet » — et la taille retombe sur « standard ».
+   Personne n'attend cinq minutes pour se voir proposer un ton.
 """
 
 from __future__ import annotations
@@ -34,6 +35,20 @@ from .base import (CHAPITRES_MAX, CHAPITRES_MIN, MOTS_MAX, MOTS_MIN, TAILLES,
 # une case vide se confond avec un reglage oublie, alors que « auto » est un
 # choix — celui de ne pas choisir.
 AUTO = "auto"
+
+# Ce que lit le redacteur quand le brief n'a pas pu trancher.
+#
+# Mesure du 23/09/2026. Depuis que l'usine decide tout, les reglages par
+# defaut valent « auto » — mais la regle d'echec disait encore « on garde les
+# valeurs par defaut ». Les deux ensemble envoyaient litteralement
+# « TON : auto » et « PUBLIC : auto » au modele de redaction : un mot sans
+# sens la ou il attend une consigne. Ce n'est pas un reglage par defaut
+# deguise : c'est la meme decision, confiee au redacteur qui a le sujet sous
+# les yeux, et le journal le dit.
+A_DEFAUT_DE_BRIEF = {
+    "audience": "les lecteurs que ce sujet attire naturellement",
+    "ton": "celui qui sert le mieux ce sujet et ce public",
+}
 
 # Ce qu'on demande au modele, et rien de plus : un brief court coute un appel
 # court, et c'est le tout premier de la fabrication.
@@ -71,8 +86,8 @@ def demander(sujet: str, genre: str = "produit",
              journal: Optional[Any] = None) -> Dict[str, Any]:
     """Rend le brief du modele, ou {} s'il n'a pas pu etre obtenu.
 
-    Rendre {} plutot que des valeurs inventees : l'appelant sait alors qu'il
-    garde ses defauts, et il le dit. Un brief a moitie devine serait pire que
+    Rendre {} plutot que des valeurs inventees : l'appelant sait alors que
+    rien n'a ete decide, et il le dit. Un brief a moitie devine serait pire que
     pas de brief — on croirait que le sujet a ete lu.
     """
     invite = _INVITE.format(
@@ -93,8 +108,8 @@ def demander(sujet: str, genre: str = "produit",
         )
     except Exception as exc:          # pas de fournisseur, JSON illisible...
         if journal:
-            journal("  brief automatique indisponible ({}) — reglages par "
-                    "defaut conserves".format(type(exc).__name__))
+            journal("  brief automatique indisponible ({})".format(
+                type(exc).__name__))
         return {}
     if not isinstance(brut, dict):
         return {}
@@ -281,7 +296,7 @@ def appliquer(ctx: Any, genre: str = "produit") -> Dict[str, Any]:
         ", ".join(manquants)))
     brief = demander(ctx.sujet, genre, journal=ctx.journal)
     if not brief:
-        return {}
+        return _laisser_au_redacteur(ctx, manquants, {})
 
     applique: Dict[str, Any] = {}
     if "audience" in manquants and brief["audience"]:
@@ -290,6 +305,9 @@ def appliquer(ctx: Any, genre: str = "produit") -> Dict[str, Any]:
     if "ton" in manquants and brief["ton"]:
         ctx.ton = brief["ton"]
         applique["ton"] = brief["ton"]
+    # Un brief obtenu peut laisser une case vide : elle ne doit pas partir
+    # « auto » pour autant.
+    _laisser_au_redacteur(ctx, manquants, applique)
     if "taille" in manquants:
         ctx.chapitres = brief["sections"]
         ctx.mots_section = brief["mots_par_section"]
@@ -314,3 +332,45 @@ def appliquer(ctx: Any, genre: str = "produit") -> Dict[str, Any]:
         ctx.journal("  pourquoi : {}".format(applique["pourquoi"]))
     ctx.journal("  (imposez le votre avec --ton, --audience, --chapitres)")
     return applique
+
+
+def _laisser_au_redacteur(ctx: Any, manquants: List[str],
+                          applique: Dict[str, Any]) -> Dict[str, Any]:
+    """Remplace un « auto » que personne n'a tranche par une consigne lisible.
+
+    Enrichit et rend « applique » : ce qui a ete confie au redacteur figure
+    dans la fiche du produit comme le reste des decisions.
+    """
+    confies = []
+    for cle in ("audience", "ton"):
+        if cle in manquants and cle not in applique:
+            setattr(ctx, cle, A_DEFAUT_DE_BRIEF[cle])
+            confies.append(cle)
+    if confies:
+        applique["confie_au_redacteur"] = confies
+        ctx.journal("  {} : laisse(s) au redacteur, qui a le sujet sous les "
+                    "yeux".format(" et ".join(confies)))
+    return applique
+
+
+def completer(ctx: Any, genre: str, choisi: Any) -> Dict[str, Any]:
+    """Ce qu'on fait avant toute fabrication, par quelque porte qu'on entre.
+
+    Mesure du 23/09/2026 : seule la ligne de commande appelait le brief.
+    Depuis le tableau de bord et l'usine continue — le bouton « Generer » et
+    la boucle, c'est-a-dire l'usage reel sur un telephone —, quinze invites
+    sur quinze portaient « TON : auto » et « PUBLIC : auto ». Zero sur treize
+    par la ligne de commande. Rien n'echouait : le livre s'ecrivait, d'une
+    voix que personne n'avait choisie. Le tableau de bord ne posait pas non
+    plus la promesse de lecture d'une fiction.
+
+    « choisi » est ce que l'utilisateur a fixe : un « Namespace » cote ligne
+    de commande, un dictionnaire d'options cote tableau de bord et file. La
+    promesse d'abord : pour une fiction, ce qui a ete choisi est justement le
+    sous-genre et la fin, et le brief ne decide que du reste.
+    """
+    from . import fiction
+
+    fiction.poser_la_promesse(ctx, choisi)
+    ctx.meta["brief"] = appliquer(ctx, genre)
+    return ctx.meta["brief"]

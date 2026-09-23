@@ -143,8 +143,13 @@ class LeBriefEstApplique(unittest.TestCase):
     def test_sans_modele_le_brief_renonce_au_lieu_de_bloquer(self):
         """Personne n'attend cinq minutes pour se voir proposer un ton.
 
-        Sans fournisseur, on garde les valeurs par defaut et la fabrication
-        continue — le brief est un confort, pas un passage oblige.
+        Sans fournisseur, la fabrication continue — le brief est un confort,
+        pas un passage oblige. Mais « auto » ne part pas dans les invites :
+        la decision est confiee au redacteur, en toutes lettres.
+
+        Mesure du 23/09/2026 : ce test exigeait qu'on « garde les valeurs
+        par defaut ». Elles valent « auto » depuis que l'usine decide tout,
+        et le modele de redaction recevait « TON : auto ».
         """
         def tombe(*_a, **_kw):
             raise llm.PlusDeFournisseur("aucun fournisseur")
@@ -155,8 +160,17 @@ class LeBriefEstApplique(unittest.TestCase):
         journal = []
         ctx = Contexte(sujet="un sujet", ton=brief.AUTO, audience=brief.AUTO,
                        taille=brief.AUTO, journal=journal.append)
-        self.assertEqual(brief.appliquer(ctx), {})
+        applique = brief.appliquer(ctx)
         self.assertTrue(any("indisponible" in ligne for ligne in journal))
+        self.assertEqual(applique.get("confie_au_redacteur"), ["audience", "ton"])
+        self.assertNotEqual(ctx.ton, brief.AUTO)
+        self.assertNotEqual(ctx.audience, brief.AUTO)
+        self.assertNotIn(brief.AUTO, ctx.description_ton.split())
+        # Ce que l'utilisateur a choisi n'est jamais remplace, meme sans brief.
+        ctx = Contexte(sujet="un sujet", ton="punchy", audience=brief.AUTO,
+                       taille=brief.AUTO, journal=journal.append)
+        brief.appliquer(ctx)
+        self.assertEqual(ctx.ton, "punchy")
 
 
 class LeRomanExiste(unittest.TestCase):

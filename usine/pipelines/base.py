@@ -283,8 +283,39 @@ def preparer(ctx: Contexte, type_produit: str, titre: str) -> Path:
     # La commande d'origine, pour que « usine reprendre » rejoue exactement
     # celle-la. Ecrite ici parce que c'est le premier instant ou le dossier
     # existe — et une fabrication peut mourir des le chapitre suivant.
+    #
+    # Le contexte aussi, et pour la meme raison. C'est ici que passent les
+    # dix-huit chaines, quelle que soit la porte : ligne de commande, tableau
+    # de bord, usine continue. Voir « carnet.noter_fabrication ».
     carnet.noter_commande(dossier)
+    carnet.noter_fabrication(dossier, instantane(ctx),
+                             relance=(ctx.meta or {}).get("relance"))
     return dossier
+
+
+# Ce qui, dans le contexte, decide de l'ecriture — et doit donc etre le meme
+# a la reprise qu'a la premiere fabrication.
+CHAMPS_REPRIS = ("sujet", "audience", "langue", "ton", "taille", "auteur",
+                 "prix", "marque", "dedicace", "hors_ligne", "sans_image",
+                 "qualite", "relectures", "chapitres", "mots_section")
+# La promesse de lecture d'une fiction vit dans « meta », comme les
+# decisions du brief et des reglages.
+META_REPRISE = ("fiction", "brief", "reglages_decides")
+
+
+def instantane(ctx: "Contexte") -> Dict[str, Any]:
+    photo = {nom: getattr(ctx, nom) for nom in CHAMPS_REPRIS}
+    photo["meta"] = {cle: ctx.meta[cle] for cle in META_REPRISE
+                     if cle in (ctx.meta or {})}
+    return photo
+
+
+def depuis_instantane(photo: Dict[str, Any],
+                      journal: Callable[[str], None] = print) -> "Contexte":
+    valeurs = {nom: photo[nom] for nom in CHAMPS_REPRIS if nom in photo}
+    ctx = Contexte(journal=journal, **valeurs)
+    ctx.meta.update(photo.get("meta") or {})
+    return ctx
 
 
 def renommer(ctx: Contexte, titre: str) -> str:

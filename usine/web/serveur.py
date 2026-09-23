@@ -259,6 +259,13 @@ def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None
             options[cle] = profil[cle]
     try:
         journal("Demarrage...")
+        # La meme preparation que la ligne de commande. Sans elle, le bouton
+        # « Generer » envoyait « TON : auto » et « PUBLIC : auto » dans
+        # chacune des invites, et les reglages de fiction choisis dans le
+        # formulaire n'atteignaient pas la chaine.
+        from ..pipelines import brief
+
+        brief.completer(ctx, type_produit, options)
         resultat = catalogue.executer(type_produit, ctx, options)
         # Kit de vente, extrait offert, archive : le meme travail que la ligne
         # de commande, par le meme chemin. Le recopier ici ferait diverger les
@@ -1343,10 +1350,29 @@ def _lancer_reprise(travail_id: str, produit_id: str) -> None:
     journal = _journal_de(travail_id)
 
     try:
-        produit = store.lire_produit(produit_id) or {}
-        commande = carnet.commande(Path(produit.get("dossier") or ""))
-        journal("Reprise : usine " + " ".join(commande))
-        code = cli.principal(list(commande) + ["--reprendre-id", produit_id])
+        from ..pipelines import reprise
+
+        if reprise.par_le_catalogue(produit_id):
+            # Le cas ordinaire depuis le telephone : un produit fabrique ici
+            # n'a pas de ligne de commande, et en rejouer une le faisait
+            # mourir sur « unrecognized arguments ».
+            journal("Reprise depuis le carnet...")
+            reprise.reprendre(produit_id, journal=journal)
+            code = 0
+        else:
+            produit = store.lire_produit(produit_id) or {}
+            commande = carnet.commande(Path(produit.get("dossier") or ""))
+            journal("Reprise : usine " + " ".join(commande))
+            try:
+                code = cli.principal(list(commande) + ["--reprendre-id", produit_id])
+            except SystemExit as exc:
+                # argparse sort par « SystemExit », qu'un « except Exception »
+                # laisse passer : le fil mourait, et le travail restait
+                # « en cours » pour toujours dans le tableau de bord.
+                journal("La commande gardee pour ce produit ne se rejoue pas "
+                        "(produit fabrique avant la version qui garde son "
+                        "contexte) : relancez-le.")
+                code = exc.code if isinstance(exc.code, int) else 2
         fini = store.lire_produit(produit_id) or {}
         manquants = (fini.get("meta") or {}).get("manquants") or []
         with _VERROU:

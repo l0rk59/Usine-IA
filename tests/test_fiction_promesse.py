@@ -235,17 +235,28 @@ class LesDeuxCheminsDeposentLaPromesse(unittest.TestCase):
         self.assertEqual(lu["genre"], "romance")
         self.assertEqual(lu["fin"], "heureuse")
 
-    def test_les_deux_chemins_appellent_bien_le_meme_depot(self):
-        """Garde-fou de structure : un chemin qui oublierait l'appel
+    def test_les_trois_portes_appellent_bien_le_meme_depot(self):
+        """Garde-fou de structure : une porte qui oublierait l'appel
         laisserait la promesse se perdre sans qu'aucun test d'unite ne le
-        voie, parce que chacun des deux fonctionne isolement."""
-        for chemin in ("usine/cli.py", "usine/production.py"):
+        voie, parce que chacune fonctionne isolement.
+
+        Ce garde-fou ne regardait que DEUX portes, la ligne de commande et
+        la file. La troisieme, le tableau de bord, ne posait pas la
+        promesse — mesure du 23/09/2026 : un reglage de fiction choisi dans
+        le formulaire atteignait une invite sur vingt-huit. Les trois
+        passent maintenant par « brief.completer », qui pose la promesse.
+        """
+        def appelle(chemin, nom):
             arbre = ast.parse((RACINE / chemin).read_text(encoding="utf-8"))
-            appels = [n for n in ast.walk(arbre)
-                      if isinstance(n, ast.Call)
-                      and isinstance(n.func, ast.Attribute)
-                      and n.func.attr == "poser_la_promesse"]
-            self.assertTrue(appels, chemin)
+            return any(isinstance(n, ast.Call)
+                       and isinstance(n.func, ast.Attribute)
+                       and n.func.attr == nom
+                       for n in ast.walk(arbre))
+
+        for chemin in ("usine/cli.py", "usine/production.py",
+                       "usine/web/serveur.py"):
+            self.assertTrue(appelle(chemin, "completer"), chemin)
+        self.assertTrue(appelle("usine/pipelines/brief.py", "poser_la_promesse"))
 
 
 class LaFictionNeReprendPasLesReglagesDuPratique(unittest.TestCase):
