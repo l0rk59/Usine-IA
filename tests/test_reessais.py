@@ -355,30 +355,36 @@ class ChaqueCheminReseauReessaie(unittest.TestCase):
         self.assertEqual(appels, http.TENTATIVES)
 
 
+def _essais_du_routeur(exception, fournisseur="ollama"):
+    """Combien d'appels et combien de secondes d'attente le routeur depense
+    sur un fournisseur qui leve toujours « exception »."""
+    panne = Panne(exception)
+    vrai_appel, vrai_ordre = llm._appel, config.provider_order
+    llm._appel = panne
+    # Un fournisseur LOCAL par defaut : son budget par minute est infini, donc
+    # les cas s'enchainent sans que le precedent ait consomme le debit du
+    # suivant. Une premiere version mesurait « 0 essai » sur les derniers cas
+    # pour cette seule raison.
+    config.provider_order = lambda: [fournisseur]
+    llm._REPOS.clear()
+    try:
+        with SansAttendreVraiment() as horloge:
+            try:
+                llm.generer([{"role": "user", "content": "test"}],
+                            cache=False)
+            except Exception:
+                pass
+    finally:
+        llm._appel, config.provider_order = vrai_appel, vrai_ordre
+    return panne.appels, horloge.secondes
+
+
 class LeRouteurNAbandonnePasSurUneReponseIllisible(unittest.TestCase):
     """L'angle mort mesure : deux essais pour un 503, un seul pour un JSON
     tronque — alors que du point de vue de l'usine c'est la meme panne."""
 
     def _essais(self, exception):
-        panne = Panne(exception)
-        vrai_appel, vrai_ordre = llm._appel, config.provider_order
-        llm._appel = panne
-        # Un fournisseur LOCAL : son budget par minute est infini, donc les
-        # cas s'enchainent sans que le precedent ait consomme le debit du
-        # suivant. Une premiere version mesurait « 0 essai » sur les derniers
-        # cas pour cette seule raison.
-        config.provider_order = lambda: ["ollama"]
-        llm._REPOS.clear()
-        try:
-            with SansAttendreVraiment() as horloge:
-                try:
-                    llm.generer([{"role": "user", "content": "test"}],
-                                cache=False)
-                except Exception:
-                    pass
-        finally:
-            llm._appel, config.provider_order = vrai_appel, vrai_ordre
-        return panne.appels, horloge.secondes
+        return _essais_du_routeur(exception)
 
     def test_une_reponse_illisible_vaut_autant_d_essais_qu_un_503(self):
         for exception in (ValueError("illisible"),
@@ -395,6 +401,75 @@ class LeRouteurNAbandonnePasSurUneReponseIllisible(unittest.TestCase):
         geste est de laisser le fournisseur tranquille et de basculer."""
         essais, _ = self._essais(http.HttpErreur(429, "trop de requetes"))
         self.assertEqual(essais, 1)
+
+
+def _enveloppe_par_http(cause: BaseException) -> http.HttpErreur:
+    """L'erreur exactement telle que « http » la fabrique quand urllib echoue.
+
+    On passe par le vrai code d'enveloppe plutot que d'en construire une a la
+    main : c'est lui qui accroche la cause, et c'est cette chaine que le
+    routeur lit. Une imitation pourrait la porter la ou le vrai code ne la
+    porte pas, et le test passerait sur une situation qui n'existe pas.
+    """
+    import urllib.error
+    import urllib.request
+
+    def refuser(*args, **kwargs):
+        raise urllib.error.URLError(cause)
+
+    vrai = urllib.request.urlopen
+    urllib.request.urlopen = refuser
+    try:
+        http.requete_complete("http://127.0.0.1:11434/v1/chat/completions")
+    except http.HttpErreur as exc:
+        return exc
+    finally:
+        urllib.request.urlopen = vrai
+    raise AssertionError("l'appel refuse n'a pas leve d'HttpErreur")
+
+
+class UnServeurLocalEteintNeCoutePasOnzeSecondes(unittest.TestCase):
+    """Mesure du 23/09/2026 : ollama eteint, chaque appel du routeur perdait
+    onze secondes — deux essais par serveur local, attente entre les deux —
+    parce que le refus de connexion devient « HTTP 0 », marque temporaire.
+
+    Or c'est quand les services distants sont epuises que le routeur descend
+    jusqu'au repli local : donc a chaque appel d'une fin de roman.
+    """
+
+    def test_un_refus_de_connexion_local_n_est_pas_rejoue(self):
+        refus = _enveloppe_par_http(ConnectionRefusedError(111, "Connection refused"))
+        self.assertEqual(refus.statut, 0)
+        essais, attente = _essais_du_routeur(refus)
+        self.assertEqual(essais, 1)
+        self.assertEqual(attente, 0.0)
+
+    def test_un_delai_depasse_en_local_reste_rejoue(self):
+        """Le pendant : un serveur local LENT (modele en cours de chargement)
+        repond peut-etre au second essai. Seul le refus est definitif."""
+        lent = _enveloppe_par_http(TimeoutError("timed out"))
+        self.assertEqual(lent.statut, 0)
+        essais, attente = _essais_du_routeur(lent)
+        self.assertEqual(essais, 2)
+        self.assertGreater(attente, 0.0)
+
+    def test_un_refus_chez_un_service_distant_reste_rejoue(self):
+        """Pour un service distant, « connexion refusee » est souvent un
+        telephone qui change de reseau : la seconde suivante, ca passe."""
+        import os
+
+        from usine.core import cles as pool_cles
+
+        os.environ["GROQ_API_KEY"] = "gsk_" + "0" * 32
+        pool_cles.oublier()
+        try:
+            refus = _enveloppe_par_http(ConnectionRefusedError(111, "Connection refused"))
+            essais, attente = _essais_du_routeur(refus, fournisseur="groq")
+        finally:
+            os.environ.pop("GROQ_API_KEY", None)
+            pool_cles.oublier()
+        self.assertEqual(essais, 2)
+        self.assertGreater(attente, 0.0)
 
 
 if __name__ == "__main__":

@@ -197,6 +197,25 @@ def _charger_repos() -> None:
         pass  # une base illisible ne doit pas empecher de produire
 
 
+def _connexion_refusee(exc: BaseException) -> bool:
+    """Rien n'ecoute a cette adresse. Ce n'est pas une reponse illisible.
+
+    urllib enveloppe le refus : URLError(reason=ConnectionRefusedError). On
+    descend la chaine des causes plutot que de lire le message, qui change
+    selon le systeme et la langue.
+    """
+    vu: Optional[BaseException] = exc
+    for _ in range(5):
+        if vu is None:
+            return False
+        if isinstance(vu, ConnectionRefusedError):
+            return True
+        vu = (getattr(vu, "reason", None) if isinstance(
+            getattr(vu, "reason", None), BaseException) else None) \
+            or vu.__cause__ or vu.__context__
+    return False
+
+
 def _patienter(secondes: float) -> None:
     """Attend par tranches d'une seconde, pour ne pas retarder un Ctrl+C.
 
@@ -615,6 +634,24 @@ def generer(
                         fournisseur_hors_jeu = True
                         break
                     if not exc.temporaire:
+                        break
+                    # Sauf un serveur LOCAL qui refuse la connexion. « _appel »
+                    # l'enveloppe en « HTTP 0 : reseau indisponible », marque
+                    # temporaire — ce qui est juste pour un service distant
+                    # (sur un telephone, passer du wifi a la 4G coupe vraiment
+                    # quelques secondes) et faux pour 127.0.0.1 : rien n'ecoute
+                    # sur ce port, et rien n'y ecoutera 1,5 seconde plus tard.
+                    # Seul l'utilisateur peut lancer ollama.
+                    #
+                    # Mesure du 23/09/2026 : onze secondes perdues a CHAQUE
+                    # appel, deux essais par serveur eteint, jamais de repos —
+                    # des que les services distants etaient epuises, c'est-a-
+                    # dire exactement quand on a besoin du repli local.
+                    #
+                    # Pas de repos non plus : un refus est instantane, le
+                    # redemander a l'appel suivant ne coute rien, et c'est ce
+                    # qui permet de reprendre ollama a la seconde ou on le lance.
+                    if p.local and _connexion_refusee(exc):
                         break
                     _patienter(min(8.0, 1.5 * (essai + 1)) + random.random())
                 except Exception as exc:
