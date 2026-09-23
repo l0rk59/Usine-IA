@@ -1270,14 +1270,16 @@ def _lancer_ab(travail_id: str, options: Dict[str, Any]) -> None:
             meta = produit.get("meta") or {}
             description = str(meta.get("promesse") or produit.get("sujet") or "")
 
+        from ..pipelines import porte
+
         profil = reglages.charger()
-        ctx = Contexte(
+        ctx = porte.contexte_existant(
+            produit_id if produit else "", journal,
             sujet=description or titre,
             audience=options.get("audience") or profil["audience"],
             ton=profil["ton"], taille=profil["taille"],
             qualite=profil["qualite"], auteur=profil["auteur"],
-            sans_image=bool(options.get("sans_image")) or not profil["images"],
-            journal=journal)
+            sans_image=bool(options.get("sans_image")) or not profil["images"])
 
         dossier = pipeline_variantes.dossier_du_test(produit_id, titre)
         journal("Preparation du test A/B...")
@@ -1308,14 +1310,16 @@ def _lancer_marketing(travail_id: str, produit_id: str, prix: str) -> None:
     try:
         produit = store.lire_produit(produit_id)
         meta = produit.get("meta") or {}
+        from ..pipelines import porte
+
         profil = reglages.charger()
-        ctx = Contexte(
+        ctx = porte.contexte_existant(
+            produit_id, journal,
             sujet=produit["sujet"] or produit["titre"] or produit_id,
             audience=produit["audience"] or profil["audience"],
             auteur=str(meta.get("auteur") or profil["auteur"]),
-            ton=str(meta.get("ton") or profil["ton"]),
-            prix=prix,
-            journal=journal)
+            ton=str(meta.get("ton") or profil["ton"]))
+        ctx.prix = prix
         ctx.produit_id = produit_id
         journal("Redaction du kit de vente...")
         description = "Produit de type {}. {}".format(

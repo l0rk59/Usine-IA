@@ -143,6 +143,62 @@ class AucunePorteNEnvoieAuto(unittest.TestCase):
         self.assertGreater(espion.avec("brume et sel"), 3)
 
 
+class LesActionsSurUnProduitGardentSaVoix(unittest.TestCase):
+    """Kit de vente et test A/B reconstruisaient un contexte depuis les
+    reglages, qui valent « auto » : chacune de leurs invites portait
+    « TON : auto ». Le produit avait pourtant une voix, gardee au carnet."""
+
+    def setUp(self):
+        _atelier_du_cas(self)
+        llm.definir_simulateur(Espion())
+        _par_le_tableau("ebook", {"sujet": "la facturation des independants",
+                                  "chapitres": 3})
+        self.produit = store.lister_produits()[0]
+        self.espion = Espion()
+        llm.definir_simulateur(self.espion)
+
+    def tearDown(self):
+        llm.definir_simulateur(None)
+
+    def _verifier(self):
+        self.assertGreater(len(self.espion.invites), 0)
+        self.assertEqual(self.espion.auto(), 0)
+        self.assertGreater(self.espion.avec(PUBLIC_DU_BRIEF), 0)
+        # Rien n'est redemande : le carnet a deja repondu.
+        self.assertEqual(self.espion.avec('"mots_par_section"'), 0)
+
+    def test_le_kit_de_vente_du_tableau_de_bord(self):
+        serveur.TRAVAUX["k"] = {"statut": "en_cours", "journal": []}
+        try:
+            serveur._lancer_marketing("k", self.produit["id"], "9")
+        finally:
+            serveur.TRAVAUX.pop("k", None)
+        self._verifier()
+
+    def test_le_kit_de_vente_de_la_ligne_de_commande(self):
+        code, texte = _muet(["marketing", self.produit["id"]])
+        self.assertEqual(code, 0, texte[-300:])
+        self._verifier()
+
+    def test_le_test_a_b_d_un_produit(self):
+        serveur.TRAVAUX["ab"] = {"statut": "en_cours", "journal": []}
+        try:
+            serveur._lancer_ab("ab", {"produit": self.produit["id"],
+                                      "sur": "titre", "nombre": 3})
+        finally:
+            serveur.TRAVAUX.pop("ab", None)
+        self._verifier()
+
+    def test_un_test_a_b_sur_titre_libre_passe_par_le_brief(self):
+        serveur.TRAVAUX["ab2"] = {"statut": "en_cours", "journal": []}
+        try:
+            serveur._lancer_ab("ab2", {"titre": "Le guide du freelance serein",
+                                       "sur": "titre", "nombre": 3})
+        finally:
+            serveur.TRAVAUX.pop("ab2", None)
+        self.assertEqual(self.espion.auto(), 0)
+
+
 class LaBoucleLitLesMemesOptionsQueLeBouton(unittest.TestCase):
     """La boucle construisait son contexte a part, et ignorait les chapitres,
     les mots et l'auteur passes en options."""

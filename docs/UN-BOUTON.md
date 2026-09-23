@@ -114,6 +114,13 @@ celle qui décide des *autres* réglages —, jamais celles qui écrivent. Un
 garde-fou de structure vérifiait pourtant que la promesse de lecture était
 posée… par deux portes sur trois. Il ignorait le tableau de bord.
 
+Le kit de vente et le test A/B, lancés sur un produit déjà fabriqué, avaient
+le même défaut par un autre chemin : ils reconstruisaient un contexte depuis
+les réglages, donc « auto » — 2 invites sur 2 pour le kit, 1 sur 1 pour
+l'A/B. La ligne de commande, elle, écrivait en dur « pro » et « un public
+francophone motivé ». Ils reprennent désormais le contexte gardé au carnet du
+produit, sans rien redemander (`porte.contexte_existant`).
+
 Les trois portes passent maintenant par une seule préparation,
 `brief.completer` : promesse de lecture, puis brief. Après : **0 « auto »**
 sur les trois, et l'ambiance choisie dans **11 invites sur 23**.

@@ -24,7 +24,7 @@ from __future__ import annotations
 from typing import Any, Callable, Dict
 
 from ..core import reglages
-from . import apres, brief, catalogue
+from . import apres, brief, catalogue, reprise
 from .base import Contexte
 
 
@@ -76,3 +76,23 @@ def fabriquer(type_produit: str, ctx: Contexte, options: Dict[str, Any],
         type_produit=type_produit,
         kit=options.get("marketing"), archive=options.get("zip"),
         journal=journal)
+
+
+def contexte_existant(produit_id: str, journal: Callable[[str], None],
+                      **repli: Any) -> Contexte:
+    """Le contexte d'un produit deja fabrique, pour agir dessus.
+
+    Kit de vente, test A/B : ces actions reconstruisaient un contexte a partir
+    des reglages, qui valent « auto ». Mesure du 23/09/2026 : chaque invite
+    du kit de vente et du test A/B portait « TON : auto » — le produit avait
+    pourtant une voix, decidee a sa fabrication et gardee depuis au carnet.
+
+    Le carnet fait donc foi. « repli » sert aux produits d'avant lui et a un
+    test A/B sur un titre libre ; le brief comble alors ce qui manque, sans
+    rien redemander quand le carnet a deja repondu.
+    """
+    ctx = reprise.contexte_garde(produit_id, journal=journal) if produit_id else None
+    if ctx is None:
+        ctx = Contexte(journal=journal, **repli)
+    brief.appliquer(ctx, "produit")
+    return ctx

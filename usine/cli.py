@@ -1947,14 +1947,18 @@ def cmd_marketing(args: argparse.Namespace) -> int:
         return 1
     dossier = Path(produit["dossier"])
     meta = produit.get("meta") or {}
-    ctx = Contexte(
+    from .pipelines import brief, porte
+
+    # Le contexte de la fabrication, garde au carnet. Les valeurs en dur de
+    # cette commande — « pro », « un public francophone motive » — donnaient
+    # au kit de vente d'un conte pour enfants la voix d'un rapport annuel.
+    ctx = porte.contexte_existant(
+        produit["id"], lambda message: print("  " + message),
         sujet=produit["sujet"] or produit["titre"],
-        audience=produit["audience"] or "un public francophone motive",
-        auteur=meta.get("auteur", "Usine-IA"),
-        ton=meta.get("ton", "pro"),
-        prix=args.prix or "",
-        journal=lambda message: print("  " + message),
-    )
+        audience=produit["audience"] or brief.AUTO,
+        auteur=meta.get("auteur") or reglages.lire("auteur", "Usine-IA"),
+        ton=meta.get("ton") or brief.AUTO)
+    ctx.prix = args.prix or ""
     ctx.produit_id = produit["id"]
     titre_console("Kit de vente — {}".format(produit["titre"]))
     description = "Produit de type {}. {}".format(
