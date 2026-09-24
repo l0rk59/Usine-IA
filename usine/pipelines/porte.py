@@ -38,11 +38,21 @@ def _entier(valeur: Any) -> int:
 
 def contexte(sujet: str, options: Dict[str, Any],
              journal: Callable[[str], None]) -> Contexte:
-    """Les options d'abord, les reglages ensuite."""
+    """Les options d'abord, les reglages ensuite.
+
+    Mesure du 24/09/2026 : la langue et la marque n'etaient pas lues. Reglee
+    sur « anglais », l'usine ecrivait en francais depuis le tableau de bord
+    et la boucle — zero invite sur sept demandait l'anglais, l'EPUB se
+    declarait « fr » — et la marque n'apparaissait dans aucun fichier. La
+    ligne de commande, elle, les lisait. Un test compare maintenant les deux
+    constructeurs de contexte champ par champ, derive de la structure.
+    """
     profil = reglages.charger()
     return Contexte(
         sujet=sujet,
         audience=options.get("audience") or profil["audience"],
+        langue=options.get("langue") or profil["langue"],
+        marque=options.get("marque") or profil["marque"],
         ton=options.get("ton") or profil["ton"],
         taille=options.get("taille") or profil["taille"],
         qualite=options.get("qualite") or profil["qualite"],

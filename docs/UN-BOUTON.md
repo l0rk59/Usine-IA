@@ -121,6 +121,13 @@ l'A/B. La ligne de commande, elle, écrivait en dur « pro » et « un public
 francophone motivé ». Ils reprennent désormais le contexte gardé au carnet du
 produit, sans rien redemander (`porte.contexte_existant`).
 
+Et la langue et la marque, par le même chemin : réglée sur « anglais »,
+l'usine écrivait en français depuis le tableau de bord et la boucle — 0 invite
+sur 7 demandait l'anglais, l'EPUB se déclarait `fr` —, et la marque
+n'apparaissait dans aucun fichier (mesure du 24/09/2026). Un test compare
+désormais les deux constructeurs de contexte champ par champ ; la liste des
+champs est dérivée de la structure, pas écrite à la main.
+
 Les trois portes passent maintenant par une seule préparation,
 `brief.completer` : promesse de lecture, puis brief. Après : **0 « auto »**
 sur les trois, et l'ambiance choisie dans **11 invites sur 23**.

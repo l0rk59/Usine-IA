@@ -266,6 +266,66 @@ class LaLigneDeCommandeLaisseDeciderLUsine(unittest.TestCase):
                     self.assertEqual(menu._options_du_type(cle), {})
 
 
+class LesDeuxConstructeursLisentLesMemesReglages(unittest.TestCase):
+    """Mesure du 24/09/2026 : reglee sur « anglais », l'usine ecrivait en
+    francais depuis le tableau de bord et la boucle, et la marque n'y
+    apparaissait nulle part. Le contexte commun de ces deux portes ne lisait
+    ni « langue » ni « marque » ; la ligne de commande, si.
+
+    Le test est derive de la STRUCTURE : chaque champ du contexte qui porte
+    le nom d'un reglage. Un champ ajoute demain y entre sans qu'on y pense —
+    c'est ce qui manquait aux garde-fous qui enumeraient les chemins a la
+    main."""
+
+    def setUp(self):
+        _atelier_du_cas(self)
+        llm.definir_simulateur(Espion())
+
+    def tearDown(self):
+        llm.definir_simulateur(None)
+
+    def test_chaque_reglage_du_contexte_est_lu_par_les_deux(self):
+        import dataclasses
+
+        from usine.core import reglages
+        from usine.pipelines import porte
+        from usine.pipelines.base import Contexte
+
+        communs = [f.name for f in dataclasses.fields(Contexte)
+                   if f.name in reglages.DEFAUTS]
+        self.assertGreaterEqual(len(communs), 7, communs)
+        # Une valeur qu'on reconnait, et valide : un reglage a liste fermee
+        # refuse une sentinelle libre, et le test comparerait alors le
+        # defaut au defaut.
+        sentinelles = {}
+        for nom in communs:
+            permis = reglages.FERMES.get(nom)
+            sentinelles[nom] = (next(v for v in permis if v != reglages.DEFAUTS[nom])
+                                if permis else "sentinelle-{}".format(nom))
+        reglages.ecrire(dict(BASE, **sentinelles))
+
+        par_la_porte = porte.contexte("le budget des familles", {},
+                                      lambda _m: None)
+        args = cli.construire_parseur().parse_args(
+            ["ebook", "le budget des familles"])
+        with redirect_stdout(io.StringIO()):
+            par_la_commande = cli.contexte_depuis(args)
+        for nom in communs:
+            with self.subTest(reglage=nom):
+                self.assertEqual(getattr(par_la_porte, nom), sentinelles[nom])
+                self.assertEqual(getattr(par_la_commande, nom), sentinelles[nom])
+
+    def test_sans_images_vaut_pour_les_deux(self):
+        from usine.core import reglages
+        from usine.pipelines import porte
+
+        reglages.ecrire(dict(BASE, images=False))
+        self.assertTrue(porte.contexte("x", {}, lambda _m: None).sans_image)
+        args = cli.construire_parseur().parse_args(["ebook", "x"])
+        with redirect_stdout(io.StringIO()):
+            self.assertTrue(cli.contexte_depuis(args).sans_image)
+
+
 class LaBoucleLitLesMemesOptionsQueLeBouton(unittest.TestCase):
     """La boucle construisait son contexte a part, et ignorait les chapitres,
     les mots et l'auteur passes en options."""
