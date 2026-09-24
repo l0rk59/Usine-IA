@@ -199,6 +199,73 @@ class LesActionsSurUnProduitGardentSaVoix(unittest.TestCase):
         self.assertEqual(self.espion.auto(), 0)
 
 
+class LaLigneDeCommandeLaisseDeciderLUsine(unittest.TestCase):
+    """Mesure du 24/09/2026 : dix-sept types sur dix-sept, zero reglage de
+    type decide en ligne de commande — et donc depuis le menu Termux, qui
+    passe par elle. Chaque commande appelait sa chaine directement, avec
+    « linkedin », « bienvenue », « intermediaire » en dur."""
+
+    DECISION = "n'ont pas ete choisis"
+
+    def setUp(self):
+        _atelier_du_cas(self)
+        self.espion = Espion()
+        llm.definir_simulateur(self.espion)
+
+    def tearDown(self):
+        llm.definir_simulateur(None)
+
+    def test_chaque_type_fait_decider_ses_reglages(self):
+        # Un echantillon qui couvre les formes differentes : fiction longue,
+        # album, liste, sequence, questionnaire, et le type dont l'analyseur
+        # etait ecrit a la main.
+        for i, cle in enumerate(("roman", "conte", "social", "emails", "quiz",
+                                 "idees")):
+            with self.subTest(type=cle):
+                self.espion.invites.clear()
+                code, texte = _muet([cle, "la trésorerie des artisans {}".format(i)])
+                self.assertEqual(code, 0, texte[-300:])
+                self.assertEqual(self.espion.avec(self.DECISION), 1)
+
+    def test_ce_qui_est_tape_n_est_pas_redecide(self):
+        _muet(["social", "le compost en appartement", "-n", "5",
+               "--reseau", "instagram"])
+        self.assertEqual(self.espion.avec(self.DECISION), 0)
+
+    def test_aucun_reglage_decide_n_a_de_valeur_par_defaut(self):
+        """La structure : un « 50 » par defaut ne se distingue pas d'un
+        « -n 50 » tape. Tout champ que l'usine decide doit valoir None tant
+        qu'on ne l'a pas donne, pour chaque type, y compris ceux dont
+        l'analyseur serait un jour reecrit a la main."""
+        import argparse
+
+        from usine.pipelines import catalogue
+
+        for fiche in catalogue.tous(fabricables=True):
+            decides = [c for c in fiche.champs
+                       if c.decide_par_l_usine and c.genre != "booleen"]
+            if not decides:
+                continue
+            with self.subTest(type=fiche.cle):
+                args = cli.construire_parseur().parse_args([fiche.cle])
+                self.assertIsInstance(args, argparse.Namespace)
+                for champ in decides:
+                    self.assertIsNone(getattr(args, champ.nom, None), champ.nom)
+
+    def test_le_menu_laisse_decider_quand_on_appuie_sur_entree(self):
+        """Entree choisissait « linkedin », « bienvenue », « intermediaire »,
+        la tranche d'age par defaut et la premiere forme d'outil."""
+        from unittest import mock
+
+        from usine import menu
+
+        for cle in ("social", "logiciel", "emails", "quiz", "conte"):
+            with self.subTest(type=cle):
+                with redirect_stdout(io.StringIO()), \
+                        mock.patch("builtins.input", lambda invite="": ""):
+                    self.assertEqual(menu._options_du_type(cle), {})
+
+
 class LaBoucleLitLesMemesOptionsQueLeBouton(unittest.TestCase):
     """La boucle construisait son contexte a part, et ignorait les chapitres,
     les mots et l'auteur passes en options."""

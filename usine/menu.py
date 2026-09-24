@@ -100,6 +100,27 @@ def choisir(titre: str, options: List[Tuple[str, str]],
         print(c("     Numero hors liste.", "33"))
 
 
+def choisir_ou_laisser(titre: str, options: List[Tuple[str, str]]) -> int:
+    """Comme « choisir », avec en tete « l'usine decide » — et c'est le defaut.
+
+    Rend l'index dans « options » (1..n), ou 0 si l'on laisse l'usine decider
+    ou qu'on revient.
+
+    Mesure du 24/09/2026 : chaque liste du menu avait un defaut en dur, et
+    Entree le choisissait — « linkedin », « bienvenue », « intermediaire », la
+    tranche d'age par defaut, la premiere forme d'outil. Appuyer sur Entree
+    pour aller vite fabriquait donc exactement les produits sans relief que
+    l'usine sait eviter depuis qu'elle decide ces reglages d'apres le sujet.
+    """
+    index = choisir(titre, [("L'usine decide", "d'apres le sujet")] + options,
+                    defaut=1)
+    return index - 1 if index > 1 else 0
+
+
+# Ce qu'on lit a cote d'un nombre qu'on peut laisser a l'usine.
+LAISSER = " (Entree : l'usine decide)"
+
+
 # --------------------------------------------------------------------------
 # Catalogue des produits fabricables
 # --------------------------------------------------------------------------
@@ -180,8 +201,10 @@ def menu_fabriquer(executer: Callable[[List[str]], int]) -> None:
     arguments += ["-a", audience]
 
     if produit["quantite"]:
-        question, defaut = produit["quantite"]
-        quantite = demander(question, defaut)
+        # Sans valeur proposee : Entree envoyait « -n 50 », un choix que
+        # personne n'avait fait, et l'usine ne decidait plus le nombre.
+        question = produit["quantite"][0]
+        quantite = demander(question + LAISSER, "")
         if quantite.isdigit():
             arguments += (["-m", quantite] if produit["cle"] == "formation"
                           else ["-n", quantite])
@@ -303,12 +326,11 @@ def _options_du_type(cle: str) -> Dict[str, object]:
         from .pipelines import conte as chaine_conte
 
         tranches = list(chaine_conte.TRANCHES)
-        index = choisir(
+        index = choisir_ou_laisser(
             "Tranche d'age",
             [(t, "{} pages, phrases de {} mots au maximum".format(
                 chaine_conte.TRANCHES[t]["pages"],
-                chaine_conte.TRANCHES[t]["mots_phrase"])) for t in tranches],
-            defaut=tranches.index(chaine_conte.TRANCHE_DEFAUT) + 1)
+                chaine_conte.TRANCHES[t]["mots_phrase"])) for t in tranches])
         return {"tranche": tranches[index - 1]} if index else {}
     if cle == "ebook":
         return {"relecture_ensemble": True} if demander_oui(
@@ -331,17 +353,17 @@ def _options_du_type(cle: str) -> Dict[str, object]:
         from .pipelines import social as chaine_social
 
         reseaux = sorted(chaine_social.RESEAUX)
-        index = choisir("Reseau",
-                        [(r, chaine_social.RESEAUX[r].split("(")[-1][:58])
-                         for r in reseaux], defaut=1)
+        index = choisir_ou_laisser(
+            "Reseau", [(r, chaine_social.RESEAUX[r].split("(")[-1][:58])
+                       for r in reseaux])
         return {"reseau": reseaux[index - 1]} if index else {}
     if cle == "logiciel":
         from .pipelines import logiciel as chaine_logiciel
 
         cibles = sorted(chaine_logiciel.CIBLES)
-        index = choisir("Forme de l'outil",
-                        [(c, chaine_logiciel.CIBLES[c]["nom"]) for c in cibles],
-                        defaut=1)
+        index = choisir_ou_laisser(
+            "Forme de l'outil",
+            [(c, chaine_logiciel.CIBLES[c]["nom"]) for c in cibles])
         return {"cible": cibles[index - 1]} if index else {}
     if cle == "idees":
         return {} if demander_oui(
@@ -351,11 +373,11 @@ def _options_du_type(cle: str) -> Dict[str, object]:
         from .pipelines.emails import OBJECTIFS
 
         buts = list(OBJECTIFS)
-        index = choisir("Ce que la sequence cherche",
-                        [(b, OBJECTIFS[b]) for b in buts], defaut=1)
+        index = choisir_ou_laisser("Ce que la sequence cherche",
+                                   [(b, OBJECTIFS[b]) for b in buts])
         choisies: Dict[str, object] = (
             {"intention": buts[index - 1]} if index else {})
-        jours = demander("Un message tous les combien de jours ?", "2")
+        jours = demander("Un message tous les combien de jours ?" + LAISSER, "")
         try:
             rythme = int(jours)
         except ValueError:
@@ -372,7 +394,7 @@ def _options_du_type(cle: str) -> Dict[str, object]:
     if cle == "quiz":
         from .pipelines.quiz import NIVEAUX
 
-        index = choisir("Niveau vise", [(n, "") for n in NIVEAUX], defaut=2)
+        index = choisir_ou_laisser("Niveau vise", [(n, "") for n in NIVEAUX])
         choisies = {"niveau": NIVEAUX[index - 1]} if index else {}
         if not demander_oui("Inclure un bareme de correction ?", True):
             choisies["sans_bareme"] = True
@@ -560,8 +582,10 @@ def _ajouter_a_la_file() -> None:
 
     options = {}
     if produit["quantite"]:
-        question, defaut = produit["quantite"]
-        quantite = demander(question, defaut)
+        # Sans valeur proposee : Entree envoyait « -n 50 », un choix que
+        # personne n'avait fait, et l'usine ne decidait plus le nombre.
+        question = produit["quantite"][0]
+        quantite = demander(question + LAISSER, "")
         if quantite.isdigit():
             options["nombre"] = int(quantite)
     options.update(_options_du_type(produit["cle"]))

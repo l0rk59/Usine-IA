@@ -516,8 +516,9 @@ class TestOptionsDuCatalogueAtteignables(unittest.TestCase):
             "ebook": (["o"], "relecture_ensemble"),
             "formation": (["o"], "narration"),
             "impression": (["5"], "reliure"),
-            "social": (["1"], "reseau"),
-            "logiciel": (["1"], "cible"),
+            # « 2 » : l'entree 1 est « l'usine decide », qui ne fixe rien.
+            "social": (["2"], "reseau"),
+            "logiciel": (["2"], "cible"),
             "idees": (["n"], "avec_marche"),
             "nouvelle": (["Les rails"], "serie"),
         }

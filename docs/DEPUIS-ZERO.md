@@ -88,3 +88,26 @@ cas de test qui partagent une invite partagent une entrée, et le second
 n'exerce rien, ce qui a rendu vert un test qui ne testait plus rien — et le
 **simulateur qui ne sait pas répondre**, qui faisait passer le chemin dégradé
 pour le chemin normal.
+
+## La ligne de commande et le menu n'en profitaient pas
+
+Mesure du 24/09/2026, en comptant les appels de décision par porte, pour les
+dix-sept types qui ont des réglages à décider :
+
+| Porte | Décisions de l'usine |
+|---|---|
+| tableau de bord | 1 par produit, 17 types sur 17 |
+| ligne de commande | **0**, 17 types sur 17 |
+
+La décision vit dans `catalogue.executer`, que le tableau de bord et la boucle
+appellent. Les commandes de la ligne de commande appelaient chacune leur
+chaîne directement, avec leurs propres valeurs : `--reseau` valait
+« linkedin », l'intention d'une séquence « bienvenue », le niveau d'un quiz
+« intermediaire », et chaque nombre la valeur du catalogue — un « 50 » par
+défaut que rien ne distingue d'un « -n 50 » tapé. Le menu Termux passe par
+ces commandes ; il avait en plus ses propres défauts, qu'Entrée choisissait.
+
+Toutes les commandes passent maintenant par le catalogue. Un argument que
+personne n'a tapé vaut `None`, et c'est ce qui le laisse à l'usine ; un
+argument tapé est respecté et n'est pas redemandé. Le menu propose en tête de
+chaque liste « L'usine décide », et c'est ce qu'Entrée choisit.

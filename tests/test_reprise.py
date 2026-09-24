@@ -75,7 +75,12 @@ class CoupureEtReprise(unittest.TestCase):
         # restait que « plan.json ».
         self.assertGreaterEqual(carnet.compte(dossier), 2)
         self.assertTrue(carnet.plan(dossier))
-        self.assertTrue(carnet.commande(dossier))
+        # De quoi reprendre : la recette et le contexte resolu. La ligne de
+        # commande n'y est plus — toutes les portes passent par le catalogue,
+        # et une commande vue par un autre processus que celui du produit
+        # rejouait la mauvaise (voir carnet.noter_fabrication).
+        self.assertTrue(carnet.relance(dossier))
+        self.assertTrue(carnet.contexte_garde(dossier))
 
     def test_le_produit_coupe_se_declare_inacheve(self):
         """« pret » veut dire vendable, et celui-la ne l'est pas.

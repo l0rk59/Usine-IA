@@ -24,10 +24,7 @@ from .core import verification
 from .marketing import vente
 from .packaging import livraison
 from .pipelines import apres
-from .pipelines import (boite_outils, catalogue, conte, ebook, feuilleton,
-                        formation, idees, emails, impression, interactive,
-                        logiciel, memo, modeles, nouvelle, pack_prompts,
-                        quiz, recueil, social)
+from .pipelines import boite_outils, catalogue, ebook, logiciel, social
 from .pipelines.base import (CHAPITRES_MAX, CHAPITRES_MIN, Contexte, MOTS_MAX,
                              MOTS_MIN, TAILLES, TONS)
 
@@ -317,10 +314,10 @@ def cmd_ebook(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un ebook")
-    resume = ebook.produire(
-        ctx, relecture_ensemble=(getattr(args, "relecture_ensemble", False)
-                                 or bool(reglages.lire("relecture_ensemble",
-                                                       False))))
+    resume = _par_le_catalogue(
+        args, "ebook", ctx,
+        relecture_ensemble=(getattr(args, "relecture_ensemble", False)
+                            or bool(reglages.lire("relecture_ensemble", False))))
     description = "Ebook de {} chapitres, {} mots. {}".format(
         resume["chapitres"], resume["mots"], resume.get("sous_titre", "")
     )
@@ -333,7 +330,7 @@ def cmd_nouvelle(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'une nouvelle")
-    resume = nouvelle.produire(ctx, serie=getattr(args, "serie", "") or "")
+    resume = _par_le_catalogue(args, "nouvelle", ctx)
     description = "Nouvelle{}, {} scenes, {} mots.".format(
         " — " + resume["sous_titre"] if resume.get("sous_titre") else "",
         resume["scenes"], resume["mots"])
@@ -358,7 +355,7 @@ def cmd_roman(args: argparse.Namespace) -> int:
     print("  Trente scenes relues et controlees : comptez une a trois heures.")
     print("  Une coupure ne perd rien : " + _c("usine reprendre", "1")
           + " finit ce qui manque.")
-    resume = nouvelle.produire_roman(ctx, serie=getattr(args, "serie", "") or "")
+    resume = _par_le_catalogue(args, "roman", ctx)
     description = "Roman{}, {} scenes, {} mots.".format(
         " — " + resume["sous_titre"] if resume.get("sous_titre") else "",
         resume["scenes"], resume["mots"])
@@ -510,6 +507,33 @@ def cmd_auto(args: argparse.Namespace) -> int:
     return 0
 
 
+def _par_le_catalogue(args: argparse.Namespace, cle: str, ctx: Contexte,
+                      **supplement: Any) -> Dict[str, Any]:
+    """Fabrique par le point unique du catalogue, avec ce que la commande a fixe.
+
+    Mesure du 24/09/2026 : dix-sept types sur dix-sept, zero reglage decide
+    par l'usine en ligne de commande — contre un appel de decision par
+    produit depuis le tableau de bord. Chaque commande appelait sa chaine
+    directement, avec des valeurs en dur : tout pack de posts partait sur
+    LinkedIn, toute sequence d'e-mails etait de « bienvenue », tout quiz de
+    niveau « intermediaire », tout roman sans genre choisi. Le menu Termux
+    passe par ces commandes : il avait le meme defaut.
+
+    Un argument que personne n'a tape vaut None (voir « _options_du_type ») :
+    c'est ce qui le distingue d'une valeur choisie, et ce qui laisse
+    « executer » le faire decider a partir du sujet.
+    """
+    fiche = catalogue.obtenir(cle)
+    options: Dict[str, Any] = {}
+    for champ in (fiche.champs if fiche else ()):
+        valeur = getattr(args, champ.nom, None)
+        if valeur is None or valeur == "" or valeur is False:
+            continue
+        options[champ.nom] = valeur
+    options.update(supplement)
+    return catalogue.executer(cle, ctx, options)
+
+
 def _defauts_du_type(fiche) -> Dict[str, Any]:
     """Les valeurs par defaut declarees au catalogue pour ce type.
 
@@ -532,7 +556,7 @@ def cmd_prompts(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un pack de prompts")
-    resume = pack_prompts.produire(ctx, nombre=args.nombre)
+    resume = _par_le_catalogue(args, "prompts", ctx)
     _resume_console(_apres_production(
         args, ctx, resume, "Pack de {} prompts professionnels.".format(resume["prompts"])
     ))
@@ -544,9 +568,7 @@ def cmd_emails(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'une sequence e-mail")
-    resume = emails.produire(ctx, nombre=args.nombre,
-                             intention=getattr(args, "intention", "bienvenue"),
-                             rythme=getattr(args, "rythme", 2))
+    resume = _par_le_catalogue(args, "emails", ctx)
     _resume_console(_apres_production(
         args, ctx, resume,
         "Sequence de {} messages, etalee sur {} jours.".format(
@@ -559,8 +581,7 @@ def cmd_memo(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un memo")
-    resume = memo.produire(ctx, nombre=args.nombre,
-                           recto_verso=getattr(args, "recto_verso", False))
+    resume = _par_le_catalogue(args, "memo", ctx)
     _resume_console(_apres_production(
         args, ctx, resume,
         "Memo de {} blocs, {} reperes.".format(
@@ -573,9 +594,7 @@ def cmd_quiz(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un quiz")
-    resume = quiz.produire(ctx, nombre=args.nombre,
-                           niveau=getattr(args, "niveau", "intermediaire"),
-                           sans_bareme=getattr(args, "sans_bareme", False))
+    resume = _par_le_catalogue(args, "quiz", ctx)
     _resume_console(_apres_production(
         args, ctx, resume,
         "Quiz de {} questions, corrige explique.".format(resume["questions"])))
@@ -590,7 +609,7 @@ def cmd_interactive(args: argparse.Namespace) -> int:
     # Comme pour le roman : la quantite arrive par « --chapitres », l'option
     # commune aux types. Un « --sections » propre a ce type ferait deux
     # drapeaux pour le meme chiffre, et le second ecraserait le premier.
-    resume = interactive.produire(ctx)
+    resume = _par_le_catalogue(args, "interactive", ctx)
     description = "{} sections, {} fins.".format(
         resume["sections"], resume["fins"])
     if resume.get("carte_elaguee"):
@@ -609,7 +628,7 @@ def cmd_recueil(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un recueil de nouvelles")
-    resume = recueil.produire(ctx)
+    resume = _par_le_catalogue(args, "recueil", ctx)
     description = "{} nouvelles, {} mots.".format(
         resume["recits"], resume["mots"])
     # La variete est la raison d'etre de cette chaine : elle se dit a l'ecran,
@@ -634,7 +653,7 @@ def cmd_feuilleton(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un feuilleton")
-    resume = feuilleton.produire(ctx)
+    resume = _par_le_catalogue(args, "feuilleton", ctx)
     for lecture in resume.get("lectures") or []:
         alerte(lecture)
     if resume.get("episodes_sans_suspens"):
@@ -653,8 +672,7 @@ def cmd_conte(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un conte jeunesse")
-    resume = conte.produire(
-        ctx, tranche=getattr(args, "tranche", "") or conte.TRANCHE_DEFAUT)
+    resume = _par_le_catalogue(args, "conte", ctx)
     lisibilite = resume["lisibilite"]
     print("  {} mots par phrase en moyenne, pour {} demandes au maximum "
           "({}).".format(lisibilite["mots_par_phrase"],
@@ -673,8 +691,7 @@ def cmd_formation(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'une mini-formation")
-    resume = formation.produire(ctx, modules=args.modules,
-                                narration=getattr(args, "narration", False))
+    resume = _par_le_catalogue(args, "formation", ctx)
     _resume_console(_apres_production(
         args, ctx, resume,
         "Mini-formation en {} modules, cahier d'exercices inclus.".format(resume["modules"])
@@ -687,7 +704,7 @@ def cmd_outils(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'une boite a outils")
-    resume = boite_outils.produire(ctx, nombre=args.nombre)
+    resume = _par_le_catalogue(args, "outils", ctx)
     _resume_console(_apres_production(
         args, ctx, resume, "Boite de {} outils pratiques.".format(resume["outils"])
     ))
@@ -699,7 +716,7 @@ def cmd_modeles(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication de modeles Notion / tableur")
-    resume = modeles.produire(ctx, nombre=args.nombre)
+    resume = _par_le_catalogue(args, "modeles", ctx)
     _resume_console(_apres_production(
         args, ctx, resume,
         "Systeme de {} bases liees, CSV prets a importer.".format(resume["bases"])))
@@ -711,8 +728,7 @@ def cmd_impression(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un cahier imprimable")
-    resume = impression.produire(ctx, pages=args.nombre,
-                                 reliure=getattr(args, "reliure", 0) or 0)
+    resume = _par_le_catalogue(args, "impression", ctx)
     _resume_console(_apres_production(
         args, ctx, resume,
         "Cahier de {} fiches a imprimer, formats A4 et Lettre US.".format(
@@ -725,8 +741,7 @@ def cmd_logiciel(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un outil logiciel")
-    resume = logiciel.produire(ctx, cible=args.cible,
-                               executer=not args.sans_essai)
+    resume = _par_le_catalogue(args, "logiciel", ctx)
     if not resume["code_valide"]:
         alerte("Du code n'a pas passe la verification : voir verification.json")
     etat = "verifie"
@@ -1837,8 +1852,7 @@ def cmd_social(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un pack de contenu")
-    resume = social.produire(ctx, nombre=args.nombre, reseau=args.reseau,
-                             visuels=args.visuels)
+    resume = _par_le_catalogue(args, "social", ctx)
     _resume_console(_apres_production(
         args, ctx, resume, "Pack de {} publications prets a publier.".format(resume["posts"])
     ))
@@ -1850,9 +1864,7 @@ def cmd_idees(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Exploration de niche")
-    resultat = idees.produire(ctx, nombre=args.nombre,
-                              avec_marche=not getattr(args, "sans_marche", False),
-                              avec_veille=not getattr(args, "sans_veille", False))
+    resultat = _par_le_catalogue(args, "idees", ctx)
     if resultat.get("marche", {}).get("signaux"):
         print()
         for signal in resultat["marche"]["signaux"]:
@@ -1894,8 +1906,11 @@ def cmd_complet(args: argparse.Namespace) -> int:
     ctx_social.sujet = principal["titre"]
     ctx_social.sans_image = True
     try:
-        bonus_social = social.produire(ctx_social, nombre=10, reseau=args.reseau,
-                                       visuels=0)
+        # Le reseau decide a partir du sujet, comme pour un pack seul : il
+        # valait « linkedin » en dur, quel que soit le livre.
+        bonus_social = catalogue.executer(
+            "social", ctx_social,
+            dict({"nombre": 10}, **({"reseau": args.reseau} if args.reseau else {})))
         _deplacer_bonus(Path(bonus_social["dossier"]), dossier / "bonus-publications",
                         bonus_social["produit_id"])
         ok("Pack de contenu integre ({} publications)".format(bonus_social["posts"]))
@@ -2700,7 +2715,11 @@ def _options_du_type(sous: argparse.ArgumentParser, cle: str) -> None:
             extra["choices"] = list(champ.choix)
         if champ.unite:
             extra["metavar"] = champ.unite.upper()
-        sous.add_argument(*champ.drapeaux, type=genre, default=champ.defaut,
+        # None, et pas la valeur du catalogue, pour ce que l'usine decide :
+        # un « 50 » par defaut ne se distingue pas d'un « -n 50 » tape, et le
+        # reglage n'etait donc jamais laisse a l'usine en ligne de commande.
+        sous.add_argument(*champ.drapeaux, type=genre,
+                          default=None if champ.decide_par_l_usine else champ.defaut,
                           help=champ.aide or champ.libelle, **extra)
 
 
@@ -2911,7 +2930,8 @@ def construire_parseur() -> argparse.ArgumentParser:
     p = sous_parseurs.add_parser("complet",
                                  help="offre complete : ebook + bonus + kit de vente + zip")
     _options_communes(p)
-    p.add_argument("-r", "--reseau", default="linkedin", choices=sorted(social.RESEAUX))
+    p.add_argument("-r", "--reseau", default="", choices=[""] + sorted(social.RESEAUX),
+                   help="reseau du pack bonus (decide par l'usine si absent)")
     p.set_defaults(fonction=cmd_complet)
 
     p = sous_parseurs.add_parser(
@@ -2921,12 +2941,9 @@ def construire_parseur() -> argparse.ArgumentParser:
 
     p = sous_parseurs.add_parser("idees", help="trouver quoi vendre dans une niche")
     _options_communes(p)
-    p.add_argument("-n", "--nombre", type=int, default=12, help="nombre d'idees")
-    p.add_argument("--sans-veille", dest="sans_veille", action="store_true",
-                   help="ne pas aller lire les discussions (Reddit limite le "
-                        "debit : deux appels espaces, parfois une attente)")
-    p.add_argument("--sans-marche", dest="sans_marche", action="store_true",
-                   help="ne pas interroger les sources de marche")
+    # Lues au catalogue, comme pour les autres types : ecrites a la main ici,
+    # « --nombre » valait 12 en dur, et l'usine ne le decidait jamais.
+    _options_du_type(p, "idees")
     p.set_defaults(fonction=cmd_idees)
 
     p = sous_parseurs.add_parser("marketing", help="kit de vente d'un produit existant")

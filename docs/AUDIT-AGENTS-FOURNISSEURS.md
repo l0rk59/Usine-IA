@@ -151,6 +151,7 @@ corrigée, et chaque correction vue échouer quand on remet le défaut.
 | Kit de vente et test A/B parlaient d'une voix « auto » | toutes leurs invites | [UN-BOUTON.md](UN-BOUTON.md) |
 | Deux reprises du même produit se tuaient l'une l'autre | vu dans la suite de tests, une passe sur trois | [UN-BOUTON.md](UN-BOUTON.md) |
 | Une consigne laissée à l'auteur partait dans le livre | rien ne la signalait | [QUALITE.md](QUALITE.md) |
+| La ligne de commande et le menu ne faisaient décider aucun réglage de type | 0 décision sur 17 types, contre 17 sur 17 au tableau de bord | [DEPUIS-ZERO.md](DEPUIS-ZERO.md) |
 
 ### Lu quelque part n'est pas appliqué partout
 
