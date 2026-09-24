@@ -161,6 +161,13 @@ def _couverture_existante(dossier: Path) -> Optional[Path]:
 
 def livrer(ctx: Any, produit: Produit) -> List[Path]:
     """Ecrit tous les fichiers du produit. Renvoie ceux qui ont ete crees."""
+    # Le titre et le sous-titre partent partout : couverture, page, PDF, et
+    # les metadonnees de l'EPUB que lisent les boutiques. Un sous-titre venu
+    # du modele avec son « **gras** » s'y retrouvait en clair (mesure du
+    # 24/09/2026 : la page de trois types sur dix-huit). Nettoyes ici, une
+    # fois, pour tous les formats.
+    produit.titre = D.nettoyer_inline(produit.titre)
+    produit.sous_titre = D.nettoyer_inline(produit.sous_titre)
     dossier: Path = ctx.dossier
     dossier.mkdir(parents=True, exist_ok=True)
     fichiers: List[Path] = []

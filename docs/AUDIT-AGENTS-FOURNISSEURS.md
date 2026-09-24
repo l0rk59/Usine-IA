@@ -153,6 +153,7 @@ corrigée, et chaque correction vue échouer quand on remet le défaut.
 | Une consigne laissée à l'auteur partait dans le livre | rien ne la signalait | [QUALITE.md](QUALITE.md) |
 | La langue et la marque réglées étaient ignorées par le tableau de bord et la boucle | 0 invite sur 7 en anglais, EPUB déclaré `fr` | [UN-BOUTON.md](UN-BOUTON.md) |
 | Le message « tous les fournisseurs ont échoué » coupait le premier essayé | 10 dernières lignes sur 11, doublons | [ROUTEUR.md](ROUTEUR.md) |
+| Du markdown en clair et des gabarits `<…>` invisibles chez l'acheteur | `**` dans les PDF de 12 types sur 18 ; `<VOTRE NOM>` avalé 99 fois dans 4 pages | [QUALITE.md](QUALITE.md) |
 | La ligne de commande et le menu ne faisaient décider aucun réglage de type | 0 décision sur 17 types, contre 17 sur 17 au tableau de bord | [DEPUIS-ZERO.md](DEPUIS-ZERO.md) |
 
 ### Lu quelque part n'est pas appliqué partout

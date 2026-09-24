@@ -13,6 +13,7 @@ from typing import Any, Dict, List
 
 from ..agents import equipe
 from ..core import evenements, images
+from ..render import document as D
 from ..render import livraison
 from ..render.page import ecrire_page
 from ..render.pdf import A4, LETTRE, DocumentPDF
@@ -171,8 +172,13 @@ def produire(ctx: Contexte, pages: int = 12,
     (dossier / "cahier.json").write_text(
         json.dumps(cahier, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    # Le texte du modele entrait dans la page SANS echappement : un « a < b »
+    # dans une consigne cassait la page, une balise y aurait ete interpretee
+    # chez l'acheteur, et un « **mot** » restait en clair (balayage du
+    # 24/09/2026). « inline_html » echappe et rend le gras, comme ailleurs.
     corps = ["<h2>{}</h2><p>{}</p><p><em>Disposition : {}</em></p>".format(
-        f["titre"], f["consigne"], f["disposition"]) for f in cahier["fiches"]]
+        D.inline_html(f["titre"]), D.inline_html(f["consigne"]),
+        D.inline_html(f["disposition"])) for f in cahier["fiches"]]
     chemin_html = dossier / "lire.html"
     ecrire_page(chemin_html, titre, "\n".join(corps), cahier.get("sous_titre", ""),
                 ctx.auteur, langue=ctx.langue_iso,

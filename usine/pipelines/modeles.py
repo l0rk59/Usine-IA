@@ -202,11 +202,17 @@ def _exporter(ctx: Contexte, systeme: Dict[str, Any], guide: str) -> List[Path]:
     fichiers.append(chemin_pdf)
 
     corps = [D.vers_html(D.analyser(guide), niveau_depart=2)]
+    # Le texte du modele entrait ici sans echappement. Mesure du 24/09/2026 :
+    # un gabarit du genre « <VOTRE NOM> » etait avale comme une balise
+    # inconnue, donc invisible pour l'acheteur. « inline_html » echappe, et
+    # rend le gras au passage.
     for base in systeme["bases"]:
-        corps.append("<h2>{}</h2><p><em>{}</em></p>".format(base["nom"], base["role"]))
+        corps.append("<h2>{}</h2><p><em>{}</em></p>".format(
+            D.inline_html(base["nom"]), D.inline_html(base["role"])))
         corps.append("<table><tr><th>Colonne</th><th>Type</th><th>Role</th></tr>"
                      + "".join("<tr><td>{}</td><td>{}</td><td>{}</td></tr>".format(
-                         c["nom"], c["type"], c["description"])
+                         D.inline_html(c["nom"]), D.inline_html(c["type"]),
+                         D.inline_html(c["description"]))
                          for c in base["colonnes"]) + "</table>")
     chemin_html = dossier / "lire.html"
     ecrire_page(chemin_html, titre, "\n".join(corps), systeme.get("promesse", ""),

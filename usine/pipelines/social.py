@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 
 from ..agents import equipe
 from ..core import images
+from ..render import document as D
 from ..render import livraison, tableur
 from ..render.page import ecrire_page
 from .base import (Contexte, nettoyer_titre, preparer, renommer, slug,
@@ -151,9 +152,12 @@ def _rediger_lot(ctx: Contexte, lot: List[Dict[str, Any]], reseau: str) -> List[
         resultat.append(
             {
                 "jour": str(post.get("jour") or ""),
-                "texte": str(post["texte"]).strip(),
+                # Un reseau social n'interprete pas le markdown : un
+                # « **mot** » du modele partait tel quel, etoiles comprises, dans
+                # le post que le client copie sur LinkedIn.
+                "texte": D.nettoyer_inline(str(post["texte"])),
                 "hashtags": str(post.get("hashtags") or "").strip(),
-                "visuel": str(post.get("visuel") or "").strip(),
+                "visuel": D.nettoyer_inline(str(post.get("visuel") or "")),
             }
         )
     return resultat
@@ -315,7 +319,8 @@ def _exporter(ctx: Contexte, titre: str, reseau: str, calendrier: List[Dict[str,
             post["texte"].replace("&", "&amp;").replace("<", "&lt;")
         ))
         if post["hashtags"]:
-            corps.append("<p><code>{}</code></p>".format(post["hashtags"]))
+            corps.append("<p><code>{}</code></p>".format(
+                D.inline_html(post["hashtags"])))
     chemin_html = dossier / "lire.html"
     ecrire_page(chemin_html, titre, "\n".join(corps), "Pack de contenu " + reseau,
                 ctx.auteur, langue=ctx.langue_iso)

@@ -233,9 +233,13 @@ def _exporter(ctx: Contexte, boite: Dict[str, Any]) -> List[Path]:
     doc.enregistrer(chemin_pdf)
     fichiers.append(chemin_pdf)
 
+    # Le texte du modele entrait ici sans echappement. Mesure du 24/09/2026 :
+    # un gabarit du genre « <VOTRE NOM> » etait avale comme une balise
+    # inconnue, donc invisible pour l'acheteur. « inline_html » echappe, et
+    # rend le gras au passage.
     corps = []
     for outil in boite["outils"]:
-        corps.append("<h2>{}</h2>".format(outil["nom"]))
+        corps.append("<h2>{}</h2>".format(D.inline_html(outil["nom"])))
         corps.append(D.vers_html(D.analyser(_markdown_outil(outil)), niveau_depart=3))
     chemin_html = dossier / "lire.html"
     ecrire_page(chemin_html, titre, "\n".join(corps), boite.get("promesse", ""), ctx.auteur,

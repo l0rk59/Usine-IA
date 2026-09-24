@@ -33,7 +33,10 @@ _ENCADRE = re.compile(r"^\s*(?:>\s*)?\*\*(À retenir|A retenir|Astuce|Exercice|A
                       r"En pratique|Attention|Resume|Résumé)\s*:?\*\*\s*(.*)$", re.IGNORECASE)
 
 _GRAS = re.compile(r"\*\*(.+?)\*\*")
-_ITALIQUE = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)")
+# Pas d'espace juste apres l'etoile ouvrante ni juste avant la fermante,
+# comme en markdown : « 5 * 3 * 2 » est une multiplication, pas de l'italique.
+# Sans cette condition, le nettoyage du PDF rendait « 5  3  2 ».
+_ITALIQUE = re.compile(r"(?<![*\w])\*(?=[^\s*])(.+?)(?<=[^\s*])\*(?![*\w])")
 _CODE_INLINE = re.compile(r"`([^`]+)`")
 _LIEN = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 # Une image SEULE sur sa ligne. Le modele de document ignorait cette forme :
@@ -325,7 +328,8 @@ def vers_pdf(blocs: List[Bloc], doc, sauter_h1: bool = False) -> None:
         elif bloc.type == "hr":
             doc.separateur()
         elif bloc.type == "code":
-            doc.paragraphe(bloc.texte, taille=9.5, police="Helvetica", justifier=False)
+            doc.paragraphe(bloc.texte, taille=9.5, police="Helvetica", justifier=False,
+                           brut=True)
         elif bloc.type == "table":
             # « doc.tableau » existait depuis le debut, avec ses colonnes
             # egales et son en-tete colore. Rien ne l'appelait depuis le

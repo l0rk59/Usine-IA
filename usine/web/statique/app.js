@@ -1321,7 +1321,7 @@ $('archive-fichier').addEventListener('change', async () => {
     $('archive-fichier').value = '';
     return;
   }
-  dire(`envoi de ${fichier.name}...`);
+  dire(`envoi de ${echapper(fichier.name)}...`);
   let d;
   try {
     const reponse = await fetch(
@@ -1457,8 +1457,8 @@ function afficherAb(d) {
       ? `${v.rythme.ventes} vente(s) en ${v.rythme.jours} j`
       : (v.debut ? '' : 'sans periode');
     return `<div class="variante${d.gagnante === v.id ? ' gagnante' : ''}">
-      ${v.image ? `<a href="${v.image}" target="_blank" rel="noopener"
-         ><img src="${v.image}" alt="Variante ${echapper(v.etiquette)}"/></a>` : ''}
+      ${v.image ? `<a href="${echapper(v.image)}" target="_blank" rel="noopener"
+         ><img src="${echapper(v.image)}" alt="Variante ${echapper(v.etiquette)}"/></a>` : ''}
       <div class="corps">
         <div class="haut"><span class="lettre">${echapper(v.etiquette)}</span>
           <span class="texte">${echapper(v.contenu)}</span></div>

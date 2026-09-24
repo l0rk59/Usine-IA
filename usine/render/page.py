@@ -6,6 +6,8 @@ import html
 from pathlib import Path
 from typing import Optional
 
+from .document import nettoyer_inline
+
 GABARIT = """<!doctype html>
 <html lang="{langue}">
 <head>
@@ -99,9 +101,12 @@ def ecrire_page(
     chemin.write_text(
         GABARIT.format(
             langue=langue,
-            titre=html.escape(titre),
-            sous_titre='<p class="sous-titre">{}</p>'.format(html.escape(sous_titre))
-            if sous_titre else "",
+            # Nettoyes comme a la livraison : ces pages s'ecrivent aussi par
+            # un autre chemin (outils, modeles), et leur sous-titre gardait le
+            # « **gras** » du modele en clair.
+            titre=html.escape(nettoyer_inline(titre)),
+            sous_titre='<p class="sous-titre">{}</p>'.format(
+                html.escape(nettoyer_inline(sous_titre))) if sous_titre else "",
             meta='<p class="meta">{}</p>'.format(html.escape(meta)) if meta else "",
             couverture='<p><img src="{}" alt="Couverture"/></p>'.format(html.escape(couverture))
             if couverture else "",

@@ -27,6 +27,8 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
+from .document import nettoyer_inline
+
 # Teintes propres au quiz. Elles sont declarees dans render/lisibilite.py et
 # verifiees par la suite de tests : une teinte ajoutee ici doit y etre classee.
 STYLE = """
@@ -104,7 +106,8 @@ def corps(questions: List[Dict[str, Any]], promesse: str = "") -> str:
     """Le HTML du quiz : un formulaire, une question par « fieldset »."""
     morceaux = []
     if promesse:
-        morceaux.append('<p class="quiz-intro">{}</p>'.format(_echapper(promesse)))
+        morceaux.append('<p class="quiz-intro">{}</p>'.format(
+            _echapper(nettoyer_inline(promesse))))
     morceaux.append(
         '<p class="quiz-intro">Repondez a toutes les questions, puis corrigez. '
         "Rien n'est envoye : la correction se fait dans votre navigateur, hors "

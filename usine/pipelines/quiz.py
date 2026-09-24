@@ -86,13 +86,17 @@ def _valider(brute: Any) -> Any:
         return None
     if not 0 <= reponse < len(propositions):
         return None
+    # Le texte d'un quiz n'est pas un document markdown : il part dans une
+    # page, un PDF et le verdict qu'affiche le script de correction. Un
+    # « **mot** » du modele y restait en clair — mesure du 24/09/2026 : dans
+    # les trois. On retire le balisage ici, une fois.
     return {
-        "question": str(brute["question"]).strip(),
-        "propositions": propositions,
+        "question": D.nettoyer_inline(str(brute["question"])),
+        "propositions": [D.nettoyer_inline(p) for p in propositions],
         # « reponse », comme l'attend « render/quiz.py » qui existait deja :
         # une seconde forme pour la meme chose aurait rendu la page muette.
         "reponse": reponse,
-        "explication": str(brute.get("explication") or "").strip(),
+        "explication": D.nettoyer_inline(str(brute.get("explication") or "")),
         "module": nettoyer_titre(str(brute.get("module") or "General")),
     }
 

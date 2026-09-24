@@ -231,9 +231,14 @@ def _exporter(ctx: Contexte, titre: str, plan: List[Dict[str, Any]],
         tableaux=[livraison.Tableau(
             nom="sequence",
             colonnes=["Jour", "Objet", "Apercu", "Corps", "P.S.", "Action"],
-            lignes=[[str(m["jour"]), m["objet"], m.get("apercu", ""),
-                     m.get("corps", ""), m.get("post_scriptum", ""),
-                     m.get("action", "")] for m in plan],
+            # Le CSV s'importe dans un outil d'e-mailing, qui envoie le texte
+            # tel quel : un « **mot** » y arrivait, etoiles comprises, dans la
+            # boite de chaque abonne. La page et le PDF, eux, rendent le gras.
+            lignes=[[str(m["jour"]), m["objet"],
+                     D.nettoyer_inline(m.get("apercu", "")),
+                     D.nettoyer_inline(m.get("corps", "")),
+                     D.nettoyer_inline(m.get("post_scriptum", "")),
+                     D.nettoyer_inline(m.get("action", ""))] for m in plan],
             # Les outils d'emailing francais ouvrent ce fichier dans Excel
             # avant de l'importer : sans marqueur d'encodage, les accents des
             # objets arrivent casses jusque dans la boite du destinataire.
@@ -270,9 +275,10 @@ def _mise_en_page(message: Dict[str, Any]):
         if message.get("apercu"):
             doc.paragraphe("Apercu : " + message["apercu"], taille=9,
                            police="Helvetica-Oblique")
-        for paragraphe in str(message.get("corps", "")).split("\n"):
-            if paragraphe.strip():
-                doc.paragraphe(paragraphe.strip(), justifier=True)
+        # Le corps passe par l'analyseur, comme dans la page : une citation,
+        # une liste, un encadre « A retenir » sortaient avec leurs « > » et
+        # leurs « ** » quand le PDF l'imprimait ligne a ligne.
+        D.vers_pdf(D.analyser(str(message.get("corps", ""))), doc)
         if message.get("post_scriptum"):
             doc.paragraphe("P.S. — " + message["post_scriptum"], taille=10,
                            police="Helvetica-Oblique")

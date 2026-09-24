@@ -14,6 +14,7 @@ import zlib
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from .document import nettoyer_inline
 from .metriques import largeur_texte
 
 A4 = (595.28, 841.89)
@@ -360,9 +361,24 @@ class DocumentPDF:
         retrait: float = 0.0,
         couleur: Tuple[float, float, float] = (0.12, 0.12, 0.14),
         justifier: bool = False,
+        brut: bool = False,
     ) -> None:
+        """Un paragraphe de texte, sans balisage.
+
+        Mesure du 24/09/2026, avec un modele qui met du gras dans ses
+        reponses — ce que font couramment les modeles : des « ** » en clair
+        dans les PDF de douze types sur dix-huit. Une trentaine d'appels
+        passaient ici le texte de l'IA tel quel ; seul le chemin markdown
+        (« document.vers_pdf ») le nettoyait. Le PDF n'a pas de gras en ligne :
+        on retire le balisage ici, une fois, pour tous les appelants.
+
+        « brut » pour un bloc de code, qui doit rester litteral : « *.txt » n'y
+        est pas de l'italique.
+        """
         if not texte.strip():
             return
+        if not brut:
+            texte = nettoyer_inline(texte)
         police = police or self.police_corps
         self._ouvrir_page()
         largeur = self.largeur_utile - retrait
@@ -403,6 +419,7 @@ class DocumentPDF:
                 curseur += largeur_texte(" ", police, taille) + supplement
 
     def titre(self, texte: str, niveau: int = 1, sommaire: bool = True) -> None:
+        texte = nettoyer_inline(texte)
         tailles = {1: 24.0, 2: 16.0, 3: 13.0}
         taille = tailles.get(niveau, 12.0)
         if niveau == 1:
@@ -429,9 +446,10 @@ class DocumentPDF:
     def liste(self, elements: List[str], taille: float = 11.0, puce: str = "-") -> None:
         police = self.police_corps
         for element in elements:
-            if not str(element).strip():
+            element = nettoyer_inline(str(element))
+            if not element:
                 continue
-            lignes = self.couper(str(element).strip(), police, taille, self.largeur_utile - 20)
+            lignes = self.couper(element, police, taille, self.largeur_utile - 20)
             pas = taille * 1.42
             for index, ligne in enumerate(lignes):
                 self._place(pas)
@@ -445,7 +463,7 @@ class DocumentPDF:
 
     def citation(self, texte: str, taille: float = 11.0) -> None:
         police = "Times-Italic" if self.police_corps.startswith("Times") else "Helvetica-Oblique"
-        lignes = self.couper(texte.strip(), police, taille, self.largeur_utile - 34)
+        lignes = self.couper(nettoyer_inline(texte), police, taille, self.largeur_utile - 34)
         pas = taille * 1.45
         self._place(pas * len(lignes) + 12)
         haut = self._y + taille
@@ -458,7 +476,8 @@ class DocumentPDF:
         self._y -= 10
 
     def encadre(self, titre_bloc: str, texte: str, taille: float = 10.5) -> None:
-        lignes = self.couper(texte.strip(), self.police_corps, taille, self.largeur_utile - 40)
+        titre_bloc, texte = nettoyer_inline(titre_bloc), nettoyer_inline(texte)
+        lignes = self.couper(texte, self.police_corps, taille, self.largeur_utile - 40)
         hauteur = 34 + len(lignes) * taille * 1.42
         self._place(hauteur + 10)
         haut = self._y + 8
@@ -669,6 +688,8 @@ class DocumentPDF:
         image_jpeg: Optional[bytes] = None,
         accent: Tuple[float, float, float] = (0.09, 0.36, 0.72),
     ) -> None:
+        titre_livre, sous_titre = nettoyer_inline(titre_livre), nettoyer_inline(sous_titre)
+        auteur = nettoyer_inline(auteur)
         self.nouvelle_page(numeroter=False)
         self.rectangle(0, 0, self.largeur, self.hauteur, (0.05, 0.07, 0.12))
         self.rectangle(0, self.hauteur - 14, self.largeur, 14, accent)

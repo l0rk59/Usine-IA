@@ -281,14 +281,18 @@ def _mise_en_page(categorie: Dict[str, Any]):
 
 
 def _html_categorie(categorie: Dict[str, Any]) -> str:
+    # Le texte du modele entrait ici sans echappement. Mesure du 24/09/2026 :
+    # un gabarit du genre « <VOTRE NOM> » etait avale comme une balise
+    # inconnue, donc invisible pour l'acheteur. « inline_html » echappe, et
+    # rend le gras au passage.
     corps = []
     for detail in categorie.get("details", []):
-        corps.append("<h3>{}</h3>".format(detail["titre"]))
+        corps.append("<h3>{}</h3>".format(D.inline_html(detail["titre"])))
         if detail["quand"]:
-            corps.append("<p><em>{}</em></p>".format(detail["quand"]))
+            corps.append("<p><em>{}</em></p>".format(D.inline_html(detail["quand"])))
         corps.append(D.vers_html(D.analyser("```\n{}\n```".format(detail["prompt"]))))
         if detail["astuce"]:
             corps.append(
                 '<aside class="encadre"><p class="encadre-titre">Astuce</p>'
-                "<p>{}</p></aside>".format(detail["astuce"]))
+                "<p>{}</p></aside>".format(D.inline_html(detail["astuce"])))
     return "\n".join(corps)
