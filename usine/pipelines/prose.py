@@ -75,7 +75,9 @@ SOURCES = {
 # Ce qui n'est pas de la narration
 # --------------------------------------------------------------------------
 
-_GUILLEMETS = re.compile(r"[«\"]\s*.+?\s*[»\"]", re.DOTALL)
+# Guillemets francais, droits et anglais : voir « voix._GUILLEMETS ». Sans
+# les anglais, la part de dialogue d'un livre anglais s'annoncait nulle.
+_GUILLEMETS = re.compile(r"[«\"“]\s*.+?\s*[»\"”]", re.DOTALL)
 _LIGNE_DE_REPLIQUE = re.compile(r"^\s*[—–-]\s+.*$", re.MULTILINE)
 
 

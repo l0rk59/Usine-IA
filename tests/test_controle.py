@@ -80,6 +80,23 @@ class TestMesures(unittest.TestCase):
         self.assertFalse(ctrl.chiffres_sans_source(
             "Selon une etude citee, 40% des projets derapent."))
 
+    def test_chiffres_sources_en_anglais(self):
+        """Le modele ecrit dans la langue du produit. Seuls les marqueurs
+        francais etaient reconnus : quatre chiffres anglais correctement
+        introduits sur quatre etaient declares inventes."""
+        for phrase in (
+                "According to a 2023 Gallup survey, 67% of remote workers "
+                "report better focus.",
+                "For example, a shop that converts 3% of visitors doubles "
+                "revenue at 6%.",
+                "A 2022 McKinsey report found that teams ship 30% faster.",
+                "Imagine a freelancer who raises prices by 20% this year."):
+            with self.subTest(phrase=phrase[:30]):
+                self.assertFalse(ctrl.chiffres_sans_source(phrase))
+        # Et un chiffre anglais sans rien reste signale.
+        self.assertTrue(ctrl.chiffres_sans_source(
+            "Most freelancers lose 40% of their revenue to late payments."))
+
     def test_continuite(self):
         a = "la prospection commerciale demande une methode reguliere et mesurable"
         proche = "la methode de prospection reguliere se mesure chaque semaine"

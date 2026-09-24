@@ -184,13 +184,14 @@ class LeRouteurApplique(unittest.TestCase):
         return mock.patch("usine.core.llm.post_json",
                           return_value=json.loads(charge))
 
-    def _appeler(self, contenu):
+    def _appeler(self, contenu, langue="fr"):
         from usine.core import config, llm
 
         fournisseur = config.PROVIDERS_BY_NAME["pollinations"]
         with self._reponse(contenu):
             return llm._appel(fournisseur, [{"role": "user", "content": "x"}],
-                              "standard", 0.7, 500, False, 30, None)
+                              "standard", 0.7, 500, False, 30, None,
+                              langue=langue)
 
     def test_le_brouillon_ne_traverse_pas_le_routeur(self):
         reponse = self._appeler("<think>je pese le pour</think>Le chapitre.")
@@ -219,6 +220,116 @@ class LeRouteurApplique(unittest.TestCase):
         with self.assertRaises(HttpErreur) as leve:
             self._appeler(panne)
         self.assertEqual(leve.exception.statut, 503)
+
+
+class UnLivreAnglaisNEstPasUnMessageDeService(unittest.TestCase):
+    """« Aucun mot francais » etait un signal acquis d'avance pour un livre
+    anglais : un seul mot de facturation suffisait a jeter la reponse.
+
+    Mesure du 24/09/2026 : les quatre textes ci-dessous — courts, anglais,
+    ecrits pour de vrais produits — etaient tous pris pour des messages de
+    service. Ceux qui disent « billing » ou « quota » etaient meme classes
+    quota epuise : fournisseur mis au repos, puis le suivant, puis une boucle
+    qui attend des quotas pleins.
+    """
+
+    ANGLAIS = (
+        "Stop chasing late payments. Set up automatic billing reminders and "
+        "watch your cash flow improve within a month. Every freelancer "
+        "deserves to get paid on time.",
+        "Previously: Mara found the ledger in the archive, but the quota of "
+        "names did not match. Someone had erased three lines, and the only "
+        "person with the key was her brother.",
+        "Your API key is the password to your account. Never paste it in a "
+        "public repository, and rotate it every month. This chapter shows how "
+        "to store it safely in an environment file.",
+        "Chapter 3 explains why most side projects stall: they try again later "
+        "instead of shipping a small version today. Here is the method we use "
+        "with every client, step by step.",
+    )
+
+    def _routeur(self):
+        return LeRouteurApplique()
+
+    def test_le_routeur_les_laisse_passer_quand_on_attend_de_l_anglais(self):
+        for contenu in self.ANGLAIS:
+            with self.subTest(contenu=contenu[:40]):
+                reponse = self._routeur()._appeler(contenu, langue="en")
+                self.assertEqual(reponse.texte, contenu)
+
+    def test_une_langue_inconnue_ne_compte_pas_non_plus(self):
+        reponse = self._routeur()._appeler(self.ANGLAIS[0], langue="")
+        self.assertEqual(reponse.texte, self.ANGLAIS[0])
+
+    def test_le_vrai_message_reste_reconnu_dans_un_livre_anglais(self):
+        """Sans le signal de langue, il en reste deux : le vocabulaire de
+        facturation et le lien vers la console."""
+        from usine.core.http import HttpErreur
+
+        with self.assertRaises(HttpErreur):
+            self._routeur()._appeler(MESSAGE_REEL, langue="en")
+
+    def test_en_francais_rien_ne_change(self):
+        from usine.core.http import HttpErreur
+
+        with self.assertRaises(HttpErreur):
+            self._routeur()._appeler(self.ANGLAIS[0], langue="fr")
+
+    def test_le_routeur_transmet_la_langue_jusqu_a_la_lecture(self):
+        """De « generer » a « _appel » : le trajet complet, avec un faux
+        fournisseur. Le meme texte passe en anglais et fait echouer l'appel en
+        francais — c'est bien la langue qui decide, et elle arrive."""
+        import os
+        from unittest import mock
+
+        from usine.core import cles as pool_cles
+        from usine.core import llm, store
+
+        reponse_http = {"choices": [{"message": {"content": self.ANGLAIS[0]},
+                                     "finish_reason": "stop"}],
+                        "usage": {"total_tokens": 42}}
+        fausse_cle = "gsk_" + "A" * 32
+        anciens = {k: os.environ.get(k) for k in ("GROQ_API_KEY",
+                                                   "USINE_PROVIDERS")}
+        os.environ.update(GROQ_API_KEY=fausse_cle, USINE_PROVIDERS="groq")
+        pool_cles.oublier()
+        llm._REPOS.clear()
+        store.cache_vider()
+        try:
+            with mock.patch.object(llm, "post_json", return_value=reponse_http):
+                rep = llm.generer("Write a post.", cache=False, langue="en",
+                                  tentatives_par_fournisseur=1)
+                self.assertEqual(rep.texte, self.ANGLAIS[0])
+                llm._REPOS.clear()
+                with self.assertRaises(llm.PlusDeFournisseur):
+                    llm.generer("Write a post.", cache=False, langue="fr",
+                                tentatives_par_fournisseur=1)
+        finally:
+            for cle, valeur in anciens.items():
+                if valeur is None:
+                    os.environ.pop(cle, None)
+                else:
+                    os.environ[cle] = valeur
+            pool_cles.oublier()
+            llm._REPOS.clear()
+
+    def test_l_agent_transmet_la_langue_qu_il_demande(self):
+        """Le routeur ne sait rien du produit : c'est l'agent, qui vient
+        d'ecrire « LANGUE : anglais » dans le systeme, qui doit la lui dire."""
+        from unittest import mock
+
+        from usine.agents import equipe
+        from usine.core import llm
+        from usine.pipelines.base import Contexte
+
+        for langue, attendu in (("anglais", "en"), ("francais", "fr"),
+                                ("espagnol", "es"), ("japonais", "")):
+            with self.subTest(langue=langue):
+                with mock.patch.object(llm, "generer", return_value=llm.Reponse(
+                        "ok", "essai", "essai")) as generer:
+                    equipe.REDACTEUR.travailler(
+                        Contexte(sujet="x", langue=langue), "Ecris.")
+                self.assertEqual(generer.call_args.kwargs["langue"], attendu)
 
 
 class AucuneFausseAlerteSurDuVraiTexte(unittest.TestCase):

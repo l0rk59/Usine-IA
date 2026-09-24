@@ -599,6 +599,7 @@ def _appel(
     json_mode: bool,
     timeout: int,
     cle: Optional[pool_cles.Cle] = None,
+    langue: str = "fr",
 ) -> Reponse:
     # Le modele EFFECTIF, pas celui qui est ecrit dans config.py : un
     # identifiant retire du catalogue a ete remplace par son equivalent, une
@@ -644,7 +645,16 @@ def _appel(
     # cache, et l'ecrivait dans un chapitre : un quota epuise qui ne ressemble
     # pas a un quota epuise, et une usine qui ne bascule pas puisque rien n'a
     # echoue. On leve, et le fournisseur sort du jeu comme pour un vrai 402.
-    refus = module_texte.refus_deguise(texte, attend_francais=not json_mode)
+    # « Aucun mot francais » n'est un signal que si l'on attendait du
+    # francais. Pour un livre anglais, TOUTE reponse en est privee : ce
+    # signal-la etait donc acquis d'avance, et un seul mot de facturation
+    # suffisait. Mesure du 24/09/2026 : quatre textes anglais courts sur
+    # quatre — un post sur la facturation, un « Previously » ou passe le mot
+    # « quota » — jetes comme messages de service, et ceux qui parlaient de
+    # « billing » ou de « credit » classes quota epuise : fournisseur mis au
+    # repos, puis le suivant, puis une boucle qui attend des quotas pleins.
+    refus = module_texte.refus_deguise(
+        texte, attend_francais=langue == "fr" and not json_mode)
     if refus:
         statut = 402 if module_texte.ressemble_a_un_quota(texte) else 503
         raise HttpErreur(statut, "{} : {}".format(p.name, refus),
@@ -673,12 +683,17 @@ def generer(
     timeout: int = 150,
     tentatives_par_fournisseur: int = 2,
     eviter: Optional[Sequence[str]] = None,
+    langue: str = "fr",
 ) -> Reponse:
     """Genere du texte en basculant de fournisseur en fournisseur si besoin.
 
     `eviter` ecarte des fournisseurs nommes. C'est ce qui permet de faire
     relire un texte par un modele different de celui qui l'a ecrit : un modele
     qui se relit lui-meme confirme ses propres erreurs au lieu de les voir.
+
+    `langue` est le code de la langue attendue en reponse, vide si l'usine ne
+    la connait pas : c'est elle qui dit si une reponse sans un mot francais
+    est suspecte.
     """
     messages: List[Dict[str, str]] = []
     if systeme:
@@ -759,7 +774,8 @@ def generer(
                     # un modele local a besoin de minutes la ou un service
                     # distant a besoin de secondes.
                     rep = _appel(p, messages, role, temperature, max_tokens,
-                                 json_mode, max(timeout, p.timeout), cle)
+                                 json_mode, max(timeout, p.timeout), cle,
+                                 langue=langue)
                     if rep.tronquee:
                         evenements.publier(
                             "tronquee", fournisseur=rep.fournisseur,

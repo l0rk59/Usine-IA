@@ -176,8 +176,9 @@ _CONSOLES = ("console.groq.com", "openrouter.ai/credits", "enter.pollinations.ai
              "cloud.cerebras.ai", "build.nvidia.com", "aistudio.google.com",
              "/edit-key", "/billing")
 
-# Mots-outils francais. Leur ABSENCE dans un texte suffisamment long est le
-# second signal : l'usine demande du francais partout.
+# Mots-outils francais. Leur ABSENCE dans un texte suffisamment long est un
+# signal — mais seulement quand on attendait du francais : pour un livre
+# anglais, elle est la regle, et le routeur ne la compte plus.
 _FRANCAIS = re.compile(
     r"\b(?:le|la|les|des|une|un|du|de|et|que|qui|pour|dans|avec|vous|nous|"
     r"est|sont|plus|cette|ce|son|sa|ses|par|sur|aux|ou|mais|donc)\b",

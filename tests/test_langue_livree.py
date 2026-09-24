@@ -471,6 +471,59 @@ class LeRefusDExecuterSeDitDansLaLangue(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------
+# Le kit de vente, demande apres coup
+# --------------------------------------------------------------------------
+
+
+class LeKitApresCoupSuitLeProduit(unittest.TestCase):
+    """Le kit de vente et l'archive se refont des jours apres la
+    fabrication, quand les reglages ont pu changer. C'est la langue du
+    PRODUIT qui compte, pas celle du reglage du moment."""
+
+    @classmethod
+    def setUpClass(cls):
+        atelier.isoler("langue-livree-apres-coup")
+        reglages.ecrire(dict(images=False, qualite="rapide", langue="anglais",
+                             auteur="Zz", archive_auto=False,
+                             marketing_auto=False))
+        llm.definir_simulateur(simulateur_neutre())
+        try:
+            cls.ctx, _ = _fabriquer("ebook", "zz zz apres coup")
+        finally:
+            llm.definir_simulateur(None)
+
+    def _kit(self) -> List[str]:
+        import io
+        from contextlib import redirect_stdout
+        from usine import cli
+
+        reglages.ecrire(dict(langue="francais"))
+        llm.definir_simulateur(simulateur_neutre())
+        try:
+            with redirect_stdout(io.StringIO()):
+                code = cli.principal(["marketing", self.ctx.produit_id])
+        finally:
+            llm.definir_simulateur(None)
+        self.assertEqual(code, 0)
+        page = next(self.ctx.dossier.rglob("page-de-vente.html"))
+        return residus(page.name, page.read_text(encoding="utf-8"))
+
+    def test_le_carnet_porte_la_langue(self):
+        self.assertEqual(self._kit(), [])
+
+    def test_un_produit_d_avant_le_carnet_garde_sa_langue(self):
+        """Sans carnet, le contexte repart des valeurs de repli — et aucun
+        appelant n'y mettait la langue, pourtant inscrite sur la fiche."""
+        carnet = self.ctx.dossier / "carnet.json"
+        sauve = carnet.read_bytes()
+        carnet.unlink()
+        try:
+            self.assertEqual(self._kit(), [])
+        finally:
+            carnet.write_bytes(sauve)
+
+
+# --------------------------------------------------------------------------
 # L'archive
 # --------------------------------------------------------------------------
 

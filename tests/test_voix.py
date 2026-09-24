@@ -122,6 +122,68 @@ class TestProfil(unittest.TestCase):
         self.assertEqual(voix.profil([]), {"repliques": 0})
 
 
+class LesGuillemetsAnglais(unittest.TestCase):
+    """“ ” : ceux d'un livre anglais, et ceux qu'un modele pose parfois dans
+    un texte francais. Ces repliques passaient pour de la narration."""
+
+    def test_une_replique_francaise_entre_guillemets_anglais(self):
+        self.assertEqual(_extraire("“Ce n'est rien”, murmura Camille."),
+                         [("Camille", "Ce n'est rien")])
+
+    def test_la_part_de_dialogue_les_compte(self):
+        from usine.pipelines import prose
+
+        texte = "“I know,” said Mara. The rain kept on. “Stay here.”"
+        self.assertGreater(prose.part_de_dialogue(texte), 0.3)
+
+
+class HorsDuFrancais(unittest.TestCase):
+    """La liste des verbes de parole est francaise. Dans un livre anglais,
+    « fit » ou « admit » s'y lisent pour des verbes : UNE replique rattachee
+    ainsi, et tous les autres personnages etaient declares muets."""
+
+    PERSONNAGES = [{"nom": "Mara", "role": "protagoniste"},
+                   {"nom": "Tom", "role": "secondaire"}]
+    TEXTE = ('"Stay," said Mara, fit to burst.\n'
+             '"I heard you," Tom answered.\n'
+             'Tom looked away.\n')
+
+    def test_rien_n_est_affirme(self):
+        rapport = voix.controler([("Scene 1", self.TEXTE)], self.PERSONNAGES,
+                                 langue="en")
+        self.assertEqual(rapport["anomalies"], [])
+        self.assertIn("francais", rapport["resume"])
+
+    def test_la_chaine_transmet_la_langue_du_livre(self):
+        from unittest import mock
+
+        from tests.simulateur import simulateur
+        from usine.core import llm
+        from usine.pipelines import nouvelle
+        from usine.pipelines.base import Contexte
+
+        llm.definir_simulateur(simulateur)
+        try:
+            with mock.patch.object(voix, "controler",
+                                   wraps=voix.controler) as espion:
+                nouvelle.produire(Contexte(
+                    sujet="the lighthouse keeper", langue="anglais",
+                    sans_image=True, hors_ligne=True, qualite="rapide",
+                    journal=lambda _m: None))
+        finally:
+            llm.definir_simulateur(None)
+        self.assertTrue(espion.called)
+        self.assertEqual(espion.call_args.kwargs.get("langue"), "en")
+
+    def test_le_defaut_qu_on_evite_existe_bien(self):
+        """Le meme texte lu comme du francais : Tom, qui parle, est declare
+        muet. C'est ce que le parametre de langue empeche."""
+        rapport = voix.controler([("Scene 1", self.TEXTE)], self.PERSONNAGES)
+        self.assertTrue([a for a in rapport["anomalies"]
+                         if a["genre"] == "personnage_muet"
+                         and "Tom" in a["detail"]])
+
+
 class TestControle(unittest.TestCase):
     PERSONNAGES = [{"nom": "Camille", "role": "protagoniste"},
                    {"nom": "Lucie", "role": "secondaire"}]

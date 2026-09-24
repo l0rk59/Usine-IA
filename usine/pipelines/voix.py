@@ -54,11 +54,14 @@ VERBES_DE_PAROLE = (
 _VERBE = re.compile(
     r"\b(?:" + "|".join(re.escape(v) for v in VERBES_DE_PAROLE) + r")\b")
 
-# Trois facons d'ecrire un dialogue en francais, toutes trois produites par
-# les modeles : le tiret cadratin en debut de ligne, les guillemets francais,
-# les guillemets droits quand le modele oublie la typographie francaise.
+# Quatre facons d'ecrire un dialogue, toutes produites par les modeles : le
+# tiret cadratin en debut de ligne, les guillemets francais, les guillemets
+# droits quand le modele oublie la typographie francaise, et les guillemets
+# anglais — ceux d'un livre anglais, et ceux qu'un modele pose parfois dans
+# un texte francais. Sans eux, ces repliques-la passaient pour de la
+# narration.
 _TIRET = re.compile(r"^\s*[—–-]\s*(.+)$")
-_GUILLEMETS = re.compile(r"[«\"]\s*(.+?)\s*[»\"]", re.DOTALL)
+_GUILLEMETS = re.compile(r"[«\"“]\s*(.+?)\s*[»\"”]", re.DOTALL)
 
 # Une incise de plus de cette longueur n'est plus une incise : c'est de la
 # narration, et le nom qu'on y trouve n'est pas forcement celui qui parle.
@@ -175,8 +178,23 @@ def profil(textes: List[str]) -> Dict[str, Any]:
 
 
 def controler(sections: List[Tuple[str, str]],
-              personnages: List[Dict[str, str]]) -> Dict[str, Any]:
-    """Qui parle dans ce texte, combien, et de quelle facon."""
+              personnages: List[Dict[str, str]],
+              langue: str = "fr") -> Dict[str, Any]:
+    """Qui parle dans ce texte, combien, et de quelle facon.
+
+    En francais seulement. Une replique n'est rattachee a un personnage que
+    par un verbe de parole de la liste, et la liste est francaise : dans un
+    livre anglais, rien n'est rattache — sauf quand un mot anglais s'ecrit
+    comme un verbe de la liste (« fit », « admit »). Une seule replique
+    rattachee ainsi suffisait a declarer muets tous les autres personnages.
+    Hors du francais, le module rate donc ce qu'il ne sait pas lire plutot
+    que d'inventer, et le dit dans son resume.
+    """
+    if langue != "fr":
+        return {"repliques": 0, "profils": {}, "comparables": [],
+                "anomalies": [],
+                "resume": "attribution des repliques non mesuree : elle ne "
+                          "sait lire que le francais"}
     noms = [p["nom"] for p in personnages]
     dites = repliques(sections, noms)
     par_personnage: Dict[str, List[str]] = {nom: [] for nom in noms}

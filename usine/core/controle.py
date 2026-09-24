@@ -113,9 +113,19 @@ PROMESSES = [
 # Un chiffre precis sans source est la premiere cause de produit non credible.
 CHIFFRE_PRECIS = re.compile(
     r"\b\d{1,3}(?:[.,]\d+)?\s?%|\b\d+\s?(?:fois plus|x plus)\b", re.IGNORECASE)
+# Les memes marqueurs en anglais. Le modele ecrit dans la langue du produit,
+# et seuls les marqueurs francais etaient reconnus : mesure du 24/09/2026,
+# quatre chiffres anglais correctement introduits sur quatre — « According
+# to a 2023 Gallup survey », « For example », « A McKinsey report »,
+# « Imagine » — signales comme inventes, la note baissee, et chaque
+# correction demandait au modele de retirer des chiffres bien sources.
+# Ajouter des marqueurs ne peut que taire le controle, jamais le faire crier.
 MARQUEUR_SOURCE = re.compile(
     r"\b(selon|d'apres|source\s*:|etude|sondage|rapport|enquete|par exemple|"
-    r"exemple|imaginons|supposons|admettons|fictif|illustrat)", re.IGNORECASE)
+    r"exemple|imaginons|supposons|admettons|fictif|illustrat|"
+    r"according to|sources?\s*:|stud(?:y|ies)|survey|report|poll|research|"
+    r"for example|for instance|e\.g\.|imagine|suppose|let's say|"
+    r"hypothetical|fictional)", re.IGNORECASE)
 
 _COMPILES_TICS = [re.compile(m, re.IGNORECASE) for m in TICS]
 _COMPILES_PROMESSES = [re.compile(m, re.IGNORECASE) for m in PROMESSES]

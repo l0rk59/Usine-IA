@@ -259,6 +259,12 @@ niche dont *tous* les fournisseurs refuseraient *chaque fois* la demande
 attendrait indéfiniment, une heure entre deux essais. Le routeur ne distingue
 pas ce refus d'une panne, et la boucle ne l'invente pas.
 
+Ce cas avait une cause que l'usine fabriquait elle-même, en anglais : le
+routeur prenait pour un message de facturation toute réponse anglaise courte
+qui disait « billing » ou « quota », mettait les fournisseurs au repos l'un
+après l'autre, et la boucle attendait des quotas pleins. Corrigé le
+24/09/2026 : voir [LANGUE-LIVREE.md](LANGUE-LIVREE.md).
+
 Les six mutations de cette correction sont vues.
 
 ## Ce que la boucle oubliait de faire

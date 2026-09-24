@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict
 
-from ..core import reglages
+from ..core import reglages, store
 from . import apres, brief, catalogue, reprise
 from .base import Contexte
 
@@ -103,6 +103,14 @@ def contexte_existant(produit_id: str, journal: Callable[[str], None],
     """
     ctx = reprise.contexte_garde(produit_id, journal=journal) if produit_id else None
     if ctx is None:
+        # Un produit d'avant le carnet a quand meme sa fiche, et sa langue y
+        # est inscrite depuis toujours. Aucun appelant ne la passait en
+        # repli : le kit de vente d'un livre anglais repartait dans la langue
+        # par defaut du contexte — page de vente, extrait, mentions en
+        # francais autour d'un texte anglais.
+        fiche = store.lire_produit(produit_id) if produit_id else None
+        if fiche and fiche.get("langue") and "langue" not in repli:
+            repli["langue"] = fiche["langue"]
         ctx = Contexte(journal=journal, **repli)
     brief.appliquer(ctx, "produit")
     return ctx

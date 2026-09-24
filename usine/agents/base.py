@@ -102,6 +102,8 @@ class Agent:
         Un redacteur reste un redacteur ; mais condenser une partie entiere
         demande un modele de long contexte, pas une autre personnalite.
         """
+        from ..pipelines.base import code_langue
+
         evenements.publier("agent", agent=self.nom, etat="debut", emoji=self.emoji)
         reponse = llm.generer(
             invite,
@@ -111,6 +113,10 @@ class Agent:
             max_tokens=max_tokens,
             cache=cache,
             eviter=eviter,
+            # La langue que le systeme vient de demander au modele : le routeur
+            # en a besoin pour lire la reponse. Vide pour une langue inconnue —
+            # « rien n'y est francais » n'y prouve alors rien.
+            langue=code_langue(getattr(contexte, "langue", "francais"), defaut=""),
         )
         evenements.publier("agent", agent=self.nom, etat="fin", emoji=self.emoji,
                            fournisseur=reponse.fournisseur, tokens=reponse.tokens)

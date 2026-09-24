@@ -908,7 +908,7 @@ def controler_continuite(bible: Dict[str, Any], grille: Dict[str, Any],
                          scenes: List[Tuple[str, str]],
                          memoires: List[str],
                          redigees: Optional[List[bool]] = None,
-                         serie: str = "") -> Dict[str, Any]:
+                         serie: str = "", langue: str = "fr") -> Dict[str, Any]:
     """Relit la bible contre le texte reellement ecrit.
 
     Ce sont les defauts propres a la fiction generee, et aucun ne demande un
@@ -1109,7 +1109,7 @@ def controler_continuite(bible: Dict[str, Any], grille: Dict[str, Any],
     # l'invite de chaque scene. Rien ne verifiait qu'elle avait ete tenue —
     # une consigne emise, jamais relue. Voir pipelines/voix.py, qui mesure ce
     # qui se mesure et s'abstient de juger le reste.
-    parole = voix.controler(scenes, bible["personnages"])
+    parole = voix.controler(scenes, bible["personnages"], langue=langue)
     anomalies.extend(parole["anomalies"])
 
     graves = [a for a in anomalies if a["gravite"] == "majeur"]
@@ -1339,7 +1339,8 @@ def produire(ctx: Contexte, serie: str = "",
 
     ctx.journal("Etape 4/5 — controle de continuite...")
     continuite = controler_continuite(bible, grille, sections, memoires,
-                                      redigees, serie=serie)
+                                      redigees, serie=serie,
+                                      langue=ctx.langue_iso)
     ctx.journal("  " + continuite["resume"])
     for anomalie in continuite["anomalies"][:4]:
         ctx.journal("    [{}] {}".format(anomalie["gravite"], anomalie["detail"]))

@@ -101,6 +101,56 @@ produit et garde la valeur (un nom de module, le message de Python). Les
 messages français de la vérification sont composés à partir de la même table :
 une seule source.
 
+### Le kit de vente demandé après coup
+
+Le kit de vente et l'archive se refont des jours après la fabrication, quand
+les réglages ont pu changer : c'est la langue du **produit** qui compte. Le
+carnet la porte. Un produit fabriqué avant le carnet repartait des valeurs de
+repli, et aucun appelant n'y mettait la langue, pourtant inscrite sur sa
+fiche : sa page de vente sortait en français. `porte.contexte_existant` la lit
+maintenant sur la fiche, pour toutes les portes à la fois.
+
+## Ce que les contrôles supposaient
+
+Trois contrôles lisaient le texte du modèle comme s'il était forcément
+français. En anglais, deux criaient à tort et un se trompait de mesure.
+
+**Le routeur jetait des réponses valides.** Un « refus déguisé » — un message
+de facturation rendu avec HTTP 200 — se reconnaît à deux signaux sur trois :
+vocabulaire de service, lien vers une console, **aucun mot français**. Pour un
+livre anglais, le troisième est acquis d'avance : un seul mot comme
+« billing », « quota », « API key » ou « try again later » suffisait. Mesure
+du 24/09/2026 : quatre textes anglais courts sur quatre (un post sur la
+facturation, un « Previously » où passe le mot « quota ») étaient jetés.
+Ceux qui disaient « billing » ou « credit » étaient même classés *quota
+épuisé* : fournisseur mis au repos, puis le suivant, puis une boucle qui
+attend des quotas pleins. L'agent dit maintenant au routeur la langue qu'il
+vient de demander, et « aucun mot français » ne compte que si l'on attendait
+du français. Le vrai message de facturation reste reconnu en anglais par ses
+deux autres signaux.
+
+**Un chiffre anglais sourcé passait pour inventé.** `chiffres_sans_source` ne
+connaissait que « selon », « étude », « par exemple ». « According to a 2023
+Gallup survey », « For example », « A McKinsey report », « Imagine » : quatre
+sur quatre signalés, la note du texte baissée, et chaque correction demandait
+au modèle de retirer des chiffres correctement sourcés. Les
+marqueurs anglais sont ajoutés — ce qui ne peut que taire le contrôle, jamais
+le faire crier.
+
+**Le contrôle des voix est réservé au français, et le dit.** Une réplique n'est
+rattachée à un personnage que par un verbe de parole de sa liste, qui est
+française. Dans un livre anglais, rien n'était rattaché — sauf quand un mot
+anglais s'écrit comme un verbe de la liste (« fit », « admit ») : une seule
+réplique rattachée ainsi suffisait à déclarer muets tous les autres
+personnages. Hors du français, il ne juge plus rien et l'écrit dans son
+résumé. Les guillemets anglais “ ” comptent en revanche comme du dialogue
+dans les deux langues : la part de dialogue d'un livre anglais s'annonçait
+nulle, et certains modèles les posent aussi dans un texte français.
+
+Ce qui reste français sans crier : les tics d'écriture, les promesses de
+résultat, les faits relevés dans une fiction. En anglais, ces contrôles ne
+trouvent rien — ils ratent, ils n'accusent pas.
+
 ## Comment c'est gardé
 
 `tests/test_langue_livree.py` :
@@ -129,6 +179,10 @@ Deux précautions dans ce test, chacune apprise en le voyant rater :
 - les blocs qui n'existent **que dans le PDF** (barème du quiz, consignes des
   fiches imprimables) ne se voient qu'en lisant le PDF.
 
-Le test ne vaut que si on l'a vu échouer : 23 mutations, chacune remettant un
+Les contrôles sont gardés à côté de ceux qu'ils corrigent : `tests/test_texte.py`
+(le routeur, jusqu'au trajet complet avec un faux fournisseur),
+`tests/test_controle.py`, `tests/test_voix.py`.
+
+Le test ne vaut que si on l'a vu échouer : 33 mutations, chacune remettant un
 morceau de mobilier en français ou défaisant une des corrections ci-dessus —
 toutes détectées.
