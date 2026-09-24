@@ -33,6 +33,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import urllib.request
 from pathlib import Path
 from typing import Dict
@@ -112,6 +113,31 @@ def courant() -> str:
     return _COURANT
 
 
+def attendre_les_travaux(delai: float = 120.0) -> None:
+    """Attend la fin des fils de travail du tableau de bord encore vivants.
+
+    Au-dela du delai, on le DIT sur la sortie d'erreur plutot que de
+    continuer en silence : un fil fantome qui ecrit dans l'atelier suivant
+    fait echouer un test qui n'y est pour rien, et c'est ce message qui
+    permet de remonter a sa source.
+    """
+    import sys
+    import threading
+
+    serveur = sys.modules.get("usine.web.serveur")
+    if serveur is None:
+        return
+    fin = time.monotonic() + delai
+    for fil in threading.enumerate():
+        if fil.name != serveur.FIL_DE_TRAVAIL or fil is threading.current_thread():
+            continue
+        fil.join(max(0.0, fin - time.monotonic()))
+        if fil.is_alive():
+            sys.stderr.write("[atelier] un travail du tableau de bord tourne "
+                             "encore apres {:.0f} s : il ecrira dans "
+                             "l'atelier suivant.\n".format(delai))
+
+
 def isoler(nom: str) -> Path:
     """Bascule l'usine entiere sur l'atelier du module « nom »."""
     global _COURANT
@@ -122,6 +148,13 @@ def isoler(nom: str) -> Path:
         dossier = Path(tempfile.mkdtemp(prefix="usine-{}-".format(nom)))
         _ATELIERS[nom] = dossier
         atexit.register(shutil.rmtree, str(dossier), True)
+
+    # Un travail que le module precedent a lance depuis le tableau de bord
+    # tourne peut-etre encore : il survit a l'arret du serveur. Le laisser
+    # courir, c'est le laisser ecrire dans CET atelier-ci, avec le simulateur
+    # du module suivant — deux echecs intermittents en integration continue,
+    # « no such table » puis un produit compte a 3 appels pour 11.
+    attendre_les_travaux()
 
     # Fermer AVANT de deplacer les chemins : sinon on ferme la connexion du
     # nouvel atelier en croyant fermer celle de l'ancien. close() fait aussi

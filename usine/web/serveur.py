@@ -202,7 +202,24 @@ def _lancer_la_boucle(auto: bool = False, maximum: int = 0) -> threading.Thread:
             journal=lambda message: evenements.publier("journal", message=message),
         ).tourner()
 
-    fil = threading.Thread(target=tourner, daemon=True)
+    return _en_tache_de_fond(tourner)
+
+
+# Le nom que portent les fils de travail du tableau de bord. Ils survivent a
+# la requete qui les lance — c'est leur raison d'etre — et donc aussi a
+# l'arret du serveur. Mesure du 24/09/2026 en integration continue : une
+# fabrication lancee par un module de tests tournait encore dans le module
+# suivant, avec le simulateur de ce module et pendant sa bascule de base —
+# « no such table » un jour, un produit compte a 3 appels pour 11 le
+# lendemain. Nommes, ils peuvent etre attendus (« tests/atelier.py »), et se
+# reconnaissent dans un vidage de fils.
+FIL_DE_TRAVAIL = "usine-travail"
+
+
+def _en_tache_de_fond(cible: Callable[..., Any], *arguments: Any) -> threading.Thread:
+    """Lance un travail du tableau de bord dans son propre fil, nomme."""
+    fil = threading.Thread(target=cible, args=arguments, daemon=True,
+                           name=FIL_DE_TRAVAIL)
     fil.start()
     return fil
 
@@ -653,8 +670,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 "sujet": sujet[:300] or "(l'usine choisit)", "statut": "en_cours",
                 "debut": time.time(), "journal": [], "resultat": None, "erreur": "",
             }
-        threading.Thread(target=_lancer, args=(travail_id, type_produit, options),
-                         daemon=True).start()
+        _en_tache_de_fond(_lancer, travail_id, type_produit, options)
         self._json({"travail": travail_id})
 
     def _gerer_file(self, options: Dict[str, Any]) -> Dict[str, Any]:
@@ -699,8 +715,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                     "debut": time.time(), "journal": [], "resultat": None,
                     "erreur": "",
                 }
-            threading.Thread(target=_lancer_prospection,
-                             args=(travail_id, fiction), daemon=True).start()
+            _en_tache_de_fond(_lancer_prospection, travail_id, fiction)
             return {"travail": travail_id}
         if action == "retirer":
             try:
@@ -823,9 +838,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 "statut": "en_cours", "debut": time.time(),
                 "resultat": None, "erreur": "",
             }
-        threading.Thread(target=_scouter,
-                         args=(veille_id, sujet, periode, combien),
-                         daemon=True).start()
+        _en_tache_de_fond(_scouter, veille_id, sujet, periode, combien)
         return ({"veille": veille_id}, 200)
 
     def _lancer_marche(self, options: Dict[str, Any]):
@@ -840,8 +853,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
             MARCHES[marche_id] = {"id": marche_id, "sujet": sujet[:300],
                                   "statut": "en_cours", "debut": time.time(),
                                   "resultat": None, "erreur": ""}
-        threading.Thread(target=_sonder_marche, args=(marche_id, sujet),
-                         daemon=True).start()
+        _en_tache_de_fond(_sonder_marche, marche_id, sujet)
         return ({"marche": marche_id}, 200)
 
     def _gerer_doublons(self, options: Dict[str, Any]) -> Dict[str, Any]:
@@ -887,8 +899,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                     "debut": time.time(), "journal": [], "resultat": None,
                     "erreur": "",
                 }
-            threading.Thread(target=_lancer_ab, args=(travail_id, options),
-                             daemon=True).start()
+            _en_tache_de_fond(_lancer_ab, travail_id, options)
             return ({"travail": travail_id}, 200)
 
         if action == "observer":
@@ -983,10 +994,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
                     "statut": "en_cours", "debut": time.time(), "journal": [],
                     "resultat": None, "erreur": "",
                 }
-            threading.Thread(target=_lancer_marketing,
-                             args=(travail_id, produit_id,
-                                   str(options.get("prix") or "")),
-                             daemon=True).start()
+            _en_tache_de_fond(_lancer_marketing, travail_id, produit_id,
+                              str(options.get("prix") or ""))
             return ({"travail": travail_id}, 200)
 
         if action == "reprendre":
@@ -1012,9 +1021,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                     "statut": "en_cours", "debut": time.time(), "journal": [],
                     "resultat": None, "erreur": "",
                 }
-            threading.Thread(target=_lancer_reprise,
-                             args=(travail_id, produit_id),
-                             daemon=True).start()
+            _en_tache_de_fond(_lancer_reprise, travail_id, produit_id)
             return ({"travail": travail_id}, 200)
 
         if action == "supprimer":
