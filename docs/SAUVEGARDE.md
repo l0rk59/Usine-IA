@@ -201,6 +201,14 @@ ils valent — sa génération **et** son chemin, lus *avant* d'agir
 est idempotent. Les deux courses sont rejouées sans fil, dans l'ordre exact où
 les fils les produisent, ce qui les rend reproductibles.
 
+La restauration avait sa propre version de la seconde course. Elle ferme la
+base, *puis* déplace l'ancien fichier et écrit le nouveau — au même chemin.
+Une connexion ouverte entre les deux (le fil de la boucle, qui écrit sans
+cesse) portait donc la bonne clé et pointait l'ancien fichier : ses écritures
+partaient dans la base mise de côté, et le drapeau du schéma, posé pour elle,
+faisait sauter les migrations de la base restaurée. Une seconde fermeture,
+une fois le nouveau fichier en place, les refait toutes.
+
 ### La route qui sert les archives ne sert qu'elles
 
 Le dossier des sauvegardes est **à côté** de `usine.db` et de

@@ -237,6 +237,15 @@ def restaurer(archive: Path, avec_produits: bool = True) -> Dict[str, Any]:
                 cible.write_bytes(zip_.read(nom))
                 restaures += 1
 
+    # Une seconde fermeture, maintenant que le nouveau fichier est en place.
+    # La premiere a eu lieu AVANT de deplacer l'ancien : une connexion ouverte
+    # entre les deux — le fil de la boucle, qui ecrit sans cesse — portait la
+    # cle de la nouvelle generation, sur le meme chemin, et pointait pourtant
+    # l'ancien fichier, mis de cote. Elle y ecrivait sans erreur, et le
+    # drapeau du schema pose pour elle faisait sauter les migrations de la
+    # base restauree.
+    store.close()
+
     # La base restauree peut venir d'une version plus ancienne : on la fait
     # passer par l'echelle de migrations avant de rendre la main.
     from . import reglages as module_reglages

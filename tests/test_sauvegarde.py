@@ -393,6 +393,36 @@ class UnDrapeauPoseAPresLaBascule(unittest.TestCase):
             config.DB_PATH = ancien
 
 
+class UneConnexionOuverteDansLaFenetreDeRestauration(unittest.TestCase):
+    """La restauration ferme la base, PUIS deplace le fichier et ecrit le
+    nouveau. Le chemin ne change pas : une connexion ouverte entre les deux —
+    le fil de la boucle, qui ecrit sans cesse — portait la bonne cle et
+    pointait l'ANCIEN fichier, mis de cote. Tout ce qu'elle ecrivait ensuite
+    partait dans une base que personne ne relit, et le drapeau du schema,
+    pose pour elle, faisait sauter les migrations de la base restauree."""
+
+    def test_la_base_lue_apres_restauration_est_la_restauree(self):
+        store.creer_produit("fenetre-avant", "ebook", "Avant", sujet="s",
+                            dossier="/tmp")
+        archive = sauvegarde.creer()
+        self.addCleanup(lambda: archive.unlink(missing_ok=True))
+        store.creer_produit("fenetre-apres", "ebook", "Apres", sujet="s",
+                            dossier="/tmp")
+        vrai_deplacer = shutil.move
+
+        def deplacer(source, cible):
+            # Un fil se reconnecte ici, dans la fenetre.
+            store.connect()
+            return vrai_deplacer(source, cible)
+
+        with mock.patch.object(sauvegarde.shutil, "move", side_effect=deplacer):
+            sauvegarde.restaurer(archive, avec_produits=False)
+        ids = {p["id"] for p in store.lister_produits(50)}
+        self.assertIn("fenetre-avant", ids)
+        self.assertNotIn("fenetre-apres", ids,
+                         "la connexion lit encore la base mise de cote")
+
+
 class TestArchiveHostile(unittest.TestCase):
     """Une archive passe par un ordinateur ou un nuage. Elle peut revenir
     modifiee."""
