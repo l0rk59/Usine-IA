@@ -101,7 +101,7 @@ Deux commandes n'existent qu'en ligne de commande, et c'est un choix :
 
 | | |
 |---|---|
-| `usine specs` | écrit `SPECS-APPAREIL.md` à la racine du dépôt, pour le pousser |
+| `usine specs` | écrit `SPECS-APPAREIL.md` à la racine du dépôt, pour le pousser — sur le téléphone seulement ; ailleurs, dans l'atelier |
 | `usine prompts-systeme` | exporte des fichiers à éditer dans un éditeur de texte |
 
 Ce sont des gestes de mainteneur. Un bouton sur un téléphone n'y changerait

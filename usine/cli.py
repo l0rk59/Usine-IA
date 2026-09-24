@@ -2598,7 +2598,23 @@ def cmd_specs(args: argparse.Namespace) -> int:
 
     # A la racine du depot par defaut : c'est de la que la fiche part sur
     # GitHub, et la chercher ailleurs ferait perdre du temps a chaque fois.
-    cible = Path(args.vers) if args.vers else module_maj.racine() / "SPECS-APPAREIL.md"
+    #
+    # Mais seulement sur le telephone. Cette fiche-la decrit l'appareil pour
+    # lequel le depot est ecrit ; lancee sur un ordinateur ou dans un
+    # conteneur, la commande la remplacait par celle de la machine du moment.
+    # C'est arrive deux fois : le 14/09/2026 (un test) puis le 24/09/2026 (un
+    # balayage des commandes), la fiche d'un telephone Android devenant celle
+    # d'un serveur x86_64 — sans erreur, a un « git add » pres d'etre poussee.
+    sur_le_telephone = bool((releve.get("termux") or {}).get("termux"))
+    if args.vers:
+        cible = Path(args.vers)
+    elif sur_le_telephone:
+        cible = module_maj.racine() / "SPECS-APPAREIL.md"
+    else:
+        cible = config.WORKDIR / "SPECS-APPAREIL.md"
+        alerte("Cet appareil n'est pas un telephone sous Termux : la fiche du "
+               "depot, qui decrit le telephone, n'est pas remplacee.")
+        print("      Pour l'ecrire ailleurs : " + _c("usine specs --vers FICHIER", "1"))
     try:
         cible.write_text(texte, encoding="utf-8")
     except OSError as exc:
@@ -2615,7 +2631,7 @@ def cmd_specs(args: argparse.Namespace) -> int:
         ok("Rien ne manque sur cet appareil.")
     ok("Fiche ecrite : {}".format(cible))
 
-    if module_maj.est_un_clone():
+    if module_maj.est_un_clone() and (sur_le_telephone or args.vers):
         print("\n  La pousser sur le depot :")
         print("    " + _c("git add {} && git commit -m \"fiche technique\""
                           " && git push".format(cible.name), "1"))

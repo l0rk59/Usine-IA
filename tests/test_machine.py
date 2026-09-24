@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import io
 import sys
+import shutil
+import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -114,6 +116,41 @@ class FicheTechnique(unittest.TestCase):
         self.assertIn("Fiche ecrite", texte)
         self.assertIn("# Fiche technique de l'appareil",
                       cible.read_text(encoding="utf-8"))
+
+    def test_hors_du_telephone_la_fiche_du_depot_reste_intacte(self):
+        """Elle decrit le telephone. Lancee dans un conteneur, la commande la
+        remplacait par la fiche de la machine du moment — deux fois deja."""
+        from unittest import mock
+
+        from usine.core import maj
+
+        racine = Path(tempfile.mkdtemp(prefix="usine-racine-"))
+        self.addCleanup(shutil.rmtree, str(racine), True)
+        fiche = racine / "SPECS-APPAREIL.md"
+        fiche.write_text("la fiche du telephone", encoding="utf-8")
+        releve = dict(specs.relever())
+        releve["termux"] = {"termux": False, "api": False, "batterie": None}
+        with mock.patch.object(maj, "racine", return_value=racine), \
+                mock.patch.object(specs, "relever", return_value=releve):
+            code, texte = _muet(["specs"])
+        self.assertEqual(fiche.read_text(encoding="utf-8"), "la fiche du telephone")
+        self.assertTrue((config.WORKDIR / "SPECS-APPAREIL.md").exists())
+        self.assertIn("n'est pas un telephone", texte)
+
+    def test_sur_le_telephone_elle_part_a_la_racine(self):
+        from unittest import mock
+
+        from usine.core import maj
+
+        racine = Path(tempfile.mkdtemp(prefix="usine-racine-"))
+        self.addCleanup(shutil.rmtree, str(racine), True)
+        releve = dict(specs.relever())
+        releve["termux"] = {"termux": True, "api": True, "batterie": None}
+        with mock.patch.object(maj, "racine", return_value=racine), \
+                mock.patch.object(specs, "relever", return_value=releve):
+            _muet(["specs"])
+        self.assertIn("# Fiche technique de l'appareil",
+                      (racine / "SPECS-APPAREIL.md").read_text(encoding="utf-8"))
 
     def test_un_manque_bloquant_donne_un_code_de_sortie_non_nul(self):
         """Pour qu'un script d'installation puisse s'en servir."""
