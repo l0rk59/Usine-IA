@@ -16,7 +16,7 @@ from ..agents import equipe
 from ..core import evenements, images
 from ..render import document as D
 from ..render import tableur
-from ..render import livraison
+from ..render import libelles, livraison
 from ..render.page import ecrire_page
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
 
@@ -100,7 +100,8 @@ def produire(ctx: Contexte, nombre: int = 4) -> Dict[str, Any]:
         # Le guide est remplace par la liste des etapes de mise en route :
         # quelques puces la ou l'acheteur attend un mode d'emploi. Sans le
         # dire, le produit se presentait « pret » avec ce trou dedans.
-        guide = "## Mise en route\n\n" + "\n".join(
+        guide = "## {}\n\n".format(libelles.libelle(
+            ctx.langue_iso, "modeles_mise_en_route")) + "\n".join(
             "1. " + str(e) for e in systeme.get("mise_en_route", []))
     # « ctx.etape("guide") » tout court valait « ok » — meme apres l'echec,
     # puisque l'appel est hors du « except ». Le meme defaut se cachait dans
@@ -145,25 +146,35 @@ def _exporter(ctx: Contexte, systeme: Dict[str, Any], guide: str) -> List[Path]:
                 auteur.writerow(tableur.ligne(ligne))
         fichiers.append(chemin)
 
+    t = libelles.textes(ctx.langue_iso)
+
+    def type_lisible(colonne: Dict[str, Any]) -> str:
+        return t["modeles_types"].get(colonne["type"], colonne["type"])
+
+    def vue_lisible(vue: Dict[str, Any], nom: str) -> str:
+        return t["modeles_vue"].format(
+            nom=nom, filtre=vue.get("filtre", t["modeles_aucun"]),
+            tri=vue.get("tri", t["modeles_aucun"]))
+
     # Markdown : colle directement dans une page Notion.
     lignes = ["# {}\n".format(titre), "*{}*\n".format(systeme.get("promesse", "")),
               "\n" + guide + "\n"]
     for base in systeme["bases"]:
         lignes.append("\n# {}\n".format(base["nom"]))
         lignes.append("*{}*\n".format(base["role"]))
-        lignes.append("\n| Colonne | Type | Role |")
+        lignes.append("\n| {} |".format(" | ".join(t["modeles_colonnes"])))
         lignes.append("| --- | --- | --- |")
         for colonne in base["colonnes"]:
             options = (" (" + ", ".join(colonne["options"]) + ")"
                        if colonne["options"] else "")
             lignes.append("| {} | {}{} | {} |".format(
-                colonne["nom"], colonne["type"], options, colonne["description"]))
+                colonne["nom"], type_lisible(colonne), options,
+                colonne["description"]))
         if base["vues"]:
-            lignes.append("\n**Vues a creer :**\n")
+            lignes.append("\n{}\n".format(t["modeles_vues_md"]))
             for vue in base["vues"]:
-                lignes.append("- **{}** — filtre : {} — tri : {}".format(
-                    vue.get("nom", ""), vue.get("filtre", "aucun"),
-                    vue.get("tri", "aucun")))
+                lignes.append("- " + vue_lisible(
+                    vue, "**{}**".format(vue.get("nom", ""))))
     chemin_md = dossier / "modeles.md"
     chemin_md.write_text("\n".join(lignes), encoding="utf-8")
     fichiers.append(chemin_md)
@@ -178,25 +189,23 @@ def _exporter(ctx: Contexte, systeme: Dict[str, Any], guide: str) -> List[Path]:
 
     doc = livraison.document(ctx, titre, systeme.get("promesse", ""),
                              couverture, police_corps="Helvetica")
-    doc.titre("Guide d'installation", 1)
+    doc.titre(t["modeles_guide"], 1)
     D.vers_pdf(D.analyser(guide), doc, sauter_h1=True)
     for base in systeme["bases"]:
         doc.titre(base["nom"], 1)
         if base["role"]:
             doc.citation(base["role"])
-        doc.titre("Structure", 2)
+        doc.titre(t["modeles_structure"], 2)
         doc.tableau(
-            ["Colonne", "Type", "Role"],
-            [[c["nom"], c["type"] + (" (" + ", ".join(c["options"]) + ")"
-                                     if c["options"] else ""), c["description"]]
+            list(t["modeles_colonnes"]),
+            [[c["nom"], type_lisible(c) + (" (" + ", ".join(c["options"]) + ")"
+                                           if c["options"] else ""), c["description"]]
              for c in base["colonnes"]],
         )
         if base["vues"]:
-            doc.titre("Vues a creer", 2)
-            doc.liste(["{} — filtre : {} — tri : {}".format(
-                v.get("nom", ""), v.get("filtre", "aucun"), v.get("tri", "aucun"))
-                for v in base["vues"]])
-    doc.inserer_sommaire(apres=1)
+            doc.titre(t["modeles_vues"], 2)
+            doc.liste([vue_lisible(v, v.get("nom", "")) for v in base["vues"]])
+    doc.inserer_sommaire(t["sommaire"], apres=1)
     chemin_pdf = dossier / "{}.pdf".format(slug(titre, 46))
     doc.enregistrer(chemin_pdf)
     fichiers.append(chemin_pdf)
@@ -209,9 +218,11 @@ def _exporter(ctx: Contexte, systeme: Dict[str, Any], guide: str) -> List[Path]:
     for base in systeme["bases"]:
         corps.append("<h2>{}</h2><p><em>{}</em></p>".format(
             D.inline_html(base["nom"]), D.inline_html(base["role"])))
-        corps.append("<table><tr><th>Colonne</th><th>Type</th><th>Role</th></tr>"
+        corps.append("<table><tr>{}</tr>".format("".join(
+                         "<th>{}</th>".format(D.inline_html(e))
+                         for e in t["modeles_colonnes"]))
                      + "".join("<tr><td>{}</td><td>{}</td><td>{}</td></tr>".format(
-                         D.inline_html(c["nom"]), D.inline_html(c["type"]),
+                         D.inline_html(c["nom"]), D.inline_html(type_lisible(c)),
                          D.inline_html(c["description"]))
                          for c in base["colonnes"]) + "</table>")
     chemin_html = dossier / "lire.html"

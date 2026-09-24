@@ -27,6 +27,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
+from . import libelles
 from .document import nettoyer_inline
 
 # Teintes propres au quiz. Elles sont declarees dans render/lisibilite.py et
@@ -67,6 +68,7 @@ button.corriger:hover { background:#1d4ed8; }
 SCRIPT = """
 (function () {
   var donnees = JSON.parse(document.getElementById('reponses').textContent);
+  var textes = JSON.parse(document.getElementById('textes-quiz').textContent);
   var formulaire = document.getElementById('quiz');
 
   function corriger(evenement) {
@@ -79,18 +81,19 @@ SCRIPT = """
       if (!choisi) {
         sansReponse += 1;
         verdict.className = 'verdict';
-        verdict.textContent = 'Sans reponse.';
+        verdict.textContent = textes.sans_reponse;
         return;
       }
       var bonne = Number(choisi.value) === question.reponse;
       if (bonne) { justes += 1; }
       verdict.className = 'verdict ' + (bonne ? 'juste' : 'faux');
-      verdict.textContent = (bonne ? 'Juste. ' : 'Faux : la bonne reponse etait « '
-        + question.propositions[question.reponse] + ' ». ') + question.explication;
+      verdict.textContent = (bonne ? textes.juste : textes.faux_avant
+        + question.propositions[question.reponse] + textes.faux_apres)
+        + question.explication;
     });
     var score = document.getElementById('score');
-    score.textContent = justes + ' bonne(s) reponse(s) sur ' + donnees.length
-      + (sansReponse ? ' — ' + sansReponse + ' question(s) sans reponse.' : '.');
+    score.textContent = justes + textes.score_sur + donnees.length
+      + (sansReponse ? ' — ' + sansReponse + textes.sans_reponse_nombre : '.');
   }
 
   formulaire.addEventListener('submit', corriger);
@@ -102,16 +105,21 @@ def _echapper(texte: str) -> str:
     return html.escape(str(texte), quote=True)
 
 
-def corps(questions: List[Dict[str, Any]], promesse: str = "") -> str:
-    """Le HTML du quiz : un formulaire, une question par « fieldset »."""
+def corps(questions: List[Dict[str, Any]], promesse: str = "",
+          langue: str = "fr") -> str:
+    """Le HTML du quiz : un formulaire, une question par « fieldset ».
+
+    Ses textes fixes suivent la langue du produit, jusqu'a ceux que le script
+    affiche en corrigeant : ils arrivent par un bloc JSON, et non ecrits dans
+    le script, qui reste le meme pour toutes les langues.
+    """
+    t = libelles.textes(langue)
     morceaux = []
     if promesse:
         morceaux.append('<p class="quiz-intro">{}</p>'.format(
             _echapper(nettoyer_inline(promesse))))
-    morceaux.append(
-        '<p class="quiz-intro">Repondez a toutes les questions, puis corrigez. '
-        "Rien n'est envoye : la correction se fait dans votre navigateur, hors "
-        "ligne. C'est une auto-evaluation — les reponses sont dans la page.</p>")
+    morceaux.append('<p class="quiz-intro">{}</p>'.format(
+        _echapper(t["quiz_intro"])))
     morceaux.append('<form id="quiz">')
 
     module_courant = ""
@@ -140,13 +148,16 @@ def corps(questions: List[Dict[str, Any]], promesse: str = "") -> str:
         morceaux.append("</fieldset>")
 
     morceaux.append('<p><button type="submit" class="corriger">'
-                    "Corriger mes reponses</button></p>")
+                    "{}</button></p>".format(_echapper(t["quiz_corriger"])))
     morceaux.append('<p class="score" id="score" role="status" '
                     'aria-live="polite"></p>')
     morceaux.append("</form>")
     morceaux.append(
         '<script type="application/json" id="reponses">{}</script>'.format(
             json.dumps(questions, ensure_ascii=False).replace("</", "<\\/")))
+    morceaux.append(
+        '<script type="application/json" id="textes-quiz">{}</script>'.format(
+            json.dumps(t["quiz_script"], ensure_ascii=False).replace("</", "<\\/")))
     return "\n".join(morceaux)
 
 
@@ -156,7 +167,8 @@ def ecrire(chemin: Path, titre: str, questions: List[Dict[str, Any]],
     from .page import ecrire_page
 
     return ecrire_page(
-        chemin, "{} — quiz".format(titre), corps(questions, promesse),
-        sous_titre="{} question(s) pour verifier ce qui est acquis".format(
-            len(questions)),
+        chemin, libelles.libelle(langue, "quiz_titre", titre=titre),
+        corps(questions, promesse, langue),
+        sous_titre=libelles.libelle(langue, "quiz_sous_titre",
+                                    nombre=len(questions)),
         langue=langue, style=STYLE, script=SCRIPT)

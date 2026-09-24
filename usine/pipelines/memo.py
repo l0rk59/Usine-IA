@@ -26,7 +26,7 @@ from typing import Any, Dict, List
 
 from ..agents import equipe
 from ..render import document as D
-from ..render import livraison
+from ..render import libelles, livraison
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
 
 # Au-dela, ce n'est plus une antiseche. La borne n'est pas decorative : elle
@@ -77,7 +77,7 @@ def _structure(ctx: Contexte, nombre: int) -> List[Dict[str, Any]]:
 def produire(ctx: Contexte, nombre: int = 8,
              recto_verso: bool = False) -> Dict[str, Any]:
     nombre = max(3, min(int(nombre or 8), BLOCS_MAX))
-    titre = "Memo — {}".format(ctx.sujet)
+    titre = libelles.libelle(ctx.langue_iso, "memo_titre", sujet=ctx.sujet)
     dossier = preparer(ctx, "memo", titre)
 
     ctx.journal("Etape 1/2 — structure du memo...")
@@ -113,8 +113,9 @@ def _exporter(ctx: Contexte, titre: str, blocs: List[Dict[str, Any]],
     # « sur une page » etait imprime sur la couverture d'un PDF de six pages.
     # Une promesse qu'on lit avant d'ouvrir le fichier, et que le fichier ne
     # tient pas, coute plus qu'elle ne rapporte : on annonce ce qu'il y a.
+    t = libelles.textes(ctx.langue_iso)
     lignes = sum(len(b["lignes"]) for b in blocs)
-    sous_titre = "{} repere(s) en {} bloc(s)".format(lignes, len(blocs))
+    sous_titre = t["memo_sous_titre"].format(lignes=lignes, blocs=len(blocs))
     sections = [livraison.Bloc(
         titre=bloc["titre"],
         corps=_markdown_bloc(bloc),
@@ -133,10 +134,11 @@ def _exporter(ctx: Contexte, titre: str, blocs: List[Dict[str, Any]],
         # sort pas. Poser en plus « sommaire=False » ici serait un drapeau qui
         # ne garde rien — une campagne de mutation l'a montre, le retirer ne
         # faisait echouer aucun test.
-        promesse="L'essentiel, a garder a cote de soi", blocs=sections,
+        promesse=t["memo_promesse"], blocs=sections,
         tableaux=[livraison.Tableau(
-            nom="memo", colonnes=["Bloc", "Genre", "Ligne"],
-            lignes=[[bloc["titre"], bloc["genre"], ligne]
+            nom="memo", colonnes=list(t["memo_colonnes"]),
+            lignes=[[bloc["titre"],
+                     t["memo_genres"].get(bloc["genre"], bloc["genre"]), ligne]
                     for bloc in blocs for ligne in bloc["lignes"]])],
         donnees={"titre": titre, "blocs": blocs},
         nom_donnees="memo",

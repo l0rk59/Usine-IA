@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..core import (apprentissage, budget, config, controle, empreinte,
                     llm, store)
+from ..render import libelles
 from . import carnet
 
 TONS = {
@@ -357,7 +358,33 @@ def preparer(ctx: Contexte, type_produit: str, titre: str) -> Path:
     carnet.noter_commande(dossier)
     carnet.noter_fabrication(dossier, instantane(ctx),
                              relance=(ctx.meta or {}).get("relance"))
+    avertir_habillage(ctx)
     return dossier
+
+
+def avertir_habillage(ctx: Contexte) -> None:
+    """Dit, avant la premiere ligne ecrite, quand le mobilier ne suivra pas.
+
+    Le modele ecrit dans toutes les langues du reglage ; le texte fixe que
+    l'usine pose autour — licence, sommaire, mentions, mots du genre — n'est
+    ecrit qu'en francais et en anglais (« render/libelles.py »). Un livre
+    espagnol recoit donc un mobilier anglais, et une langue que l'usine ne
+    reconnait pas un mobilier francais. Ni l'un ni l'autre ne se voit avant
+    d'ouvrir le fichier livre : c'est ici qu'il faut le dire.
+    """
+    code = code_langue(ctx.langue, defaut="")
+    if code in libelles.LANGUES_TENUES:
+        return
+    if not code:
+        ctx.journal("Langue « {} » inconnue de l'usine : le texte fixe du "
+                    "produit (licence, sommaire, mentions) sera en francais, "
+                    "et ses metadonnees le declareront francais."
+                    .format(ctx.langue))
+        return
+    ctx.journal("Langue « {} » : le contenu sera redige dans cette langue, "
+                "mais le texte fixe du produit (licence, sommaire, mentions, "
+                "mots du genre) n'existe qu'en francais et en anglais — il "
+                "sera en anglais. A relire avant la vente.".format(ctx.langue))
 
 
 # Ce qui, dans le contexte, decide de l'ecriture — et doit donc etre le meme

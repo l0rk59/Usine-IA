@@ -42,7 +42,7 @@ from ..core import controle as ctrl
 from ..core import evenements, securite
 from ..core import serie as module_serie
 from ..render import document as D
-from ..render import livraison
+from ..render import libelles, livraison
 from . import fiction
 from . import carnet
 from . import faits
@@ -1549,10 +1549,11 @@ def exporter(ctx: Contexte, bible: Dict[str, Any],
     # La derniere page, quand il y a d'autres tomes. C'est la que la serie
     # devient une vente : un lecteur qui vient de finir est, a cet instant
     # precis, le plus disponible qu'il sera jamais pour en acheter un autre.
-    suite = module_serie.page_de_suite(serie, rang) if serie else ""
+    suite = (module_serie.page_de_suite(serie, rang, ctx.langue_iso)
+             if serie else "")
     if suite:
         blocs.append(livraison.Bloc(
-            titre=module_serie.TITRE_PAGE_DE_SUITE, corps=suite))
+            titre=libelles.libelle(ctx.langue_iso, "serie_page"), corps=suite))
 
     produit = livraison.Produit(
         type=genre,
@@ -1566,7 +1567,7 @@ def exporter(ctx: Contexte, bible: Dict[str, Any],
         style_couverture="literary fiction book cover, atmospheric, {}".format(
             bible.get("genre") or ctx.sujet),
         langue=ctx.langue_iso,
-        libelle_sections="scenes",
+        libelle_sections=libelles.libelle(ctx.langue_iso, "unite_scenes"),
     )
     return livraison.livrer(ctx, produit)
 
@@ -1616,15 +1617,26 @@ def rafraichir_serie(nom: str, journal=print) -> List[Dict[str, Any]]:
         _, chapitres = decouper(source.read_text(encoding="utf-8"))
         # La page de fin precedente est remplacee, pas empilee : sans cela,
         # rafraichir deux fois laisserait deux pages « La suite » qui se
-        # contredisent.
-        sections = [(titre, corps) for titre, corps in chapitres
-                    if titre != module_serie.TITRE_PAGE_DE_SUITE]
+        # contredisent. Reconnue sous TOUS les titres qu'elle a pu porter :
+        # un tome anglais fabrique avant que le mobilier suive la langue finit
+        # sur « La suite », et ne chercher que le titre anglais la laisserait
+        # en double. Seulement en derniere position, la ou l'export la pose :
+        # une scene que le modele aurait intitulee ainsi n'est pas une page de
+        # fin, et la retirer amputerait le recit.
+        titres_de_fin = {t["serie_page"] for t in libelles.LIBELLES.values()}
+        sections = list(chapitres)
+        while sections and sections[-1][0] in titres_de_fin:
+            sections.pop()
         if not sections:
             journal("  tome {} : aucune scene relue, ignore".format(
                 tome.get("rang")))
             continue
 
+        # La langue du tome, lue sur sa fiche : sans elle, le contexte
+        # repartait en francais et la page refaite habillait un recit anglais
+        # de mentions francaises.
         ctx = Contexte(sujet=fiche.get("sujet") or "", dossier=dossier,
+                       langue=fiche.get("langue") or "francais",
                        produit_id=fiche["id"], sans_image=False,
                        hors_ligne=True, journal=lambda _m: None)
         bible = {"titre": fiche.get("titre") or tome.get("titre") or "",

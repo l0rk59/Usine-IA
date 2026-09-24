@@ -25,7 +25,7 @@ from typing import Any, Callable, Dict, List, Sequence
 
 from ..agents import equipe
 from ..core import images
-from ..render import livraison
+from ..render import libelles, livraison
 from . import fiction
 from .base import (Contexte, nettoyer_titre, preparer,
                    sans_titres, terminer)
@@ -226,7 +226,16 @@ def lire_l_age(mesure: Dict[str, Any]) -> List[str]:
     return lectures
 
 
-def _album(page: Dict[str, Any], illustration: bytes) -> Callable[[Any], None]:
+def _tranche_lisible(tranche: str, t: Dict[str, Any]) -> str:
+    """« 6-8 ans » dans la langue du livre : « ages 6-8 » en anglais."""
+    bornes = re.match(r"\s*(\d+)\s*-\s*(\d+)", tranche or "")
+    if not bornes:
+        return tranche
+    return t["conte_tranche"].format(debut=bornes.group(1), fin=bornes.group(2))
+
+
+def _album(page: Dict[str, Any], illustration: bytes,
+           langue: str = "fr") -> Callable[[Any], None]:
     """Compose une double-page d'album dans le PDF.
 
     Pourquoi une mise en page a part. Le moteur commun compose un GUIDE : le
@@ -257,7 +266,8 @@ def _album(page: Dict[str, Any], illustration: bytes) -> Callable[[Any], None]:
                              espace_apres=24.0)
         if not pose and page.get("illustration"):
             doc.espace(16)
-            doc.encadre("Illustration a dessiner", page["illustration"])
+            doc.encadre(libelles.libelle(langue, "conte_illustration_a_dessiner"),
+                        page["illustration"])
             doc.espace(12)
         else:
             doc.espace(8)
@@ -324,6 +334,7 @@ def produire(ctx: Contexte, pages: int = 0,
               "{} image(s)".format(illustrees))
 
     ctx.journal("Etape 3/3 — export...")
+    t = libelles.textes(ctx.langue_iso)
     blocs = []
     ressources = []
     for page in conte["pages"]:
@@ -343,11 +354,12 @@ def produire(ctx: Contexte, pages: int = 0,
         elif page["illustration"]:
             # Citation et non italique : dans tous les formats a la fois, une
             # citation se distingue du recit. Une ligne en italique, non.
-            corps.append("> **Illustration** : {}".format(page["illustration"]))
+            corps.append(t["conte_note_illustration"].format(
+                texte=page["illustration"]))
         blocs.append(livraison.Bloc(
-            titre="Page {}".format(page["numero"]),
+            titre=t["conte_page"].format(numero=page["numero"]),
             corps="\n\n".join(corps),
-            rendu_pdf=_album(page, octets),
+            rendu_pdf=_album(page, octets, ctx.langue_iso),
             # Ni titre de chapitre ni entree de sommaire : un album n'a pas de
             # table des matieres, et quatorze lignes « Page 1 »... « Page 14 »
             # n'auraient renseigne personne.
@@ -355,13 +367,14 @@ def produire(ctx: Contexte, pages: int = 0,
             sommaire=False))
     produit = livraison.Produit(
         type="conte", titre=titre,
-        sous_titre="{} doubles-pages — {}".format(len(conte["pages"]), tranche),
+        sous_titre=t["conte_sous_titre"].format(
+            nombre=len(conte["pages"]), tranche=_tranche_lisible(tranche, t)),
         promesse=conte["heros"],
         blocs=blocs,
         donnees={"conte": conte, "lisibilite": mesure},
         nom_donnees="conte",
         formats=("md", "pdf", "html", "epub", "txt"),
-        libelle_sections="double(s)-page(s)",
+        libelle_sections=t["unite_doubles_pages"],
         ressources=tuple(ressources),
     )
     fichiers = livraison.livrer(ctx, produit)

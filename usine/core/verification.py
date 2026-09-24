@@ -33,6 +33,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from ..render import libelles
+
 # --------------------------------------------------------------------------
 # Ce qui interdit l'execution
 # --------------------------------------------------------------------------
@@ -61,6 +63,19 @@ class Souci:
     message: str
     ligne: int = 0
     extrait: str = ""
+    # Le motif et sa valeur, pour qui doit redire le souci dans une autre
+    # langue : le message est en francais, et la notice d'un outil vendu en
+    # anglais recopiait « erreur de syntaxe : invalid syntax » a l'acheteur.
+    motif: str = ""
+    valeur: str = ""
+
+
+def _souci(gravite: str, motif: str, valeur: str, ligne: int = 0,
+           extrait: str = "") -> Souci:
+    """Un souci dont le message vient de « render/libelles.py »."""
+    return Souci(gravite,
+                 libelles.FR["logiciel_soucis"][motif].format(valeur=valeur),
+                 ligne=ligne, extrait=extrait, motif=motif, valeur=valeur)
 
 
 @dataclass
@@ -118,8 +133,8 @@ def analyser_python(code: str, nom: str = "script.py") -> Rapport:
     except SyntaxError as exc:
         rapport.valide = False
         rapport.executable = False
-        rapport.soucis.append(Souci(
-            "casse", "erreur de syntaxe : {}".format(exc.msg),
+        rapport.soucis.append(_souci(
+            "casse", "syntaxe", str(exc.msg),
             ligne=exc.lineno or 0, extrait=(exc.text or "").strip()))
         return rapport
 
@@ -132,29 +147,25 @@ def analyser_python(code: str, nom: str = "script.py") -> Rapport:
             for nom_module in noms:
                 racine = (nom_module or "").split(".")[0]
                 if racine in MODULES_SENSIBLES:
-                    rapport.soucis.append(Souci(
-                        "dangereux",
-                        "importe « {} » : acces systeme ou reseau".format(racine),
-                        ligne=ligne))
+                    rapport.soucis.append(_souci(
+                        "dangereux", "import", racine, ligne=ligne))
 
         if isinstance(noeud, ast.Call):
             cible = _nom_appel(noeud.func)
             if cible in INTEGREES_INTERDITES:
-                rapport.soucis.append(Souci(
-                    "dangereux", "appelle « {}() »".format(cible), ligne=ligne))
+                rapport.soucis.append(_souci(
+                    "dangereux", "appel", cible, ligne=ligne))
             elif cible.startswith("os.") and cible.split(".", 1)[1] in OS_INTERDITS:
-                rapport.soucis.append(Souci(
-                    "dangereux", "appelle « {}() »".format(cible), ligne=ligne))
+                rapport.soucis.append(_souci(
+                    "dangereux", "appel", cible, ligne=ligne))
             elif cible == "open":
                 mode = _mode_ouverture(noeud)
                 if mode and any(c in mode for c in "wax+"):
                     chemin = _premier_texte(noeud)
                     if chemin and (chemin.startswith("/") or chemin.startswith("~")
                                    or ".." in chemin):
-                        rapport.soucis.append(Souci(
-                            "dangereux",
-                            "ecrit hors du dossier de travail : {}".format(chemin),
-                            ligne=ligne))
+                        rapport.soucis.append(_souci(
+                            "dangereux", "ecriture", chemin, ligne=ligne))
             elif cible == "input":
                 rapport.soucis.append(Souci(
                     "avertissement",
@@ -225,9 +236,8 @@ def analyser_js(code: str, nom: str = "script.js") -> Rapport:
             if resultat.returncode != 0:
                 rapport.valide = False
                 rapport.executable = False
-                rapport.soucis.append(Souci(
-                    "casse", "erreur de syntaxe : {}".format(
-                        _message_node(resultat.stderr or "")),
+                rapport.soucis.append(_souci(
+                    "casse", "syntaxe", _message_node(resultat.stderr or ""),
                     extrait=(resultat.stderr or "").strip()[:300]))
         except (subprocess.TimeoutExpired, OSError) as exc:
             rapport.verifie_par = "controle structurel (node indisponible)"
@@ -438,6 +448,9 @@ class Execution:
     sortie: str = ""
     erreur: str = ""
     refus: str = ""
+    # Le souci qui a motive le refus, pour le redire dans la langue du produit.
+    motif: str = ""
+    valeur: str = ""
 
     @property
     def reussi(self) -> bool:
@@ -456,8 +469,9 @@ def executer_python(
     pas sur votre telephone un code qu'aucun humain n'a lu.
     """
     if rapport is not None and not rapport.executable:
-        raison = (rapport.casse or rapport.dangers)[0].message
-        return Execution(refus="analyse statique : {}".format(raison))
+        souci = (rapport.casse or rapport.dangers)[0]
+        return Execution(refus="analyse statique : {}".format(souci.message),
+                         motif=souci.motif, valeur=souci.valeur)
 
     environnement = dict(os.environ)
     # Un script genere n'a aucune raison d'atteindre le reseau pendant la

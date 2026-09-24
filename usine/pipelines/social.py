@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 from ..agents import equipe
 from ..core import images
 from ..render import document as D
-from ..render import livraison, tableur
+from ..render import libelles, livraison, tableur
 from ..render.page import ecrire_page
 from .base import (Contexte, nettoyer_titre, preparer, renommer, slug,
                    terminer)
@@ -172,7 +172,8 @@ def _titre(ctx: Contexte, combien: int, reseau: str) -> str:
     ses accroches, mais un post rendu sans texte disparait sans que le titre
     bouge.
     """
-    return "{} posts {} — {}".format(combien, reseau.capitalize(), ctx.sujet)
+    return libelles.libelle(ctx.langue_iso, "social_titre", nombre=combien,
+                            reseau=reseau.capitalize(), sujet=ctx.sujet)
 
 
 def produire(ctx: Contexte, nombre: int = 30, reseau: str = "linkedin",
@@ -247,13 +248,12 @@ def _exporter(ctx: Contexte, titre: str, reseau: str, calendrier: List[Dict[str,
               posts: List[Dict[str, str]]) -> List[Path]:
     dossier = ctx.dossier
     fichiers: List[Path] = []
+    t = libelles.textes(ctx.langue_iso)
 
     chemin_csv = dossier / "calendrier.csv"
     with chemin_csv.open("w", encoding="utf-8", newline="") as flux:
         auteur = csv.writer(flux)
-        auteur.writerow(tableur.ligne(
-            ["Jour", "Angle", "Objectif", "Texte", "Hashtags",
-             "Idee de visuel"]))
+        auteur.writerow(tableur.ligne(list(t["social_colonnes"])))
         index_calendrier = {str(p["jour"]): p for p in calendrier}
         for post in posts:
             reference = index_calendrier.get(post["jour"], {})
@@ -266,7 +266,7 @@ def _exporter(ctx: Contexte, titre: str, reseau: str, calendrier: List[Dict[str,
 
     lignes = ["# {}\n".format(titre)]
     for post in posts:
-        lignes.append("\n## Jour {}\n".format(post["jour"]))
+        lignes.append("\n## {}\n".format(t["social_jour"].format(jour=post["jour"])))
         lignes.append(post["texte"])
         if post["hashtags"]:
             lignes.append("\n`{}`\n".format(post["hashtags"]))
@@ -285,21 +285,15 @@ def _exporter(ctx: Contexte, titre: str, reseau: str, calendrier: List[Dict[str,
     couverture = None
     if not ctx.sans_image:
         couverture = images.generer_couverture(
-            ctx.dossier, titre, "Calendrier editorial pret a publier",
+            ctx.dossier, titre, t["social_sous_titre"],
             ctx.auteur, marque=getattr(ctx, "marque", "") or "")
         fichiers.append(couverture)
-    doc = livraison.document(ctx, titre, "Calendrier editorial pret a publier",
+    doc = livraison.document(ctx, titre, t["social_sous_titre"],
                              couverture, police_corps="Helvetica")
-    doc.titre("Mode d'emploi", 1)
-    doc.paragraphe(
-        "Publiez une piece de contenu par jour ouvre. Adaptez les chiffres et les "
-        "exemples a votre realite : un post credible vaut mieux qu'un post parfait. "
-        "Le fichier calendrier.csv s'importe directement dans un tableur ou un outil "
-        "de programmation.",
-        justifier=True,
-    )
+    doc.titre(t["social_mode_emploi_titre"], 1)
+    doc.paragraphe(t["social_mode_emploi"], justifier=True)
     for post in posts:
-        doc.titre("Jour {}".format(post["jour"]), 2)
+        doc.titre(t["social_jour"].format(jour=post["jour"]), 2)
         doc.paragraphe(post["texte"], taille=10.5)
         if post["hashtags"]:
             doc.paragraphe(post["hashtags"], taille=9.5, police="Helvetica-Oblique")
@@ -314,7 +308,8 @@ def _exporter(ctx: Contexte, titre: str, reseau: str, calendrier: List[Dict[str,
 
     corps = []
     for post in posts:
-        corps.append("<h2>Jour {}</h2>".format(post["jour"]))
+        corps.append("<h2>{}</h2>".format(
+            D.inline_html(t["social_jour"].format(jour=post["jour"]))))
         corps.append("<pre>{}</pre>".format(
             post["texte"].replace("&", "&amp;").replace("<", "&lt;")
         ))
@@ -322,7 +317,8 @@ def _exporter(ctx: Contexte, titre: str, reseau: str, calendrier: List[Dict[str,
             corps.append("<p><code>{}</code></p>".format(
                 D.inline_html(post["hashtags"])))
     chemin_html = dossier / "lire.html"
-    ecrire_page(chemin_html, titre, "\n".join(corps), "Pack de contenu " + reseau,
+    ecrire_page(chemin_html, titre, "\n".join(corps),
+                t["social_pack"].format(reseau=reseau),
                 ctx.auteur, langue=ctx.langue_iso)
     fichiers.append(chemin_html)
     return fichiers

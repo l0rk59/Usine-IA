@@ -21,7 +21,7 @@ from typing import Any, Dict, List
 
 from ..agents import equipe
 from ..render import document as D
-from ..render import livraison
+from ..render import libelles, livraison
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
 
 # Ce que la sequence cherche a obtenir. Le vocabulaire du metier, parce que
@@ -133,7 +133,7 @@ def produire(ctx: Contexte, nombre: int = 7, intention: str = "bienvenue",
     rythme = max(1, min(int(rythme or 2), 14))
     objectif = intention if intention in OBJECTIFS else "bienvenue"
 
-    titre = "Sequence e-mail — {}".format(ctx.sujet)
+    titre = libelles.libelle(ctx.langue_iso, "sequence_titre", titre=ctx.sujet)
     dossier = preparer(ctx, "emails", titre)
 
     ctx.journal("Etape 1/3 — progression de la sequence...")
@@ -178,59 +178,41 @@ def produire(ctx: Contexte, nombre: int = 7, intention: str = "bienvenue",
 
 def _exporter(ctx: Contexte, titre: str, plan: List[Dict[str, Any]],
               objectif: str, rythme: int) -> List[Path]:
-    sous_titre = "{} messages, un tous les {} jour(s)".format(
-        len(plan), rythme)
+    t = libelles.textes(ctx.langue_iso)
+    sous_titre = t["emails_sous_titre"].format(nombre=len(plan), rythme=rythme)
 
     def mode_emploi(doc) -> None:
-        doc.paragraphe(
-            "Cette sequence s'envoie dans l'ordre, a partir du jour de "
-            "l'inscription. Le calendrier ci-dessous donne le decalage de "
-            "chaque message ; la plupart des outils d'emailing le demandent "
-            "sous cette forme.", justifier=True)
-        doc.paragraphe(
-            "Le fichier CSV livre avec ce document s'importe directement "
-            "dans un outil d'emailing : une ligne par message, avec l'objet, "
-            "l'apercu et le corps.", justifier=True)
-        doc.encadre(
-            "Avant d'envoyer",
-            "Relisez chaque message en pensant a une personne precise de "
-            "votre liste. Remplacez les crochets par vos informations, et "
-            "verifiez que le lien de desinscription est present : il est "
-            "obligatoire, et son absence suffit a faire classer vos envois "
-            "en indesirables.")
+        doc.paragraphe(t["emails_ordre"], justifier=True)
+        doc.paragraphe(t["emails_csv"], justifier=True)
+        doc.encadre(t["emails_avant_titre"], t["emails_avant"])
 
     # Voir le commentaire de « quiz.py » : sans « corps », ce bloc n'existe
     # que dans le PDF, et la page HTML — celle qu'on ouvre sur un telephone —
     # s'ouvre directement sur le premier message, sans mode d'emploi.
+    avant = t["emails_avant"]
     blocs = [livraison.Bloc(
-        titre="Comment envoyer cette sequence",
-        corps="Cette sequence s'envoie dans l'ordre, a partir du jour de "
-              "l'inscription. Le calendrier ci-dessous donne le decalage de "
-              "chaque message ; la plupart des outils d'emailing le "
-              "demandent sous cette forme.\n\n"
-              "Le fichier CSV livre avec ce document s'importe directement "
-              "dans un outil d'emailing : une ligne par message, avec "
-              "l'objet, l'apercu et le corps.\n\n"
-              "**Avant d'envoyer** — relisez chaque message en pensant a une "
-              "personne precise de votre liste. Remplacez les crochets par "
-              "vos informations, et verifiez que le lien de desinscription "
-              "est present : il est obligatoire, et son absence suffit a "
-              "faire classer vos envois en indesirables.",
+        titre=t["emails_mode_emploi_titre"],
+        corps="{}\n\n{}\n\n**{}** — {}".format(
+            t["emails_ordre"], t["emails_csv"], t["emails_avant_titre"],
+            avant[:1].lower() + avant[1:]),
         rendu_pdf=mode_emploi)]
     for message in plan:
         blocs.append(livraison.Bloc(
-            titre="Jour {} — {}".format(message["jour"], message["objet"]),
-            corps=_markdown_message(message),
-            rendu_pdf=_mise_en_page(message),
-            rendu_html=_html_message(message),
+            titre=t["sequence_jour"].format(jour=message["jour"],
+                                            objet=message["objet"]),
+            corps=_markdown_message(message, t),
+            rendu_pdf=_mise_en_page(message, t),
+            rendu_html=_html_message(message, t),
         ))
 
     produit = livraison.Produit(
         type="emails", titre=titre, sous_titre=sous_titre,
-        promesse=OBJECTIFS[objectif].capitalize(), blocs=blocs,
+        promesse=t["emails_objectifs"].get(objectif,
+                                           OBJECTIFS[objectif]).capitalize(),
+        blocs=blocs,
         tableaux=[livraison.Tableau(
             nom="sequence",
-            colonnes=["Jour", "Objet", "Apercu", "Corps", "P.S.", "Action"],
+            colonnes=list(t["emails_colonnes"]),
             # Le CSV s'importe dans un outil d'e-mailing, qui envoie le texte
             # tel quel : un « **mot** » y arrivait, etoiles comprises, dans la
             # boite de chaque abonne. La page et le PDF, eux, rendent le gras.
@@ -254,26 +236,30 @@ def _exporter(ctx: Contexte, titre: str, plan: List[Dict[str, Any]],
     return livraison.livrer(ctx, produit)
 
 
-def _markdown_message(message: Dict[str, Any]) -> str:
-    lignes = ["**Objet :** {}".format(message["objet"])]
+def _markdown_message(message: Dict[str, Any], t: Dict[str, Any]) -> str:
+    lignes = [t["deux_points"].format(libelle="**{}**".format(t["emails_objet"]),
+                                      texte=message["objet"])]
     if message.get("apercu"):
-        lignes.append("**Apercu :** {}".format(message["apercu"]))
+        lignes.append(t["deux_points"].format(
+            libelle="**{}**".format(t["emails_apercu"]), texte=message["apercu"]))
     lignes.append("")
     lignes.append(message.get("corps", ""))
     if message.get("post_scriptum"):
         lignes.append("\n*P.S. — {}*".format(message["post_scriptum"]))
     if message.get("action"):
-        lignes.append("\n> Ce que ce message demande : {}".format(
-            message["action"]))
+        lignes.append("\n> " + t["deux_points"].format(
+            libelle=t["emails_demande"], texte=message["action"]))
     return "\n".join(lignes)
 
 
-def _mise_en_page(message: Dict[str, Any]):
+def _mise_en_page(message: Dict[str, Any], t: Dict[str, Any]):
     def rendre(doc) -> None:
-        doc.paragraphe("Objet : " + message["objet"], taille=11,
-                       police="Helvetica-Bold")
+        doc.paragraphe(t["deux_points"].format(libelle=t["emails_objet"],
+                                               texte=message["objet"]),
+                       taille=11, police="Helvetica-Bold")
         if message.get("apercu"):
-            doc.paragraphe("Apercu : " + message["apercu"], taille=9,
+            doc.paragraphe(t["deux_points"].format(libelle=t["emails_apercu"],
+                                                   texte=message["apercu"]), taille=9,
                            police="Helvetica-Oblique")
         # Le corps passe par l'analyseur, comme dans la page : une citation,
         # une liste, un encadre « A retenir » sortaient avec leurs « > » et
@@ -283,14 +269,15 @@ def _mise_en_page(message: Dict[str, Any]):
             doc.paragraphe("P.S. — " + message["post_scriptum"], taille=10,
                            police="Helvetica-Oblique")
         if message.get("action"):
-            doc.encadre("Ce que ce message demande", message["action"])
+            doc.encadre(t["emails_demande"], message["action"])
 
     return rendre
 
 
-def _html_message(message: Dict[str, Any]) -> str:
-    corps = ["<p><strong>Objet :</strong> {}</p>".format(
-        D.inline_html(message["objet"]))]
+def _html_message(message: Dict[str, Any], t: Dict[str, Any]) -> str:
+    corps = ["<p>{}</p>".format(t["deux_points"].format(
+        libelle="<strong>{}</strong>".format(D.inline_html(t["emails_objet"])),
+        texte=D.inline_html(message["objet"])))]
     if message.get("apercu"):
         corps.append("<p><em>{}</em></p>".format(D.inline_html(message["apercu"])))
     corps.append(D.vers_html(D.analyser(message.get("corps", ""))))
@@ -299,6 +286,7 @@ def _html_message(message: Dict[str, Any]) -> str:
             D.inline_html(message["post_scriptum"])))
     if message.get("action"):
         corps.append('<aside class="encadre"><p class="encadre-titre">'
-                     "Ce que ce message demande</p><p>{}</p></aside>".format(
+                     "{}</p><p>{}</p></aside>".format(
+                         D.inline_html(t["emails_demande"]),
                          D.inline_html(message["action"])))
     return "\n".join(corps)

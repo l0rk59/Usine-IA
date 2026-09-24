@@ -126,9 +126,10 @@ class TestDonneesEmbarquees(unittest.TestCase):
                   "propositions": ["Rien", "Il casse la page"],
                   "reponse": 1, "explication": "</script> ferme la balise."}]
         page = _ecrire(piege)
-        # Une seule balise de script ouvrante pour les donnees, une pour le
-        # comportement : la charge ne doit pas en fabriquer une troisieme.
-        self.assertEqual(page.count("</script>"), 2)
+        # Trois blocs de script : les donnees, les textes que le script
+        # affiche, et le comportement. La charge ne doit pas en fabriquer un
+        # quatrieme.
+        self.assertEqual(page.count("</script>"), 3)
         self.assertIn("<\\/script>", page)
 
     def test_le_html_d_une_question_est_echappe(self):

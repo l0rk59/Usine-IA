@@ -137,7 +137,7 @@ class Produit:
         return self.nom_fichier or slug(self.titre, 46)
 
 
-def _mentions_droits() -> List[str]:
+def _mentions_droits(langue: str = "fr") -> List[str]:
     """Lignes ajoutees a la page de copyright de l'EPUB.
 
     La mention d'assistance IA suit le meme reglage que celle de la licence
@@ -145,9 +145,10 @@ def _mentions_droits() -> List[str]:
     repondre differemment a la meme case a cocher.
     """
     from ..core import reglages
-    from ..packaging.livraison import MENTION_IA_COURTE
+    from . import libelles
 
-    return [MENTION_IA_COURTE] if reglages.lire("signature_ia", True) else []
+    return ([libelles.libelle(langue, "mention_ia_courte")]
+            if reglages.lire("signature_ia", True) else [])
 
 
 def _couverture_existante(dossier: Path) -> Optional[Path]:
@@ -245,7 +246,9 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
         # avec son filet bleu et rien dessous. Personne ne l'avait vu parce
         # qu'aucun produit n'avait, jusqu'au conte, de blocs sans titre PDF.
         if doc.sommaire and produit.sommaire:
-            doc.inserer_sommaire(apres=1)
+            from . import libelles
+
+            doc.inserer_sommaire(libelles.libelle(langue, "sommaire"), apres=1)
         chemin = dossier / "{}{}.pdf".format(base, produit.suffixe_pdf)
         doc.enregistrer(chemin)
         fichiers.append(chemin)
@@ -270,7 +273,7 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
             langue=langue, sous_titre=produit.sous_titre,
             description=produit.promesse, couverture=image,
             editeur=getattr(ctx, "marque", "") or "",
-            mentions=_mentions_droits(),
+            mentions=_mentions_droits(langue),
             dedicace=getattr(ctx, "dedicace", "") or "",
             ressources=[(nom, (dossier / nom).read_bytes())
                         for nom in produit.ressources

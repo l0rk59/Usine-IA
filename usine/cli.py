@@ -25,8 +25,8 @@ from .marketing import vente
 from .packaging import livraison
 from .pipelines import apres
 from .pipelines import boite_outils, catalogue, ebook, logiciel, social
-from .pipelines.base import (CHAPITRES_MAX, CHAPITRES_MIN, Contexte, MOTS_MAX,
-                             MOTS_MIN, TAILLES, TONS)
+from .pipelines.base import (CHAPITRES_MAX, CHAPITRES_MIN, MOTS_MAX, MOTS_MIN,
+                             TAILLES, TONS, Contexte, code_langue)
 
 # Couleurs ANSI : Termux les gere, mais on s'abstient si la sortie est redirigee.
 _COULEUR = sys.stdout.isatty()
@@ -2030,6 +2030,7 @@ def cmd_livrer(args: argparse.Namespace) -> int:
         promesse=str(meta.get("promesse") or ""),
         contact=args.contact or "",
         livres=meta.get("fichiers"),
+        langue=code_langue(produit.get("langue") or ""),
     )
     ok("Archive : {} ({} Ko)".format(archive, archive.stat().st_size // 1024))
     return 0

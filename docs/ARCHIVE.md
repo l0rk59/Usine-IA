@@ -66,7 +66,9 @@ Un filtre qui ne laisse rien passer livrerait une archive vide. Ce qui doit
 partir part :
 
 - les fichiers déclarés par la chaîne, **couverture comprise** ;
-- `LISEZ-MOI.md` et `LICENCE.txt`, que l'empaquetage écrit lui-même.
+- `LISEZ-MOI.md` et `LICENCE.txt`, que l'empaquetage écrit lui-même —
+  `README.md` et `LICENSE.txt` pour un produit en anglais, et seulement
+  ceux de la langue du produit (voir [LANGUE-LIVREE.md](LANGUE-LIVREE.md)).
 
 ## Deux tests qui ne gardaient rien
 

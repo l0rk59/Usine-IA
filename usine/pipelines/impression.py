@@ -14,7 +14,7 @@ from typing import Any, Dict, List
 from ..agents import equipe
 from ..core import evenements, images
 from ..render import document as D
-from ..render import livraison
+from ..render import libelles, livraison
 from ..render.page import ecrire_page
 from ..render.pdf import A4, LETTRE, DocumentPDF
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
@@ -69,29 +69,30 @@ def _cahier(ctx: Contexte, pages: int) -> Dict[str, Any]:
     return cahier
 
 
-def _dessiner_fiche(doc: DocumentPDF, fiche: Dict[str, Any]) -> None:
+def _dessiner_fiche(doc: DocumentPDF, fiche: Dict[str, Any],
+                    t: Dict[str, Any]) -> None:
     """Une fiche par page, adaptee a sa disposition."""
     doc.titre(fiche["titre"], 1)
     if fiche["consigne"]:
-        doc.encadre("Comment remplir cette fiche", fiche["consigne"])
+        doc.encadre(t["impression_comment_remplir"], fiche["consigne"])
 
     disposition = fiche["disposition"]
     if disposition == "checklist":
         doc.cases_a_cocher(fiche["elements"] or ["", "", "", "", "", ""])
-        doc.titre("Notes", 2)
+        doc.titre(t["impression_notes"], 2)
         doc.lignes_a_remplir(4)
     elif disposition == "planning":
-        jours = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
+        jours = list(t["impression_jours"])
         if fiche["elements"]:
-            doc.titre("Priorites de la semaine", 2)
+            doc.titre(t["impression_priorites"], 2)
             doc.cases_a_cocher(fiche["elements"][:4])
-        doc.titre("Semaine", 2)
+        doc.titre(t["impression_semaine"], 2)
         doc.grille(7, 4, titres=jours)
     elif disposition == "suivi":
-        colonnes = fiche["colonnes"] or ["Date", "Action", "Resultat", "Suite"]
+        colonnes = fiche["colonnes"] or list(t["impression_suivi_colonnes"])
         doc.tableau(colonnes, [], lignes_vides=14)
     elif disposition == "questions":
-        for question in (fiche["elements"] or ["Question"])[:6]:
+        for question in (fiche["elements"] or [t["impression_question"]])[:6]:
             doc.titre(question, 3)
             doc.lignes_a_remplir(3)
     elif disposition == "matrice":
@@ -139,6 +140,7 @@ def produire(ctx: Contexte, pages: int = 12,
 
     ctx.journal("Etape 3/3 — generation des deux formats...")
     fichiers: List[Path] = []
+    t = libelles.textes(ctx.langue_iso)
     if couverture:
         fichiers.append(couverture)
     for nom_format, format_page in (("A4", A4), ("Lettre-US", LETTRE)):
@@ -146,24 +148,17 @@ def produire(ctx: Contexte, pages: int = 12,
                                  couverture, format_page=format_page,
                                  marge=54, police_corps="Helvetica",
                                  reliure=reliure_points)
-        doc.titre("Mode d'emploi", 1)
-        doc.paragraphe(
-            "Imprimez ce cahier en recto simple, sur papier ordinaire. Chaque fiche "
-            "tient sur une page et se remplit a la main. Vous pouvez aussi le "
-            "completer a l'ecran avec une application d'annotation PDF.",
-            justifier=True)
+        doc.titre(t["impression_mode_emploi_titre"], 1)
+        doc.paragraphe(t["impression_mode_emploi"], justifier=True)
         if reliure_points:
-            doc.encadre(
-                "Impression a la demande",
-                "Ce cahier est mis en page pour une reliure : le contenu est "
-                "decale de {:.0f} mm vers l'exterieur, alternativement a "
-                "gauche et a droite, pour que rien ne disparaisse dans la "
-                "pliure. Imprimez-le en recto-verso.".format(reliure_mm))
+            doc.encadre(t["impression_a_la_demande_titre"],
+                        t["impression_a_la_demande"].format(
+                            mm="{:.0f}".format(reliure_mm)))
         if cahier.get("promesse"):
-            doc.encadre("Ce que ce cahier vous apporte", str(cahier["promesse"]))
+            doc.encadre(t["impression_apporte"], str(cahier["promesse"]))
         for fiche in cahier["fiches"]:
-            _dessiner_fiche(doc, fiche)
-        doc.inserer_sommaire(apres=1)
+            _dessiner_fiche(doc, fiche, t)
+        doc.inserer_sommaire(t["sommaire"], apres=1)
         chemin = dossier / "{}-{}.pdf".format(slug(titre, 40), nom_format)
         doc.enregistrer(chemin)
         fichiers.append(chemin)
@@ -176,9 +171,13 @@ def produire(ctx: Contexte, pages: int = 12,
     # dans une consigne cassait la page, une balise y aurait ete interpretee
     # chez l'acheteur, et un « **mot** » restait en clair (balayage du
     # 24/09/2026). « inline_html » echappe et rend le gras, comme ailleurs.
-    corps = ["<h2>{}</h2><p>{}</p><p><em>Disposition : {}</em></p>".format(
+    corps = ["<h2>{}</h2><p>{}</p><p><em>{}</em></p>".format(
         D.inline_html(f["titre"]), D.inline_html(f["consigne"]),
-        D.inline_html(f["disposition"])) for f in cahier["fiches"]]
+        D.inline_html(t["deux_points"].format(
+            libelle=t["impression_disposition"],
+            texte=t["impression_dispositions"].get(f["disposition"],
+                                                   f["disposition"]))))
+        for f in cahier["fiches"]]
     chemin_html = dossier / "lire.html"
     ecrire_page(chemin_html, titre, "\n".join(corps), cahier.get("sous_titre", ""),
                 ctx.auteur, langue=ctx.langue_iso,

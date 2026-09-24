@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Tuple
 
 from ..agents import equipe
 from ..core import evenements, verification
-from ..render import livraison
+from ..render import libelles, livraison
 from .base import Contexte, elaguer_markdown, nettoyer_titre, preparer, slug, terminer
 
 CIBLES = {
@@ -230,6 +230,9 @@ def _essai_reel(ctx: Contexte, fichiers: Dict[str, str],
                 "reussi": execution.reussi,
                 "code_retour": execution.code_retour,
                 "refus": execution.refus,
+                "motif": execution.motif,
+                "valeur": execution.valeur,
+                "tests": chemin.startswith("test_"),
                 "erreur": execution.erreur[:600],
                 "sortie": execution.sortie[:600],
             })
@@ -319,11 +322,14 @@ def _livrer(ctx: Contexte, specification: Dict[str, Any], cible: str,
             essais: Dict[str, Any]) -> List[Path]:
     """Documentation du produit, via l'assemblage commun."""
     fiche = CIBLES[cible]
+    t = libelles.textes(ctx.langue_iso)
     blocs = [
-        livraison.Bloc("Ce que fait cet outil", _markdown_presentation(specification)),
-        livraison.Bloc("Installation et utilisation",
-                       _markdown_installation(specification, cible)),
-        livraison.Bloc("Verification du code", _markdown_verification(synthese, essais)),
+        livraison.Bloc(t["logiciel_ce_que_fait"],
+                       _markdown_presentation(specification, t)),
+        livraison.Bloc(t["logiciel_installation"],
+                       _markdown_installation(specification, cible, t)),
+        livraison.Bloc(t["logiciel_verification"],
+                       _markdown_verification(synthese, essais, t)),
     ]
     produit = livraison.Produit(
         type="logiciel", titre=specification["titre"],
@@ -339,80 +345,87 @@ def _livrer(ctx: Contexte, specification: Dict[str, Any], cible: str,
         police_corps="Helvetica",
         style_couverture="developer tool cover, technical, monospace aesthetic",
         nom_fichier=specification["nom"],
-        libelle_sections="sections",
+        libelle_sections=t["unite_sections_simple"],
     )
     return livraison.livrer(ctx, produit)
 
 
-def _markdown_presentation(specification: Dict[str, Any]) -> str:
+def _markdown_presentation(specification: Dict[str, Any],
+                           t: Dict[str, Any]) -> str:
     lignes = []
     if specification.get("probleme"):
         lignes.append(specification["probleme"] + "\n")
     if specification.get("fonctionnalites"):
-        lignes.append("## Fonctions\n")
+        lignes.append("## {}\n".format(t["logiciel_fonctions"]))
         lignes += ["- " + f for f in specification["fonctionnalites"]]
     if specification.get("limites"):
-        lignes.append("\n## Ce que cet outil ne fait pas\n")
+        lignes.append("\n## {}\n".format(t["logiciel_limites"]))
         lignes += ["- " + l for l in specification["limites"]]
-        lignes.append("\nLe dire evite les deceptions, et les demandes de "
-                      "remboursement qui vont avec.")
+        lignes.append("\n" + t["logiciel_limites_pourquoi"])
     return "\n".join(lignes)
 
 
-def _markdown_installation(specification: Dict[str, Any], cible: str) -> str:
+def _markdown_installation(specification: Dict[str, Any], cible: str,
+                           t: Dict[str, Any]) -> str:
     if cible == "cli":
-        return (
-            "Aucune installation : le script n'utilise que la bibliotheque "
-            "standard de Python.\n\n"
-            "```\npython3 source/outil.py --help\n```\n\n"
-            "Utilisation type :\n\n```\n{}\n```\n\n"
-            "Les tests se lancent avec :\n\n```\npython3 source/test_outil.py\n```"
-        ).format(specification.get("utilisation", "python3 source/outil.py"))
+        return t["logiciel_cli"].format(
+            utilisation=specification.get("utilisation", "python3 source/outil.py"))
     if cible == "web":
-        return (
-            "Ouvrez `source/index.html` dans n'importe quel navigateur. Il n'y a "
-            "rien a installer et rien a configurer : tout le code est dans ce "
-            "fichier, il fonctionne hors connexion.\n\n"
-            "Pour le mettre en ligne, deposez ce seul fichier chez n'importe quel "
-            "hebergeur statique."
-        )
-    return (
-        "1. Ouvrez `chrome://extensions` dans Chrome.\n"
-        "2. Activez le « mode developpeur » en haut a droite.\n"
-        "3. Cliquez sur « Charger l'extension non empaquetee ».\n"
-        "4. Choisissez le dossier `source/`.\n\n"
-        "Pour la publier, compressez le dossier `source/` et deposez l'archive "
-        "sur le Chrome Web Store."
-    )
+        return t["logiciel_web"]
+    return t["logiciel_extension"]
+
+
+def _refus_lisible(essai: Dict[str, Any], t: Dict[str, Any]) -> str:
+    """Le refus d'executer, dans la langue du produit.
+
+    L'entete (« analyse statique ») et le motif du souci se traduisent ; la
+    valeur — un nom de module, le message de Python — reste telle quelle. Un
+    motif inconnu garde son texte : mieux vaut un detail en francais qu'un
+    detail perdu.
+    """
+    refus = essai["refus"]
+    tete, separateur, reste = refus.partition(" : ")
+    traduit = t["logiciel_refus"].get(tete)
+    if not traduit or not separateur:
+        return refus
+    gabarit = t["logiciel_soucis"].get(essai.get("motif") or "")
+    if gabarit:
+        reste = gabarit.format(valeur=essai.get("valeur", ""))
+    return t["deux_points"].format(libelle=traduit, texte=reste)
 
 
 def _markdown_verification(synthese: Dict[str, Any],
-                           essais: Dict[str, Any]) -> str:
+                           essais: Dict[str, Any], t: Dict[str, Any]) -> str:
     lignes = [
-        "Ce code a ete verifie avant livraison. Voici exactement ce qui a ete "
-        "controle.\n",
-        "| Fichier | Verification | Resultat |",
+        t["logiciel_verifie"],
+        "| {} |".format(" | ".join(t["logiciel_colonnes"])),
         "| --- | --- | --- |",
     ]
     for detail in synthese["detail"]:
-        etat = "correct" if detail["valide"] else "**a corriger**"
+        etat = t["logiciel_correct"] if detail["valide"] else t["logiciel_a_corriger"]
         lignes.append("| `{}` | {} | {} |".format(
-            detail["fichier"], detail["verifie_par"], etat))
+            detail["fichier"],
+            t["logiciel_verifie_par"].get(detail["verifie_par"],
+                                          detail["verifie_par"]), etat))
 
     for essai in essais.get("essais", []):
         if essai["refus"]:
-            resultat = "non execute : {}".format(essai["refus"])
+            resultat = t["logiciel_non_execute"].format(
+                refus=_refus_lisible(essai, t))
         elif essai["reussi"]:
-            resultat = "demarre correctement"
+            resultat = t["logiciel_demarre"]
         else:
-            resultat = "**echec**"
-        lignes.append("| `{}` | execution reelle | {} |".format(
-            essai["quoi"], resultat))
+            resultat = t["logiciel_echec"]
+        quoi = (t["logiciel_tests_unitaires"] if essai.get("tests")
+                else essai["quoi"])
+        lignes.append("| `{}` | {} | {} |".format(
+            quoi, t["logiciel_execution"], resultat))
 
+    # Le fichier ou ces remarques sont detaillees reste a l'atelier : la
+    # notice y renvoyait l'acheteur, qui ne l'a jamais recu.
     if synthese["avertissements"]:
-        lignes.append("\n{} remarque(s) sans gravite figurent dans "
-                      "`verification.json`.".format(synthese["avertissements"]))
+        lignes.append("\n" + t["logiciel_remarques"].format(
+            nombre=synthese["avertissements"]))
     if not synthese["tout_valide"]:
-        lignes.append("\n**Attention :** un ou plusieurs fichiers n'ont pas passe "
-                      "la verification. Relisez-les avant toute mise en vente.")
+        lignes.append("\n" + t["logiciel_attention"])
     return "\n".join(lignes)

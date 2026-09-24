@@ -8,99 +8,28 @@ import zipfile
 from pathlib import Path
 from typing import List, Optional, Sequence
 
-LICENCE = """LICENCE D'UTILISATION — {titre}
+from ..render import libelles
 
-(c) {annee} {auteur}. Tous droits reserves.
-
-CE QUE VOUS POUVEZ FAIRE
-- Utiliser ce produit pour votre usage personnel ou professionnel.
-- Appliquer les methodes decrites a votre activite, sans limite.
-- Adapter les modeles fournis a vos propres besoins.
-
-CE QUE VOUS NE POUVEZ PAS FAIRE
-- Revendre, redistribuer ou partager les fichiers, meme gratuitement.
-- Publier le contenu, en tout ou partie, sous votre nom.
-- Inclure ce produit dans une offre groupee sans autorisation ecrite.
-
-AVERTISSEMENT
-Ce produit est fourni a titre informatif. Il ne constitue ni un conseil
-juridique, ni un conseil fiscal, ni un conseil medical, ni un conseil en
-investissement. Aucun resultat n'est garanti : les resultats dependent de
-votre situation, de votre marche et de votre execution. L'auteur ne peut
-etre tenu responsable des decisions prises sur la base de ce document.
-{transparence}"""
-
-# Mention d'assistance IA, ajoutee selon le reglage « signature_ia ». Beaucoup
-# de places de marche et le reglement europeen sur l'IA attendent cette
-# transparence ; on la met donc par defaut, tout en la rendant desactivable.
-TRANSPARENCE = """
-
-TRANSPARENCE
-Ce produit a ete elabore avec l'assistance d'outils d'intelligence
-artificielle, puis structure et mis en forme par Usine-IA. Relisez et
-adaptez le contenu a votre contexte avant toute diffusion commerciale.
-"""
-
-# Version d'une ligne de la mention ci-dessus, pour la page de copyright de
-# l'EPUB : une page de droits est un bloc dense et court, pas un paragraphe.
-MENTION_IA_COURTE = ("Ouvrage elabore avec l'assistance d'outils "
-                     "d'intelligence artificielle.")
-
-NOTICE = """# {titre}
-
-{promesse}
-
-Merci pour votre achat.
-
-## Ce que contient ce dossier
-
-{fichiers}
-
-## Par ou commencer
-
-1. Ouvrez le fichier PDF : c'est la version de reference, mise en page pour
-   la lecture et l'impression.
-2. Sur liseuse ou telephone, preferez le fichier EPUB s'il est present.
-3. Le fichier `lire.html` s'ouvre dans n'importe quel navigateur, y compris
-   hors connexion, et s'imprime proprement.
-4. Les fichiers `.md`, `.csv` et `.json` sont la pour que vous puissiez
-   reutiliser le contenu dans vos propres outils.
-
-## Accessibilite
-
-Le fichier EPUB est structure pour la lecture assistee : ordre de lecture
-logique, titres hierarchises, table des matieres navigable, texte
-redimensionnable sans perte d'information, contraste verifie a 4,5:1 au
-minimum. Aucun contenu clignotant ni sonore. Les metadonnees d'accessibilite
-sont incluses dans le fichier.
-{contact_accessibilite}{contact_question}
----
-{auteur} — {date}
-"""
-
-# Ce qui s'ecrit quand le vendeur a donne une adresse — et rien quand il n'en
-# a pas donne.
+# Les textes de la licence, du LISEZ-MOI et de la mention d'assistance IA
+# vivent dans « render/libelles.py », en francais et en anglais : ils partent
+# chez l'acheteur, et doivent donc etre dans la langue du produit.
 #
-# « votre adresse e-mail » etait le repli, et il partait tel quel chez
-# l'acheteur : « Ecrivez a votre adresse e-mail ». Un rappel destine au
-# VENDEUR, imprime dans le document VENDU. Pire que ridicule : la section
-# accessibilite promettait une version adaptee a une adresse qui n'existe
-# pas, alors que cette promesse est precisement ce que la reglementation
-# europeenne attend d'etre tenue. Sans adresse, la promesse n'est plus faite.
-CONTACT_ACCESSIBILITE = """
-Si un format vous convient mal, ecrivez a {contact} : une version adaptee
-vous sera envoyee.
-"""
-CONTACT_QUESTION = """
-## Une question ?
-
-Ecrivez a {contact}.
-"""
-
+# La mention d'assistance IA est ajoutee selon le reglage « signature_ia ».
+# Beaucoup de places de marche et le reglement europeen sur l'IA attendent
+# cette transparence ; on la met donc par defaut, tout en la rendant
+# desactivable.
+#
+# Le contact ne s'ecrit que quand le vendeur en a donne un. « votre adresse
+# e-mail » etait le repli, et il partait tel quel chez l'acheteur : « Ecrivez
+# a votre adresse e-mail ». Un rappel destine au VENDEUR, imprime dans le
+# document VENDU. Pire que ridicule : la section accessibilite promettait une
+# version adaptee a une adresse qui n'existe pas, alors que cette promesse est
+# precisement ce que la reglementation europeenne attend d'etre tenue. Sans
+# adresse, la promesse n'est plus faite.
 
 
 def ecrire_notice(dossier: Path, titre: str, promesse: str, auteur: str,
-                  contact: str = "") -> Path:
+                  contact: str = "", langue: str = "fr") -> Path:
     """Ecrit le LISEZ-MOI que l'acheteur trouve dans le dossier.
 
     Sans adresse de contact, les deux passages qui en demandent une sont
@@ -110,41 +39,42 @@ def ecrire_notice(dossier: Path, titre: str, promesse: str, auteur: str,
     """
     fichiers = sorted(
         f for f in dossier.iterdir()
-        if f.is_file() and f.name not in ("LISEZ-MOI.md", "LICENCE.txt")
+        if f.is_file() and f.name not in FICHIERS_AJOUTES
         and not f.name.endswith(".json")
     )
     bonus = sorted(d.name for d in dossier.iterdir()
                    if d.is_dir() and d.name.startswith("bonus-"))
-    liste = "\n".join("- `{}`".format(f.name) for f in fichiers) or "- (dossier vide)"
+    t = libelles.textes(langue)
+    liste = "\n".join("- `{}`".format(f.name) for f in fichiers) or t["dossier_vide"]
     if bonus:
         liste += "\n" + "\n".join(
-            "- `{}/` — contenu bonus".format(nom) for nom in bonus
+            t["contenu_bonus"].format(nom=nom) for nom in bonus
         )
-    chemin = dossier / "LISEZ-MOI.md"
+    chemin = dossier / t["fichier_notice"]
     chemin.write_text(
-        NOTICE.format(
+        t["notice"].format(
             titre=titre, promesse=promesse or "", fichiers=liste,
             contact_accessibilite=(
-                CONTACT_ACCESSIBILITE.format(contact=contact) if contact else ""),
+                t["contact_accessibilite"].format(contact=contact) if contact else ""),
             contact_question=(
-                CONTACT_QUESTION.format(contact=contact) if contact else ""),
-            auteur=auteur, date=time.strftime("%d/%m/%Y"),
+                t["contact_question"].format(contact=contact) if contact else ""),
+            auteur=auteur, date=time.strftime(t["format_date"]),
         ),
         encoding="utf-8",
     )
     return chemin
 
 
-def ecrire_licence(dossier: Path, titre: str, auteur: str) -> Path:
+def ecrire_licence(dossier: Path, titre: str, auteur: str,
+                   langue: str = "fr") -> Path:
     from ..core import reglages
 
-    # La mention d'assistance IA est activee par defaut (transparence attendue
-    # par les places de marche), mais « signature_ia » permet de la retirer.
-    transparence = TRANSPARENCE if reglages.lire("signature_ia", True) else ""
-    chemin = dossier / "LICENCE.txt"
+    t = libelles.textes(langue)
+    transparence = t["transparence"] if reglages.lire("signature_ia", True) else ""
+    chemin = dossier / t["fichier_licence"]
     chemin.write_text(
-        LICENCE.format(titre=titre, auteur=auteur, annee=time.strftime("%Y"),
-                       transparence=transparence),
+        t["licence"].format(titre=titre, auteur=auteur, annee=time.strftime("%Y"),
+                            transparence=transparence),
         encoding="utf-8",
     )
     return chemin
@@ -173,8 +103,11 @@ FICHIERS_INTERNES = ["plan.json", "programme.json", "boite.json", "produit.json"
                      "bible.json", "continuite.json", "systeme.json",
                      "cahier.json", "verification.json", "quiz.json"]
 
-# Ce que l'empaquetage ECRIT lui-meme, et qui doit donc toujours partir.
-FICHIERS_AJOUTES = ["LISEZ-MOI.md", "LICENCE.txt"]
+# Ce que l'empaquetage ECRIT lui-meme, dans toutes les langues tenues. Un
+# acheteur anglophone qui ouvre l'archive cherche « README », pas
+# « LISEZ-MOI » : le nom suit la langue du produit, comme le texte.
+FICHIERS_AJOUTES = sorted({t[cle] for t in libelles.LIBELLES.values()
+                           for cle in ("fichier_notice", "fichier_licence")})
 # Dossiers qui ne doivent JAMAIS partir chez l'acheteur : ce sont vos supports
 # de vente (page de vente, sequence de lancement, prix plancher negociable).
 DOSSIERS_INTERNES = ["marketing"]
@@ -190,6 +123,7 @@ def empaqueter(
     exclure: Optional[List[str]] = None,
     exclure_dossiers: Optional[List[str]] = None,
     livres: Optional[Sequence[str]] = None,
+    langue: str = "fr",
 ) -> Path:
     """Assemble l'archive destinee a l'acheteur.
 
@@ -205,8 +139,13 @@ def empaqueter(
     exclure = exclure or list(FICHIERS_INTERNES)
     exclure_dossiers = (exclure_dossiers if exclure_dossiers is not None
                         else list(DOSSIERS_INTERNES))
-    ecrire_notice(dossier, titre, promesse, auteur, contact)
-    ecrire_licence(dossier, titre, auteur)
+    # Seuls partent la notice et la licence de CETTE langue. Un produit
+    # empaquete une premiere fois dans une autre langue — ou avant que le nom
+    # suive la langue — garde l'ancienne notice dans son dossier ; la laisser
+    # partir livrerait deux modes d'emploi, dont un perime.
+    ajoutes = {ecrire_notice(dossier, titre, promesse, auteur, contact,
+                             langue).name,
+               ecrire_licence(dossier, titre, auteur, langue).name}
 
     declares = set(livres or ())
     archive = dossier.parent / "{}.zip".format(nom_archive)
@@ -219,9 +158,10 @@ def empaqueter(
                 continue
             if any(partie in exclure_dossiers for partie in relatif.parts[:-1]):
                 continue
+            if relatif.name in FICHIERS_AJOUTES and relatif.name not in ajoutes:
+                continue
             if declares:
-                if relatif.name not in declares and \
-                        relatif.name not in FICHIERS_AJOUTES:
+                if relatif.name not in declares and relatif.name not in ajoutes:
                     continue
             elif relatif.name in exclure:
                 continue

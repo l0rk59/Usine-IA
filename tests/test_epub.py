@@ -344,7 +344,9 @@ class TestBranchementDansLaLivraison(unittest.TestCase):
     def test_la_mention_ia_suit_son_reglage(self):
         """Le meme reglage commande la licence et la page de copyright."""
         from usine.core import reglages
-        from usine.packaging.livraison import MENTION_IA_COURTE
+        from usine.render import libelles
+
+        MENTION_IA_COURTE = libelles.libelle("fr", "mention_ia_courte")
 
         reglages.ecrire({"signature_ia": True})
         self.assertIn(MENTION_IA_COURTE, self._page_droits(self._livrer()))

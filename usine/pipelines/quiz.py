@@ -22,7 +22,7 @@ from typing import Any, Dict, List
 
 from ..agents import equipe
 from ..render import document as D
-from ..render import livraison
+from ..render import libelles, livraison
 from ..render import quiz as rendu_quiz
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
 
@@ -129,9 +129,8 @@ def produire(ctx: Contexte, nombre: int = 20, niveau: str = "intermediaire",
     try:
         fichiers.append(rendu_quiz.ecrire(
             ctx.dossier / "quiz.html", titre, questions,
-            promesse="Corrigez-vous sans rien envoyer : tout se passe dans "
-                     "votre navigateur.",
-            langue=getattr(ctx, "langue_iso", "fr")))
+            promesse=libelles.libelle(ctx.langue_iso, "quiz_promesse_page"),
+            langue=ctx.langue_iso))
         ctx.etape("page-interactive", "ok", "quiz.html")
     except Exception as exc:
         # Le PDF et le corrige sont deja ecrits : perdre la page interactive
@@ -158,14 +157,14 @@ def _lettre(index: int) -> str:
 
 def _exporter(ctx: Contexte, titre: str, questions: List[Dict[str, Any]],
               niveau: str, avec_bareme: bool) -> List[Path]:
-    sous_titre = "{} questions — niveau {}".format(len(questions), niveau)
+    t = libelles.textes(ctx.langue_iso)
+    sous_titre = t["quiz_produit_sous_titre"].format(
+        nombre=len(questions), niveau=t["quiz_niveaux"].get(niveau, niveau))
 
     def consigne(doc) -> None:
-        doc.paragraphe(
-            "Repondez a toutes les questions avant de consulter le corrige. "
-            "Une seule proposition est juste par question.", justifier=True)
+        doc.paragraphe(t["quiz_consigne"], justifier=True)
         if avec_bareme:
-            doc.encadre("Bareme", _bareme(len(questions)))
+            doc.encadre(t["quiz_bareme"], _bareme(len(questions), t))
 
     # Le « corps » n'est pas un doublon de « rendu_pdf » : sans lui, ce bloc
     # n'existe QUE dans le PDF. Mesure du 14/09/2026 en relisant « lire.html »
@@ -173,35 +172,33 @@ def _exporter(ctx: Contexte, titre: str, questions: List[Dict[str, Any]],
     # disparaissaient pour qui ouvre la page HTML — c'est-a-dire pour la
     # plupart des acheteurs sur telephone. Un bloc sans corps ni rendu HTML
     # ne rend rien du tout, en silence.
-    corps_consignes = [
-        "Repondez a toutes les questions avant de consulter le corrige. "
-        "Une seule proposition est juste par question."]
+    corps_consignes = [t["quiz_consigne"]]
     if avec_bareme:
-        corps_consignes.append("\n**Bareme**\n")
-        corps_consignes.append(_bareme(len(questions)))
-    blocs = [livraison.Bloc(titre="Consignes", corps="\n".join(corps_consignes),
+        corps_consignes.append("\n**{}**\n".format(t["quiz_bareme"]))
+        corps_consignes.append(_bareme(len(questions), t))
+    blocs = [livraison.Bloc(titre=t["quiz_consignes"],
+                            corps="\n".join(corps_consignes),
                             rendu_pdf=consigne)]
     blocs.append(livraison.Bloc(
-        titre="Questions",
+        titre=t["quiz_questions"],
         corps=_markdown_questions(questions),
         rendu_pdf=_page_questions(questions),
         rendu_html=_html_questions(questions)))
     # Le corrige vient en dernier, et separe : imprime a la suite des
     # questions, il se lit par transparence sur du papier ordinaire.
     blocs.append(livraison.Bloc(
-        titre="Corrige",
+        titre=t["quiz_corrige"],
         corps=_markdown_corrige(questions),
-        rendu_pdf=_page_corrige(questions),
+        rendu_pdf=_page_corrige(questions, t),
         rendu_html=_html_corrige(questions)))
 
     produit = livraison.Produit(
         type="quiz",
         sommaire=False, titre=titre, sous_titre=sous_titre,
-        promesse="Se tester, et comprendre ses erreurs", blocs=blocs,
+        promesse=t["quiz_promesse"], blocs=blocs,
         tableaux=[livraison.Tableau(
             nom="questions",
-            colonnes=["Module", "Question", "A", "B", "C", "D", "Bonne",
-                      "Explication"],
+            colonnes=list(t["quiz_colonnes"]),
             lignes=[[q["module"], q["question"]]
                     + [q["propositions"][i] if i < len(q["propositions"]) else ""
                        for i in range(4)]
@@ -217,7 +214,7 @@ def _exporter(ctx: Contexte, titre: str, questions: List[Dict[str, Any]],
     return livraison.livrer(ctx, produit)
 
 
-def _bareme(total: int) -> str:
+def _bareme(total: int, t: Dict[str, Any]) -> str:
     """Des seuils, exprimes en nombre de bonnes reponses.
 
     En proportions plutot qu'en points : un bareme sur vingt ne veut rien
@@ -225,11 +222,7 @@ def _bareme(total: int) -> str:
     ecartees. Les seuils sont arrondis a la question entiere, puisque c'est
     l'unite dans laquelle on compte.
     """
-    return ("{acquis} bonnes reponses ou plus : c'est acquis.\n"
-            "{revoir} a {presque} : relisez les explications des questions "
-            "manquees.\n"
-            "Moins de {revoir} : reprenez le sujet avant de vous retester."
-            ).format(acquis=max(1, round(total * 0.8)),
+    return t["quiz_bareme_texte"].format(acquis=max(1, round(total * 0.8)),
                      revoir=max(1, round(total * 0.5)),
                      presque=max(1, round(total * 0.8)) - 1)
 
@@ -267,12 +260,12 @@ def _page_questions(questions: List[Dict[str, Any]]):
     return rendre
 
 
-def _page_corrige(questions: List[Dict[str, Any]]):
+def _page_corrige(questions: List[Dict[str, Any]], t: Dict[str, Any]):
     def rendre(doc) -> None:
         for index, question in enumerate(questions, 1):
-            doc.paragraphe("{}. Reponse {} — {}".format(
-                index, _lettre(question["reponse"]),
-                question["propositions"][question["reponse"]]),
+            doc.paragraphe(t["quiz_reponse_pdf"].format(
+                numero=index, lettre=_lettre(question["reponse"]),
+                texte=question["propositions"][question["reponse"]]),
                 taille=11, police="Helvetica-Bold")
             if question["explication"]:
                 doc.paragraphe(question["explication"], taille=10,

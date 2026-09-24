@@ -14,7 +14,7 @@ from ..agents import equipe
 from ..core import images
 from ..render import document as D
 from ..render import tableur
-from ..render import livraison
+from ..render import libelles, livraison
 from ..render.page import ecrire_page
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
 
@@ -131,7 +131,7 @@ def produire(ctx: Contexte, nombre: int = 10) -> Dict[str, Any]:
     return resume
 
 
-def _markdown_outil(outil: Dict[str, Any]) -> str:
+def _markdown_outil(outil: Dict[str, Any], t: Dict[str, Any]) -> str:
     contenu = outil.get("contenu") or {}
     morceaux = []
     if contenu.get("intro"):
@@ -153,7 +153,9 @@ def _markdown_outil(outil: Dict[str, Any]) -> str:
             lignes.append("| " + " | ".join(cellules) + " |")
         morceaux.append("\n".join(lignes))
     if contenu.get("conseils"):
-        morceaux.append("**Astuce :** " + " ".join(str(c) for c in contenu["conseils"]))
+        morceaux.append(t["deux_points"].format(
+            libelle="**{}**".format(t["prompts_astuce"]),
+            texte=" ".join(str(c) for c in contenu["conseils"])))
     return "\n\n".join(morceaux)
 
 
@@ -166,12 +168,14 @@ def _exporter(ctx: Contexte, boite: Dict[str, Any]) -> List[Path]:
         json.dumps(boite, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
+    t = libelles.textes(ctx.langue_iso)
     lignes = ["# {}\n".format(titre), "*{}*\n".format(boite.get("promesse", ""))]
     for outil in boite["outils"]:
         lignes.append("\n# {}\n".format(outil["nom"]))
         if outil["quand"]:
-            lignes.append("*Quand : {}*\n".format(outil["quand"]))
-        lignes.append(_markdown_outil(outil))
+            lignes.append("*{}*\n".format(t["deux_points"].format(
+                libelle=t["outils_quand_court"], texte=outil["quand"])))
+        lignes.append(_markdown_outil(outil, t))
     chemin_md = dossier / "boite-outils.md"
     chemin_md.write_text("\n".join(lignes), encoding="utf-8")
     fichiers.append(chemin_md)
@@ -181,7 +185,8 @@ def _exporter(ctx: Contexte, boite: Dict[str, Any]) -> List[Path]:
         contenu = outil.get("contenu") or {}
         if outil["type"] != "tableau" or not contenu.get("colonnes"):
             continue
-        chemin = dossier / "tableau-{:02d}-{}.csv".format(index, slug(outil["nom"], 30))
+        chemin = dossier / t["fichier_tableau"].format(rang=index,
+                                                       nom=slug(outil["nom"], 30))
         with chemin.open("w", encoding="utf-8", newline="") as flux:
             auteur = csv.writer(flux)
             auteur.writerow(tableur.ligne(contenu["colonnes"]))
@@ -200,35 +205,32 @@ def _exporter(ctx: Contexte, boite: Dict[str, Any]) -> List[Path]:
 
     doc = livraison.document(ctx, titre, boite.get("promesse", ""),
                              couverture, police_corps="Helvetica")
-    doc.titre("Comment utiliser cette boite a outils", 1)
-    doc.paragraphe(
-        "Ces documents sont faits pour etre imprimes ou remplis a l'ecran. Choisissez "
-        "l'outil correspondant a votre situation du moment : chacun produit un resultat "
-        "en une seule session de travail.",
-        justifier=True,
-    )
+    doc.titre(t["outils_mode_emploi_titre"], 1)
+    doc.paragraphe(t["outils_mode_emploi"], justifier=True)
     for outil in boite["outils"]:
         doc.titre(outil["nom"], 1)
         if outil["quand"]:
-            doc.citation("Quand l'utiliser : " + outil["quand"])
+            doc.citation(t["deux_points"].format(libelle=t["outils_quand"],
+                                                 texte=outil["quand"]))
         contenu = outil.get("contenu") or {}
         if contenu.get("intro"):
             doc.paragraphe(str(contenu["intro"]), justifier=True)
         if contenu.get("points"):
-            doc.titre("A verifier", 2)
+            doc.titre(t["outils_a_verifier"], 2)
             doc.cases_a_cocher([str(p) for p in contenu["points"]])
         for section in contenu.get("sections") or []:
             if isinstance(section, dict):
                 doc.titre(str(section.get("titre", "")), 2)
                 doc.paragraphe(str(section.get("contenu", "")), justifier=True)
         if contenu.get("colonnes"):
-            doc.titre("Colonnes du tableau", 2)
+            doc.titre(t["outils_colonnes"], 2)
             doc.liste([str(c) for c in contenu["colonnes"]])
-            doc.titre("A completer", 2)
+            doc.titre(t["outils_a_completer"], 2)
             doc.lignes_a_remplir(10)
         if contenu.get("conseils"):
-            doc.encadre("Astuce", " ".join(str(c) for c in contenu["conseils"]))
-    doc.inserer_sommaire(apres=1)
+            doc.encadre(t["prompts_astuce"],
+                        " ".join(str(c) for c in contenu["conseils"]))
+    doc.inserer_sommaire(t["sommaire"], apres=1)
     chemin_pdf = dossier / "{}.pdf".format(slug(titre, 46))
     doc.enregistrer(chemin_pdf)
     fichiers.append(chemin_pdf)
@@ -240,7 +242,7 @@ def _exporter(ctx: Contexte, boite: Dict[str, Any]) -> List[Path]:
     corps = []
     for outil in boite["outils"]:
         corps.append("<h2>{}</h2>".format(D.inline_html(outil["nom"])))
-        corps.append(D.vers_html(D.analyser(_markdown_outil(outil)), niveau_depart=3))
+        corps.append(D.vers_html(D.analyser(_markdown_outil(outil, t)), niveau_depart=3))
     chemin_html = dossier / "lire.html"
     ecrire_page(chemin_html, titre, "\n".join(corps), boite.get("promesse", ""), ctx.auteur,
                 langue=ctx.langue_iso,

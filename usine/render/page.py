@@ -6,6 +6,7 @@ import html
 from pathlib import Path
 from typing import Optional
 
+from . import libelles
 from .document import nettoyer_inline
 
 GABARIT = """<!doctype html>
@@ -108,7 +109,9 @@ def ecrire_page(
             sous_titre='<p class="sous-titre">{}</p>'.format(
                 html.escape(nettoyer_inline(sous_titre))) if sous_titre else "",
             meta='<p class="meta">{}</p>'.format(html.escape(meta)) if meta else "",
-            couverture='<p><img src="{}" alt="Couverture"/></p>'.format(html.escape(couverture))
+            couverture='<p><img src="{}" alt="{}"/></p>'.format(
+                html.escape(couverture),
+                html.escape(libelles.libelle(langue, "couverture")))
             if couverture else "",
             corps=corps_html,
             style=style,

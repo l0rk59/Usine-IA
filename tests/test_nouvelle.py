@@ -29,6 +29,7 @@ from usine.core import llm, reglages, store  # noqa: E402
 from usine.agents import equipe  # noqa: E402
 from usine.pipelines import catalogue, nouvelle  # noqa: E402
 from usine.pipelines.base import Contexte  # noqa: E402
+from usine.render import libelles  # noqa: E402
 
 
 def setUpModule():
@@ -978,6 +979,8 @@ class TestRafraichissementDeSerie(unittest.TestCase):
         from usine.core import serie as module_serie
 
         cls.serie = module_serie
+        # Le titre que porte la page de fin d'un tome en francais.
+        cls.TITRE_DE_FIN = libelles.libelle("fr", "serie_page")
         with store.cursor() as cur:
             cur.execute("DELETE FROM series")
         cls.t1 = nouvelle.produire(_contexte(sujet="le depot qui ferme"),
@@ -1004,7 +1007,7 @@ class TestRafraichissementDeSerie(unittest.TestCase):
     def test_le_tome_2_annonce_deja_le_tome_1(self):
         """Lui, il connaissait son predecesseur des sa fabrication."""
         markdown = self._markdown(self.t2)
-        self.assertIn(self.serie.TITRE_PAGE_DE_SUITE, markdown)
+        self.assertIn(self.TITRE_DE_FIN, markdown)
         # Le rang doit arriver jusqu'a l'export : sans lui, la page dirait
         # « ce recit appartient a la serie » au lieu de « vous venez de lire
         # le tome 2 » — et un lecteur qui ignore ou il se trouve dans une
@@ -1014,18 +1017,18 @@ class TestRafraichissementDeSerie(unittest.TestCase):
     def test_un_tome_refait_ne_se_cite_pas_lui_meme(self):
         nouvelle.rafraichir_serie("Suite", journal=lambda _m: None)
         page = self._markdown(self.t1).split(
-            "\n# " + self.serie.TITRE_PAGE_DE_SUITE)[1]
+            "\n# " + self.TITRE_DE_FIN)[1]
         self.assertNotIn("Tome 1 —", page)
         self.assertIn("Tome 2 —", page)
 
     def test_le_tome_1_ne_peut_pas_connaitre_le_tome_2_a_sa_naissance(self):
-        self.assertNotIn(self.serie.TITRE_PAGE_DE_SUITE, self.markdown_t1_neuf)
+        self.assertNotIn(self.TITRE_DE_FIN, self.markdown_t1_neuf)
 
     def test_le_rafraichissement_lui_ajoute_la_page(self):
         refaits = nouvelle.rafraichir_serie("Suite", journal=lambda _m: None)
         self.assertEqual([r["rang"] for r in refaits], [1])
         markdown = self._markdown(self.t1)
-        self.assertIn(self.serie.TITRE_PAGE_DE_SUITE, markdown)
+        self.assertIn(self.TITRE_DE_FIN, markdown)
         self.assertIn(self.t2["titre"], markdown)
 
     def test_le_recit_lui_meme_n_est_pas_touche(self):
@@ -1040,7 +1043,7 @@ class TestRafraichissementDeSerie(unittest.TestCase):
         nouvelle.rafraichir_serie("Suite", journal=lambda _m: None)
         nouvelle.rafraichir_serie("Suite", journal=lambda _m: None)
         markdown = self._markdown(self.t1)
-        self.assertEqual(markdown.count("\n# " + self.serie.TITRE_PAGE_DE_SUITE), 1)
+        self.assertEqual(markdown.count("\n# " + self.TITRE_DE_FIN), 1)
 
     def test_la_couverture_n_est_pas_regeneree(self):
         """Celle d'un modele d'images ne se reproduit pas a l'identique : un

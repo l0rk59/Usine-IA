@@ -25,6 +25,7 @@ from tests import simulateur as sim  # noqa: E402
 from usine.core import llm, store  # noqa: E402
 from usine.pipelines import catalogue, emails, memo, quiz  # noqa: E402
 from usine.pipelines.base import Contexte  # noqa: E402
+from usine.render import libelles  # noqa: E402
 
 
 def setUpModule():
@@ -240,8 +241,9 @@ class LeQuiz(unittest.TestCase):
     def test_le_bareme_compte_les_questions_retenues(self):
         """Un bareme sur vingt ne veut rien dire quand huit questions ont ete
         ecartees : il annoncerait des seuils qu'on ne peut pas atteindre."""
-        self.assertIn("16 bonnes reponses", quiz._bareme(20))
-        self.assertIn("10 bonnes reponses", quiz._bareme(12))
+        francais = libelles.textes("fr")
+        self.assertIn("16 bonnes reponses", quiz._bareme(20, francais))
+        self.assertIn("10 bonnes reponses", quiz._bareme(12, francais))
 
     def test_sans_bareme_le_retire_vraiment(self):
         ctx = _contexte()

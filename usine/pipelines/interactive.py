@@ -37,7 +37,7 @@ import json
 from typing import Any, Dict, List, Sequence, Set
 
 from ..agents import equipe
-from ..render import livraison
+from ..render import libelles, livraison
 from . import carnet
 from . import fiction
 from . import prose
@@ -305,7 +305,8 @@ def _rediger_section(ctx: Contexte, bible: Dict[str, Any],
             "Amene-les : a la derniere ligne, le lecteur doit sentir ces "
             "possibilites-la et pas d'autres."
         ).format(choix="\n".join(
-            "  " + formuler_choix(c["texte"], c["vers"]).replace("**", "")
+            "  " + formuler_choix(c["texte"], c["vers"],
+                                  ctx.langue_iso).replace("**", "")
             for c in section["choix"]))
 
     invite = (
@@ -330,12 +331,7 @@ def _rediger_section(ctx: Contexte, bible: Dict[str, Any],
     return sans_titres(elaguer_markdown(reponse.texte))
 
 
-# Les tetes de phrase sur lesquelles « Si vous voulez » ne se greffe pas.
-_PRONOMS = ("vous", "tu", "je", "j'", "il", "elle", "on", "nous", "ils",
-            "elles")
-
-
-def formuler_choix(texte: str, vers: int) -> str:
+def formuler_choix(texte: str, vers: int, langue: str = "fr") -> str:
     """La formule du genre : « Si vous voulez X, rendez-vous au N. »
 
     Le livre-jeu sortait « Pousser la porte → 4 ». La fleche ne survit pas au
@@ -349,37 +345,39 @@ def formuler_choix(texte: str, vers: int) -> str:
     d'un infinitif est la construction des livres dont vous etes le heros
     depuis l'origine, et c'est exactement la forme que la carte porte deja :
     l'invite demande au modele une action « a l'infinitif ou a la deuxieme
-    personne ».
+    personne ». L'anglais a la sienne, sur la meme forme : « If you want to
+    push the door, turn to 4 ».
     """
+    t = libelles.textes(langue)
     action = texte.strip().rstrip(".")
     premier = action.split(" ", 1)[0]
-    if premier.lower() in _PRONOMS:
+    if premier.lower() in t["interactif_pronoms"]:
         # « Si vous voulez vous reculez » : la formule ne se greffe que sur un
         # infinitif. L'invite en demande un, mais un modele rend parfois la
         # deuxieme personne, et la phrase fautive reviendrait a CHAQUE
         # section du livre. Le deux-points marche avec les deux formes, et
         # « rendez-vous au N » — la vraie convention — y reste entier.
-        return "{} : rendez-vous au **{}**.".format(action, vers)
+        return t["interactif_choix_direct"].format(action=action, vers=vers)
     # « Pousser » devient « pousser ». Un sigle garde ses capitales. Un nom
     # propre en tete serait abaisse a tort — c'est le cout accepte : l'invite
     # demande une action, pas une phrase qui commence par un nom, et une
     # majuscule au milieu d'une phrase se verrait a chaque section.
     if premier[:1].isupper() and premier[1:].islower():
         action = action[:1].lower() + action[1:]
-    return "Si vous voulez {}, rendez-vous au **{}**.".format(action, vers)
+    return t["interactif_choix"].format(action=action, vers=vers)
 
 
-def _markdown(carte: List[Dict[str, Any]]) -> str:
+def _markdown(carte: List[Dict[str, Any]], langue: str = "fr") -> str:
     morceaux = []
     for section in carte:
         morceaux.append("## {}".format(section["numero"]))
         morceaux.append(section.get("texte") or "")
         if section["fin"]:
-            morceaux.append("*Fin.*")
+            morceaux.append(libelles.libelle(langue, "interactif_fin"))
         else:
             for choix in section["choix"]:
                 morceaux.append("- " + formuler_choix(choix["texte"],
-                                                      choix["vers"]))
+                                                      choix["vers"], langue))
         morceaux.append("")
     return "\n\n".join(morceaux)
 
@@ -475,27 +473,27 @@ def produire(ctx: Contexte, sections: int = 0) -> Dict[str, Any]:
 
     ctx.journal("Etape 4/4 — export...")
     fins = [s for s in carte if s["fin"]]
+    t = libelles.textes(ctx.langue_iso)
     produit = livraison.Produit(
         type="interactive", titre=titre,
         # Un livre-jeu se navigue par NUMEROS de section, pas par
         # sommaire : son sommaire listait deux entrees sur sept
         # pages — « Comment lire ce livre » et « Le livre ».
         sommaire=False,
-        sous_titre="{} sections, {} fins".format(len(carte), len(fins)),
+        sous_titre=t["interactif_sous_titre"].format(sections=len(carte),
+                                                     fins=len(fins)),
         promesse=bible.get("premisse", ""),
         blocs=[
             livraison.Bloc(
-                titre="Comment lire ce livre",
-                corps="Ce livre ne se lit pas dans l'ordre. Commencez a la "
-                      "section **1**, puis suivez le numero du choix que "
-                      "vous faites. Il y a {} fins : celle que vous "
-                      "atteindrez depend de vous.".format(len(fins))),
-            livraison.Bloc(titre="Le livre", corps=_markdown(carte)),
+                titre=t["interactif_mode_emploi_titre"],
+                corps=t["interactif_mode_emploi"].format(fins=len(fins))),
+            livraison.Bloc(titre=t["interactif_le_livre"],
+                           corps=_markdown(carte, ctx.langue_iso)),
         ],
         donnees={"bible": bible, "carte": carte, "prose": style},
         nom_donnees="carte",
         formats=("md", "pdf", "html", "epub", "txt"),
-        libelle_sections="section(s)",
+        libelle_sections=t["unite_sections"],
     )
     fichiers = livraison.livrer(ctx, produit)
     resume = {

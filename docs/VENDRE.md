@@ -70,9 +70,10 @@ formats livrés (PDF, EPUB, HTML), et indiquez le nombre de pages.
   Les EPUB produits portent leurs métadonnées d'accessibilité et la notice
   livrée contient une déclaration. **Il vous reste deux choses à faire** :
   publier la déclaration d'accessibilité sur votre fiche produit (reprenez le
-  texte de la section « Accessibilité » du `LISEZ-MOI.md`), et répondre aux
-  demandes de format adapté. Les micro-entreprises de moins de 10 personnes
-  et 2 M€ de chiffre d'affaires bénéficient d'une exemption partielle —
+  texte de la section « Accessibilité » du `LISEZ-MOI.md`, ou `README.md` pour
+  un produit en anglais), et répondre aux demandes de format adapté. Les
+  micro-entreprises de moins de 10 personnes et 2 M€ de chiffre d'affaires
+  bénéficient d'une exemption partielle —
   vérifiez votre situation, la charge de la preuve vous incombe.
 
 ### La cadence de publication n'est pas la cadence de production

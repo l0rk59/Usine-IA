@@ -132,6 +132,7 @@ def apres_production(
                 contact=contact or str(reglages.lire("contact", "") or ""),
                 # Ce que la chaine a declare livrer, et rien d'autre.
                 livres=resume.get("fichiers"),
+                langue=getattr(ctx, "langue_iso", "fr"),
             )
             resume["archive"] = str(chemin)
             dire("Archive : {} ({} Ko)".format(

@@ -16,7 +16,7 @@ from ..agents.base import Critique
 from ..core import controle as ctrl
 from ..core import evenements, securite
 from ..render import document as D
-from ..render import livraison
+from ..render import libelles, livraison
 from . import carnet
 from .base import (PLUS_RIEN_A_DEMANDER, Contexte, elaguer_markdown,
                    jetons_pour, nettoyer_titre, preparer, terminer)
@@ -120,7 +120,7 @@ def rediger_annexe(ctx: Contexte, plan: Dict[str, Any], genre: str) -> Tuple[str
     """Avant-propos ou conclusion. Renvoie (titre, markdown)."""
     sommaire = "\n".join("- " + c["titre"] for c in plan["chapitres"])
     if genre == "introduction":
-        titre = "Avant-propos : pourquoi ce livre"
+        titre = libelles.libelle(ctx.langue_iso, "ebook_avant_propos")
         consigne = (
             "Redige l'avant-propos (450 mots environ) : le probleme que vit le lecteur, "
             "pourquoi les solutions habituelles echouent, ce que ce livre change, "
@@ -128,7 +128,7 @@ def rediger_annexe(ctx: Contexte, plan: Dict[str, Any], genre: str) -> Tuple[str
             "commencer par le chapitre 1."
         )
     else:
-        titre = "Et maintenant : votre plan des 30 prochains jours"
+        titre = libelles.libelle(ctx.langue_iso, "ebook_conclusion")
         consigne = (
             "Redige la conclusion (450 mots environ) : une synthese des principes cles, "
             "puis un plan d'action concret semaine par semaine sur 4 semaines, "
@@ -475,6 +475,6 @@ def exporter(
         police_corps="Times-Roman",
         style_couverture="modern editorial book cover, {}".format(ctx.sujet),
         langue=ctx.langue_iso,
-        libelle_sections="chapitres",
+        libelle_sections=libelles.libelle(ctx.langue_iso, "unite_chapitres"),
     )
     return livraison.livrer(ctx, produit)

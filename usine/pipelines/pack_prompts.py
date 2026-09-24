@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 
 from ..agents import equipe
 from ..render import document as D
-from ..render import livraison
+from ..render import libelles, livraison
 from .base import (Contexte, nettoyer_titre, preparer, renommer, slug,
                    terminer)
 
@@ -37,7 +37,8 @@ def _categories(ctx: Contexte, nombre: int) -> List[Dict[str, Any]]:
             continue
         propres.append(
             {
-                "nom": nettoyer_titre(str(categorie.get("nom") or "Categorie")),
+                "nom": nettoyer_titre(str(categorie.get("nom") or libelles.libelle(
+                    ctx.langue_iso, "prompts_categorie"))),
                 "intention": str(categorie.get("intention") or "").strip(),
                 "prompts": [str(p).strip() for p in intitules if str(p).strip()],
             }
@@ -111,7 +112,8 @@ def _titre(ctx: Contexte, combien: int) -> str:
     15/09/2026 : couverture « 7 prompts », pack de douze. L'acheteur compte —
     c'est meme la seule chose qu'il puisse verifier d'un coup d'oeil.
     """
-    return "{} prompts pour {}".format(combien, ctx.sujet.lower())
+    return libelles.libelle(ctx.langue_iso, "prompts_titre", nombre=combien,
+                            sujet=ctx.sujet.lower())
 
 
 def produire(ctx: Contexte, nombre: int = 50) -> Dict[str, Any]:
@@ -188,43 +190,29 @@ def _exporter(ctx: Contexte, titre: str, categories: List[Dict[str, Any]]) -> Li
     le reste — couverture, markdown, CSV, JSON, sommaire — est identique a tous
     les autres types et vit dans usine/render/livraison.py.
     """
-    sous_titre = "Pret a copier-coller"
+    t = libelles.textes(ctx.langue_iso)
+    sous_titre = t["prompts_sous_titre"]
 
     def mode_emploi(doc) -> None:
-        doc.paragraphe(
-            "Chaque prompt est autonome. Remplacez les variables entre crochets par vos "
-            "informations, puis collez le texte dans l'IA de votre choix (Claude, ChatGPT, "
-            "Gemini, Mistral ou un modele local). Les prompts sont classes par intention : "
-            "commencez par la categorie qui correspond a votre tache du jour.",
-            justifier=True)
-        doc.encadre(
-            "Conseil",
-            "Gardez le contexte d'une conversation a l'autre : plus l'IA connait votre "
-            "activite, meilleurs sont les resultats. Collez d'abord un descriptif de votre "
-            "activite, puis enchainez les prompts du pack.")
+        doc.paragraphe(t["prompts_mode_emploi"], justifier=True)
+        doc.encadre(t["prompts_conseil_titre"], t["prompts_conseil"])
 
     # Sans « corps », ce bloc n'existe que dans le PDF : la page HTML livree
     # s'ouvrait sur la premiere categorie, sans mode d'emploi. Le defaut est
     # muet — un bloc vide ne rend rien et ne se plaint pas.
+    conseil = t["prompts_conseil"]
     blocs = [livraison.Bloc(
-        titre="Comment utiliser ce pack",
-        corps="Chaque prompt est autonome. Remplacez les variables entre "
-              "crochets par vos informations, puis collez le texte dans "
-              "l'IA de votre choix (Claude, ChatGPT, Gemini, Mistral ou un "
-              "modele local). Les prompts sont classes par intention : "
-              "commencez par la categorie qui correspond a votre tache du "
-              "jour.\n\n"
-              "**Conseil** — gardez le contexte d'une conversation a "
-              "l'autre : plus l'IA connait votre activite, meilleurs sont "
-              "les resultats. Collez d'abord un descriptif de votre "
-              "activite, puis enchainez les prompts du pack.",
+        titre=t["prompts_mode_emploi_titre"],
+        corps="{}\n\n**{}** — {}".format(
+            t["prompts_mode_emploi"], t["prompts_conseil_titre"],
+            conseil[:1].lower() + conseil[1:]),
         rendu_pdf=mode_emploi)]
     for categorie in categories:
         blocs.append(livraison.Bloc(
             titre=categorie["nom"],
-            corps=_markdown_categorie(categorie),
-            rendu_pdf=_mise_en_page(categorie),
-            rendu_html=_html_categorie(categorie),
+            corps=_markdown_categorie(categorie, t),
+            rendu_pdf=_mise_en_page(categorie, t),
+            rendu_html=_html_categorie(categorie, t),
         ))
 
     produit = livraison.Produit(
@@ -232,7 +220,7 @@ def _exporter(ctx: Contexte, titre: str, categories: List[Dict[str, Any]]) -> Li
         promesse=sous_titre, blocs=blocs,
         tableaux=[livraison.Tableau(
             nom="prompts",
-            colonnes=["Categorie", "Titre", "Quand l'utiliser", "Prompt", "Astuce"],
+            colonnes=list(t["prompts_colonnes"]),
             lignes=[[categorie["nom"], detail["titre"], detail["quand"],
                      detail["prompt"], detail["astuce"]]
                     for categorie in categories
@@ -247,21 +235,25 @@ def _exporter(ctx: Contexte, titre: str, categories: List[Dict[str, Any]]) -> Li
     return livraison.livrer(ctx, produit)
 
 
-def _markdown_categorie(categorie: Dict[str, Any]) -> str:
+def _markdown_categorie(categorie: Dict[str, Any], t: Dict[str, Any]) -> str:
     lignes = []
     if categorie["intention"]:
         lignes.append("*{}*\n".format(categorie["intention"]))
     for detail in categorie.get("details", []):
         lignes.append("\n## {}\n".format(detail["titre"]))
         if detail["quand"]:
-            lignes.append("**Quand l'utiliser :** {}\n".format(detail["quand"]))
+            lignes.append(t["deux_points"].format(
+                libelle="**{}**".format(t["prompts_quand"]),
+                texte=detail["quand"]) + "\n")
         lignes.append("```\n{}\n```\n".format(detail["prompt"]))
         if detail["astuce"]:
-            lignes.append("**Astuce :** {}\n".format(detail["astuce"]))
+            lignes.append(t["deux_points"].format(
+                libelle="**{}**".format(t["prompts_astuce"]),
+                texte=detail["astuce"]) + "\n")
     return "\n".join(lignes)
 
 
-def _mise_en_page(categorie: Dict[str, Any]):
+def _mise_en_page(categorie: Dict[str, Any], t: Dict[str, Any]):
     """Rendu PDF d'une categorie : chaque prompt dans son encadre."""
 
     def rendre(doc) -> None:
@@ -270,17 +262,19 @@ def _mise_en_page(categorie: Dict[str, Any]):
         for detail in categorie.get("details", []):
             doc.titre(detail["titre"], 2)
             if detail["quand"]:
-                doc.paragraphe("Quand l'utiliser : " + detail["quand"], taille=10,
+                doc.paragraphe(t["deux_points"].format(
+                    libelle=t["prompts_quand"], texte=detail["quand"]), taille=10,
                                police="Helvetica-Oblique")
             doc.encadre("Prompt", detail["prompt"])
             if detail["astuce"]:
-                doc.paragraphe("Astuce : " + detail["astuce"], taille=10,
+                doc.paragraphe(t["deux_points"].format(
+                    libelle=t["prompts_astuce"], texte=detail["astuce"]), taille=10,
                                police="Helvetica-Oblique")
 
     return rendre
 
 
-def _html_categorie(categorie: Dict[str, Any]) -> str:
+def _html_categorie(categorie: Dict[str, Any], t: Dict[str, Any]) -> str:
     # Le texte du modele entrait ici sans echappement. Mesure du 24/09/2026 :
     # un gabarit du genre « <VOTRE NOM> » etait avale comme une balise
     # inconnue, donc invisible pour l'acheteur. « inline_html » echappe, et
@@ -293,6 +287,7 @@ def _html_categorie(categorie: Dict[str, Any]) -> str:
         corps.append(D.vers_html(D.analyser("```\n{}\n```".format(detail["prompt"]))))
         if detail["astuce"]:
             corps.append(
-                '<aside class="encadre"><p class="encadre-titre">Astuce</p>'
-                "<p>{}</p></aside>".format(D.inline_html(detail["astuce"])))
+                '<aside class="encadre"><p class="encadre-titre">{}</p>'
+                "<p>{}</p></aside>".format(D.inline_html(t["prompts_astuce"]),
+                                           D.inline_html(detail["astuce"])))
     return "\n".join(corps)

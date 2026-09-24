@@ -30,7 +30,7 @@ from ..core import file as file_prod, llm
 from ..core import reglages, securite, store, ventes
 from ..pipelines import catalogue, social
 from ..production import AUTO
-from ..pipelines.base import TAILLES, TONS, Contexte
+from ..pipelines.base import TAILLES, TONS, Contexte, code_langue
 
 STATIQUE = Path(__file__).resolve().parent / "statique"
 
@@ -963,7 +963,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 str(meta.get("auteur") or reglages.lire("auteur") or "Usine-IA"),
                 promesse=str(meta.get("promesse") or ""),
                 contact=str(reglages.lire("contact") or ""),
-                livres=meta.get("fichiers"))
+                livres=meta.get("fichiers"),
+                langue=code_langue(produit.get("langue") or ""))
             return ({"archive": _lien_fichier(archive),
                      "ko": max(1, archive.stat().st_size // 1024)}, 200)
 

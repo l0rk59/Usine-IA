@@ -27,7 +27,7 @@ import re
 from typing import Any, Dict, List, Sequence
 
 from ..agents import equipe
-from ..render import livraison
+from ..render import libelles, livraison
 from . import carnet
 from . import fiction
 from . import memoire as M
@@ -286,29 +286,31 @@ def produire(ctx: Contexte, episodes: int = 0) -> Dict[str, Any]:
     for lecture in lectures_prose:
         ctx.journal("  [prose] " + lecture)
 
+    t = libelles.textes(ctx.langue_iso)
     blocs = [livraison.Bloc(
-        titre="La saison", corps=arc["promesse"] or "Une saison en {} "
-        "episodes.".format(len(ecrits)))]
+        titre=t["feuilleton_saison"], corps=arc["promesse"] or
+        t["feuilleton_saison_defaut"].format(nombre=len(ecrits)))]
     for episode in ecrits:
         corps = []
         if episode["recap"]:
-            corps.append("**Precedemment.** " + episode["recap"])
+            corps.append(t["feuilleton_precedemment"] + episode["recap"])
         corps.append(episode["texte"])
         if episode["suspens"]:
-            corps.append("*A suivre.*")
+            corps.append(t["feuilleton_a_suivre"])
         blocs.append(livraison.Bloc(
-            titre="Episode {} — {}".format(episode["rang"], episode["titre"]),
+            titre=t["feuilleton_episode"].format(rang=episode["rang"],
+                                                 titre=episode["titre"]),
             corps="\n\n".join(corps)))
     produit = livraison.Produit(
         type="feuilleton", titre=titre,
-        sous_titre="{} episodes".format(len(ecrits)),
+        sous_titre=t["feuilleton_sous_titre"].format(nombre=len(ecrits)),
         promesse=arc["promesse"],
         blocs=blocs,
         donnees={"bible": bible, "arc": arc, "episodes": ecrits,
                  "recaps": mesures, "prose": style},
         nom_donnees="saison",
         formats=("md", "pdf", "html", "epub", "txt"),
-        libelle_sections="episode(s)",
+        libelle_sections=t["unite_episodes"],
     )
     fichiers = livraison.livrer(ctx, produit)
     resume = {

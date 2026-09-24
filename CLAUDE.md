@@ -93,6 +93,7 @@ pourquoi c'etait invisible**, pas la liste des fichiers touches.
 | `usine/production.py` | la boucle continue, et par ou l'usine commence quand l'atelier est vide |
 | `usine/agents/equipe.py` | les treize agents, la relecture croisee, la deliberation et la lecture en acheteur |
 | `usine/core/reglages.py` | les reglages, leurs groupes, et les six peaux du tableau de bord |
+| `usine/render/libelles.py` | le texte fixe que l'usine ecrit autour du contenu, en francais et en anglais |
 | `docs/` | une note par sujet, chacune expliquant un defaut mesure et sa correction |
 
 ## Trois regles qui reviennent

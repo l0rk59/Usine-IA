@@ -13,6 +13,7 @@ from typing import Any, Dict, List
 from ..agents import equipe
 from ..pipelines import catalogue
 from ..render import document as D
+from ..render import libelles
 from ..render.page import ecrire_page
 from ..pipelines.base import Contexte, nettoyer_titre
 from . import extrait
@@ -93,8 +94,13 @@ def sequence_lancement(ctx: Contexte, titre: str, fiche: Dict[str, Any]) -> List
 
 
 def page_de_vente(titre: str, fiche: Dict[str, Any], prix: str = "",
-                  couverture: str = "") -> str:
-    """Fragment HTML de page de vente, insere dans le gabarit standard."""
+                  couverture: str = "", langue: str = "fr") -> str:
+    """Fragment HTML de page de vente, insere dans le gabarit standard.
+
+    Dans la langue du produit : c'est l'acheteur qui la lit. Ses titres
+    etaient en francais au-dessus d'un argumentaire ecrit en anglais.
+    """
+    t = libelles.textes(langue)
     def liste(elements: List[Any]) -> str:
         return "<ul>{}</ul>".format(
             "".join("<li>{}</li>".format(D.inline_html(str(e))) for e in elements or [])
@@ -105,22 +111,24 @@ def page_de_vente(titre: str, fiche: Dict[str, Any], prix: str = "",
     )
     morceaux: List[str] = []
     if couverture:
-        morceaux.append('<p><img src="{}" alt="Couverture"/></p>'.format(couverture))
-    morceaux.append("<h2>Ce que ce produit change pour vous</h2>")
+        morceaux.append('<p><img src="{}" alt="{}"/></p>'.format(
+            couverture, D.inline_html(t["couverture"])))
+    morceaux.append("<h2>{}</h2>".format(D.inline_html(t["vente_change"])))
     morceaux.append(liste(fiche.get("benefices")))
     if fiche.get("description"):
         morceaux.append(D.vers_html(D.analyser(str(fiche["description"])), niveau_depart=2))
     if fiche.get("contenu_livre"):
-        morceaux.append("<h2>Ce que vous recevez</h2>")
+        morceaux.append("<h2>{}</h2>".format(D.inline_html(t["vente_recevez"])))
         morceaux.append(liste(fiche["contenu_livre"]))
     if fiche.get("pour_qui"):
-        morceaux.append("<h2>Pour qui c'est fait</h2>")
+        morceaux.append("<h2>{}</h2>".format(D.inline_html(t["vente_pour_qui"])))
         morceaux.append(liste(fiche["pour_qui"]))
     if fiche.get("pas_pour_qui"):
-        morceaux.append("<h2>Pour qui ce n'est pas fait</h2>")
+        morceaux.append("<h2>{}</h2>".format(
+            D.inline_html(t["vente_pas_pour_qui"])))
         morceaux.append(liste(fiche["pas_pour_qui"]))
     if fiche.get("objections"):
-        morceaux.append("<h2>Vos questions</h2>")
+        morceaux.append("<h2>{}</h2>".format(D.inline_html(t["vente_questions"])))
         for objection in fiche["objections"]:
             if isinstance(objection, dict):
                 morceaux.append(
@@ -130,18 +138,17 @@ def page_de_vente(titre: str, fiche: Dict[str, Any], prix: str = "",
                     )
                 )
     morceaux.append(
-        '<aside class="encadre"><p class="encadre-titre">Prix</p>'
-        "<p><strong>{}</strong> — acces immediat apres paiement, "
-        "telechargement direct.</p>{}</aside>".format(
-            D.inline_html(prix_affiche),
+        '<aside class="encadre"><p class="encadre-titre">{}</p>'
+        "<p>{}</p>{}</aside>".format(
+            D.inline_html(t["vente_prix"]),
+            t["vente_acces"].format(prix=D.inline_html(prix_affiche)),
             "<p>{}</p>".format(D.inline_html(str(fiche.get("garantie", ""))))
             if fiche.get("garantie") else "",
         )
     )
     morceaux.append(
-        '<p><a href="#acheter"><strong>Obtenir « {} »</strong></a></p>'.format(
-            D.inline_html(titre)
-        )
+        '<p><a href="#acheter"><strong>{}</strong></a></p>'.format(
+            t["vente_obtenir"].format(titre=D.inline_html(titre)))
     )
     return "\n".join(morceaux)
 
@@ -190,9 +197,10 @@ def produire_kit(ctx: Contexte, titre: str, description_produit: str,
     ecrire_page(
         chemin_page,
         fiche.get("titres", [titre])[0],
-        page_de_vente(titre, fiche, prix, couverture),
+        page_de_vente(titre, fiche, prix, couverture, ctx.langue_iso),
         sous_titre=str(fiche.get("accroche", "")),
         meta=ctx.marque or ctx.auteur,
+        langue=ctx.langue_iso,
     )
     fichiers.append(chemin_page)
 

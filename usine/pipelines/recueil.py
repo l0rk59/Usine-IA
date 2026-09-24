@@ -34,7 +34,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ..agents import equipe
 from ..core import empreinte
-from ..render import livraison
+from ..render import libelles, livraison
 from . import carnet
 from . import fiction
 from . import memoire as M
@@ -411,12 +411,13 @@ def produire(ctx: Contexte, recits: int = 0) -> Dict[str, Any]:
         ctx.journal("  [prose] " + lecture)
 
     ctx.journal("Etape 4/4 — export...")
+    t = libelles.textes(ctx.langue_iso)
     blocs = [livraison.Bloc(
-        titre="Le fil", corps=fil["fil"] or "Sept textes, un meme fil.")]
+        titre=t["recueil_fil"], corps=fil["fil"] or t["recueil_fil_defaut"])]
     blocs += [livraison.Bloc(titre=r["titre"], corps=r["texte"]) for r in ecrits]
     produit = livraison.Produit(
         type="recueil", titre=titre,
-        sous_titre="{} nouvelles".format(len(ecrits)),
+        sous_titre=t["recueil_sous_titre"].format(nombre=len(ecrits)),
         promesse=fil["fil"],
         blocs=blocs,
         donnees={"fil": fil["fil"], "recits": [
@@ -424,7 +425,7 @@ def produire(ctx: Contexte, recits: int = 0) -> Dict[str, Any]:
             "variete": mesure, "prose": style},
         nom_donnees="recueil",
         formats=("md", "pdf", "html", "epub", "txt"),
-        libelle_sections="nouvelle(s)",
+        libelle_sections=t["unite_nouvelles"],
     )
     fichiers = livraison.livrer(ctx, produit)
     resume = {

@@ -23,6 +23,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..render import libelles
+
 # Part du livre offerte. Un quart est la coutume du marche : assez pour juger
 # de la voix et de la methode, trop peu pour se passer d'acheter.
 PART_OFFERTE = 0.25
@@ -71,30 +73,29 @@ def nombre_offert(total: int, demande: int = 0) -> int:
 
 
 def _page_de_suite(titre: str, restants: List[str], site: str,
-                   contact: str) -> str:
+                   contact: str, langue: str = "fr") -> str:
     """La derniere page : ce qui reste, et ou l'obtenir.
 
     C'est la seule page ecrite ici plutot que decoupee, et la seule qui
     compte commercialement — un extrait sans appel a l'action est un cadeau.
     """
+    t = libelles.textes(langue)
     lignes = [
         # « le debut de Le systeme... » : les guillemets evitent l'article
         # double, que tout titre commencant par un determinant produirait.
-        "Vous venez de lire le debut de « **{}** ».".format(titre),
+        t["extrait_lu"].format(titre=titre),
         "",
-        "La version complete contient {} chapitre(s) de plus :".format(
-            len(restants)),
+        t["extrait_reste"].format(nombre=len(restants)),
         "",
     ]
     lignes += ["- {}".format(chapitre) for chapitre in restants]
     lignes += ["", "---", ""]
     if site:
-        lignes.append("Le livre complet : {}".format(site))
+        lignes.append(t["extrait_site"].format(site=site))
     if contact:
-        lignes.append("Une question : {}".format(contact))
+        lignes.append(t["extrait_question"].format(contact=contact))
     if not site and not contact:
-        lignes.append("Le livre complet est disponible a la vente. "
-                      "Repondez a cet e-mail pour le lien.")
+        lignes.append(t["extrait_sans_site"])
     return "\n".join(lignes)
 
 
@@ -107,7 +108,7 @@ def produire(ctx: Any, dossier_produit: Path, titre: str,
     pour appeler un modele.
     """
     from ..core import reglages
-    from ..pipelines.base import Contexte, slug
+    from ..pipelines.base import Contexte, code_langue, slug
     from ..render import livraison
 
     source = _markdown_du_produit(dossier_produit, type_produit)
@@ -121,11 +122,15 @@ def produire(ctx: Any, dossier_produit: Path, titre: str,
     restants = [titre_chapitre for titre_chapitre, _ in chapitres[offerts:]]
     profil = reglages.charger()
 
+    langue = code_langue(getattr(ctx, "langue", "") or
+                         str(profil.get("langue") or "francais"))
+    t = libelles.textes(langue)
     blocs = livraison.blocs_depuis_sections(chapitres[:offerts])
     blocs.append(livraison.bloc_markdown(
-        "La suite", _page_de_suite(titre, restants,
-                                   str(profil.get("site") or ""),
-                                   str(profil.get("contact") or ""))))
+        t["extrait_suite"], _page_de_suite(titre, restants,
+                                           str(profil.get("site") or ""),
+                                           str(profil.get("contact") or ""),
+                                           langue)))
 
     cible = dossier_produit / "marketing" / "extrait"
     cible.mkdir(parents=True, exist_ok=True)
@@ -144,16 +149,16 @@ def produire(ctx: Any, dossier_produit: Path, titre: str,
 
     produit = livraison.Produit(
         type="extrait",
-        titre="{} — extrait".format(titre),
-        sous_titre=sous_titre or "Les {} premiers chapitres".format(offerts),
-        promesse="Extrait offert de « {} ».".format(titre),
+        titre=t["extrait_titre"].format(titre=titre),
+        sous_titre=sous_titre or t["extrait_sous_titre"].format(nombre=offerts),
+        promesse=t["extrait_promesse"].format(titre=titre),
         blocs=blocs,
         formats=("pdf", "epub"),
         police_corps="Times-Roman",
         style_couverture="book cover, {}".format(titre),
         langue=contexte.langue_iso,
-        libelle_sections="chapitres",
-        nom_fichier="{}-extrait".format(slug(titre, 38)),
+        libelle_sections=t["unite_chapitres"],
+        nom_fichier=t["fichier_extrait"].format(nom=slug(titre, 38)),
     )
     fichiers = livraison.livrer(contexte, produit)
     return {

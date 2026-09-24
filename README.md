@@ -322,6 +322,7 @@ Une note par sujet, chacune racontant un défaut **mesuré** et sa correction.
 | [DEPUIS-ZERO.md](docs/DEPUIS-ZERO.md) | l'usine décide tout à partir du sujet : plus aucun réglage par défaut |
 | [USINE-CONTINUE.md](docs/USINE-CONTINUE.md) | produire en boucle, sous budget |
 | [COUVERTURE.md](docs/COUVERTURE.md) | la couverture, dessinée sans bibliothèque |
+| [LANGUE-LIVREE.md](docs/LANGUE-LIVREE.md) | un livre anglais habillé en français : le texte fixe suit la langue |
 
 ### Qualité
 

@@ -12,6 +12,8 @@ import zipfile
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
+from . import libelles
+
 STYLE = """\
 @page { margin: 1.1em; }
 body { font-family: Georgia, 'Times New Roman', serif; line-height: 1.62;
@@ -75,17 +77,7 @@ def _xml(texte: str) -> str:
 # Accessibilite
 # --------------------------------------------------------------------------
 
-RESUME_ACCESSIBILITE = (
-    "Publication textuelle. Ordre de lecture logique, titres hierarchises, "
-    "table des matieres navigable, texte redimensionnable sans perte "
-    "d'information. Contraste verifie a 4,5:1 au minimum sur l'ensemble de la "
-    "feuille de style. Aucun contenu clignotant ni sonore. La couverture porte "
-    "un texte de remplacement ; elle est decorative et ne porte aucune "
-    "information absente du texte."
-)
-
-
-def metadonnees_accessibilite(avec_image: bool) -> str:
+def metadonnees_accessibilite(avec_image: bool, langue: str = "fr") -> str:
     """Metadonnees EPUB Accessibility 1.1, exigees pour vendre dans l'Union.
 
     Elles ne sont pas decoratives : depuis le 28 juin 2025, l'European
@@ -113,7 +105,7 @@ def metadonnees_accessibilite(avec_image: bool) -> str:
     morceaux.append('<meta property="schema:accessibilityHazard">none</meta>')
     morceaux.append(
         '<meta property="schema:accessibilitySummary">{}</meta>'.format(
-            _xml(RESUME_ACCESSIBILITE)))
+            _xml(libelles.libelle(langue, "resume_accessibilite"))))
     morceaux.append(
         '<meta property="dcterms:conformsTo">'
         "EPUB Accessibility 1.1 - WCAG 2.1 Level AA</meta>")
@@ -121,12 +113,9 @@ def metadonnees_accessibilite(avec_image: bool) -> str:
     return "".join(morceaux)
 
 
-MOIS = ("janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet",
-        "aout", "septembre", "octobre", "novembre", "decembre")
-
-
 def page_droits(titre: str, auteur: str, editeur: str, identifiant: str,
-                horodatage: str, mentions: Sequence[str] = ()) -> str:
+                horodatage: str, mentions: Sequence[str] = (),
+                langue: str = "fr") -> str:
     """Page de copyright — ce qui manque le plus visiblement a un livre fait maison.
 
     Amazon KDP attend un appareil liminaire dans cet ordre : page de titre,
@@ -134,29 +123,29 @@ def page_droits(titre: str, auteur: str, editeur: str, identifiant: str,
     page de copyright se repere au premier coup d'oeil, et c'est la premiere
     chose qu'un lecteur habitue regarde apres le titre.
 
-    Le texte est en francais, comme « Sommaire » et le reste du mobilier de
-    l'EPUB : l'usine n'a pas de couche de traduction, et en inventer une pour
-    six lignes serait promettre un multilingue qu'elle ne tient pas ailleurs.
+    Elle suit la langue du livre, comme « Sommaire » : elle etait en
+    francais pour tout livre, y compris ecrit en anglais — la page que
+    l'acheteur regarde juste apres le titre. Voir « render/libelles.py ».
     """
+    t = libelles.textes(langue)
     annee = horodatage[:4]
     try:
-        mois = MOIS[int(horodatage[5:7]) - 1]
+        mois = t["mois"][int(horodatage[5:7]) - 1]
     except (ValueError, IndexError):
         mois = ""
     lignes = ['<p class="oeuvre">{}</p>'.format(_xml(titre))]
     lignes.append("<p>&#169; {} {}</p>".format(annee, _xml(auteur or "Usine-IA")))
-    lignes.append("<p>Tous droits reserves. Aucune partie de cet ouvrage ne "
-                  "peut etre reproduite ou diffusee sans l'autorisation "
-                  "ecrite de l'auteur.</p>")
+    lignes.append("<p>{}</p>".format(_xml(t["droits_reserves"])))
     if editeur and editeur != auteur:
-        lignes.append("<p>Edite par {}</p>".format(_xml(editeur)))
-    lignes.append("<p>Premiere edition : {}</p>".format(
-        "{} {}".format(mois, annee) if mois else annee))
+        lignes.append("<p>{}</p>".format(
+            _xml(t["edite_par"].format(editeur=editeur))))
+    lignes.append("<p>{}</p>".format(_xml(t["premiere_edition"].format(
+        date="{} {}".format(mois, annee) if mois else annee))))
     for mention in mentions:
         if mention:
             lignes.append("<p>{}</p>".format(_xml(mention)))
-    lignes.append('<p class="identifiant">Identifiant de la publication : '
-                  "{}</p>".format(_xml(identifiant)))
+    lignes.append('<p class="identifiant">{}</p>'.format(_xml(
+        t["identifiant_publication"].format(identifiant=identifiant))))
     return '<div class="droits">{}</div>'.format("".join(lignes))
 
 
@@ -275,7 +264,7 @@ def construire_epub(
             GABARIT_XHTML.format(
                 langue=langue, titre=_xml(titre),
                 corps=page_droits(titre, auteur, editeur, identifiant,
-                                  horodatage, mentions)),
+                                  horodatage, mentions, langue)),
         )
         fichiers.append(("droits", "droits.xhtml", "application/xhtml+xml"))
 
@@ -319,9 +308,10 @@ def construire_epub(
             "OEBPS/nav.xhtml",
             GABARIT_XHTML.format(
                 langue=langue,
-                titre="Sommaire",
-                corps='<nav epub:type="toc" id="toc"><h1 class="premier">Sommaire</h1>'
-                      "<ol>{}</ol></nav>".format(liens),
+                titre=_xml(libelles.libelle(langue, "sommaire")),
+                corps='<nav epub:type="toc" id="toc"><h1 class="premier">{}</h1>'
+                      "<ol>{}</ol></nav>".format(
+                          _xml(libelles.libelle(langue, "sommaire")), liens),
             ),
         )
 
@@ -395,7 +385,7 @@ def construire_epub(
                 editeur=_xml(editeur or auteur or "Usine-IA"),
                 horodatage=horodatage,
                 annee=horodatage[:4],
-                acces=metadonnees_accessibilite(bool(couverture)),
+                acces=metadonnees_accessibilite(bool(couverture), langue),
                 metacouv=meta_couverture,
                 manifeste="".join(manifeste),
                 colonne="".join(colonne),

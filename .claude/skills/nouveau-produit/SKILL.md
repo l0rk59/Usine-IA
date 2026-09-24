@@ -51,7 +51,13 @@ pour un cas ou la chaine ajoute ses propres controles. Points communs :
   des demandes quand plus rien ne repond, section perdue notee en echec. Le
   livre-jeu, le recueil et le feuilleton sortaient « prets » avec des scenes
   en moins, faute de cette ligne. `tests/test_trous_fiction.py` lit le
-  catalogue : il coupera la nouvelle chaine en route sans qu'on l'y ajoute.
+  catalogue : il coupera la nouvelle chaine en route sans qu'on l'y ajoute ;
+- aucun mot fixe destine a l'acheteur n'est ecrit dans la chaine : titres de
+  section, colonnes de tableur, consignes, noms de fichiers ajoutes au titre
+  viennent de `libelles.textes(ctx.langue_iso)` (`usine/render/libelles.py`),
+  en francais ET en anglais. `tests/test_langue_livree.py` fabrique tout le
+  catalogue en anglais et lit chaque fichier livre, PDF compris : un
+  « Chapitre » ecrit en dur dans la nouvelle chaine le fera echouer.
 
 **2. L'inscription** — une entree `TypeProduit` dans `catalogue.py` :
 

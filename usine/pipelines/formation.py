@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..agents import equipe
 from ..core import images
-from ..render import livraison, narration, quiz
+from ..render import libelles, livraison, narration, quiz
 from ..render.pdf import DocumentPDF
 from .base import (Contexte, elaguer_markdown, jetons_pour, nettoyer_titre,
                    preparer, slug, terminer)
@@ -265,10 +265,12 @@ def produire(ctx: Contexte, modules: int = 0,
             ctx.journal("     echec : {}".format(exc))
             # Le module est remplace par son PLAN : quelques puces la ou
             # l'acheteur attend une lecon. C'est un trou, pas un module.
-            corps = "## Objectif\n\n{}\n\n## Notions\n\n{}".format(
-                module["objectif"], "\n".join("- " + n for n in module["notions"])
-            )
-        contenus.append(("Module {} — {}".format(index + 1, module["titre"]), corps))
+            corps = libelles.libelle(
+                ctx.langue_iso, "module_plan", objectif=module["objectif"],
+                notions="\n".join("- " + n for n in module["notions"]))
+        contenus.append((libelles.libelle(ctx.langue_iso, "module_titre",
+                                          numero=index + 1, titre=module["titre"]),
+                         corps))
         # Un seul appel, et apres coup. La version d'avant notait « echec »
         # dans la branche d'erreur puis « ok » deux lignes plus bas, hors du
         # « else » : le dernier statut ecrasait le premier, et le module
@@ -338,17 +340,15 @@ def _exporter(ctx: Contexte, programme: Dict[str, Any], contenus: List[Tuple[str
     """
     titre = programme["titre"]
     prerequis = str(programme.get("prerequis") or "")
+    t = libelles.textes(ctx.langue_iso)
 
     def avant_propos(doc) -> None:
         doc.paragraphe(programme.get("promesse", ""), justifier=True)
         if prerequis:
-            doc.encadre("Prerequis", prerequis)
-        doc.paragraphe(
-            "Traitez un module par session de travail. Ne passez au suivant qu'apres "
-            "avoir produit le livrable demande : c'est lui qui transforme la lecture "
-            "en resultat.", justifier=True)
+            doc.encadre(t["formation_prerequis"], prerequis)
+        doc.paragraphe(t["formation_methode"], justifier=True)
 
-    blocs = [livraison.Bloc(titre="Avant de commencer", rendu_pdf=avant_propos)]
+    blocs = [livraison.Bloc(titre=t["formation_avant"], rendu_pdf=avant_propos)]
     blocs += livraison.blocs_depuis_sections(contenus)
 
     produit = livraison.Produit(
@@ -360,9 +360,9 @@ def _exporter(ctx: Contexte, programme: Dict[str, Any], contenus: List[Tuple[str
         formats=("md", "pdf", "html"),
         style_couverture="online course cover, educational, clean geometric",
         nom_fichier=slug(titre, 40),
-        suffixe_pdf="-manuel",
-        libelle_sections="modules",
-        documents=[("cahier-exercices", _cahier(ctx, programme, titre))],
+        suffixe_pdf=t["fichier_manuel"],
+        libelle_sections=t["unite_modules"],
+        documents=[(t["fichier_cahier"], _cahier(ctx, programme, titre))],
     )
     fichiers = livraison.livrer(ctx, produit)
 
@@ -383,12 +383,15 @@ def _exporter(ctx: Contexte, programme: Dict[str, Any], contenus: List[Tuple[str
             mesures["mots"], narration.minutes_lisibles(mesures)))
 
     if emails:
-        lignes = ["# Sequence e-mail — {}\n".format(titre)]
+        lignes = ["# {}\n".format(t["sequence_titre"].format(titre=titre))]
         for email in emails:
-            lignes.append("\n## Jour {} — {}\n".format(email["jour"], email["objet"]))
+            lignes.append("\n## {}\n".format(t["sequence_jour"].format(
+                jour=email["jour"], objet=email["objet"])))
             lignes.append(email["corps"])
             if email["action"]:
-                lignes.append("\n**Action demandee :** {}\n".format(email["action"]))
+                lignes.append("\n{}\n".format(t["deux_points"].format(
+                    libelle="**{}**".format(t["sequence_action"]),
+                    texte=email["action"])))
         chemin = ctx.dossier / "sequence-emails.md"
         chemin.write_text("\n".join(lignes), encoding="utf-8")
         fichiers.append(chemin)
@@ -398,27 +401,31 @@ def _exporter(ctx: Contexte, programme: Dict[str, Any], contenus: List[Tuple[str
 def _cahier(ctx: Contexte, programme: Dict[str, Any], titre: str):
     """Construit le cahier d'exercices, second document du produit."""
 
+    t = libelles.textes(ctx.langue_iso)
+
     def construire(_couverture):
         # Le cahier compose la sienne plutot que de reprendre celle du manuel :
         # c'est un document distinct, que l'acheteur ouvre separement.
-        doc = DocumentPDF(titre_courant="{} — cahier d'exercices".format(titre),
-                          police_corps="Helvetica")
+        doc = DocumentPDF(titre_courant=t["cahier_titre_courant"].format(titre=titre),
+                          police_corps="Helvetica", langue=ctx.langue_iso)
         if ctx.sans_image:
-            doc.page_couverture("Cahier d'exercices", titre, ctx.auteur)
+            doc.page_couverture(t["cahier_titre"], titre, ctx.auteur)
         else:
             doc.page_couverture_image(*images.couverture_pleine_page(
-                "Cahier d'exercices", titre, ctx.auteur,
+                t["cahier_titre"], titre, ctx.auteur,
                 getattr(ctx, "marque", "") or ""))
         for index, module in enumerate(programme["modules"], 1):
-            doc.titre("Module {} — {}".format(index, module["titre"]), 1)
+            doc.titre(t["module_titre"].format(numero=index, titre=module["titre"]), 1)
             if module["objectif"]:
-                doc.paragraphe("Objectif : " + module["objectif"], taille=10.5)
+                doc.paragraphe(t["deux_points"].format(
+                    libelle=t["cahier_objectif"], texte=module["objectif"]),
+                    taille=10.5)
             if module["livrable"]:
-                doc.encadre("Livrable attendu", module["livrable"])
+                doc.encadre(t["cahier_livrable"], module["livrable"])
             if module["exercice"]:
-                doc.titre("Consigne", 2)
+                doc.titre(t["cahier_consigne"], 2)
                 doc.paragraphe(module["exercice"], justifier=True)
-            doc.titre("Vos notes", 2)
+            doc.titre(t["cahier_notes"], 2)
             doc.lignes_a_remplir(9)
         return doc
 
