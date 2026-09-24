@@ -582,9 +582,18 @@ async function chargerUsine() {
   if (etat.en_marche) {
     const courant = etat.session?.courant;
     zone.className = 'etat marche';
-    zone.textContent = courant
-      ? `En marche — ${courant.type} : « ${courant.sujet} » (${etat.session.nombre_faits || 0} livre(s))`
-      : `En marche — ${etat.session?.nombre_faits || 0} produit(s) livre(s)`;
+    if (courant && courant.attente_jusqu_a) {
+      // L'usine attend que les quotas reviennent — parfois jusqu'a minuit
+      // UTC. Afficher « En marche » pendant des heures laissait croire a une
+      // usine bloquee, et invitait a l'arreter au moment ou elle allait finir.
+      const heure = new Date(courant.attente_jusqu_a * 1000).toLocaleTimeString(
+        'fr-FR', {hour: '2-digit', minute: '2-digit'});
+      zone.textContent = `En attente des fournisseurs — reprise automatique vers ${heure} : « ${courant.sujet} »`;
+    } else {
+      zone.textContent = courant
+        ? `En marche — ${courant.type} : « ${courant.sujet} » (${etat.session.nombre_faits || 0} livre(s))`
+        : `En marche — ${etat.session?.nombre_faits || 0} produit(s) livre(s)`;
+    }
   } else {
     zone.className = 'etat';
     const compte = etat.file;

@@ -1281,7 +1281,14 @@ def cmd_usine(args: argparse.Namespace) -> int:
             ok("en marche (pid {}) depuis {:.0f} min".format(
                 etat["pid"], (session.get("duree") or 0) / 60))
             courant = session.get("courant")
-            if courant:
+            if courant and courant.get("attente_jusqu_a"):
+                # Une attente de quota se lisait « En cours » pendant des
+                # heures : on croyait l'usine bloquee.
+                print("  En attente des fournisseurs — reprise automatique "
+                      "vers {} : « {} »".format(
+                          time.strftime("%H:%M", time.localtime(
+                              courant["attente_jusqu_a"])), courant["sujet"]))
+            elif courant:
                 print("  En cours : {} — « {} »".format(
                     courant["type"], courant["sujet"]))
             print("  Produits livres cette session : {}".format(

@@ -371,6 +371,43 @@ class UneSeuleRepriseParProduit(_Cas):
         self.assertEqual(erreurs, [])
 
 
+class LAttenteSeVoit(_Cas):
+    """Une attente de quota peut durer jusqu'a minuit UTC. Elle s'affichait
+    « En cours », comme une fabrication : on croyait l'usine bloquee, et on
+    l'arretait au moment ou elle allait finir."""
+
+    def test_le_statut_dit_l_attente_et_l_heure_de_reprise(self):
+        import io
+        from contextlib import redirect_stdout
+
+        from usine import cli
+
+        production._poser_verrou()
+        self.addCleanup(production._lever_verrou)
+        fin = time.time() + 3 * 3600
+        production.ecrire_etat({
+            "pid": os.getpid(), "demarre_le": time.time(), "duree": 5,
+            "faits": [], "nombre_faits": 0, "motif_fin": "",
+            "courant": {"id": 1, "sujet": "Echos d'acier", "type": "roman",
+                        "depuis": time.time(), "attente_jusqu_a": fin}})
+        sortie = io.StringIO()
+        with redirect_stdout(sortie):
+            cli.principal(["usine", "statut"])
+        texte = sortie.getvalue()
+        self.assertIn("En attente des fournisseurs", texte)
+        self.assertIn(time.strftime("%H:%M", time.localtime(fin)), texte)
+        self.assertNotIn("En cours", texte)
+
+    def test_le_tableau_de_bord_le_dit_aussi(self):
+        """Verifie dans un vrai navigateur le 24/09/2026 ; ici, on garde que
+        le script lit bien la cle que la boucle publie."""
+        script = (RACINE / "usine" / "web" / "statique" / "app.js").read_text(
+            encoding="utf-8")
+        self.assertIn("courant.attente_jusqu_a", script)
+        source = (RACINE / "usine" / "production.py").read_text(encoding="utf-8")
+        self.assertIn('"attente_jusqu_a": fin', source)
+
+
 class LeProgresSeCompteEnSections(unittest.TestCase):
     """« sans_progres » decide quand renoncer : il ne doit monter que quand
     une reprise n'a rien ecrit de plus."""
