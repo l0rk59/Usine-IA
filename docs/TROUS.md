@@ -213,3 +213,23 @@ Deux défauts plus petits, trouvés en chemin :
   avancer. Elle avance maintenant sur la fiche, comme dans `nouvelle`.
 
 Les vingt et une mutations de la campagne sont vues.
+
+## Le paquet prêt à vendre ne regardait pas le statut
+
+Un produit inachevé se disait inachevé partout — sur sa fiche, au tableau de
+bord, dans `usine reprendre`. Sauf dans ce qui part chez l'acheteur.
+
+Mesure du 24/09/2026 : ebook dont un chapitre a échoué, « kit de vente » et
+« archive » cochés. L'archive destinée à l'acheteur livrait ce chapitre réduit
+à son plan — « Objectif 2 / Point A, Point B, Point C » — dans le PDF, l'EPUB
+et le Markdown, et une page de vente promettait le livre entier. `usine
+livrer`, `usine marketing` et les deux boutons du tableau de bord faisaient de
+même sur demande.
+
+Les cinq chemins passent maintenant par `apres.pas_encore_vendable`. Après une
+fabrication, le kit et l'archive attendent la fin du produit, et c'est la
+reprise qui les fait. Sur demande explicite, le refus nomme la commande qui
+finit le produit. Le tableau de bord ne propose plus les deux boutons sur un
+produit inachevé : il propose « Reprendre ».
+
+Les cinq mutations de la campagne sont vues.

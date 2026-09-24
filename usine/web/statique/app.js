@@ -328,9 +328,9 @@ async function chargerProduits() {
       <div class="fichiers">${liens}</div>
       <div class="rangee">
         ${inacheve ? `<button class="discret reprendre"
-          data-reprendre="${echapper(p.id)}">Reprendre</button>` : ''}
-        <button class="discret" data-livrer="${echapper(p.id)}">Archive ZIP</button>
-        <button class="discret" data-marketing="${echapper(p.id)}">Kit de vente</button>
+          data-reprendre="${echapper(p.id)}">Reprendre</button>` : `<button
+          class="discret" data-livrer="${echapper(p.id)}">Archive ZIP</button>
+        <button class="discret" data-marketing="${echapper(p.id)}">Kit de vente</button>`}
         <button class="discret refaire"
           data-supprimer="${echapper(p.id)}">Effacer</button>
         <span class="aide" data-etat="${echapper(p.id)}" role="status"></span>

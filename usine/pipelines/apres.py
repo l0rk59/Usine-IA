@@ -28,7 +28,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
-from ..core import reglages
+from ..core import reglages, store
 from ..marketing import vente
 from ..packaging import livraison
 
@@ -44,6 +44,24 @@ def veut(option: Optional[bool], cle_reglage: str) -> bool:
     if option is None:
         return bool(reglages.lire(cle_reglage, False))
     return bool(option)
+
+
+def pas_encore_vendable(fiche: Dict[str, Any]) -> str:
+    """Pourquoi ce produit ne doit pas encore etre empaquete ni vendu — ou "".
+
+    Inacheve, il contient des sections reduites a leur plan. Mesure du
+    24/09/2026 : l'archive destinee a l'acheteur livrait un chapitre perdu
+    sous la forme « Point A, Point B, Point C », dans le PDF, l'EPUB et le
+    Markdown, et une page de vente promettait le livre entier. Le produit
+    etait marque inacheve ; le paquet pret a mettre en ligne ne le disait
+    nulle part. Les cinq chemins qui vendent ou empaquettent passent ici.
+    """
+    if (fiche or {}).get("statut") != "en_cours":
+        return ""
+    manquants = ((fiche.get("meta") or {}).get("manquants")) or []
+    return ("produit inacheve{} — finissez-le d'abord : usine reprendre {}"
+            .format(" ({} section(s) manquent)".format(len(manquants))
+                    if manquants else "", fiche.get("id", "")))
 
 
 def apres_production(
@@ -68,6 +86,19 @@ def apres_production(
     """
     dire = journal if callable(journal) else (lambda _m: None)
     dossier = Path(resume["dossier"])
+
+    # Pas pour un produit inacheve (voir « pas_encore_vendable »). La
+    # reprise refait les deux une fois le produit fini : c'est elle qui passe
+    # ici ensuite.
+    fiche = store.lire_produit(str(resume.get("produit_id") or "")) or {}
+    if pas_encore_vendable(fiche) and (
+            veut(kit, "marketing_auto") or veut(archive, "archive_auto")):
+        manquants = (fiche.get("meta") or {}).get("manquants") or []
+        dire("Kit de vente et archive : pas pour un produit inacheve{}. Ils "
+             "seront faits quand il sera fini.".format(
+                 " ({} section(s) manquent)".format(len(manquants))
+                 if manquants else ""))
+        return resume
 
     if veut(kit, "marketing_auto"):
         try:

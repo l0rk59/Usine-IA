@@ -1967,9 +1967,14 @@ def cmd_marketing(args: argparse.Namespace) -> int:
         erreur("Produit inconnu : {}".format(args.produit_id))
         print("  Liste des produits : usine liste")
         return 1
+    from .pipelines import apres, brief, porte
+
+    refus = apres.pas_encore_vendable(produit)
+    if refus:
+        erreur("Pas de kit de vente : " + refus)
+        return 1
     dossier = Path(produit["dossier"])
     meta = produit.get("meta") or {}
-    from .pipelines import brief, porte
 
     # Le contexte de la fabrication, garde au carnet. Les valeurs en dur de
     # cette commande — « pro », « un public francophone motive » — donnaient
@@ -2005,6 +2010,12 @@ def cmd_livrer(args: argparse.Namespace) -> int:
     produit = store.lire_produit(args.produit_id)
     if not produit:
         erreur("Produit inconnu : {}".format(args.produit_id))
+        return 1
+    from .pipelines import apres
+
+    refus = apres.pas_encore_vendable(produit)
+    if refus:
+        erreur("Pas d'archive pour l'acheteur : " + refus)
         return 1
     dossier = Path(produit["dossier"])
     if not dossier.exists():

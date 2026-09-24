@@ -435,5 +435,65 @@ class UneChaineQuiPerdUneEtapeLeDit(unittest.TestCase):
         self.assertFalse((produit.get("meta") or {}).get("manquants"))
 
 
+
+class UnProduitTroueNeSePrepareEtreVendu(unittest.TestCase):
+    """Le kit de vente et l'archive sortaient aussi pour un produit inacheve.
+
+    Mesure du 24/09/2026 : l'archive destinee a l'acheteur livrait le
+    chapitre perdu reduit a son plan — « Point A, Point B, Point C » — et une
+    page de vente promettait le livre entier. Le produit etait marque
+    inacheve ; le paquet pret a mettre en ligne ne le disait nulle part.
+    """
+
+    def test_ni_kit_ni_archive_avant_la_fin_puis_les_deux(self):
+        from usine.core import reglages
+        from usine.pipelines import porte, reprise
+
+        atelier.isoler("troue-vente")
+        reglages.ecrire(dict(images=False, qualite="rapide",
+                             marketing_auto=True, archive_auto=True))
+        etat = {"panne": True}
+
+        def modele(messages, role="standard", **kw):
+            if etat["panne"] and "Redige le chapitre 2 sur" in messages[-1]["content"]:
+                raise ValueError("reponse illisible")
+            return simulateur(messages, role)
+
+        journal = []
+        llm.definir_simulateur(modele)
+        try:
+            ctx = porte.contexte("la paie des fleuristes", {"chapitres": 5},
+                                 journal.append)
+            coupe = porte.fabriquer("ebook", ctx, {"chapitres": 5},
+                                    journal.append)
+            self.assertEqual(store.lire_produit(ctx.produit_id)["statut"],
+                             "en_cours")
+            self.assertFalse(list(ctx.dossier.parent.glob("*.zip")),
+                             "une archive d'acheteur pour un livre troue")
+            self.assertFalse(coupe.get("marketing"))
+            self.assertTrue(any("pas pour un produit inacheve" in l
+                                for l in journal), "le refus doit se dire")
+            # Les commandes explicites refusent de meme, et disent comment
+            # finir le produit.
+            from usine import cli
+
+            for commande in ("livrer", "marketing"):
+                sortie = io.StringIO()
+                with redirect_stdout(sortie), redirect_stderr(sortie):
+                    code = cli.principal([commande, ctx.produit_id])
+                with self.subTest(commande=commande):
+                    self.assertEqual(code, 1, sortie.getvalue())
+                    self.assertIn("usine reprendre " + ctx.produit_id,
+                                  sortie.getvalue())
+            self.assertFalse(list(ctx.dossier.parent.glob("*.zip")))
+            etat["panne"] = False
+            fini = reprise.reprendre(ctx.produit_id, journal=journal.append)
+        finally:
+            llm.definir_simulateur(None)
+        self.assertEqual(store.lire_produit(ctx.produit_id)["statut"], "pret")
+        self.assertTrue(fini.get("archive"))
+        self.assertTrue(fini.get("marketing"))
+
+
 if __name__ == "__main__":
     unittest.main()

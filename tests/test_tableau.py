@@ -810,7 +810,28 @@ class TestActionsProduit(BaseServeur):
             encoding="utf-8")
         store.creer_produit("tab-act", "ebook", "Un livre a empaqueter",
                             sujet="un sujet", dossier=str(dossier))
+        # Un produit FINI : un produit cree reste « en_cours » tant que sa
+        # chaine ne l'a pas termine, et on n'empaquette ni ne vend un produit
+        # inacheve (voir « apres.pas_encore_vendable »).
+        store.maj_produit("tab-act", statut="pret")
         return "tab-act"
+
+    def test_un_produit_inacheve_ne_s_empaquette_ni_ne_se_vend(self):
+        """L'archive d'un produit inacheve livrait ses sections perdues
+        reduites a leur plan, et le kit de vente promettait le tout."""
+        identifiant = self._un_produit()
+        store.maj_produit(identifiant, statut="en_cours",
+                          meta={"manquants": ["chapitre-2"]})
+        # Les autres tests de la classe empaquettent le meme produit.
+        for ancienne in config.PRODUITS_DIR.glob("*.zip"):
+            ancienne.unlink()
+        for action in ("livrer", "marketing"):
+            with self.subTest(action=action):
+                statut, refus = self.json("/api/produit",
+                                          {"action": action, "id": identifiant})
+                self.assertEqual(statut, 409)
+                self.assertIn("usine reprendre " + identifiant, refus["erreur"])
+        self.assertFalse(list(config.PRODUITS_DIR.glob("*.zip")))
 
     def test_un_produit_inconnu_est_refuse(self):
         statut, refus = self.json("/api/produit",

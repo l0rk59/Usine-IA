@@ -926,6 +926,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
         produit = store.lire_produit(produit_id) if produit_id else None
         if produit is None:
             return ({"erreur": "produit inconnu"}, 404)
+        if action in ("livrer", "marketing"):
+            from ..pipelines import apres
+
+            refus = apres.pas_encore_vendable(produit)
+            if refus:
+                return ({"erreur": refus}, 409)
 
         if action == "livrer":
             # Empaqueter ne coute aucun appel : c'est de la copie de fichiers.
