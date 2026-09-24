@@ -14,6 +14,7 @@ import hashlib
 import json
 import random
 import re
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -397,6 +398,34 @@ def _au_repos(p: config.Provider) -> bool:
     return _REPOS.get(p.name, 0) > time.time()
 
 
+# Les appels de CHAQUE fil, en plus de la base. La base recoit ceux de tous
+# les fils, et un produit comptait tout ce qui s'etait fait pendant sa
+# fabrication : deux ebooks fabriques en meme temps depuis le tableau de bord
+# et la boucle en inscrivaient dix-huit chacun, pour neuf chacun en realite.
+# « usine conseils » en tirait le type « le plus economique ».
+_fil = threading.local()
+
+
+def _journaliser(fournisseur: str, modele: str, ok: bool, *args: Any,
+                 **kwargs: Any) -> None:
+    store.enregistrer_appel(fournisseur, modele, ok, *args, **kwargs)
+    journal = getattr(_fil, "appels", None)
+    if journal is None:
+        journal = _fil.appels = []
+    journal.append((fournisseur, ok))
+
+
+def marque_du_fil() -> int:
+    """Ou en est le journal des appels de ce fil : un point de depart."""
+    return len(getattr(_fil, "appels", ()))
+
+
+def appels_du_fil_depuis(marque: int) -> Tuple[int, List[str]]:
+    """Les appels faits par CE fil depuis la marque, et qui y a repondu."""
+    journal = getattr(_fil, "appels", [])[marque:]
+    return len(journal), sorted({f for f, ok in journal if ok})
+
+
 def prochaine_ouverture(role: str = "standard") -> Optional[float]:
     """Secondes avant qu'un fournisseur puisse servir ce role.
 
@@ -617,7 +646,7 @@ def _appel(
     tronquee = str(choix.get("finish_reason") or "").lower() in ("length",
                                                                 "max_tokens")
     identifiant = cle.id if cle else ""
-    store.enregistrer_appel(p.name, modele, True, tokens, latence, cle_id=identifiant)
+    _journaliser(p.name, modele, True, tokens, latence, cle_id=identifiant)
     return Reponse(texte=texte, fournisseur=p.name, modele=modele, tokens=tokens,
                    cle=cle.affichage if cle else "", tronquee=tronquee)
 
@@ -657,7 +686,7 @@ def generer(
         texte = _SIMULATEUR(messages, role)
         # Un appel simule reste un appel : le journaliser rend le budget et les
         # statistiques verifiables sans toucher au reseau.
-        store.enregistrer_appel("simulateur", role, True)
+        _journaliser("simulateur", role, True)
         if cache:
             store.cache_set(cle_cache, texte, "simulateur", role)
         return Reponse(texte, "simulateur", role)
@@ -730,10 +759,10 @@ def generer(
                                         rep.modele)
                     return rep
                 except HttpErreur as exc:
-                    store.enregistrer_appel(p.name,
-                                            module_modeles.modele_effectif(p, role),
-                                            False, 0, 0,
-                                            str(exc), cle_id=cle.id if cle else "")
+                    _journaliser(p.name,
+                                 module_modeles.modele_effectif(p, role),
+                                 False, 0, 0,
+                                 str(exc), cle_id=cle.id if cle else "")
                     bilan.essai(p.name, _expliquer(
                         p, exc, module_modeles.modele_effectif(p, role)))
 
@@ -824,10 +853,10 @@ def generer(
                         break
                     _patienter(min(8.0, 1.5 * (essai + 1)) + random.random())
                 except Exception as exc:
-                    store.enregistrer_appel(p.name,
-                                            module_modeles.modele_effectif(p, role),
-                                            False, 0, 0,
-                                            repr(exc), cle_id=cle.id if cle else "")
+                    _journaliser(p.name,
+                                 module_modeles.modele_effectif(p, role),
+                                 False, 0, 0,
+                                 repr(exc), cle_id=cle.id if cle else "")
                     bilan.essai(p.name, _expliquer(
                         p, exc, module_modeles.modele_effectif(p, role)))
                     # Une exception qui n'est pas une « HttpErreur » veut dire,

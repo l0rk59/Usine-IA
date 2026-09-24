@@ -215,6 +215,76 @@ class TestBudget(unittest.TestCase):
             llm.definir_simulateur(None)
 
 
+class LeCoutDUnProduitNeCompteQueLui(unittest.TestCase):
+    """Deux ebooks fabriques en meme temps — le tableau de bord et la boucle —
+    inscrivaient dix-huit appels chacun pour neuf chacun en realite : le
+    produit comptait tout ce que la base avait recu pendant sa fabrication.
+    « usine conseils » en tirait le type le plus economique."""
+
+    def test_les_appels_d_un_autre_fil_ne_lui_sont_pas_imputes(self):
+        from usine.pipelines import porte
+
+        atelier.isoler("cout-par-produit")
+        reglages.ecrire(dict(images=False, qualite="rapide"))
+        propres = []
+
+        def modele(messages, role):
+            propres.append(1)
+            if len(propres) == 1:
+                # Ce qu'un autre fil fabrique pendant ce temps arrive aussi
+                # en base.
+                for _ in range(5):
+                    store.enregistrer_appel("un autre fil", "m", True)
+            return simulateur(messages, role)
+
+        # Le fil de la boucle fabrique produit apres produit : ce qu'il a
+        # fait AVANT celui-ci ne lui est pas impute non plus.
+        llm.definir_simulateur(lambda messages, role: "un produit d'avant")
+        for rang in range(4):
+            llm.generer("un produit d'avant {}".format(rang), cache=False)
+        llm.definir_simulateur(modele)
+        try:
+            ctx = porte.contexte("la paie des saisonniers", {}, lambda _m: None)
+            porte.fabriquer("memo", ctx, {}, lambda _m: None)
+        finally:
+            llm.definir_simulateur(None)
+        with store.cursor() as cur:
+            cur.execute("SELECT appels, fournisseurs FROM productions"
+                        " WHERE produit_id=?", (ctx.produit_id,))
+            ligne = cur.fetchone()
+        self.assertEqual(ligne["appels"], len(propres))
+        self.assertNotIn("un autre fil", ligne["fournisseurs"])
+
+    def test_chaque_fil_tient_son_propre_compte(self):
+        import threading
+
+        llm.definir_simulateur(lambda messages, role: "texte")
+        comptes = {}
+        # Les deux fils posent leur marque, travaillent, puis comptent — et
+        # chacun attend l'autre entre deux etapes : le chevauchement est
+        # garanti, pas laisse au hasard de l'ordonnanceur.
+        ensemble = threading.Barrier(2)
+
+        def travailler(nom, combien):
+            marque = llm.marque_du_fil()
+            ensemble.wait(5)
+            for rang in range(combien):
+                llm.generer("{} {}".format(nom, rang), cache=False)
+            ensemble.wait(5)
+            comptes[nom] = llm.appels_du_fil_depuis(marque)[0]
+
+        try:
+            fils = [threading.Thread(target=travailler, args=(n, c))
+                    for n, c in (("a", 2), ("b", 3))]
+            for fil in fils:
+                fil.start()
+            for fil in fils:
+                fil.join(10)
+        finally:
+            llm.definir_simulateur(None)
+        self.assertEqual(comptes, {"a": 2, "b": 3})
+
+
 class TestUsineContinue(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

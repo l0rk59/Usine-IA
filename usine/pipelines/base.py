@@ -245,6 +245,9 @@ class Contexte:
     mots_section: int = 0         # 0 : deduit de la taille
     produit_id: str = ""
     demarre_le: float = field(default_factory=time.time)
+    # Ou en etait le journal des appels de CE fil a la creation du contexte :
+    # « terminer » compte a partir de la ce que le produit a coute.
+    marque_appels: int = field(default_factory=llm.marque_du_fil)
     dossier: Path = field(default_factory=Path)
 
     @property
@@ -748,8 +751,7 @@ def terminer(ctx: Contexte, fichiers: List[Path], meta: Optional[Dict[str, Any]]
         meta=dict(infos, fichiers=[f.name for f in fichiers]),
     )
     # Trace mesuree : c'est elle qui alimente « usine bilan » et « usine conseils ».
-    appels = store.compteur_intervalle(ctx.demarre_le)
-    fournisseurs = store.fournisseurs_intervalle(ctx.demarre_le)
+    appels, fournisseurs = llm.appels_du_fil_depuis(ctx.marque_appels)
     apprentissage.enregistrer(
         produit_id=ctx.produit_id,
         type_produit=genre,

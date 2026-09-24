@@ -674,17 +674,6 @@ def compteur_intervalle(depuis: float, jusqu_a: Optional[float] = None) -> int:
         return int(cur.fetchone()[0])
 
 
-def fournisseurs_intervalle(depuis: float, jusqu_a: Optional[float] = None) -> List[str]:
-    """Fournisseurs ayant effectivement repondu pendant la fenetre."""
-    with cursor() as cur:
-        cur.execute(
-            "SELECT DISTINCT fournisseur FROM appels"
-            " WHERE ts >= ? AND ts <= ? AND ok=1",
-            (depuis, jusqu_a if jusqu_a is not None else time.time()),
-        )
-        return [row[0] for row in cur.fetchall()]
-
-
 def stats_fournisseurs() -> List[Dict[str, Any]]:
     with cursor() as cur:
         cur.execute(

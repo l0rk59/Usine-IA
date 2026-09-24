@@ -149,6 +149,13 @@ l'a branchée, et le compteur tient lui-même le compte de son produit. Le
 plafond **du jour**, lui, reste global : il compte tout ce qui a été dépensé,
 d'où que ce soit parti.
 
+Le même mélange faussait ce que coûte un produit. Chaque fiche comptait tout ce
+que la base avait reçu pendant sa fabrication : deux ebooks faits en même temps
+en inscrivaient dix-huit appels chacun, pour neuf chacun en réalité — et
+`usine conseils` en tirait le type « le plus économique ». Le routeur tient
+maintenant le journal des appels de chaque fil, et un produit ne compte que
+les siens.
+
 ## Quand les fournisseurs se taisent : attendre, puis finir
 
 Les quotas gratuits des fournisseurs ne sont pas votre budget. Ils se vident
