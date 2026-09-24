@@ -135,7 +135,13 @@ def _completer(ctx: Contexte, titre_actuel: str, description: str,
     try:
         donnees = equipe.MARKETEUR.travailler_json(ctx, invite, max_tokens=1200,
                                                    temperature=0.9)
-    except Exception:
+    except Exception as exc:
+        # Le test garde les titres distincts et part avec moins de variantes
+        # que demande. Il le faisait sans un mot : on en demandait quatre, on
+        # en recevait trois, et rien ne disait pourquoi.
+        ctx.journal("  titres de remplacement indisponibles ({}) : {} "
+                    "variante(s) au lieu de {}.".format(
+                        exc, len(deja), len(deja) + manquants))
         return []
     propositions = donnees.get("titres") if isinstance(donnees, dict) else donnees
     return [
