@@ -285,6 +285,49 @@ class LeCoutDUnProduitNeCompteQueLui(unittest.TestCase):
         self.assertEqual(comptes, {"a": 2, "b": 3})
 
 
+class LesMemoiresDUnServeurQuiDure(unittest.TestCase):
+    """Ce qui tourne des jours sur un telephone ne doit pas grandir sans fin."""
+
+    def test_le_journal_des_appels_du_fil_reste_borne_et_juste(self):
+        limite = llm.JOURNAL_DU_FIL_MAX
+        llm.JOURNAL_DU_FIL_MAX = 10
+        llm.definir_simulateur(lambda messages, role: "texte")
+        try:
+            for rang in range(37):
+                llm.generer("un appel d'avant {}".format(rang), cache=False)
+            marque = llm.marque_du_fil()
+            for rang in range(4):
+                llm.generer("un appel du produit {}".format(rang), cache=False)
+            self.assertEqual(llm.appels_du_fil_depuis(marque)[0], 4)
+            self.assertLessEqual(len(llm._fil.appels), 10)
+        finally:
+            llm.JOURNAL_DU_FIL_MAX = limite
+            llm.definir_simulateur(None)
+
+    def test_les_travaux_termines_ne_s_accumulent_pas(self):
+        from usine.web import serveur
+
+        sauve = dict(serveur.TRAVAUX)
+        serveur.TRAVAUX.clear()
+        try:
+            for rang in range(45):
+                serveur.TRAVAUX["fini-{}".format(rang)] = {
+                    "id": "fini-{}".format(rang), "statut": "termine",
+                    "debut": float(rang), "journal": ["..."] * 50}
+            serveur.TRAVAUX["en-cours"] = {"id": "en-cours", "statut": "en_cours",
+                                           "debut": 0.0, "journal": []}
+            serveur._ranger_travaux()
+            finis = [t for t in serveur.TRAVAUX.values() if t["statut"] != "en_cours"]
+            self.assertEqual(len(finis), serveur.TRAVAUX_TERMINES_GARDES)
+            self.assertIn("en-cours", serveur.TRAVAUX,
+                          "un travail en cours ne s'oublie jamais")
+            self.assertIn("fini-44", serveur.TRAVAUX, "les plus recents restent")
+            self.assertNotIn("fini-0", serveur.TRAVAUX)
+        finally:
+            serveur.TRAVAUX.clear()
+            serveur.TRAVAUX.update(sauve)
+
+
 class TestUsineContinue(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

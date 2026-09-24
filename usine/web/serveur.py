@@ -35,6 +35,18 @@ from ..pipelines.base import TAILLES, TONS, Contexte
 STATIQUE = Path(__file__).resolve().parent / "statique"
 
 TRAVAUX: Dict[str, Dict[str, Any]] = {}
+# Les travaux termines qu'on garde. La page n'en montre que dix ; les autres
+# restaient en memoire, journal complet compris, tant que le serveur tournait
+# — des jours sur un telephone. Le produit, lui, est en base.
+TRAVAUX_TERMINES_GARDES = 30
+
+
+def _ranger_travaux() -> None:
+    """Oublie les plus anciens travaux termines. A appeler sous « _VERROU »."""
+    finis = sorted((t for t in TRAVAUX.values() if t.get("statut") != "en_cours"),
+                   key=lambda t: t.get("debut") or 0)
+    for travail in finis[:max(0, len(finis) - TRAVAUX_TERMINES_GARDES)]:
+        TRAVAUX.pop(travail.get("id"), None)
 # La veille est lente par construction : Reddit repond 429 des le deuxieme
 # appel rapproche, donc « scouter » s'impose une pause de trois secondes
 # entre deux communautes. Une requete HTTP synchrone laisserait la page
@@ -635,6 +647,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
 
         travail_id = uuid.uuid4().hex[:12]
         with _VERROU:
+            _ranger_travaux()
             TRAVAUX[travail_id] = {
                 "id": travail_id, "type": type_produit,
                 "sujet": sujet[:300] or "(l'usine choisit)", "statut": "en_cours",
@@ -677,6 +690,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
             fiction = action == "prospecter-fiction"
             travail_id = uuid.uuid4().hex[:12]
             with _VERROU:
+                _ranger_travaux()
                 TRAVAUX[travail_id] = {
                     "id": travail_id, "type": "prospection",
                     "sujet": ("recherche de promesses de lecture" if fiction
@@ -866,6 +880,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 if len(en_cours) >= 2:
                     return ({"erreur": "deux travaux sont deja en cours"}, 429)
                 travail_id = uuid.uuid4().hex[:12]
+                _ranger_travaux()
                 TRAVAUX[travail_id] = {
                     "id": travail_id, "type": "ab",
                     "sujet": (titre or produit)[:300], "statut": "en_cours",
@@ -960,6 +975,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                         if t["statut"] == "en_cours"]) >= 2:
                     return ({"erreur": "deux travaux sont deja en cours"}, 429)
                 travail_id = uuid.uuid4().hex[:12]
+                _ranger_travaux()
                 TRAVAUX[travail_id] = {
                     "id": travail_id, "type": "marketing",
                     "sujet": (produit["titre"] or produit_id)[:300],
@@ -988,6 +1004,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                         if t["statut"] == "en_cours"]) >= 2:
                     return ({"erreur": "deux travaux sont deja en cours"}, 429)
                 travail_id = uuid.uuid4().hex[:12]
+                _ranger_travaux()
                 TRAVAUX[travail_id] = {
                     "id": travail_id, "type": "reprise",
                     "sujet": (produit["titre"] or produit_id)[:300],

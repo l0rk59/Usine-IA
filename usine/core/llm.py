@@ -404,6 +404,11 @@ def _au_repos(p: config.Provider) -> bool:
 # et la boucle en inscrivaient dix-huit chacun, pour neuf chacun en realite.
 # « usine conseils » en tirait le type « le plus economique ».
 _fil = threading.local()
+# Le fil de l'usine continue tourne des jours : son journal ne garde que les
+# appels recents. « _fil.oublies » compte ceux qu'il a laisses tomber, pour
+# qu'une marque posee avant reste juste. Un produit fait bien moins d'appels
+# que cette limite.
+JOURNAL_DU_FIL_MAX = 20000
 
 
 def _journaliser(fournisseur: str, modele: str, ok: bool, *args: Any,
@@ -412,17 +417,23 @@ def _journaliser(fournisseur: str, modele: str, ok: bool, *args: Any,
     journal = getattr(_fil, "appels", None)
     if journal is None:
         journal = _fil.appels = []
+        _fil.oublies = 0
     journal.append((fournisseur, ok))
+    if len(journal) > JOURNAL_DU_FIL_MAX:
+        moitie = len(journal) // 2
+        del journal[:moitie]
+        _fil.oublies += moitie
 
 
 def marque_du_fil() -> int:
     """Ou en est le journal des appels de ce fil : un point de depart."""
-    return len(getattr(_fil, "appels", ()))
+    return getattr(_fil, "oublies", 0) + len(getattr(_fil, "appels", ()))
 
 
 def appels_du_fil_depuis(marque: int) -> Tuple[int, List[str]]:
     """Les appels faits par CE fil depuis la marque, et qui y a repondu."""
-    journal = getattr(_fil, "appels", [])[marque:]
+    debut = max(0, marque - getattr(_fil, "oublies", 0))
+    journal = getattr(_fil, "appels", [])[debut:]
     return len(journal), sorted({f for f, ok in journal if ok})
 
 
