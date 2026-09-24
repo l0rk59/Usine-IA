@@ -299,6 +299,58 @@ d'attendre au lieu de s'arrêter ([USINE-CONTINUE.md](USINE-CONTINUE.md)). Ce
 qu'il ne voit pas est écrit dans sa docstring : un réseau coupé, un crédit
 épuisé sans repos posé. D'où le plancher d'attente côté boucle.
 
+## 6. Le message qu'on lit quand plus rien ne répond
+
+C'est le message qu'on lit au moment précis où il faut décider quoi faire.
+Mesure du 24/09/2026, huit fournisseurs actifs, chacun en panne à sa façon —
+avant :
+
+```
+Tous les fournisseurs ont echoue :
+  - gemini/cle-fa***xxx : HTTP 401 : Unauthorized
+  - mistral/cle-fa***xxx : HTTP 503 : Service Unavailable
+  - mistral/cle-fa***xxx : HTTP 503 : Service Unavailable
+  - openrouter/cle-fa***xxx : HTTP 0 : reseau indisponible : timed out
+  - openrouter/cle-fa***xxx : HTTP 0 : reseau indisponible : timed out
+  - cerebras : en repos
+  - pollinations : HTTP 500 : Internal Server Error
+  - pollinations : HTTP 500 : Internal Server Error
+  - ollama : serveur injoignable [...]
+  - llamacpp : serveur injoignable [...]
+```
+
+Il gardait les **dix dernières lignes** d'une liste qui en comptait onze — une
+par essai. Groq, le premier essayé, avait disparu. Trois fournisseurs
+apparaissaient deux fois ; « en repos » ne disait ni jusqu'à quand ni
+pourquoi ; une clé refusée se lisait « HTTP 401 : Unauthorized » ; les trois
+fournisseurs sans clé n'étaient nommés nulle part. Après :
+
+```
+Aucun fournisseur n'a pu repondre.
+  Essayes :
+    - groq : limite de debit atteinte (HTTP 429) — au repos jusqu'a 01:04
+    - gemini : cle refusee (HTTP 401) : verifiez GEMINI_API_KEY dans .env — au repos jusqu'a 02:02
+    - mistral : HTTP 503 : Service Unavailable (2 essais)
+    - openrouter : HTTP 0 : reseau indisponible : timed out (2 essais)
+    - pollinations : HTTP 500 : Internal Server Error (2 essais)
+    - ollama : serveur injoignable [...]
+    - llamacpp : serveur injoignable [...]
+  Pas essayes :
+    - cerebras : au repos jusqu'a 01:12
+  Sans cle : nvidia, opencode, cloudflare
+```
+
+Une ligne par fournisseur, dans l'ordre où ils ont été essayés. La raison d'un
+repos est relue en base (`store.raison_du_repos`), donc elle survit à un
+redémarrage. Quand **tous** les fournisseurs distants sont au repos, une
+dernière ligne dit l'heure du premier retour ; quand l'un d'eux vient
+d'échouer pour une raison passagère (réseau, 503), elle n'apparaît pas —
+annoncer une heure serait l'inventer. La clé masquée de chaque essai a disparu
+du message : ce n'est pas elle qu'on cherche quand plus rien ne répond. Et le
+message ne dit pas « usine cles » : quand le problème est le wifi, envoyer
+créer des comptes serait absurde, et c'est la ligne de commande qui choisit le
+conseil après avoir regardé le réseau ([PANNES.md](PANNES.md)).
+
 ## Deux tests qui ne gardaient rien
 
 La campagne de mutation en a trouvé deux, et les deux pour la même raison —

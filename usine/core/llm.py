@@ -16,7 +16,7 @@ import random
 import re
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from . import budget as budget_module
 from . import cles as pool_cles
@@ -163,6 +163,16 @@ def _expliquer(p: config.Provider, exc: Exception, modele: str = "") -> str:
                     "« usine docteur --modeles », puis corrigez "
                     "usine/core/config.py.".format(modele or p.model_for("standard"),
                                                    p.name))
+        # Les trois statuts qui disent quoi faire, et que « HTTP 401 :
+        # Unauthorized » ne disait pas : la cle, le debit, le credit.
+        statut = getattr(exc, "statut", None)
+        if statut in (401, 403):
+            return "cle refusee (HTTP {}) : verifiez {} dans .env".format(
+                statut, p.api_key_env or "la cle")
+        if statut == 429:
+            return "limite de debit atteinte (HTTP 429)"
+        if statut == 402:
+            return "credit epuise (HTTP 402)"
         return texte
     minuscules = texte.lower()
     if isinstance(exc, HttpErreur) and exc.statut == 404:
@@ -214,6 +224,94 @@ def _connexion_refusee(exc: BaseException) -> bool:
             getattr(vu, "reason", None), BaseException) else None) \
             or vu.__cause__ or vu.__context__
     return False
+
+
+def _heure(ts: float) -> str:
+    """« 14:32 » aujourd'hui, « le 25/09 a 14:32 » au-dela."""
+    local = time.localtime(ts)
+    if time.strftime("%Y-%m-%d", local) == time.strftime("%Y-%m-%d"):
+        return time.strftime("%H:%M", local)
+    return time.strftime("le %d/%m a %H:%M", local)
+
+
+class _Bilan:
+    """Ce qu'on dit quand personne n'a repondu : par fournisseur, pas par essai.
+
+    Mesure du 24/09/2026, huit fournisseurs actifs, chacun en panne a sa
+    facon. Le message gardait les DIX DERNIERES lignes d'une liste qui en
+    avait onze — une par essai. Groq, le premier essaye, avait disparu ;
+    mistral, openrouter et pollinations apparaissaient deux fois ; « cerebras :
+    en repos » ne disait ni jusqu'a quand ni pourquoi ; une cle Gemini refusee
+    se lisait « HTTP 401 : Unauthorized » ; et les trois fournisseurs sans cle
+    n'etaient nommes nulle part. C'est pourtant le message qu'on lit au moment
+    precis ou il faut decider quoi faire.
+    """
+
+    def __init__(self) -> None:
+        self.essayes: Dict[str, List[str]] = {}
+        self.ecartes: Dict[str, str] = {}
+
+    def essai(self, nom: str, texte: str) -> None:
+        self.essayes.setdefault(nom, []).append(texte)
+        self.ecartes.pop(nom, None)
+
+    def ecarte(self, nom: str, texte: str) -> None:
+        # Une cle ecartee puis une autre essayee : le fournisseur a ete
+        # essaye, c'est ce qui compte pour qui lit.
+        if nom not in self.essayes:
+            self.ecartes.setdefault(nom, texte)
+
+    def _repos(self, p: config.Provider) -> str:
+        """« au repos jusqu'a 14:32 (limite de debit) », ou rien."""
+        fin, raison = 0.0, ""
+        if _au_repos(p):
+            fin = _REPOS[p.name]
+            try:
+                raison = store.raison_du_repos(p.name)
+            except Exception:
+                raison = ""   # base illisible : l'heure suffit
+        else:
+            lot = pool_cles.pool(p.name, p.api_key_env)
+            fins = [c.repos_jusqu_a for c in lot.cles if not c.disponible()]
+            if fins and len(fins) == len(lot.cles):
+                fin = min(fins)
+        if not fin:
+            return ""
+        return "au repos jusqu'a {}{}".format(
+            _heure(fin), " ({})".format(raison) if raison else "")
+
+    def message(self) -> str:
+        lignes = ["Aucun fournisseur n'a pu repondre."]
+        if self.essayes:
+            lignes.append("  Essayes :")
+            for nom, textes in self.essayes.items():
+                p = config.PROVIDERS_BY_NAME.get(nom)
+                vus: List[str] = []
+                for texte in textes:
+                    if texte not in vus:
+                        vus.append(texte)
+                ligne = "    - {} : {}".format(nom, " ; ".join(vus[-2:]))
+                if len(textes) > 1:
+                    ligne += " ({} essais)".format(len(textes))
+                repos = self._repos(p) if p else ""
+                if repos:
+                    ligne += " — " + repos
+                lignes.append(ligne)
+        if self.ecartes:
+            lignes.append("  Pas essayes :")
+            for nom, texte in self.ecartes.items():
+                p = config.PROVIDERS_BY_NAME.get(nom)
+                repos = self._repos(p) if p else ""
+                lignes.append("    - {} : {}".format(nom, repos or texte))
+        sans_cle = [p.name for p in config.active_providers(include_unavailable=True)
+                    if not p.available()]
+        if sans_cle:
+            lignes.append("  Sans cle : " + ", ".join(sans_cle))
+        retour = _premier_retour_connu()
+        if retour:
+            lignes.append("  Le premier devrait rouvrir vers {}.".format(
+                _heure(retour)))
+        return "\n".join(lignes)
 
 
 def _patienter(secondes: float) -> None:
@@ -314,13 +412,31 @@ def prochaine_ouverture(role: str = "standard") -> Optional[float]:
     repos pose. Le fournisseur y parait ouvert ; l'appelant doit donc garder
     une attente minimale, et ne pas prendre « 0 » pour une promesse.
     """
+    ouvert, ouvertures = _ouvertures_connues(role)
+    if ouvert:
+        return 0.0
+    locaux = [p.name for p in config.active_providers() if p.local]
+    if locaux:
+        from . import diagnostic
+
+        if set(locaux) & set(diagnostic.locaux_actifs(timeout=3)):
+            return 0.0
+    if not ouvertures:
+        return None
+    return max(0.0, min(ouvertures) - time.time())
+
+
+def _ouvertures_connues(role: str = "standard") -> Tuple[bool, List[float]]:
+    """(un distant est ouvert maintenant, dates de reouverture connues).
+
+    Sans rien sonder : ce sont les repos et les quotas que le routeur tient
+    deja. Les serveurs locaux n'y sont pas — il faut leur demander.
+    """
     maintenant = time.time()
     minuit_utc = (int(maintenant // 86400) + 1) * 86400.0
     ouvertures: List[float] = []
-    locaux: List[str] = []
     for p in config.active_providers():
         if p.local:
-            locaux.append(p.name)
             continue
         if _au_repos(p):
             ouvertures.append(_REPOS[p.name])
@@ -331,21 +447,26 @@ def prochaine_ouverture(role: str = "standard") -> Optional[float]:
                 if not cle.disponible(maintenant):
                     ouvertures.append(cle.repos_jusqu_a)
                 elif _quota_ok(p, role, cle.id):
-                    return 0.0
+                    return True, ouvertures
                 else:
                     ouvertures.append(minuit_utc)
         elif _quota_ok(p, role):
-            return 0.0
+            return True, ouvertures
         else:
             ouvertures.append(minuit_utc)
-    if locaux:
-        from . import diagnostic
+    return False, ouvertures
 
-        if set(locaux) & set(diagnostic.locaux_actifs(timeout=3)):
-            return 0.0
-    if not ouvertures:
+
+def _premier_retour_connu(role: str = "standard") -> Optional[float]:
+    """L'heure a laquelle le premier distant rouvrira, si elle est connue.
+
+    None quand un distant parait deja ouvert : il vient d'echouer pour une
+    raison passagere (reseau, 503), et annoncer une heure serait inventer.
+    """
+    ouvert, ouvertures = _ouvertures_connues(role)
+    if ouvert or not ouvertures:
         return None
-    return max(0.0, min(ouvertures) - maintenant)
+    return min(ouvertures)
 
 
 def _quota_ok(p: config.Provider, role: str = "standard",
@@ -554,13 +675,13 @@ def generer(
             "Aucun fournisseur configure. Lancez 'usine cles' pour la marche a suivre."
         )
 
-    erreurs: List[str] = []
+    bilan = _Bilan()
     for p in fournisseurs:
         # Le repos vaut pour le fournisseur entier ; le quota, lui, se
         # verifie cle par cle plus bas — c'est tout l'interet d'en avoir
         # plusieurs.
         if _au_repos(p):
-            erreurs.append("{} : en repos".format(p.name))
+            bilan.ecarte(p.name, "en repos")
             continue
         cout = _cout_estime(messages, max_tokens, p)
 
@@ -572,7 +693,7 @@ def generer(
             candidates = list(lot.ordonnees(p.quota(role).rpd,
                                             _compte_pour(p, role)))
             if not candidates:
-                erreurs.append("{} : toutes les cles sont saturees".format(p.name))
+                bilan.ecarte(p.name, "toutes les cles sont saturees")
                 continue
         else:
             candidates.append(None)  # fournisseur local ou sans cle
@@ -583,13 +704,13 @@ def generer(
                 break
             identifiant_cle = cle.id if cle else ""
             if not _quota_ok(p, role, identifiant_cle):
-                erreurs.append("{}{} : quota du jour atteint".format(
-                    p.name, "/" + cle.affichage if cle else ""))
+                bilan.ecarte(p.name, "quota du jour atteint — il repart a "
+                             "{} (minuit UTC)".format(_heure(
+                                 (int(time.time() // 86400) + 1) * 86400.0)))
                 continue
             if not _laisser_passer(p, role, cout, identifiant_cle):
-                erreurs.append(
-                    "{} : {} jetons demandes, budget par minute insuffisant"
-                    .format(p.name, cout))
+                bilan.ecarte(p.name, "{} jetons demandes, budget par minute "
+                                     "insuffisant".format(cout))
                 break
 
             for essai in range(tentatives_par_fournisseur):
@@ -613,9 +734,8 @@ def generer(
                                             module_modeles.modele_effectif(p, role),
                                             False, 0, 0,
                                             str(exc), cle_id=cle.id if cle else "")
-                    erreurs.append("{}{} : {}".format(
-                        p.name, "/" + cle.affichage if cle else "",
-                        _expliquer(p, exc, module_modeles.modele_effectif(p, role))))
+                    bilan.essai(p.name, _expliquer(
+                        p, exc, module_modeles.modele_effectif(p, role)))
 
                     if _service_ferme(exc):
                         # Le seul echec vraiment definitif du lot, et le seul
@@ -672,9 +792,9 @@ def generer(
                         refuse = module_modeles.modele_effectif(p, role)
                         remplacant = module_modeles.substituer(p, role, refuse)
                         if remplacant:
-                            erreurs.append(
-                                "{} : « {} » n'est plus servi, l'usine passe a "
-                                "« {} »".format(p.name, refuse, remplacant))
+                            bilan.essai(p.name, "« {} » n'est plus servi, "
+                                        "l'usine passe a « {} »".format(
+                                            refuse, remplacant))
                             evenements.publier(
                                 "substitution", fournisseur=p.name, role=role,
                                 avant=refuse, apres=remplacant)
@@ -708,8 +828,8 @@ def generer(
                                             module_modeles.modele_effectif(p, role),
                                             False, 0, 0,
                                             repr(exc), cle_id=cle.id if cle else "")
-                    erreurs.append("{} : {}".format(
-                        p.name, _expliquer(p, exc, module_modeles.modele_effectif(p, role))))
+                    bilan.essai(p.name, _expliquer(
+                        p, exc, module_modeles.modele_effectif(p, role)))
                     # Une exception qui n'est pas une « HttpErreur » veut dire,
                     # en pratique, qu'on n'a pas su LIRE la reponse : un JSON
                     # tronque par une coupure, un corps vide, une structure
@@ -726,9 +846,7 @@ def generer(
                         break
                     _patienter(min(8.0, 1.5 * (essai + 1)) + random.random())
 
-    raise PlusDeFournisseur(
-        "Tous les fournisseurs ont echoue :\n  - " + "\n  - ".join(erreurs[-10:])
-    )
+    raise PlusDeFournisseur(bilan.message())
 
 
 # --------------------------------------------------------------------------

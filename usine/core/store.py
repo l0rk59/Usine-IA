@@ -564,6 +564,23 @@ def repos_actifs() -> Dict[Tuple[str, str], float]:
     return actifs
 
 
+def raison_du_repos(fournisseur: str, cle_id: str = "") -> str:
+    """Pourquoi ce fournisseur (ou cette cle) est au repos, s'il l'est.
+
+    Le message d'echec disait « en repos », sans heure ni cause : on ne
+    savait pas s'il fallait attendre une minute, changer de cle ou retirer le
+    service. La cause etait deja ecrite ici par « journal_cle ».
+    """
+    with cursor() as cur:
+        cur.execute(
+            "SELECT raison FROM cles_journal WHERE fournisseur=? AND cle_id=?"
+            " AND ts + repos > ? ORDER BY ts + repos DESC LIMIT 1",
+            (fournisseur, cle_id or "", time.time()),
+        )
+        ligne = cur.fetchone()
+    return str(ligne["raison"]) if ligne else ""
+
+
 # Certains fournisseurs comptent leur quota par modele plutot que pour tout le
 # service (c'est le cas de Google). Passer « modele » restreint le decompte a
 # ce modele ; le laisser vide compte tout le fournisseur, comme avant.
