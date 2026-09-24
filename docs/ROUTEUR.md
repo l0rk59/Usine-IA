@@ -208,6 +208,38 @@ toutes les sections qui en dépendent.
 Le JSON lisible est maintenant rangé sous la clé du premier essai. La même
 demande ne coûte plus rien la seconde fois et rend la même réponse.
 
+## 11. Le modèle qui refuse, imprimé à la place du chapitre
+
+Mesure du 24/09/2026, un ebook dont un modèle refuse le chapitre 2 :
+« Je suis désolé, mais je ne peux pas vous aider à rédiger ce contenu. »
+était imprimé à la place du chapitre, et le produit marqué « prêt ». HTTP 200,
+une réponse non vide : rien n'échouait. Le cas n'a rien d'exotique — une dark
+romance ou un thriller violent sont des niches qui se vendent, et exactement
+ce que certains modèles gratuits refusent.
+
+`texte.refus_du_modele` reconnaît ce refus à deux signaux, tous deux
+nécessaires, dans une réponse courte (600 caractères au plus) : elle **s'ouvre**
+sur une formule de refus, et elle **nomme** ce qu'elle refuse (« cette
+demande », « ce contenu », « help with », « guidelines »…). Une réplique qui
+commence par des excuses s'ouvre sur un guillemet ou un tiret, et n'est pas
+regardée. Comme pour les messages de service, zéro accusation sur tout ce que
+la suite fabrique.
+
+Le routeur passe alors au modèle suivant — un autre peut accepter — sans rien
+mettre en cache. Quand **tous** ont refusé, il lève `DemandeRefusee` : ce
+n'est pas un silence des fournisseurs, et l'attendre ne changerait rien.
+Dans les chaînes qui écrivent section par section (ebook, formation, fiction),
+la section manque et le dit, et le produit reste « en cours » ; ailleurs, le
+produit échoue et le dit. Dans la boucle, la niche compte son essai au lieu
+d'attendre. Il suffit qu'un seul fournisseur n'ait pas été essayé (au repos, quota
+atteint) pour que le routeur ne tranche pas : il aurait peut-être accepté.
+
+Une réécriture refusée — correction, révision — garde le texte d'avant.
+
+Ce que le détecteur ne voit pas, et ne prétend pas voir : un refus long, ou
+qui ne dit pas ce qu'il refuse, et un refus rendu comme une erreur HTTP de
+modération, que le routeur ne distingue pas d'une panne.
+
 
 ---
 

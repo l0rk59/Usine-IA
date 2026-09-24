@@ -241,3 +241,63 @@ def ressemble_a_un_quota(texte: str) -> bool:
     """
     bas = (texte or "").lower()
     return any(m in bas for m in _QUOTA)
+
+
+# --------------------------------------------------------------------------
+# Le refus du MODELE, et non du service
+# --------------------------------------------------------------------------
+#
+# Le message de facturation ci-dessus est le service qui parle. Il y a un
+# second texte qui n'est pas une reponse : le modele qui refuse la demande.
+# Mesure du 24/09/2026, un ebook dont un modele refuse le chapitre 2 :
+# « Je suis desole, mais je ne peux pas vous aider a rediger ce contenu. »
+# etait imprime a la place du chapitre, et le produit marque « pret ». Le cas
+# n'a rien d'exotique : une dark romance ou un thriller violent — des niches
+# qui se vendent — est exactement ce que certains modeles gratuits refusent.
+
+# Le refus OUVRE la reponse. Une replique qui commence par des excuses
+# (« "Desole, je ne peux pas rester", dit-elle ») ouvre sur un guillemet ou un
+# tiret : elle n'est pas un refus, et le detecteur ne la regarde pas.
+_OUVERTURE_DE_REFUS = re.compile(
+    r"^(?:je suis (?:vraiment )?desole|desole|je regrette|je ne (?:peux|pourrai)"
+    r" pas|je ne suis pas en mesure|il ne m'est pas possible|en tant qu'(?:ia|"
+    r"assistant|intelligence artificielle)|en tant que modele de langage|"
+    r"i'?m (?:really )?sorry|i am sorry|sorry,|i apologi[sz]e|i (?:can't|cannot|"
+    r"can not|won't|will not)|i'?m (?:unable|not able)|i am (?:unable|not able)|"
+    r"as an ai|as a language model|as an assistant)")
+
+# Ce qu'un refus refuse : une demande, un contenu, une regle. Le second signal,
+# independant du premier.
+_OBJET_DU_REFUS = re.compile(
+    r"\b(?:vous aider|t'aider|vous assister|cette demande|votre demande|ce type "
+    r"de contenu|ce contenu|contenu explicite|inapproprie|politique|directives|"
+    r"lignes directrices|regles d'utilisation|help (?:you|with)|assist|this "
+    r"request|your request|that request|this (?:kind|type) of content|this "
+    r"content|explicit content|inappropriate|polic(?:y|ies)|guidelines)\b")
+
+# Un refus est court. Au-dela, c'est un texte qui commence mal, pas un refus.
+LONGUEUR_MAX_REFUS = 600
+
+
+def refus_du_modele(texte: str) -> str:
+    """Rend la raison si la reponse est le modele qui refuse, ou "" sinon.
+
+    Deux signaux, tous deux necessaires, dans une reponse courte : elle
+    s'OUVRE sur une formule de refus, et elle nomme ce qu'elle refuse. Comme
+    « refus_deguise », le detecteur rate un refus plutot que d'accuser un
+    texte : un refus long, ou un refus qui ne dit pas ce qu'il refuse, passe
+    — et se voit alors au controle qualite, qui le trouve trop court.
+    """
+    net = (texte or "").strip()
+    if not net or len(net) > LONGUEUR_MAX_REFUS:
+        return ""
+    # L'apostrophe typographique d'abord : la conversion en ASCII la
+    # supprimerait, et « can’t » deviendrait « cant ».
+    plat = unicodedata.normalize("NFKD", net.lower().replace("\u2019", "'"))
+    plat = plat.encode("ascii", "ignore").decode("ascii")
+    if not _OUVERTURE_DE_REFUS.match(plat):
+        return ""
+    objet = _OBJET_DU_REFUS.search(plat[:300])
+    if not objet:
+        return ""
+    return "le modele a refuse la demande (« {} »)".format(net[:90])

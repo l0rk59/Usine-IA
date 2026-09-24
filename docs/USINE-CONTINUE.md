@@ -265,6 +265,12 @@ qui disait « billing » ou « quota », mettait les fournisseurs au repos l'un
 après l'autre, et la boucle attendait des quotas pleins. Corrigé le
 24/09/2026 : voir [LANGUE-LIVREE.md](LANGUE-LIVREE.md).
 
+Et le cas le plus probable — des modèles qui refusent *en toutes lettres*
+(« Je suis désolé, mais je ne peux pas… ») — n'arrive plus ici : quand tous
+les fournisseurs ont refusé, le routeur le dit par une erreur ordinaire, que
+la niche compte comme un essai. Seul un refus rendu comme une erreur HTTP de
+modération reste confondu avec une panne. Voir [ROUTEUR.md](ROUTEUR.md).
+
 Les six mutations de cette correction sont vues.
 
 ## Ce que la boucle oubliait de faire

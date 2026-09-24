@@ -15,7 +15,7 @@ import json
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..core import controle as ctrl
-from ..core import evenements, prompts
+from ..core import evenements, llm, prompts
 from .base import Agent, Critique
 
 # --------------------------------------------------------------------------
@@ -203,8 +203,13 @@ def reviser(contexte: Any, texte: str, critique: Critique, intitule: str) -> str
         "Renvoie le texte COMPLET corrige, en markdown, sans titre de niveau 1, "
         "sans commentaire, sans preambule. Conserve la structure et la longueur."
     ).format(intitule=intitule, texte=texte[:14000], corrections=corrections)
-    reponse = REVISEUR.travailler(
-        contexte, invite, max_tokens=_plafond_reecriture(texte, 1200))
+    try:
+        reponse = REVISEUR.travailler(
+            contexte, invite, max_tokens=_plafond_reecriture(texte, 1200))
+    except llm.DemandeRefusee:
+        # Une reecriture refusee laisse le texte tel qu'il etait : il existe,
+        # et le perdre pour une correction serait pire que ne pas corriger.
+        return texte
     from ..pipelines.base import elaguer_markdown
 
     corrige = elaguer_markdown(reponse.texte)
@@ -247,8 +252,11 @@ def corriger_defauts(
     ).format(intitule=intitule, texte=texte[:14000], consignes=numerotees,
              citations=citations)
 
-    reponse = REVISEUR.travailler(
-        contexte, invite, max_tokens=_plafond_reecriture(texte, 1200))
+    try:
+        reponse = REVISEUR.travailler(
+            contexte, invite, max_tokens=_plafond_reecriture(texte, 1200))
+    except llm.DemandeRefusee:
+        return texte  # voir « reviser »
     from ..pipelines.base import elaguer_markdown
 
     corrige = elaguer_markdown(reponse.texte)

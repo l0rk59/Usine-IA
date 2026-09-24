@@ -902,10 +902,15 @@ class UsineContinue:
         coupe EN COURS de route, qui, lui, rend la main au lieu de lever.
 
         Meme regle que pour ce produit-la, donc : ce n'est pas un echec de la
-        niche, elle garde son essai et sa place, et l'on attend. Comme
-        ailleurs, une niche dont TOUS les fournisseurs refuseraient chaque
-        fois la demande attendrait indefiniment : le routeur ne distingue pas
-        ce refus d'une panne, et la boucle ne l'invente pas.
+        niche, elle garde son essai et sa place, et l'on attend.
+
+        Un modele qui REFUSE la demande n'arrive pas ici : quand tous les
+        fournisseurs l'ont refusee en toutes lettres, le routeur leve
+        « llm.DemandeRefusee », une erreur ordinaire que la niche compte. Ce
+        qui arrive encore ici a tort : un refus rendu comme une erreur HTTP
+        (un filtre de moderation), que le routeur ne sait pas distinguer d'une
+        panne — la niche attend alors indefiniment, et la boucle ne l'invente
+        pas.
         """
         self.compteur.terminer_produit(reussi=False)
         existe = bool(produit_id and store.lire_produit(produit_id))

@@ -39,6 +39,24 @@ class PlusDeFournisseur(RuntimeError):
     """Aucun fournisseur n'a pu repondre."""
 
 
+class DemandeRefusee(ValueError):
+    """Tous les modeles essayes ont refuse la demande elle-meme.
+
+    Ce n'est PAS « plus de fournisseur » : les services repondent, c'est ce
+    qu'on leur demande qu'ils declinent. Attendre que les quotas reviennent
+    n'y changera rien, et le traiter comme un silence faisait attendre la
+    boucle indefiniment sur une niche qu'aucun modele n'ecrira. D'ou une
+    erreur ordinaire : la section manque et le dit, la niche compte son essai.
+    """
+
+
+# Le statut sous lequel « _appel » signale qu'un modele a refuse la demande.
+# Aucun service ne le renvoie pour cela : c'est une convention interne, choisie
+# hors des statuts que le routeur traite deja (repos, cle, credit, modele) et
+# non temporaire — un refus ne se retente pas chez le meme modele.
+REFUS_DU_MODELE = 451
+
+
 @dataclass
 class Reponse:
     texte: str
@@ -167,6 +185,9 @@ def _expliquer(p: config.Provider, exc: Exception, modele: str = "") -> str:
         # Les trois statuts qui disent quoi faire, et que « HTTP 401 :
         # Unauthorized » ne disait pas : la cle, le debit, le credit.
         statut = getattr(exc, "statut", None)
+        if statut == REFUS_DU_MODELE:
+            return "le modele a refuse la demande : « {} »".format(
+                (getattr(exc, "corps", "") or "")[:90].strip())
         if statut in (401, 403):
             return "cle refusee (HTTP {}) : verifiez {} dans .env".format(
                 statut, p.api_key_env or "la cle")
@@ -251,10 +272,24 @@ class _Bilan:
     def __init__(self) -> None:
         self.essayes: Dict[str, List[str]] = {}
         self.ecartes: Dict[str, str] = {}
+        # Pour chaque fournisseur essaye : son dernier echec etait-il un refus
+        # du modele ?
+        self.refus: Dict[str, bool] = {}
 
-    def essai(self, nom: str, texte: str) -> None:
+    def essai(self, nom: str, texte: str, refus: bool = False) -> None:
         self.essayes.setdefault(nom, []).append(texte)
         self.ecartes.pop(nom, None)
+        self.refus[nom] = refus
+
+    def tous_ont_refuse(self) -> bool:
+        """Chaque fournisseur a ete essaye, et chacun a refuse la demande.
+
+        Un seul fournisseur ecarte — au repos, quota atteint — et rien ne
+        permet de dire qu'il aurait refuse lui aussi : c'est alors un silence,
+        et l'usine attend, comme avant.
+        """
+        return bool(self.essayes) and not self.ecartes and all(
+            self.refus.get(nom) for nom in self.essayes)
 
     def ecarte(self, nom: str, texte: str) -> None:
         # Une cle ecartee puis une autre essayee : le fournisseur a ete
@@ -659,6 +694,15 @@ def _appel(
         statut = 402 if module_texte.ressemble_a_un_quota(texte) else 503
         raise HttpErreur(statut, "{} : {}".format(p.name, refus),
                          corps=texte[:300])
+    # Le modele qui refuse, lui, n'est pas au repos : un AUTRE modele peut
+    # accepter. On passe donc au suivant, sans rien mettre en cache — un refus
+    # garde la aurait ete resservi a chaque reprise. En JSON, un refus est du
+    # JSON illisible, et « generer_json » ecarte deja ce fournisseur.
+    if not json_mode:
+        refus = module_texte.refus_du_modele(texte)
+        if refus:
+            raise HttpErreur(REFUS_DU_MODELE, "{} : {}".format(p.name, refus),
+                             corps=texte[:300])
     tokens = int((data.get("usage") or {}).get("total_tokens") or 0)
     # « length » signifie : le modele n'avait pas fini, il a ete coupe au
     # plafond. Ne pas le lire faisait passer un chapitre tranche au milieu
@@ -795,7 +839,8 @@ def generer(
                                  False, 0, 0,
                                  str(exc), cle_id=cle.id if cle else "")
                     bilan.essai(p.name, _expliquer(
-                        p, exc, module_modeles.modele_effectif(p, role)))
+                        p, exc, module_modeles.modele_effectif(p, role)),
+                        refus=exc.statut == REFUS_DU_MODELE)
 
                     if _service_ferme(exc):
                         # Le seul echec vraiment definitif du lot, et le seul
@@ -906,6 +951,11 @@ def generer(
                         break
                     _patienter(min(8.0, 1.5 * (essai + 1)) + random.random())
 
+    if bilan.tous_ont_refuse():
+        raise DemandeRefusee(
+            "Tous les modeles essayes ont refuse cette demande : c'est son "
+            "contenu qu'ils declinent, pas une panne ni un quota.\n"
+            + bilan.message())
     raise PlusDeFournisseur(bilan.message())
 
 
