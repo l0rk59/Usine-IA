@@ -190,6 +190,24 @@ Le message d'échec a changé aussi. *« JSON introuvable dans la réponse du
 modèle »* n'apprend rien à qui produit depuis un téléphone ; il nomme
 désormais les fournisseurs tentés et dit quoi faire.
 
+### La bonne réponse n'entrait jamais au cache
+
+Seul le premier essai lit le cache, pour qu'une réponse illisible n'y soit pas
+relue à chaque essai. Mais il y **écrit** aussi, et sa réponse illisible
+comprise ; les essais suivants, hors cache, n'écrivaient rien. Le cache
+gardait donc le texte inutilisable, jamais le JSON qui avait servi.
+
+Mesure du 24/09/2026, avec un simulateur qui rend du texte au premier appel :
+la même demande répétée coûtait **un appel à chaque fois**, et rendait chaque
+fois une réponse différente. C'est exactement ce que fait une reprise : elle
+rejoue les demandes du produit coupé, au moment où les quotas manquent, en
+comptant sur le cache pour ne rien payer. Les onze chaînes qui n'ont pas de
+carnet redemandaient ainsi leur plan, en recevaient un autre, et refaisaient
+toutes les sections qui en dépendent.
+
+Le JSON lisible est maintenant rangé sous la clé du premier essai. La même
+demande ne coûte plus rien la seconde fois et rend la même réponse.
+
 
 ---
 

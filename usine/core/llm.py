@@ -672,6 +672,14 @@ def _appel(
                    cle=cle.affichage if cle else "", tronquee=tronquee)
 
 
+def _messages(invite: str, systeme: str = "") -> List[Dict[str, str]]:
+    messages: List[Dict[str, str]] = []
+    if systeme:
+        messages.append({"role": "system", "content": systeme})
+    messages.append({"role": "user", "content": invite})
+    return messages
+
+
 def generer(
     invite: str,
     systeme: str = "",
@@ -695,11 +703,7 @@ def generer(
     la connait pas : c'est elle qui dit si une reponse sans un mot francais
     est suspecte.
     """
-    messages: List[Dict[str, str]] = []
-    if systeme:
-        messages.append({"role": "system", "content": systeme})
-    messages.append({"role": "user", "content": invite})
-
+    messages = _messages(invite, systeme)
     cle_cache = _cle_cache(messages, role, temperature, max_tokens, json_mode)
     if cache:
         garde = store.cache_get(cle_cache)
@@ -988,6 +992,15 @@ def generer_json(
     # redemander avec de la place. Ce qui valait pour la grille de beats vaut
     # pour les quarante autres appels JSON du depot.
     plafond = max_tokens
+    # La cle ou le PREMIER essai lit le cache. Il y ecrit aussi sa reponse,
+    # lisible ou non, et les essais suivants n'ecrivent rien : quand le
+    # premier rendait du texte au lieu de JSON, c'est ce texte-la que le cache
+    # gardait, et la bonne reponse n'y entrait jamais. Mesure du 24/09/2026 :
+    # la meme demande repetee coutait un appel a chaque fois, et rendait a
+    # chaque fois une reponse differente — a la reprise d'un produit coupe,
+    # precisement quand les quotas manquent et qu'elle devait etre gratuite.
+    cle_premier_essai = _cle_cache(_messages(invite + consigne, systeme), role,
+                                   temperature, max_tokens, True)
     for tentative in range(essais):
         rep = generer(
             invite + consigne,
@@ -1018,6 +1031,9 @@ def generer_json(
             if rep.fournisseur not in ecartes:
                 ecartes.append(rep.fournisseur)
             continue
+        if cache and tentative > 0:
+            store.cache_set(cle_premier_essai, rep.texte, rep.fournisseur,
+                            rep.modele)
         return (decode, rep.fournisseur) if avec_fournisseur else decode
     # Le message dit quoi faire, pas seulement ce qui a echoue : « JSON
     # introuvable » n'apprend rien a qui produit depuis un telephone.

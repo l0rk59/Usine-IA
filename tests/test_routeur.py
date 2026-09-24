@@ -230,6 +230,45 @@ class TestCleDeCache(unittest.TestCase):
                          llm._cle_cache(messages, "standard", 0.7, 500))
 
 
+class LaBonneReponseJsonEntreAuCache(unittest.TestCase):
+    """Le premier essai lit le cache ET y ecrit — meme quand il rend du texte
+    au lieu de JSON. La bonne reponse, venue au second essai hors cache, n'y
+    entrait jamais : la meme demande repetee coutait un appel a chaque fois
+    et rendait une reponse differente. A la reprise d'un produit coupe, qui
+    rejoue toutes ses demandes, c'etait le contraire de ce qui etait promis.
+    """
+
+    def setUp(self):
+        store.cache_vider()
+        self.appels = []
+
+        def simulateur(messages, role):
+            self.appels.append(role)
+            if len(self.appels) == 1:
+                return "Voici le plan demande."
+            return '{"plan": [%d]}' % len(self.appels)
+
+        llm.definir_simulateur(simulateur)
+
+    def tearDown(self):
+        llm.definir_simulateur(None)
+        store.cache_vider()
+
+    def test_la_seconde_demande_ne_coute_rien(self):
+        premiere = llm.generer_json("Construis le plan du livre a cacher.")
+        self.assertEqual(len(self.appels), 2)
+        seconde = llm.generer_json("Construis le plan du livre a cacher.")
+        self.assertEqual(len(self.appels), 2, "la reprise a repaye un appel")
+        self.assertEqual(seconde, premiere)
+
+    def test_sans_cache_rien_n_est_ecrit(self):
+        """Un appelant qui refuse le cache le refuse aussi en ecriture."""
+        llm.generer_json("Construis un plan sans cache.", cache=False)
+        avant = len(self.appels)
+        llm.generer_json("Construis un plan sans cache.")
+        self.assertGreater(len(self.appels), avant)
+
+
 class TestBudgetEnJetons(unittest.TestCase):
     """Plusieurs paliers gratuits comptent en jetons, pas en requetes."""
 
