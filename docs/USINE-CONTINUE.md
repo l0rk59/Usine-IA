@@ -231,6 +231,8 @@ niche dont *tous* les fournisseurs refuseraient *chaque fois* la demande
 attendrait indéfiniment, une heure entre deux essais. Le routeur ne distingue
 pas ce refus d'une panne, et la boucle ne l'invente pas.
 
+Les six mutations de cette correction sont vues.
+
 ## Ce que la boucle oubliait de faire
 
 Le tableau de bord et l'usine continue reçoivent la même chose — un type, un

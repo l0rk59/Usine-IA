@@ -211,3 +211,5 @@ Deux défauts plus petits, trouvés en chemin :
 - **La mémoire du feuilleton avalée par un `pass`.** Un résumé qui échouait
   laissait la mémoire en arrière d'une scène, sans rien pour la faire
   avancer. Elle avance maintenant sur la fiche, comme dans `nouvelle`.
+
+Les vingt et une mutations de la campagne sont vues.
