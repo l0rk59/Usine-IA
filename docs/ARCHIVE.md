@@ -96,3 +96,26 @@ maintenant écrits dans le test : ce sont un contrat avec l'acheteur, pas une
 variable.
 
 Les huit mutations de la campagne sont vues.
+
+## Deux produits de même titre partageaient une archive
+
+L'archive était écrite *à côté* du dossier du produit, dans le dossier commun
+à tous les produits, et nommée d'après le seul titre. Mesure du 24/09/2026 :
+deux mémos de même titre — la même niche refabriquée, que le cache ressert
+avec le même titre — et **une seule** archive sur le disque, celle du second.
+Le vendeur qui la prenait pour le premier produit envoyait le second à son
+client. Un titre non latin, lui, devient « produit » : tous ces produits
+écrivaient `produit.zip`.
+
+Et le menu du téléphone comme la liste du tableau de bord cherchaient
+l'archive *dans* le dossier du produit. Le partage depuis le menu ne la
+trouvait donc jamais : il proposait de la créer, la créait à côté, ne la
+trouvait toujours pas, et s'arrêtait sans rien dire. Le test du menu passait
+parce qu'il posait lui-même un faux `.zip` dans le dossier — il tirait son
+attente de sa propre mise en place.
+
+L'archive est maintenant rangée dans le dossier de son produit (elle ne
+s'inclut pas elle-même : les `.zip` sont écartés quand on la remplit). Deux
+tests passent par le vrai chemin : deux produits de même titre ont chacun leur
+archive, et le menu partage celle que `usine livrer` vient réellement
+d'écrire.

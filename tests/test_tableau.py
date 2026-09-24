@@ -846,10 +846,13 @@ class TestActionsProduit(BaseServeur):
         self.assertEqual(statut, 400)
 
     def test_livrer_ecrit_une_archive_telechargeable(self):
-        """L'archive est ecrite A COTE du dossier du produit, pas dedans.
+        """L'archive est ecrite DANS le dossier du produit, et la page la
+        retrouve plus tard dans la liste de ses fichiers.
 
-        La liste de fichiers ne la voit donc jamais : c'est la reponse qui
-        doit porter son lien, sinon elle est introuvable depuis la page.
+        Elle etait ecrite a cote, nommee par le seul titre : la liste ne la
+        voyait jamais — seul le lien de la reponse y menait, le temps de
+        l'afficher — et deux produits de meme titre partageaient la meme
+        archive. Voir « test_archive_livree ».
         """
         identifiant = self._un_produit()
         statut, fait = self.json("/api/produit",
@@ -865,8 +868,8 @@ class TestActionsProduit(BaseServeur):
         _, produits = self.json("/api/produits")
         fichiers = [f["nom"] for p in produits["produits"]
                     if p["id"] == identifiant for f in p["fichiers"]]
-        self.assertFalse([f for f in fichiers if f.endswith(".zip")],
-                         "l'archive n'est pas dans le dossier du produit")
+        self.assertTrue([f for f in fichiers if f.endswith(".zip")],
+                        "l'archive doit figurer parmi les fichiers du produit")
 
     def test_le_kit_de_vente_part_en_tache_de_fond(self):
         identifiant = self._un_produit()

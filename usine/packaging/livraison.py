@@ -148,7 +148,16 @@ def empaqueter(
                ecrire_licence(dossier, titre, auteur, langue).name}
 
     declares = set(livres or ())
-    archive = dossier.parent / "{}.zip".format(nom_archive)
+    # DANS le dossier du produit, pas a cote. A cote, le nom ne venait que du
+    # titre, dans un dossier commun a tous les produits : deux produits de
+    # meme titre — la meme niche refabriquee, que le cache resert avec le
+    # meme titre — ou deux titres non latins, tous deux « produit », ecrivaient
+    # la meme archive, et le second ecrasait le premier. Mesure du 24/09/2026 :
+    # deux memos, une seule archive, celle du second. Et le menu comme le
+    # tableau de bord cherchaient l'archive DANS le dossier : le partage
+    # depuis le telephone ne la trouvait jamais. L'archive ne s'inclut pas
+    # elle-meme : les « .zip » sont ecartes plus bas.
+    archive = dossier / "{}.zip".format(nom_archive)
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
         for fichier in sorted(dossier.rglob("*")):
             if not fichier.is_file():

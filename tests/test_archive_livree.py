@@ -62,7 +62,7 @@ def _fabriquer_avec_zip(commande, extra=None):
         llm.definir_simulateur(None)
     produit = store.lister_produits(2)[0]
     dossier = Path(produit["dossier"])
-    archive = next((f for f in dossier.parent.glob("*.zip")), None)
+    archive = next((f for f in dossier.glob("*.zip")), None)
     dans = set()
     if archive:
         with zipfile.ZipFile(archive) as contenu:
@@ -171,7 +171,7 @@ class L_AcheteurNeRecoitQueSonProduit(unittest.TestCase):
         dossier = Path(produit["dossier"])
         images = [f.name for f in dossier.rglob("*") if f.suffix == ".png"]
         self.assertTrue(images, "aucune couverture : le test ne mesure rien")
-        archive = next(f for f in dossier.parent.glob("*.zip"))
+        archive = next(f for f in dossier.glob("*.zip"))
         with zipfile.ZipFile(archive) as contenu:
             dans = {Path(nom).name for nom in contenu.namelist()}
         for image in images:
@@ -233,7 +233,7 @@ class LesTroisCheminsFiltrentPareil(unittest.TestCase):
                                "--reprendre-id", produit["id"]])
         finally:
             llm.definir_simulateur(None)
-        archive = next(f for f in dossier.parent.glob("*.zip"))
+        archive = next(f for f in dossier.glob("*.zip"))
         with zipfile.ZipFile(archive) as contenu:
             dans = {Path(nom).name for nom in contenu.namelist()}
         self.assertNotIn("brouillon-interne-2026.json", dans,
@@ -249,7 +249,7 @@ class LesTroisCheminsFiltrentPareil(unittest.TestCase):
             with redirect_stdout(sortie), redirect_stderr(sortie):
                 cli.principal(["livrer", produit["id"]])
             dossier = Path(produit["dossier"])
-            return next(f for f in dossier.parent.glob("*.zip"))
+            return next(f for f in dossier.glob("*.zip"))
 
         dans = self._intrus_part_il(par_la_commande)
         self.assertNotIn("brouillon-interne-2026.json", dans)
@@ -263,7 +263,7 @@ class LesTroisCheminsFiltrentPareil(unittest.TestCase):
                 None, {"action": "livrer", "id": produit["id"]})
             self.assertEqual(code, 200, reponse)
             dossier = Path(produit["dossier"])
-            return next(f for f in dossier.parent.glob("*.zip"))
+            return next(f for f in dossier.glob("*.zip"))
 
         dans = self._intrus_part_il(par_le_serveur)
         self.assertNotIn("brouillon-interne-2026.json", dans)
@@ -299,6 +299,66 @@ class LeFiletTientQuandLaDeclarationManque(unittest.TestCase):
                 dans = {Path(nom).name for nom in contenu.namelist()}
         self.assertIn("livre.md", dans)
         self.assertNotIn("carnet.json", dans)
+
+
+class LArchiveEstRangeeAvecSonProduit(unittest.TestCase):
+    """L'archive etait ecrite A COTE du dossier du produit, nommee d'apres le
+    seul titre, dans un dossier commun a tous les produits.
+
+    Mesure du 24/09/2026 : deux memos de meme titre — la meme niche
+    refabriquee, que le cache resert avec le meme titre — et une seule
+    archive sur le disque, celle du second. Le vendeur envoyait au client du
+    premier le produit du second. Et le menu du telephone cherchait l'archive
+    DANS le dossier : le partage ne la trouvait jamais.
+    """
+
+    def _memo(self, sujet, *extra):
+        sortie = io.StringIO()
+        with redirect_stdout(sortie), redirect_stderr(sortie):
+            from usine import cli
+
+            cli.principal(["memo", sujet] + list(extra))
+
+    def test_deux_produits_de_meme_titre_ont_chacun_leur_archive(self):
+        atelier.isoler("archive-homonymes")
+        llm.definir_simulateur(simulateur)
+        try:
+            self._memo("la tva des coiffeurs", "--zip")
+            self._memo("la tva des coiffeurs", "--zip")
+        finally:
+            llm.definir_simulateur(None)
+        produits = store.lister_produits(2)
+        self.assertEqual(len({p["titre"] for p in produits}), 1,
+                         "le cas exige deux titres identiques")
+        archives = [sorted(Path(p["dossier"]).glob("*.zip")) for p in produits]
+        self.assertEqual([len(a) for a in archives], [1, 1])
+        self.assertNotEqual(archives[0][0], archives[1][0])
+
+    def test_le_menu_partage_l_archive_que_livrer_a_ecrite(self):
+        """Sans archive fabriquee a la main : c'est le vrai « livrer » qui
+        l'ecrit, et le vrai menu qui la cherche."""
+        from unittest import mock
+
+        from usine import cli, menu
+
+        atelier.isoler("archive-menu")
+        llm.definir_simulateur(simulateur)
+        try:
+            self._memo("la paie des fleuristes")
+            partagees = []
+            entrees = iter(["1", "5", "o", ""])
+            sortie = io.StringIO()
+            with mock.patch("usine.core.telephone.partager",
+                            lambda chemin, titre="": partagees.append(chemin)
+                            or True), \
+                    mock.patch("builtins.input",
+                               lambda invite="": next(entrees)), \
+                    redirect_stdout(sortie), redirect_stderr(sortie):
+                menu.menu_produits(lambda arguments: cli.principal(list(arguments)))
+        finally:
+            llm.definir_simulateur(None)
+        self.assertEqual(len(partagees), 1, sortie.getvalue()[-600:])
+        self.assertTrue(zipfile.is_zipfile(partagees[0]))
 
 
 if __name__ == "__main__":

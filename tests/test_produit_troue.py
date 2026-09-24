@@ -40,7 +40,7 @@ sys.path.insert(0, str(RACINE))
 
 from tests import atelier  # noqa: E402
 from tests.simulateur import simulateur  # noqa: E402
-from usine.core import llm, store  # noqa: E402
+from usine.core import config, llm, store  # noqa: E402
 
 PIPELINES = sorted((RACINE / "usine" / "pipelines").glob("*.py"))
 
@@ -468,7 +468,7 @@ class UnProduitTroueNeSePrepareEtreVendu(unittest.TestCase):
                                     journal.append)
             self.assertEqual(store.lire_produit(ctx.produit_id)["statut"],
                              "en_cours")
-            self.assertFalse(list(ctx.dossier.parent.glob("*.zip")),
+            self.assertFalse(list(config.PRODUITS_DIR.rglob("*.zip")),
                              "une archive d'acheteur pour un livre troue")
             self.assertFalse(coupe.get("marketing"))
             self.assertTrue(any("pas pour un produit inacheve" in l
@@ -485,7 +485,7 @@ class UnProduitTroueNeSePrepareEtreVendu(unittest.TestCase):
                     self.assertEqual(code, 1, sortie.getvalue())
                     self.assertIn("usine reprendre " + ctx.produit_id,
                                   sortie.getvalue())
-            self.assertFalse(list(ctx.dossier.parent.glob("*.zip")))
+            self.assertFalse(list(config.PRODUITS_DIR.rglob("*.zip")))
             etat["panne"] = False
             fini = reprise.reprendre(ctx.produit_id, journal=journal.append)
         finally:

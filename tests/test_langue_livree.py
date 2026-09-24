@@ -211,7 +211,7 @@ def fichiers_livres(dossier: Path) -> Iterator[Tuple[str, str]]:
                     if membre.endswith(".xhtml"):
                         yield ("{}:{}".format(chemin.name, membre.rsplit("/", 1)[-1]),
                                epub.read(membre).decode("utf-8", "replace"))
-    for archive in sorted(dossier.parent.glob("*.zip")):
+    for archive in sorted(dossier.glob("*.zip")):
         with zipfile.ZipFile(archive) as contenu:
             for membre in contenu.namelist():
                 nom = membre.rsplit("/", 1)[-1]
@@ -358,14 +358,14 @@ class LeCatalogueEntierEnAnglais(unittest.TestCase):
                                     for r in residus(nom, brut)]
                 cls.archives[cle] = [
                     nom.rsplit("/", 1)[-1]
-                    for archive in ctx.dossier.parent.glob("*.zip")
+                    for archive in ctx.dossier.glob("*.zip")
                     for nom in zipfile.ZipFile(archive).namelist()]
                 # L'extrait gratuit n'entre pas dans l'archive — le kit de
                 # vente reste a l'atelier — mais c'est l'acheteur qui l'ouvre.
                 cls.extraits[cle] = [
                     f.name for f in (ctx.dossier / "marketing" / "extrait").rglob("*")
                     if f.is_file()]
-                for archive in ctx.dossier.parent.glob("*.zip"):
+                for archive in ctx.dossier.glob("*.zip"):
                     archive.unlink()
         finally:
             llm.definir_simulateur(None)
