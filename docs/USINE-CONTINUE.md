@@ -226,6 +226,15 @@ en fabriquer un second laissait le premier inachevé sur le disque, sans rien
 pour le finir. Le bouton « Générer » confie de même à la boucle un produit
 coupé avant son export ; seul celui coupé après l'était.
 
+Le mode automatique avait le même défaut, un cran plus tôt. File vide, il
+cherche lui-même des niches — ce qui demande le modèle. Quotas épuisés à ce
+moment-là, il s'arrêtait sur « file vide » après **un** appel, en conseillant
+de lui donner un domaine, ce qui n'aurait rien changé. La recherche dit
+maintenant quand c'est le silence des fournisseurs qui l'a arrêtée, et l'usine
+attend qu'ils rouvrent ; quand ils répondent sans rien d'exploitable, elle
+s'arrête comme avant. Le tableau de bord, lui, nomme la cause au lieu
+d'afficher « aucune niche trouvée ».
+
 Ce que cette règle ne sait pas faire, et qu'elle ne prétend pas faire : une
 niche dont *tous* les fournisseurs refuseraient *chaque fois* la demande
 attendrait indéfiniment, une heure entre deux essais. Le routeur ne distingue

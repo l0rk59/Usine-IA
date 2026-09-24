@@ -264,10 +264,16 @@ def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None
             evenements.publier("type_choisi", type=type_produit,
                                nom=fiche.nom if fiche else type_produit)
         if not sujet:
+            # Des fournisseurs muets ne sont pas une absence de niche : le
+            # tableau de bord disait « donnez-en une », ce qui n'aurait rien
+            # change — la fabrication aurait echoue au premier appel.
+            erreur = (securite.expurger(choix.get("erreur") or "")
+                      if choix.get("muets") else "") or "aucune niche trouvee"
             with _VERROU:
-                TRAVAUX[travail_id].update(
-                    statut="echec", erreur="aucune niche trouvee")
-            journal("Aucune niche trouvee : donnez-en une.")
+                TRAVAUX[travail_id].update(statut="echec", erreur=erreur)
+            journal("Les fournisseurs ne repondent pas : {}".format(erreur)
+                    if choix.get("muets")
+                    else "Aucune niche trouvee : donnez-en une.")
             return
         if choix.get("source") == "froid" and not choix.get("mesure", True):
             journal("Aucune source de marche n'a repondu : cette niche est "

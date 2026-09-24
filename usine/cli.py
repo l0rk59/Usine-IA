@@ -2069,10 +2069,7 @@ def cmd_reprendre(args: argparse.Namespace) -> int:
         # Fabrique depuis le tableau de bord ou l'usine continue : il n'y a
         # pas de ligne de commande a rejouer, et il n'en faut pas.
         titre_console("Reprise — {}".format(produit["titre"]))
-        print("  {} section(s) a refaire : {}".format(
-            len(manquants), ", ".join(str(m) for m in manquants[:8]) or "inconnues"))
-        print("  {} deja au carnet, elles ne seront pas repayees."
-              .format(carnet.compte(dossier)))
+        _annoncer_ce_qui_manque(manquants, dossier)
         _resume_console(module_reprise.reprendre(
             produit["id"], journal=lambda message: print("  " + message)))
         return 0
@@ -2083,10 +2080,7 @@ def cmd_reprendre(args: argparse.Namespace) -> int:
               "d'origine : les reponses deja obtenues sont en cache.")
         return 1
     titre_console("Reprise — {}".format(produit["titre"]))
-    print("  {} section(s) a refaire : {}".format(
-        len(manquants), ", ".join(str(m) for m in manquants[:8]) or "inconnues"))
-    print("  {} deja au carnet, elles ne seront pas repayees."
-          .format(carnet.compte(dossier)))
+    _annoncer_ce_qui_manque(manquants, dossier)
     print("  Commande : usine " + " ".join(commande))
     return principal(list(commande) + ["--reprendre-id", produit["id"]])
 
@@ -3228,6 +3222,26 @@ def _fabrication(commande: str) -> bool:
     return commande in set(catalogue.cles()) | {"complet"}
 
 
+def _annoncer_ce_qui_manque(manquants: List[Any], dossier: Path) -> None:
+    """L'en-tete d'une reprise.
+
+    Un produit coupe avant son export n'a pas de liste de sections
+    manquantes : la chaine s'est arretee avant de la dresser. L'en-tete
+    annoncait alors « 0 section(s) a refaire : inconnues » — zero, pour un
+    produit a qui il manque tout ce qui suit la coupure.
+    """
+    from .pipelines import carnet
+
+    if manquants:
+        print("  {} section(s) a refaire : {}".format(
+            len(manquants), ", ".join(str(m) for m in manquants[:8])))
+    else:
+        print("  Coupe avant la fin de sa fabrication : elle reprend la ou "
+              "elle s'est arretee.")
+    print("  {} deja au carnet, elles ne seront pas repayees."
+          .format(carnet.compte(dossier)))
+
+
 def _explique_le_cache() -> str:
     """Ce que l'utilisateur ignore et qui change tout : relancer ne repart pas de zero.
 
@@ -3307,6 +3321,22 @@ def _expliquer_base(defaut: str) -> str:
     ).format(defaut=defaut, base=config.DB_PATH, produits=config.PRODUITS_DIR)
 
 
+def _produit_commence(depuis: float) -> Optional[Dict[str, Any]]:
+    """Le produit que cette commande a eu le temps de creer, s'il est inacheve.
+
+    Coupee par le silence des fournisseurs, la commande conseillait de se
+    relancer telle quelle. Mais une fois le dossier cree, la relancer en
+    fabrique un SECOND : le premier restait « inacheve » dans la liste, et
+    « usine reprendre » finissait par le refaire a cote de l'autre. La boucle
+    et le tableau de bord le reprennent ; la ligne de commande doit le dire.
+    """
+    for produit in store.lister_produits(5):
+        if (float(produit.get("cree_le") or 0) >= depuis
+                and produit.get("statut") == "en_cours"):
+            return produit
+    return None
+
+
 def principal(argv: Optional[List[str]] = None) -> int:
     config.load_env()
     config.ensure_dirs()
@@ -3327,6 +3357,7 @@ def principal(argv: Optional[List[str]] = None) -> int:
         print(BANNIERE.format(version=__version__))
         parseur.print_help()
         return 0
+    debut = time.time()
     try:
         # Android suspend Termux quelques minutes apres l'extinction de
         # l'ecran. Une fabrication de 15 minutes n'y survit pas : le verrou
@@ -3362,7 +3393,14 @@ def principal(argv: Optional[List[str]] = None) -> int:
         # wifi. On demande donc au reseau, une fois, avant de conseiller.
         from .core.http import en_ligne
 
-        print("\n  " + _explique_le_cache())
+        commence = _produit_commence(debut)
+        if commence:
+            print("\n  Le produit « {} » est commence et garde au carnet. "
+                  "Pour le finir sans repayer ce qui est fait :".format(
+                      commence.get("titre") or commence["id"]))
+            print("    " + _c("usine reprendre " + commence["id"], "1"))
+        else:
+            print("\n  " + _explique_le_cache())
         if not en_ligne():
             print("  Le reseau est coupe. Rebranchez le wifi ou les donnees "
                   "mobiles, puis relancez la meme commande.")

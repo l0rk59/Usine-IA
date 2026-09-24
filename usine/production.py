@@ -231,7 +231,12 @@ def domaines_de_depart(
             temperature=0.9, max_tokens=1600)
     except Exception as exc:
         dire("Impossible de proposer un domaine de depart : {}".format(exc))
-        return {"retenus": [], "mesures": [], "mesure": False}
+        # Le silence des fournisseurs n'est pas l'absence de domaine : les
+        # appelants le distinguent, parce que l'un se repare en attendant et
+        # l'autre en donnant un sujet. Voir « prospecter ».
+        return {"retenus": [], "mesures": [], "mesure": False,
+                "muets": isinstance(exc, llm.PlusDeFournisseur),
+                "erreur": str(exc)}
 
     proposes = donnees.get("domaines") if isinstance(donnees, dict) else donnees
     propres = [d for d in (proposes or [])
@@ -482,7 +487,8 @@ def choisir_une_niche(
             dire("Premiere niche, choisie par l'usine : « {} ».".format(nom))
             return {"sujet": nom, "type": defaut,
                     "source": "froid", "mesure": froid["mesure"]}
-    return {"sujet": "", "type": defaut, "source": ""}
+    return {"sujet": "", "type": defaut, "source": "",
+            "muets": bool(froid.get("muets")), "erreur": froid.get("erreur", "")}
 
 
 def prospecter_fiction(nombre: int = 8, graine: str = "",
@@ -584,10 +590,14 @@ def prospecter(nombre: int = 8, graine: str = "",
         dire("Atelier vide : l'usine cherche elle-meme par ou commencer.")
         froid = domaines_de_depart(journal=dire)
         if not froid["retenus"]:
-            dire("Aucun domaine de depart n'a pu etre trouve. Donnez-en un "
-                 "et l'usine repartira de la.")
+            if froid.get("muets"):
+                dire("Les fournisseurs ne repondent pas : rien ne peut etre "
+                     "cherche tant qu'ils se taisent.")
+            else:
+                dire("Aucun domaine de depart n'a pu etre trouve. Donnez-en "
+                     "un et l'usine repartira de la.")
             return {"graine": "", "ajoutees": 0, "ecartees": [], "pistes": 0,
-                    "froid": froid}
+                    "froid": froid, "muets": bool(froid.get("muets"))}
         graine = froid["retenus"][0]["domaine"]
         depart_a_froid = True
 
@@ -603,7 +613,8 @@ def prospecter(nombre: int = 8, graine: str = "",
         # l'historique ou d'un choix que l'usine vient de faire seule.
         dire("Exploration impossible : {}".format(exc))
         return {"graine": graine, "ajoutees": 0, "ecartees": [], "pistes": 0,
-                "froid": depart_a_froid}
+                "froid": depart_a_froid,
+                "muets": isinstance(exc, llm.PlusDeFournisseur)}
 
     pistes = resultat.get("idees", [])
     ajoutees, ecartees = 0, []
@@ -766,9 +777,9 @@ class UsineContinue:
             telephone.notifier(titre, contenu, ouvrir=ouvrir, urgente=urgente)
 
     # -- remplissage automatique -------------------------------------------
-    def _remplir(self) -> int:
+    def _remplir(self) -> Dict[str, Any]:
         """Genere de nouvelles niches quand la file se vide."""
-        return prospecter(nombre=8, journal=self.journal)["ajoutees"]
+        return prospecter(nombre=8, journal=self.journal)
 
     # -- fabrication d'une entree -------------------------------------------
     def _fabriquer(self, entree: Dict[str, Any]) -> bool:
@@ -941,7 +952,7 @@ class UsineContinue:
         return False
 
     def _attendre_de_quoi_continuer(self, sans_progres: int,
-                                    entree: Dict[str, Any]) -> None:
+                                    entree: Optional[Dict[str, Any]]) -> None:
         """Attendre qu'un fournisseur rouvre, plutot que de s'arreter.
 
         Avant, un quota epuise arretait l'usine : « budget epuise pendant la
@@ -969,6 +980,10 @@ class UsineContinue:
                      "automatique vers {} ({} min).".format(
                          time.strftime("%H:%M", time.localtime(fin)),
                          int(round(attente / 60.0))))
+        # Sans entree : la file est vide et c'est la recherche de niches que
+        # le silence a arretee.
+        entree = entree or {"id": 0, "sujet": "chercher de nouvelles niches",
+                            "type": "idees"}
         self._publier(courant={"id": entree["id"], "sujet": entree["sujet"],
                                "type": entree["type"], "depuis": time.time(),
                                "attente_jusqu_a": fin})
@@ -1047,7 +1062,18 @@ class UsineContinue:
 
                 entree = file.prochain()
                 if entree is None:
-                    if self.auto and self._remplir():
+                    rapport = self._remplir() if self.auto else {}
+                    if rapport.get("ajoutees"):
+                        continue
+                    if rapport.get("muets"):
+                        # Mesure du 24/09/2026, mode automatique, atelier vide
+                        # et quotas epuises : l'usine s'arretait sur « file
+                        # vide » apres UN appel, et conseillait de donner un
+                        # domaine — ce qui n'aurait rien change. C'est le
+                        # silence des fournisseurs, pas un manque d'idees :
+                        # on attend qu'ils rouvrent, comme pour un produit.
+                        self.silences += 1
+                        self._attendre_de_quoi_continuer(self.silences - 1, None)
                         continue
                     self.motif_fin = "file vide"
                     self.journal("File vide — l'usine s'arrete.")

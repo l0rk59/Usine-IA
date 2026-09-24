@@ -91,6 +91,11 @@ class Moteur(production.UsineContinue):
 
     def _dormir(self, secondes):
         self.sommeils.append(secondes)
+        # Meme garde-fou que pour les fabrications : une boucle qui attend
+        # sans fin — le mode automatique qui cherche des niches, puis attend,
+        # puis cherche — doit faire echouer le test, pas le figer.
+        if len(self.sommeils) > 12:
+            self.arret_demande = True
         self.fournisseurs.ouverts = True
         self.fournisseurs.coupe_apres = None
         return True
@@ -390,6 +395,129 @@ class LesQuotasVidesAvantLaFin(_Cas):
         attente = file.lister(limite=5)
         self.assertEqual([e["options"].get("reprendre_id") for e in attente],
                          [produit["id"]])
+
+
+class LeModeAutomatiqueAttendAussi(_Cas):
+    """Mesure du 24/09/2026 : mode automatique, atelier vide, quotas epuises.
+    L'usine s'arretait sur « file vide » apres UN appel, et conseillait de
+    donner un domaine — ce qui n'aurait rien change."""
+
+    def setUp(self):
+        super().setUp()
+        # Chercher des niches mesure le marche et ecoute la veille, sur le
+        # reseau. Aucun test n'y va : sans ces deux lignes, celui-ci passait
+        # huit secondes a attendre des delais de connexion.
+        from usine.core import marche, veille
+
+        self._sonder, self._scouter = marche.sonder, veille.scouter
+
+        def sonder(sujet, **_kw):
+            rapport = {"sujet": sujet, "date": "2026-09-24", "sources": {},
+                       "sources_disponibles": [],
+                       "sources_indisponibles": ["hors ligne"]}
+            rapport["lecture"] = marche.interpreter(rapport)
+            return rapport
+
+        def scouter(*_a, **_kw):
+            raise OSError("hors ligne pour les tests")
+
+        marche.sonder, veille.scouter = sonder, scouter
+
+    def tearDown(self):
+        from usine.core import marche, veille
+
+        marche.sonder, veille.scouter = self._sonder, self._scouter
+        super().tearDown()
+
+    def test_des_fournisseurs_muets_font_attendre(self):
+        fournisseurs = Fournisseurs(coupe_apres=0)
+        llm.definir_simulateur(fournisseurs)
+        moteur = Moteur(fournisseurs, auto=True, maximum=1)
+        moteur.tourner()
+        self.assertEqual(moteur.sommeils, [300])
+        self.assertEqual(len(moteur.faits), 1)
+
+    def test_rien_a_proposer_arrete_toujours(self):
+        """L'autre sens : les fournisseurs repondent, mais sans rien
+        d'exploitable. Attendre n'y changerait rien."""
+        fournisseurs = Fournisseurs()
+
+        def appel(messages, role):
+            if "DOMAINES de depart" in messages[-1]["content"]:
+                return '{"domaines": []}'
+            return fournisseurs(messages, role)
+
+        llm.definir_simulateur(appel)
+        moteur = Moteur(fournisseurs, auto=True, maximum=1)
+        moteur.tourner()
+        self.assertEqual(moteur.sommeils, [])
+        self.assertEqual(moteur.motif_fin, "file vide")
+
+    def test_le_tableau_de_bord_nomme_le_silence(self):
+        from usine.web import serveur
+
+        llm.definir_simulateur(Fournisseurs(coupe_apres=0))
+        serveur.TRAVAUX["g5"] = {"statut": "en_cours", "journal": []}
+        try:
+            serveur._lancer("g5", "ebook", {})
+            travail = dict(serveur.TRAVAUX["g5"])
+        finally:
+            serveur.TRAVAUX.pop("g5", None)
+        self.assertEqual(travail["statut"], "echec")
+        self.assertIn("Tous les fournisseurs ont echoue", travail["erreur"])
+
+
+class LaLigneDeCommandeCoupee(_Cas):
+    """La ligne de commande coupee par le silence des fournisseurs conseillait
+    de se relancer telle quelle. Une fois le dossier cree, cela fabriquait un
+    second produit, et le premier restait inacheve dans la liste."""
+
+    def _lancer(self, argv):
+        import io
+        from contextlib import redirect_stdout
+        from unittest import mock
+
+        from usine import cli
+        from usine.core import http
+
+        sortie = io.StringIO()
+        # Le diagnostic reseau irait sur internet : aucun test n'y va.
+        with mock.patch.object(http, "en_ligne", return_value=True), \
+                redirect_stdout(sortie):
+            code = cli.principal(argv)
+        return code, sortie.getvalue()
+
+    def test_elle_nomme_le_produit_commence_et_la_reprise_le_finit(self):
+        fournisseurs = Fournisseurs(coupe_apres=2)
+        llm.definir_simulateur(fournisseurs)
+        code, texte = self._lancer(["memo", "la tva des coiffeurs"])
+        produit = store.lister_produits()[0]
+        self.assertEqual(code, 3)
+        self.assertEqual(produit["statut"], "en_cours",
+                         "la coupe n'est pas tombee apres la creation du produit")
+        self.assertIn("usine reprendre " + produit["id"], texte)
+        self.assertNotIn("relancer la MEME commande", texte)
+        fournisseurs.ouverts, fournisseurs.coupe_apres = True, None
+        code, texte = self._lancer(["reprendre", produit["id"]])
+        self.assertEqual(code, 0)
+        self.assertIn("Coupe avant la fin de sa fabrication", texte)
+        self.assertNotIn("inconnues", texte)
+        self.assertEqual([p["statut"] for p in store.lister_produits()], ["pret"])
+
+    def test_sans_produit_elle_rappelle_le_cache(self):
+        """Un produit inacheve d'une AUTRE fois attend dans la liste : ce
+        n'est pas celui-la qu'il faut conseiller de reprendre."""
+        store.creer_produit("un-vieux-memo", "memo", "Un vieux memo",
+                            sujet="la paie")
+        llm.definir_simulateur(Fournisseurs(coupe_apres=0))
+        code, texte = self._lancer(["ebook", "la tva des fleuristes",
+                                    "--sans-image"])
+        self.assertEqual(code, 3)
+        self.assertEqual([p["id"] for p in store.lister_produits()],
+                         ["un-vieux-memo"],
+                         "un produit a ete cree : le test n'exerce plus ce cas")
+        self.assertNotIn("un-vieux-memo", texte)
+        self.assertIn("relancer la MEME commande", texte)
 
 
 class LesDeuxLimites(_Cas):
