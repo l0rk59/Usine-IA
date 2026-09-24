@@ -962,6 +962,8 @@ def cmd_sauvegarde(args: argparse.Namespace) -> int:
             "inclus" if fiche.get("avec_reglages") else "absents"))
         print("  Fichiers de produits : {}".format(
             fiche.get("fichiers_produits", 0)))
+        print("  Invites personnalisees : {}".format(
+            fiche.get("fichiers_invites", 0)))
         return 0
 
     titre_console("Sauvegarde de l'atelier")

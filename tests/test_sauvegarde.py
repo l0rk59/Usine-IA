@@ -444,6 +444,8 @@ class LesInvitesPersonnaliseesReviennent(unittest.TestCase):
         prompts.oublier()
         self.assertNotEqual(prompts.modele("interdits"), "- Jamais de jargon.")
 
+        # L'apercu le dit avant qu'on restaure.
+        self.assertEqual(sauvegarde.inspecter(archive)["fichiers_invites"], 1)
         sauvegarde.restaurer(archive, avec_produits=False)
         self.assertEqual(prompts.modele("interdits"), "- Jamais de jargon.")
         self.addCleanup(shutil.rmtree, str(repertoire), True)

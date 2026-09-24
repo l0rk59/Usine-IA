@@ -144,10 +144,15 @@ def inspecter(archive: Path) -> Dict[str, Any]:
                 except ValueError:
                     fiche = {}
             produits = sum(1 for n in noms if n.startswith("produits/"))
+            invites = sum(1 for n in noms
+                          if n.startswith("prompts/") and not n.endswith("/"))
     except (zipfile.BadZipFile, OSError):
         return {"valide": False, "probleme": "archive illisible"}
     fiche.update({"valide": True, "probleme": "",
                   "fichiers_produits": produits,
+                  # Ce qui revient aussi, et que l'apercu taisait : les
+                  # invites personnalisees.
+                  "fichiers_invites": invites,
                   "octets": octets, "octets_base": octets_base,
                   "avec_reglages": NOM_REGLAGES in noms})
     return fiche

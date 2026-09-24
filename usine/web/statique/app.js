@@ -1258,7 +1258,8 @@ $('sauvegardes').addEventListener('click', async (evenement) => {
     Ecrite le ${echapper(dateLisible(fiche.cree_le))} &middot; schema ${
       fiche.schema} (l'usine en est a ${fiche.schema_courant})<br/>
     ${fiche.avec_reglages ? 'Reglages inclus' : 'Sans les reglages'} &middot; ${
-      fiche.fichiers_produits} fichier(s) de produits`;
+      fiche.fichiers_produits} fichier(s) de produits &middot; ${
+      fiche.fichiers_invites || 0} invite(s) personnalisee(s)`;
   $('restauration-compris').checked = false;
   $('restauration-faire').disabled = true;
   $('restauration').hidden = false;
