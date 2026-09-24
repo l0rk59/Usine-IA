@@ -225,6 +225,23 @@ def restaurer(archive: Path, avec_produits: bool = True) -> Dict[str, Any]:
         if NOM_REGLAGES in zip_.namelist():
             (config.WORKDIR / NOM_REGLAGES).write_bytes(
                 zip_.read(NOM_REGLAGES))
+        # Les invites personnalisees. La sauvegarde les ecrivait, la
+        # restauration ne les remettait jamais : sur un telephone neuf, elles
+        # etaient perdues sans rien qui le dise, alors que l'archive les
+        # contenait. Le dossier est plat, et ne lit que du « .txt » et du
+        # « .json » : tout autre nom est refuse, comme une entree qui
+        # voudrait sortir du dossier — l'archive a pu revenir modifiee.
+        for nom in zip_.namelist():
+            if not nom.startswith("prompts/") or nom.endswith("/"):
+                continue
+            fichier = nom[len("prompts/"):]
+            if ("/" in fichier or "\\" in fichier or fichier.startswith(".")
+                    or not fichier.endswith((".txt", ".json"))):
+                refuses.append(nom)
+                continue
+            repertoire = config.WORKDIR / "prompts"
+            repertoire.mkdir(parents=True, exist_ok=True)
+            (repertoire / fichier).write_bytes(zip_.read(nom))
         if avec_produits:
             for nom in zip_.namelist():
                 if not nom.startswith("produits/") or nom.endswith("/"):
@@ -254,6 +271,9 @@ def restaurer(archive: Path, avec_produits: bool = True) -> Dict[str, Any]:
     # reinitialiser(), qui le supprimerait : la restauration effacerait
     # les reglages qu'elle vient de remettre en place.
     module_reglages.charger(force=True)
+    from . import prompts as module_prompts
+
+    module_prompts.oublier()
     store.connect()
     return {"valide": True, "probleme": "", "fichiers_produits": restaures,
             "refuses": refuses,

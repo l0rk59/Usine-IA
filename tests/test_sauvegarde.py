@@ -423,6 +423,48 @@ class UneConnexionOuverteDansLaFenetreDeRestauration(unittest.TestCase):
                          "la connexion lit encore la base mise de cote")
 
 
+class LesInvitesPersonnaliseesReviennent(unittest.TestCase):
+    """La sauvegarde ecrivait les invites personnalisees dans l'archive, et
+    la restauration ne les remettait jamais en place : sur un telephone neuf,
+    elles etaient perdues sans rien qui le dise, alors que l'archive les
+    contenait."""
+
+    def test_une_invite_personnalisee_revient_apres_restauration(self):
+        from usine.core import prompts
+
+        repertoire = prompts.dossier()
+        repertoire.mkdir(parents=True, exist_ok=True)
+        (repertoire / "interdits.txt").write_text("- Jamais de jargon.",
+                                                  encoding="utf-8")
+        prompts.oublier()
+        archive = sauvegarde.creer()
+        self.addCleanup(lambda: archive.unlink(missing_ok=True))
+        # Le telephone neuf : aucune invite personnalisee.
+        shutil.rmtree(str(repertoire))
+        prompts.oublier()
+        self.assertNotEqual(prompts.modele("interdits"), "- Jamais de jargon.")
+
+        sauvegarde.restaurer(archive, avec_produits=False)
+        self.assertEqual(prompts.modele("interdits"), "- Jamais de jargon.")
+        self.addCleanup(shutil.rmtree, str(repertoire), True)
+        self.addCleanup(prompts.oublier)
+
+    def test_une_entree_hostile_ne_sort_pas_du_dossier(self):
+        from usine.core import prompts
+
+        archive = sauvegarde.creer()
+        self.addCleanup(lambda: archive.unlink(missing_ok=True))
+        with zipfile.ZipFile(archive, "a") as zip_:
+            zip_.writestr("prompts/../../evade.txt", "hors du dossier")
+            zip_.writestr("prompts/script.sh", "echo non")
+        resultat = sauvegarde.restaurer(archive, avec_produits=False)
+        self.assertFalse((config.WORKDIR / "evade.txt").exists())
+        self.assertFalse((config.WORKDIR.parent / "evade.txt").exists())
+        self.assertFalse((prompts.dossier() / "script.sh").exists())
+        self.assertIn("prompts/script.sh", resultat["refuses"])
+        self.addCleanup(prompts.oublier)
+
+
 class TestArchiveHostile(unittest.TestCase):
     """Une archive passe par un ordinateur ou un nuage. Elle peut revenir
     modifiee."""

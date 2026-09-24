@@ -37,6 +37,17 @@ problème ne se verrait qu'à la restauration.
 | **Le cache IA** | il se reconstruit, il pèse lourd, et il ne contient rien qu'on ne puisse régénérer. |
 | **Les produits** | optionnels : `--avec-produits`. Sans eux, une archive pèse quelques dizaines de kilo-octets. |
 
+## Les invites personnalisées ne revenaient pas
+
+La sauvegarde écrivait les invites personnalisées (`prompts/`) dans l'archive,
+et la restauration ne les remettait jamais en place. Sur un téléphone neuf,
+elles étaient perdues sans rien qui le dise, alors que l'archive les
+contenait. Elles reviennent désormais, et leur cache est vidé. Le dossier est
+plat et ne lit que du `.txt` et du `.json` : tout autre nom est refusé, comme
+une entrée qui voudrait sortir du dossier — une archive peut revenir modifiée.
+Les invites présentes sur l'appareil et absentes de l'archive restent en
+place.
+
 ## La restauration est réversible
 
 `--restaurer` remplace l'atelier, donc il exige `--oui`. **L'ancienne base
