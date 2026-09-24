@@ -44,7 +44,14 @@ pour un cas ou la chaine ajoute ses propres controles. Points communs :
 - l'export passe par `render/document.py` et `packaging/livraison.py` ;
 - toute degradation (budget atteint, modele indisponible) doit **produire
   quand meme**, en moins bien, et le dire. Un chapitre qui echoue n'arrete pas
-  le livre : il est remplace par son plan detaille.
+  le livre : il est remplace par son plan detaille ;
+- « le dire », c'est le noter en echec, pas seulement l'ecrire au journal.
+  Une chaine qui ecrit des sections en boucle les fait passer par
+  `Redaction` (`usine/pipelines/base.py`) : carnet relu a la reprise, arret
+  des demandes quand plus rien ne repond, section perdue notee en echec. Le
+  livre-jeu, le recueil et le feuilleton sortaient « prets » avec des scenes
+  en moins, faute de cette ligne. `tests/test_trous_fiction.py` lit le
+  catalogue : il coupera la nouvelle chaine en route sans qu'on l'y ajoute.
 
 **2. L'inscription** — une entree `TypeProduit` dans `catalogue.py` :
 

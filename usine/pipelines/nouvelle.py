@@ -49,9 +49,9 @@ from . import faits
 from . import memoire as M
 from . import prose
 from . import voix
-from .base import (PLUS_RIEN_A_DEMANDER, Contexte, elaguer_markdown,
-                   jetons_pour, nettoyer_titre, preparer, sans_titres,
-                   terminer)
+from .base import (PLUS_RIEN_A_DEMANDER, Contexte, Redaction,
+                   elaguer_markdown, jetons_pour, nettoyer_titre, preparer,
+                   sans_titres, terminer)
 
 ROLE = ("un auteur de fiction courte publie en revue, qui tient la continuite "
         "et montre plutot que de raconter")
@@ -1253,15 +1253,15 @@ def produire(ctx: Contexte, serie: str = "",
             # continuite des scenes suivantes. On la nourrit du texte relu,
             # sans repayer le resume.
             sections.append(deja)
-            _replier_memoire(memoire, scene, index, total)
+            replier_memoire(memoire, scene, index, total)
             memoires.append(memoire.etat_courant())
             redigees.append(True)
             ctx.journal("     deja ecrite — reprise du carnet")
             ctx.etape(repere, "ok", deja[0])
             continue
         if budget_epuise:
-            sections.append((scene["titre"], _repli(scene)))
-            _replier_memoire(memoire, scene, index, total)
+            sections.append((scene["titre"], repli_de_scene(scene)))
+            replier_memoire(memoire, scene, index, total)
             memoires.append(memoire.etat_courant())
             redigees.append(False)
             manquants.append(repere)
@@ -1277,12 +1277,12 @@ def produire(ctx: Contexte, serie: str = "",
             manquants.append(repere)
             ctx.journal("     {} — scenes restantes reduites a leur fiche".format(exc))
             ctx.etape(repere, "echec", str(exc))
-            corps, auteur, ecrite = _repli(scene), "", False
+            corps, auteur, ecrite = repli_de_scene(scene), "", False
         except Exception as exc:
             manquants.append(repere)
             ctx.journal("     echec : {} — scene conservee en resume".format(exc))
             ctx.etape(repere, "echec", str(exc))
-            corps, auteur, ecrite = _repli(scene), "", False
+            corps, auteur, ecrite = repli_de_scene(scene), "", False
         else:
             ecrite = True
             # Controle local. « exiger_structure=False » : une scene n'a ni
@@ -1319,7 +1319,7 @@ def produire(ctx: Contexte, serie: str = "",
         # La memoire se met a jour meme quand tout le reste a echoue : c'est
         # elle qui porte la continuite des scenes suivantes.
         if budget_epuise:
-            _replier_memoire(memoire, scene, index, total)
+            replier_memoire(memoire, scene, index, total)
         else:
             try:
                 memoire.apres_scene(redacteur_pour(ctx, scene), corps,
@@ -1327,9 +1327,9 @@ def produire(ctx: Contexte, serie: str = "",
             except PLUS_RIEN_A_DEMANDER as exc:
                 budget_epuise = True
                 ctx.journal("     {} — memoire figee sur les pivots".format(exc))
-                _replier_memoire(memoire, scene, index, total)
+                replier_memoire(memoire, scene, index, total)
             except Exception:
-                _replier_memoire(memoire, scene, index, total)
+                replier_memoire(memoire, scene, index, total)
         memoires.append(memoire.etat_courant())
         # Au carnet seulement si la scene a VRAIMENT ete ecrite : une fiche de
         # repli n'est pas une scene, et une reprise doit encore l'ecrire.
@@ -1478,8 +1478,8 @@ def produire(ctx: Contexte, serie: str = "",
     return resume
 
 
-def _replier_memoire(memoire, scene: Dict[str, Any], index: int,
-                     total: int) -> None:
+def replier_memoire(memoire, scene: Dict[str, Any], index: int,
+                    total: int) -> None:
     """Fait avancer la memoire sans appeler le modele.
 
     Elle passe par le meme chemin qu'une scene redigee — donc une partie se
@@ -1489,10 +1489,36 @@ def _replier_memoire(memoire, scene: Dict[str, Any], index: int,
     """
     memoire.apres_scene(
         lambda etat, texte, intitule="": _memoire_de_secours(etat, scene),
-        _repli(scene), scene["titre"], index, total)
+        repli_de_scene(scene), scene["titre"], index, total)
 
 
-def _repli(scene: Dict[str, Any]) -> str:
+def memoriser(memoire, redaction: Redaction, ctx: Contexte,
+              scene: Dict[str, Any], texte: Optional[str], index: int,
+              total: int) -> None:
+    """Fait avancer la memoire apres une scene de « Redaction », quoi qu'il
+    lui soit arrive.
+
+    La regle de la boucle de « nouvelle », pour les chaines qui ecrivent
+    leurs scenes par « Redaction » : une scene relue du carnet ne repaye pas
+    son resume, une scene perdue avance sur sa fiche, et une memoire qui
+    echoue degrade la continuite sans arreter le recit. Le feuilleton
+    avalait cet echec par un « pass » : la memoire restait alors en arriere
+    d'une scene, sans rien pour la faire avancer.
+    """
+    if texte is None or redaction.relue or redaction.budget_epuise:
+        replier_memoire(memoire, scene, index, total)
+        return
+    try:
+        memoire.apres_scene(redacteur_pour(ctx, scene), texte,
+                            scene["titre"], index, total)
+    except PLUS_RIEN_A_DEMANDER as exc:
+        redaction.budget_epuise, redaction.cause = True, exc
+        replier_memoire(memoire, scene, index, total)
+    except Exception:
+        replier_memoire(memoire, scene, index, total)
+
+
+def repli_de_scene(scene: Dict[str, Any]) -> str:
     """Scene non redigee : sa fiche, en prose minimale.
 
     Comme pour l'ebook, livrer une scene reduite a sa fiche vaut mieux que

@@ -38,10 +38,11 @@ from typing import Any, Dict, List, Sequence, Set
 
 from ..agents import equipe
 from ..render import livraison
+from . import carnet
 from . import fiction
 from . import prose
-from .base import (Contexte, elaguer_markdown, jetons_pour, preparer,
-                   sans_titres, terminer)
+from .base import (Contexte, Redaction, elaguer_markdown, jetons_pour,
+                   preparer, sans_titres, terminer)
 
 # Combien de sections par defaut. Un livre-jeu court se lit en une soiree ;
 # en dessous de douze, l'arbre n'a pas la place de se ramifier et le lecteur
@@ -391,19 +392,24 @@ def produire(ctx: Contexte, sections: int = 0) -> Dict[str, Any]:
     demande = max(SECTIONS_MIN, min(demande, SECTIONS_MAX))
     mots = ctx.mots_section or MOTS_SECTION
 
+    # Une reprise repart de la bible et de la carte du carnet. Une carte
+    # redemandee renumeroterait les sections sous les textes deja ecrits : la
+    # section 7 du carnet ne serait plus celle vers laquelle renvoient les
+    # choix.
+    repris = carnet.plan(ctx.dossier) if ctx.dossier and ctx.dossier.name else None
     ctx.journal("Etape 1/4 — la bible : distribution, cadre, enjeu...")
-    bible = construire_bible(ctx)
+    bible = (repris or {}).get("bible") or construire_bible(ctx)
     titre = bible["titre"]
     dossier = preparer(ctx, "interactive", titre)
     ctx.etape("bible", "ok", "{} personnage(s)".format(len(bible["personnages"])))
 
     ctx.journal("Etape 2/4 — la carte : {} sections et leurs "
                 "embranchements...".format(demande))
-    carte: List[Dict[str, Any]] = []
+    carte: List[Dict[str, Any]] = list((repris or {}).get("chapitres") or [])
     fautes: List[str] = []
     # Deux tentatives, et la seconde NOMME les defauts de la premiere. Un
     # modele a qui l'on dit « recommence » refait la meme carte.
-    for tentative in range(2):
+    for tentative in range(0 if carte else 2):
         brut = equipe.SCENARISTE.travailler_json(
             ctx, _invite_carte(ctx, bible, demande, fautes),
             role_modele="costaud", temperature=0.6, max_tokens=4000,
@@ -417,7 +423,7 @@ def produire(ctx: Contexte, sections: int = 0) -> Dict[str, Any]:
         for faute in fautes[:4]:
             ctx.journal("    " + faute)
 
-    elaguee = False
+    elaguee = bool((repris or {}).get("elaguee"))
     if fautes:
         # Le modele n'a pas su. On rend le livre JOUABLE plutot que juste, et
         # on le dit : un produit degrade qui s'annonce vaut mieux qu'un
@@ -427,26 +433,35 @@ def produire(ctx: Contexte, sections: int = 0) -> Dict[str, Any]:
         elaguee = True
         ctx.journal("  carte elaguee pour rester jouable : {} section(s) sur "
                     "{} retenues.".format(len(carte), avant))
+    if repris:
+        ctx.journal("  Reprise : bible, carte et {} section(s) deja au carnet."
+                    .format(carnet.compte(dossier)))
+    else:
+        carnet.noter_plan(dossier, {"bible": bible, "chapitres": carte,
+                                    "elaguee": elaguee})
     restantes = verifier_carte(carte, demande)
     ctx.etape("carte", "partiel" if restantes or elaguee else "ok",
               "{} sections, {} fins".format(
                   len(carte), sum(1 for s in carte if s["fin"])))
 
     ctx.journal("Etape 3/4 — redaction de {} section(s)...".format(len(carte)))
+    redaction = Redaction(ctx, dossier)
     for rang, section in enumerate(carte, 1):
-        try:
-            section["texte"] = _rediger_section(ctx, bible, section, mots)
-        except Exception as exc:
-            # Une section perdue ne doit pas emporter le livre : son intitule
-            # tient la place, le chemin reste parcourable, et le trou est
-            # visible plutot que silencieux.
-            ctx.journal("  section {} indisponible : {}".format(
-                section["numero"], exc))
-            section["texte"] = "*({})*".format(
-                section["intitule"] or "section manquante")
+        texte = redaction.ecrire(
+            "section-{}".format(section["numero"]),
+            section["intitule"] or str(section["numero"]),
+            lambda: _rediger_section(ctx, bible, section, mots))
+        # Une section perdue ne doit pas emporter le livre : son intitule
+        # tient la place, le chemin reste parcourable, et le trou est
+        # visible plutot que silencieux. Elle est notee en echec : le livre
+        # reste inacheve jusqu'a ce qu'une reprise l'ecrive.
+        section["texte"] = texte if texte is not None else "*({})*".format(
+            section["intitule"] or "section manquante")
         if rang % 5 == 0 or rang == len(carte):
             ctx.journal("  {}/{} sections".format(rang, len(carte)))
-    ctx.etape("sections", "ok", "{} sections redigees".format(len(carte)))
+    ctx.etape("sections", "partiel" if redaction.manquants else "ok",
+              "{} sections redigees sur {}".format(
+                  len(carte) - len(redaction.manquants), len(carte)))
 
     # La verification du graphe dit que le livre est JOUABLE ; elle ne dit
     # rien de ce qu'on y lit. Un livre-jeu dont toutes les sections sont
@@ -497,6 +512,7 @@ def produire(ctx: Contexte, sections: int = 0) -> Dict[str, Any]:
         "lectures_prose": lectures_prose,
         "mots": sum(len((s.get("texte") or "").split()) for s in carte),
         "fichiers": [f.name for f in fichiers],
+        "budget_epuise": redaction.budget_epuise,
     }
     terminer(ctx, fichiers, {"sections": len(carte), "fins": len(fins)})
     (dossier / "produit.json").write_text(

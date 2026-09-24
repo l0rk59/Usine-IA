@@ -28,10 +28,11 @@ from typing import Any, Dict, List, Sequence
 
 from ..agents import equipe
 from ..render import livraison
+from . import carnet
 from . import fiction
 from . import memoire as M
 from . import prose
-from .base import (Contexte, elaguer_markdown, nettoyer_titre,
+from .base import (Contexte, Redaction, elaguer_markdown, nettoyer_titre,
                    preparer, sans_titres, terminer)
 
 EPISODES = 8
@@ -187,20 +188,23 @@ def _ecrire_recap(ctx: Contexte, precedent: Dict[str, Any],
 
 def produire(ctx: Contexte, episodes: int = 0) -> Dict[str, Any]:
     """Un feuilleton : chaque episode se lit seul et appelle le suivant."""
-    from .nouvelle import (construire_bible, construire_grille, redacteur_pour,
-                           rediger_scene)
+    from .nouvelle import (construire_bible, construire_grille, memoriser,
+                           repli_de_scene, rediger_scene)
 
     demande = int(episodes or ctx.chapitres or EPISODES)
     demande = max(EPISODES_MIN, min(demande, EPISODES_MAX))
-    mots = ctx.mots_section or 700
 
+    # Une reprise repart de la bible, de l'arc et de la grille du carnet. Les
+    # reconstruire changerait la distribution et la question de chaque
+    # episode sous les scenes deja ecrites.
+    repris = carnet.plan(ctx.dossier) if ctx.dossier and ctx.dossier.name else None
     ctx.journal("Etape 1/4 — la bible : distribution, cadre, enjeu...")
-    bible = construire_bible(ctx)
+    bible = (repris or {}).get("bible") or construire_bible(ctx)
     distribution = [p.get("nom", "") for p in bible.get("personnages", [])]
     ctx.etape("bible", "ok", "{} personnage(s)".format(len(distribution)))
 
     ctx.journal("Etape 2/4 — l'arc de la saison, {} episodes...".format(demande))
-    arc = _arc(ctx, demande)
+    arc = (repris or {}).get("arc") or _arc(ctx, demande)
     titre = arc["titre"]
     dossier = preparer(ctx, "feuilleton", titre)
     sans_suspens = episodes_sans_suspens(arc["episodes"])
@@ -212,20 +216,32 @@ def produire(ctx: Contexte, episodes: int = 0) -> Dict[str, Any]:
               "{} episodes".format(len(arc["episodes"])))
 
     ctx.journal("Etape 3/4 — redaction des episodes...")
-    grille = construire_grille(ctx, bible)
+    grille = (repris or {}).get("grille") or construire_grille(ctx, bible)
+    if repris:
+        ctx.journal("  Reprise : bible, arc et {} section(s) deja au carnet."
+                    .format(carnet.compte(dossier)))
+    carnet.noter_plan(dossier, {"bible": bible, "arc": arc, "grille": grille,
+                                "chapitres": arc["episodes"]})
     prevues = grille["scenes"]
     memoire = M.choisir(len(arc["episodes"]) * SCENES_PAR_EPISODE, 90)
+    redaction = Redaction(ctx, dossier)
     ecrits: List[Dict[str, Any]] = []
     for rang, episode in enumerate(arc["episodes"], 1):
         ctx.journal("  [{}/{}] « {} »".format(rang, len(arc["episodes"]),
                                               episode["titre"]))
         recap = ""
-        if ecrits:
-            try:
-                recap = _ecrire_recap(ctx, ecrits[-1], distribution)
-            except Exception as exc:
-                ctx.journal("    rappel indisponible : {}".format(exc))
+        if ecrits and ecrits[-1]["complet"]:
+            recap = redaction.ecrire(
+                "episode-{}-rappel".format(rang), "Precedemment",
+                lambda: _ecrire_recap(ctx, ecrits[-1], distribution)) or ""
+        elif ecrits:
+            # Un rappel ecrit sur la fiche d'une scene perdue resterait au
+            # carnet apres la reprise, et raconterait au lecteur un episode
+            # qui n'est pas celui qu'il a lu.
+            redaction.manque("episode-{}-rappel".format(rang),
+                             "l'episode precedent est incomplet")
         morceaux: List[str] = []
+        complet = True
         for pas in range(SCENES_PAR_EPISODE):
             index = ((rang - 1) * SCENES_PAR_EPISODE + pas) % len(prevues)
             scene = dict(prevues[index])
@@ -235,23 +251,24 @@ def produire(ctx: Contexte, episodes: int = 0) -> Dict[str, Any]:
             scene["objectif"] = episode["question"] or scene.get("objectif", "")
             if pas == SCENES_PAR_EPISODE - 1 and episode["suspens"]:
                 scene["pivot"] = episode["suspens"]
-            try:
-                corps, _auteur = rediger_scene(
+            corps = redaction.ecrire(
+                "episode-{}-scene-{}".format(rang, pas + 1), scene["titre"],
+                lambda: rediger_scene(
                     ctx, bible, grille, index, scene, memoire.pour_invite(),
-                    morceaux[-1][-320:] if morceaux else "")
-            except Exception as exc:
-                ctx.journal("    scene indisponible : {}".format(exc))
-                continue
+                    morceaux[-1][-320:] if morceaux else "")[0])
+            memoriser(memoire, redaction, ctx, scene, corps, index, len(prevues))
+            if corps is None:
+                # Sa fiche tient la place : le trou se voit dans le fichier,
+                # et la scene est notee en echec, donc le produit reste
+                # inacheve jusqu'a ce qu'une reprise l'ecrive.
+                complet = False
+                corps = repli_de_scene(scene)
             morceaux.append(corps)
-            try:
-                memoire.apres_scene(redacteur_pour(ctx, scene), corps,
-                                    scene["titre"], index, len(prevues))
-            except Exception:
-                pass
         ecrits.append({**episode, "rang": rang, "recap": recap,
-                       "texte": "\n\n".join(morceaux),
+                       "texte": "\n\n".join(morceaux), "complet": complet,
                        "mots": len(" ".join(morceaux).split())})
-    ctx.etape("episodes", "ok", "{} episode(s)".format(len(ecrits)))
+    ctx.etape("episodes", "partiel" if redaction.manquants else "ok",
+              "{} episode(s)".format(len(ecrits)))
 
     ctx.journal("Etape 4/4 — mesure des rappels, puis export...")
     mesures = mesurer_les_recaps(ecrits, distribution)
@@ -308,6 +325,7 @@ def produire(ctx: Contexte, episodes: int = 0) -> Dict[str, Any]:
         "lectures_prose": lectures_prose,
         "lectures": lectures,
         "fichiers": [f.name for f in fichiers],
+        "budget_epuise": redaction.budget_epuise,
     }
     terminer(ctx, fichiers, {"episodes": len(ecrits)})
     (dossier / "produit.json").write_text(

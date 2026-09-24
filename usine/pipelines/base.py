@@ -159,6 +159,70 @@ def code_langue(nom: str, defaut: str = "fr") -> str:
 PLUS_RIEN_A_DEMANDER: Tuple[type, ...] = (budget.BudgetEpuise, llm.PlusDeFournisseur)
 
 
+class Redaction:
+    """Ecrire une suite de sections qu'une panne peut couper a tout moment.
+
+    C'est ce que « ebook » et « nouvelle » font chacun dans leur boucle, sorti
+    pour les chaines qui ne le faisaient pas. Mesure du 24/09/2026, en coupant
+    les fournisseurs au tiers puis aux deux tiers de chaque fabrication : le
+    feuilleton, le recueil et le livre-jeu sortaient « prets » avec des scenes
+    en moins. « scene indisponible » au journal, et rien sur la fiche — aucune
+    des trois ne notait l'echec, donc ni « terminer » ni la boucle ne pouvaient
+    le voir, et personne ne reprenait le produit.
+
+    Trois regles, dans cet ordre :
+
+    - ce qui est au carnet n'est pas repaye : une reprise relit ;
+    - quand plus rien ne repond, on cesse de demander. Chaque appel suivant
+      serait refuse, apres ses propres attentes ;
+    - ce qui n'a pas pu etre ecrit est note en echec et N'EST PAS mis au
+      carnet : un repli n'est pas une section, une reprise doit encore
+      l'ecrire.
+    """
+
+    def __init__(self, ctx: "Contexte", dossier: Path):
+        self.ctx, self.dossier = ctx, dossier
+        self.budget_epuise = False
+        self.manquants: List[str] = []
+        self.cause: Optional[Exception] = None
+        # La derniere section venait-elle du carnet ? Une chaine a memoire
+        # ne repaye pas le resume d'un texte deja resume a la premiere
+        # fabrication.
+        self.relue = False
+
+    def ecrire(self, repere: str, titre: str,
+               rediger: Callable[[], str]) -> Optional[str]:
+        """Le texte de la section — relu, ou ecrit maintenant — ou None."""
+        deja = carnet.section(self.dossier, repere)
+        self.relue = deja is not None
+        if deja:
+            self.ctx.etape(repere, "ok", titre)
+            return deja[1]
+        if self.budget_epuise:
+            self.manque(repere, "plus rien a demander")
+            return None
+        try:
+            texte = rediger()
+        except PLUS_RIEN_A_DEMANDER as exc:
+            self.budget_epuise, self.cause = True, exc
+            self.ctx.journal("    {} : {} — la suite attendra que les "
+                             "fournisseurs rouvrent".format(repere, exc))
+            self.manque(repere, str(exc))
+            return None
+        except Exception as exc:
+            self.ctx.journal("    {} indisponible : {}".format(repere, exc))
+            self.manque(repere, str(exc))
+            return None
+        carnet.noter_section(self.dossier, repere, titre, texte)
+        self.ctx.etape(repere, "ok", titre)
+        return texte
+
+    def manque(self, repere: str, raison: str) -> None:
+        """Une section qui reste a ecrire, et qu'une reprise ecrira."""
+        self.manquants.append(repere)
+        self.ctx.etape(repere, "echec", raison)
+
+
 
 @dataclass
 class Contexte:

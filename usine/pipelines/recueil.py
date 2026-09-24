@@ -30,15 +30,17 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ..agents import equipe
 from ..core import empreinte
 from ..render import livraison
+from . import carnet
 from . import fiction
 from . import memoire as M
 from . import prose
-from .base import Contexte, nettoyer_titre, preparer, terminer
+from .base import (PLUS_RIEN_A_DEMANDER, Contexte, Redaction, nettoyer_titre,
+                   preparer, terminer)
 
 RECITS = 7
 RECITS_MIN, RECITS_MAX = 3, 15
@@ -214,9 +216,36 @@ def lire_la_variete(mesure: Dict[str, Any]) -> List[str]:
     return lectures
 
 
-def _ecrire_un_recit(ctx: Contexte, fiche: Dict[str, Any],
-                     scenes: int) -> Dict[str, Any]:
-    """Un recit du recueil, ecrit avec les primitives de la fiction.
+def _plan_garde(dossier: Any,
+                rang: int) -> Optional[Tuple[Dict[str, Any], Dict[str, Any]]]:
+    """La bible et la grille d'un recit, si le carnet les a deja.
+
+    Une reprise qui les reconstruirait donnerait un autre protagoniste aux
+    scenes deja ecrites.
+    """
+    garde = ((carnet.plan(dossier) or {}).get("par_recit") or {}).get(str(rang))
+    if isinstance(garde, dict) and garde.get("bible") and garde.get("grille"):
+        return garde["bible"], garde["grille"]
+    return None
+
+
+def _nouveau_plan(local: Contexte, dossier: Any,
+                  rang: int) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """La bible et la grille d'un recit, demandees puis gardees au carnet."""
+    from .nouvelle import construire_bible, construire_grille
+
+    bible = construire_bible(local)
+    grille = construire_grille(local, bible)
+    plan = carnet.plan(dossier) or {}
+    plan.setdefault("par_recit", {})[str(rang)] = {"bible": bible, "grille": grille}
+    carnet.noter_plan(dossier, plan)
+    return bible, grille
+
+
+def _ecrire_un_recit(ctx: Contexte, fiche: Dict[str, Any], scenes: int,
+                     redaction: Redaction, rang: int) -> Optional[Dict[str, Any]]:
+    """Un recit du recueil, ecrit avec les primitives de la fiction — ou None
+    s'il n'a pas pu commencer.
 
     Bible, grille et scenes viennent de « nouvelle ». Ce n'est pas de la
     paresse : le depot a deja tranche que deux chaines de fiction
@@ -224,8 +253,8 @@ def _ecrire_un_recit(ctx: Contexte, fiche: Dict[str, Any],
     comme celle d'une nouvelle. Ce que le recueil ajoute est AUTOUR des
     recits, pas dedans.
     """
-    from .nouvelle import (construire_bible, construire_grille, protagoniste,
-                           redacteur_pour, rediger_scene)
+    from .nouvelle import (memoriser, protagoniste, repli_de_scene,
+                           rediger_scene)
 
     # Un contexte propre au recit : c'est son sujet, pas celui du recueil,
     # qui doit nourrir la bible. Passer le sujet du recueil donnerait sept
@@ -234,34 +263,53 @@ def _ecrire_un_recit(ctx: Contexte, fiche: Dict[str, Any],
     local = replace(ctx, sujet=fiche["premisse"] or fiche["titre"],
                     chapitres=scenes, journal=lambda _m: None)
     local.meta = ctx.meta
-    bible = construire_bible(local)
-    grille = construire_grille(local, bible)
+    repere = "recit-{}".format(rang)
+    # Le carnet d'abord, le silence des fournisseurs ensuite. Dans l'autre
+    # ordre, un recit ecrit en entier a une premiere fabrication etait
+    # compte manquant des qu'un recit plus tot tombait sur un quota vide, et
+    # sortait du fichier jusqu'a la reprise suivante.
+    plan = _plan_garde(redaction.dossier, rang)
+    if plan is None and redaction.budget_epuise:
+        redaction.manque(repere, "plus rien a demander")
+        return None
+    try:
+        bible, grille = plan or _nouveau_plan(local, redaction.dossier, rang)
+    except PLUS_RIEN_A_DEMANDER as exc:
+        redaction.budget_epuise, redaction.cause = True, exc
+        ctx.journal("    {} : {}".format(repere, exc))
+        redaction.manque(repere, str(exc))
+        return None
+    except Exception as exc:
+        ctx.journal("    recit abandonne : {}".format(exc))
+        redaction.manque(repere, str(exc))
+        return None
+    # Le « ok » efface, a la reprise, l'echec d'une premiere fabrication
+    # coupee avant la bible de ce recit : le dernier statut gagne.
+    ctx.etape(repere, "ok", fiche["titre"])
     prevues = grille["scenes"][:scenes]
     memoire = M.choisir(len(prevues), 90)
     morceaux: List[str] = []
+    ecrites = 0
     for index, scene in enumerate(prevues):
-        try:
-            corps, _auteur = rediger_scene(
+        corps = redaction.ecrire(
+            "{}-scene-{}".format(repere, index + 1), scene["titre"],
+            lambda: rediger_scene(
                 local, bible, grille, index, scene, memoire.pour_invite(),
-                morceaux[-1][-320:] if morceaux else "")
-        except Exception as exc:
-            # Une scene perdue ne doit pas emporter le recueil : le recit
-            # continue, plus court, et le trou est compte plus bas.
-            ctx.journal("    scene {} indisponible : {}".format(index + 1, exc))
-            continue
-        morceaux.append(corps)
+                morceaux[-1][-320:] if morceaux else "")[0])
         if index < len(prevues) - 1:
             # Le resume roulant, comme dans « nouvelle » : c'est lui qui fait
             # qu'une scene sait ce que la precedente a change. La derniere
             # scene n'en a pas besoin — personne ne la lira apres.
-            try:
-                memoire.apres_scene(redacteur_pour(local, scene), corps,
-                                    scene["titre"], index, len(prevues))
-            except Exception:
-                # Une memoire perdue degrade la continuite, elle n'arrete pas
-                # le recit : mieux vaut une scene un peu moins raccordee que
-                # pas de scene du tout.
-                pass
+            memoriser(memoire, redaction, local, scene, corps, index,
+                      len(prevues))
+        if corps is None:
+            # Une scene perdue ne doit pas emporter le recueil : sa fiche
+            # tient la place, et elle est notee en echec — le recueil reste
+            # inacheve jusqu'a ce qu'une reprise l'ecrive.
+            corps = repli_de_scene(scene)
+        else:
+            ecrites += 1
+        morceaux.append(corps)
     texte = "\n\n".join(morceaux)
     return {
         **fiche,
@@ -269,7 +317,7 @@ def _ecrire_un_recit(ctx: Contexte, fiche: Dict[str, Any],
         "bible": bible,
         "texte": texte,
         "mots": len(texte.split()),
-        "scenes_ecrites": len(morceaux),
+        "scenes_ecrites": ecrites,
         "scenes_prevues": len(prevues),
     }
 
@@ -281,9 +329,12 @@ def produire(ctx: Contexte, recits: int = 0) -> Dict[str, Any]:
 
     ctx.journal("Etape 1/4 — le fil du recueil et ses {} premisses..."
                 .format(demande))
-    fil = _fil(ctx, demande)
+    # Une reprise repart du fil du carnet : un fil redemande changerait les
+    # premisses sous les recits deja ecrits.
+    repris = carnet.plan(ctx.dossier) if ctx.dossier and ctx.dossier.name else None
+    fil = (repris or {}).get("fil") or _fil(ctx, demande)
     jumelles = premisses_jumelles(fil["recits"])
-    if jumelles:
+    if jumelles and not repris:
         # Une seule reprise, et elle NOMME les couples : redemander « varie
         # davantage » ne change rien, dire « les recits 2 et 5 racontent la
         # meme chose » change ce point-la.
@@ -305,6 +356,11 @@ def produire(ctx: Contexte, recits: int = 0) -> Dict[str, Any]:
 
     titre = fil["titre"]
     dossier = preparer(ctx, "recueil", titre)
+    if repris:
+        ctx.journal("  Reprise : fil et {} section(s) deja au carnet."
+                    .format(carnet.compte(dossier)))
+    else:
+        carnet.noter_plan(dossier, {"fil": fil, "chapitres": fil["recits"]})
     proximite = proximite_maximale(fil["recits"])
     ctx.etape("fil", "partiel" if jumelles else "ok",
               "{} recits, proximite max {}".format(
@@ -313,16 +369,22 @@ def produire(ctx: Contexte, recits: int = 0) -> Dict[str, Any]:
     ctx.journal("Etape 2/4 — redaction des {} recits...".format(
         len(fil["recits"])))
     ecrits: List[Dict[str, Any]] = []
+    redaction = Redaction(ctx, dossier)
     for rang, fiche in enumerate(fil["recits"], 1):
         ctx.journal("  [{}/{}] « {} »".format(rang, len(fil["recits"]),
                                               fiche["titre"]))
-        try:
-            ecrits.append(_ecrire_un_recit(ctx, fiche, SCENES_PAR_RECIT))
-        except Exception as exc:
-            ctx.journal("    recit abandonne : {}".format(exc))
+        recit = _ecrire_un_recit(ctx, fiche, SCENES_PAR_RECIT, redaction, rang)
+        if recit is not None:
+            ecrits.append(recit)
     if not ecrits:
+        # Rien d'ecrit parce que les fournisseurs se sont tus : c'est leur
+        # silence qui remonte, pour que la boucle attende qu'ils rouvrent au
+        # lieu de compter une panne. Le fil est au carnet, la reprise le
+        # relira.
+        if redaction.cause is not None:
+            raise redaction.cause
         raise ValueError("Aucun recit n'a pu etre ecrit")
-    ctx.etape("recits", "partiel" if len(ecrits) < len(fil["recits"]) else "ok",
+    ctx.etape("recits", "partiel" if redaction.manquants else "ok",
               "{} recit(s) sur {}".format(len(ecrits), len(fil["recits"])))
 
     ctx.journal("Etape 3/4 — mesure de la variete...")
@@ -382,6 +444,7 @@ def produire(ctx: Contexte, recits: int = 0) -> Dict[str, Any]:
         "lectures": lectures,
         "premisses_jumelles": jumelles,
         "fichiers": [f.name for f in fichiers],
+        "budget_epuise": redaction.budget_epuise,
     }
     terminer(ctx, fichiers, {"recits": len(ecrits)})
     (dossier / "produit.json").write_text(

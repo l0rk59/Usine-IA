@@ -144,3 +144,70 @@ donc elles ne mentent pas. Ce sont celles qui **continuent** avec un repli
 qu'il fallait faire parler.
 
 Les douze mutations de la campagne sont vues.
+
+## Trois chaînes arrivées après la liste
+
+Le 24/09/2026, même mesure, mais par le tableau de bord et sur **tous** les
+types du catalogue : fournisseurs coupés au tiers, puis aux deux tiers de
+chaque fabrication.
+
+```
+interactive   13 appels, coupe a  4 : statut=pret   manquants=0
+interactive   13 appels, coupe a  9 : statut=pret   manquants=0
+recueil       19 appels, coupe a  6 : statut=pret   manquants=0
+recueil       19 appels, coupe a 13 : statut=pret   manquants=0
+feuilleton    46 appels, coupe a 16 : statut=pret   manquants=0
+feuilleton    46 appels, coupe a 32 : statut=pret   manquants=0
+```
+
+Six coupes sur six : le livre-jeu, le recueil et le feuilleton sortaient
+**« prêts »** avec des scènes en moins. Les quinze autres types disaient la
+vérité. Ces trois-là écrivaient « scène indisponible » au journal, puis
+`continue` — sans rien noter. `terminer()` ne pouvait donc rien relire, la
+boucle ne les reprenait pas, et un épisode de deux scènes sur trois partait
+chez l'acheteur.
+
+Le test qui gardait ce défaut existait. Il portait sur une liste **écrite à la
+main** de quatre chaînes, et ces trois-là sont arrivées après elle. Celui qui
+le remplace (`tests/test_trous_fiction.py`) lit le catalogue : une dix-neuvième
+chaîne y passera sans que personne n'y pense. Il tourne en quelques secondes.
+
+### Une boucle, écrite une fois
+
+`ebook` et `nouvelle` savaient déjà le faire, chacune dans sa boucle.
+`base.Redaction` en sort la règle, pour les chaînes qui ne la suivaient pas :
+
+- ce qui est au carnet n'est pas repayé : une reprise relit ;
+- quand plus rien ne répond, on cesse de demander — chaque appel suivant
+  serait refusé, après ses propres attentes ;
+- ce qui n'a pas pu être écrit est noté en échec, et **pas** au carnet : un
+  repli n'est pas une section, une reprise doit encore l'écrire.
+
+La section en cours d'écriture au moment de la coupe est un trou comme les
+autres. Le premier jet ne nommait que les suivantes — un livre coupé sur sa
+*dernière* section serait sorti « prêt ». La campagne de mutation l'a vu.
+
+### Reprendre sans tout refaire
+
+Les trois chaînes gardent maintenant leur plan au carnet — la bible, l'arc du
+feuilleton, le fil du recueil et la bible de chaque récit, la carte du
+livre-jeu. Sans lui, la reprise redemandait une carte, qui **renumérotait** les
+sections sous les textes déjà écrits : la section 7 du carnet n'était plus
+celle vers laquelle renvoient les choix.
+
+Le test le vérifie le cache vidé : une invite déjà payée qui revient est alors
+une invite repayée, pas une réponse du cache. Il a fallu pour cela donner à
+chaque récit du simulateur sa propre prémisse — le simulateur rend la même à
+tous, les récits y partageaient leurs invites, et le cache répondait à la
+place du carnet.
+
+Deux défauts plus petits, trouvés en chemin :
+
+- **Le « Précédemment » écrit sur une fiche.** Une scène de l'épisode 1
+  perdue, le rappel de l'épisode 2 se rédigeait sur la fiche qui tenait sa
+  place, restait au carnet après la reprise, et racontait au lecteur un
+  épisode qui n'était pas celui qu'il avait lu. Il attend maintenant l'épisode
+  complet.
+- **La mémoire du feuilleton avalée par un `pass`.** Un résumé qui échouait
+  laissait la mémoire en arrière d'une scène, sans rien pour la faire
+  avancer. Elle avance maintenant sur la fiche, comme dans `nouvelle`.
