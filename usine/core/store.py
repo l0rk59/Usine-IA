@@ -226,7 +226,9 @@ def _migrer(conn: sqlite3.Connection, base_neuve: bool) -> None:
 # thread plutot qu'une connexion globale.
 _local = threading.local()
 _verrou_schema = threading.Lock()
-_schema_pret = False
+# La base pour laquelle le schema a ete pose : (generation, chemin), et non un
+# simple « c'est fait ». Voir « cle_de_base ».
+_schema_pour: Optional[Tuple[int, str]] = None
 
 # Une connexion appartient a son thread, et « close() » ne ferme que celle du
 # thread qui appelle. Or une restauration DEPLACE le fichier de base : les
@@ -237,7 +239,7 @@ _schema_pret = False
 # change.
 _generation = 0
 
-# « _schema_pret » n'est pas le seul drapeau de ce genre. La file, les
+# « _schema_pour » n'est pas le seul drapeau de ce genre. La file, les
 # experiences et l'apprentissage creent leurs tables a la demande et
 # retiennent « c'est fait » dans un drapeau de module. Ce drapeau ne vaut
 # que pour la base ouverte a ce moment-la : quand le fichier change sous
@@ -249,6 +251,29 @@ _oublis: List[Callable[[], None]] = []
 def oublier_avec_la_base(rappel: Callable[[], None]) -> None:
     """Enregistre un drapeau a remettre a zero quand la base change."""
     _oublis.append(rappel)
+
+
+def cle_de_base() -> Tuple[int, str]:
+    """La base ouverte en ce moment : sa generation ET son chemin.
+
+    Un drapeau « c'est fait » remis a zero quand la base change ne suffit
+    pas des qu'il y a plusieurs fils. Deux courses, mesurees le 24/09/2026 en
+    integration continue — « no such table: productions », puis zero produit
+    fabrique dans tout un module de tests :
+
+    - un fil pose le drapeau APRES avoir cree ses tables ; si la base change
+      entre les deux, il le pose pour une base ou elles n'existent pas, et
+      toutes les ecritures suivantes echouent ;
+    - « close() » avance la generation AVANT que les chemins changent (la
+      bascule d'atelier, la restauration) : un fil qui se reconnecte dans
+      l'intervalle ouvre l'ancien fichier sous la nouvelle generation, et le
+      garde.
+
+    Chaque drapeau et chaque connexion retiennent donc la cle de la base pour
+    laquelle ils valent, lue AVANT d'agir. Si elle a change pendant, ils ne
+    valent plus rien, et le travail est refait — il est idempotent.
+    """
+    return (_generation, str(config.DB_PATH))
 
 
 def tables_a_la_demande(schema: str,
@@ -271,29 +296,31 @@ def tables_a_la_demande(schema: str,
     experiences ajoutent des colonnes a une table deja creee. Le prevoir ici
     evite qu'il reste a l'ecart et diverge a son tour.
     """
-    etat = {"pret": False}
+    etat: Dict[str, Optional[Tuple[int, str]]] = {"pour": None}
 
     def assurer() -> None:
-        if etat["pret"]:
+        cle = cle_de_base()
+        if etat["pour"] == cle:
             return
         connexion = connect()
         connexion.executescript(schema)
         if complement is not None:
             complement(connexion)
-        etat["pret"] = True
+        etat["pour"] = cle
 
     def oublier() -> None:
-        etat["pret"] = False
+        etat["pour"] = None
 
     oublier_avec_la_base(oublier)
     return assurer
 
 
 def connect() -> sqlite3.Connection:
-    global _schema_pret
+    global _schema_pour
+    cle = cle_de_base()
     conn = getattr(_local, "conn", None)
     if conn is not None:
-        if getattr(_local, "generation", -1) == _generation:
+        if getattr(_local, "cle", None) == cle:
             return conn
         try:
             conn.close()
@@ -301,7 +328,7 @@ def connect() -> sqlite3.Connection:
             pass  # le fichier a pu disparaitre sous la connexion
         _local.conn = None
     config.ensure_dirs()
-    conn = sqlite3.connect(str(config.DB_PATH), timeout=30, isolation_level=None)
+    conn = sqlite3.connect(cle[1], timeout=30, isolation_level=None)
     conn.row_factory = sqlite3.Row
     try:
         conn.execute("PRAGMA journal_mode=WAL")
@@ -309,16 +336,16 @@ def connect() -> sqlite3.Connection:
         pass  # /sdcard ne supporte pas toujours WAL
     conn.execute("PRAGMA synchronous=NORMAL")
     with _verrou_schema:
-        if not _schema_pret:
+        if _schema_pour != cle:
             neuve = conn.execute(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table'"
                 " AND name='produits'").fetchone()[0] == 0
             conn.executescript(SCHEMA)
             _migrer(conn, neuve)
             conn.executescript(INDEX_APRES_MIGRATION)
-            _schema_pret = True
+            _schema_pour = cle
     _local.conn = conn
-    _local.generation = _generation
+    _local.cle = cle
     return conn
 
 
@@ -335,7 +362,7 @@ def cursor() -> Iterator[sqlite3.Cursor]:
 def close() -> None:
     """Ferme la connexion du thread courant et oublie l'etat du schema.
 
-    Oublier le schema importe : « _schema_pret » est un drapeau de module
+    Oublier le schema importe : « _schema_pour » est un drapeau de module
     qui survivait a la fermeture. Apres une restauration de sauvegarde, le
     fichier de base a change sous nos pieds — sans cet oubli, la reconnexion
     sautait la creation des tables ET l'echelle de migrations, et une
@@ -348,12 +375,12 @@ def close() -> None:
     une connexion SQLite appartient a son thread. On avance la generation :
     chacune se refera d'elle-meme au prochain usage.
     """
-    global _schema_pret, _generation
+    global _schema_pour, _generation
     conn = getattr(_local, "conn", None)
     if conn is not None:
         conn.close()
         _local.conn = None
-    _schema_pret = False
+    _schema_pour = None
     _generation += 1
     for rappel in _oublis:
         rappel()

@@ -183,6 +183,24 @@ quand elle a changé. Le test monte un second thread, lui fait ouvrir sa
 connexion *avant* la restauration, et vérifie qu'il voit ensuite le bon
 atelier. Sans le correctif, il voit l'ancien.
 
+La génération ne suffisait pas encore. Deux courses restaient ouvertes, et
+l'intégration continue les a trouvées le 24/09/2026 : « no such table:
+productions » au premier produit d'un module de tests, puis **zéro** produit
+fabriqué dans tout le module.
+
+- Un fil pose le drapeau « tables créées » *après* les avoir créées. Si la
+  base change entre les deux, il le pose pour une base où elles n'existent
+  pas, et toutes les écritures suivantes échouent.
+- `close()` avance la génération *avant* que les chemins changent. Un fil qui
+  se reconnecte dans l'intervalle ouvre l'ancien fichier sous la nouvelle
+  génération, et le garde.
+
+Chaque drapeau et chaque connexion retiennent maintenant la base pour laquelle
+ils valent — sa génération **et** son chemin, lus *avant* d'agir
+(`store.cle_de_base`). Si elle a changé pendant, le travail est refait : il
+est idempotent. Les deux courses sont rejouées sans fil, dans l'ordre exact où
+les fils les produisent, ce qui les rend reproductibles.
+
 ### La route qui sert les archives ne sert qu'elles
 
 Le dossier des sauvegardes est **à côté** de `usine.db` et de

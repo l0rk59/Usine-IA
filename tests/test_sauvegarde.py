@@ -16,6 +16,7 @@ import tempfile
 import sys
 import threading
 import unittest
+from unittest import mock
 import zipfile
 from pathlib import Path
 
@@ -326,6 +327,70 @@ class TestAutresThreads(unittest.TestCase):
         self.assertIn("fil-avant", vus)
         self.assertNotIn("fil-apres", vus,
                          "l'autre thread lit encore la base mise de cote")
+
+
+class UnDrapeauPoseAPresLaBascule(unittest.TestCase):
+    """Deux courses entre un fil qui travaille et la base qui change.
+
+    Mesure du 24/09/2026 en integration continue : « no such table:
+    productions » au premier produit d'un module de test, puis ZERO produit
+    fabrique dans tout le module. Un fil d'arriere-plan avait pose le
+    drapeau « tables creees » pour une base qui venait d'etre remplacee :
+    toutes les ecritures suivantes echouaient. Le meme enchainement existe
+    hors des tests — restaurer une sauvegarde depuis le tableau de bord
+    pendant qu'une fabrication tourne.
+
+    Les deux cas sont rejoues ici sans fil, dans l'ordre exact ou les fils
+    les produisent : c'est ce qui les rend reproductibles.
+    """
+
+    def tearDown(self):
+        atelier.isoler("sauvegarde")
+
+    def test_un_schema_cree_pendant_la_bascule_est_refait(self):
+        """Le schema part sur l'ancienne base, la base change, PUIS le
+        drapeau tombe a « fait » : il ment pour la nouvelle."""
+        atelier.isoler("course-schema-a")
+        assurer = store.tables_a_la_demande(
+            "CREATE TABLE IF NOT EXISTS essai_course (x INTEGER);")
+        vraie = store.connect
+
+        class Connexion:
+            def __init__(self, conn):
+                self.conn = conn
+
+            def executescript(self, script):
+                self.conn.executescript(script)
+                # Le fil principal bascule pendant ce temps-la.
+                atelier.isoler("course-schema-b")
+
+        with mock.patch.object(store, "connect",
+                               side_effect=lambda: Connexion(vraie())):
+            assurer()
+        assurer()
+        with store.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM essai_course")
+
+    def test_une_connexion_ouverte_pendant_la_bascule_suit_la_base(self):
+        """« close() » avance la generation AVANT que les chemins changent.
+        Un fil qui se reconnecte dans cet intervalle ouvrait l'ANCIEN
+        fichier sous la NOUVELLE generation — et gardait cette connexion."""
+        atelier.isoler("course-connexion-a")
+        store.close()
+        avant = store.connect()
+        nouveau = Path(tempfile.mkdtemp(prefix="usine-course-")) / "usine.db"
+        self.addCleanup(shutil.rmtree, str(nouveau.parent), True)
+        ancien = config.DB_PATH
+        config.DB_PATH = nouveau
+        try:
+            apres = store.connect()
+            fichier = apres.execute("PRAGMA database_list").fetchone()[2]
+            self.assertEqual(Path(fichier).resolve(), nouveau.resolve())
+            self.assertIsNot(apres, avant)
+            # Et le schema y est : le drapeau du schema suit la base aussi.
+            apres.execute("SELECT COUNT(*) FROM produits")
+        finally:
+            config.DB_PATH = ancien
 
 
 class TestArchiveHostile(unittest.TestCase):
