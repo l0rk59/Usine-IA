@@ -149,6 +149,58 @@ class TestBudget(unittest.TestCase):
         finally:
             llm.definir_simulateur(None)
 
+    def test_la_garde_ne_vaut_que_pour_son_fil(self):
+        """Le tableau de bord fait tourner la boucle dans un fil. Un produit
+        lance pendant ce temps par « Generer » se faisait couper par le
+        plafond de la boucle — lui qui n'en a aucun."""
+        import threading
+
+        compteur = budget.Compteur(budget.Plafonds(appels_jour=1))
+        store.enregistrer_appel("faux", "m", True)
+        budget.brancher(compteur)
+        llm.definir_simulateur(lambda messages, role: "texte")
+        ailleurs = []
+
+        def autre_fil():
+            try:
+                llm.generer("une invite d'un autre fil", cache=False)
+                ailleurs.append("servi")
+            except budget.BudgetEpuise:
+                ailleurs.append("refuse")
+
+        try:
+            fil = threading.Thread(target=autre_fil)
+            fil.start()
+            fil.join(10)
+            with self.assertRaises(budget.BudgetEpuise):
+                llm.generer("une invite du fil de la boucle", cache=False)
+        finally:
+            llm.definir_simulateur(None)
+        self.assertEqual(ailleurs, ["servi"])
+        self.assertIn("appels par jour", compteur.refus)
+
+    def test_le_plafond_par_produit_ne_compte_que_ce_produit(self):
+        """Les appels d'un autre fil arrivent aussi en base. Relus comme
+        ceux du produit, ils le coupaient avant son plafond : deux ebooks de
+        dix appels, plafond a douze, sortaient inacheves tous les deux."""
+        compteur = budget.Compteur(budget.Plafonds(appels_produit=2))
+        compteur.demarrer_produit()
+        compteur.verifier_appel()
+        for _ in range(5):
+            store.enregistrer_appel("un autre fil", "m", True)
+        compteur.verifier_appel()
+        with self.assertRaises(budget.BudgetEpuise):
+            compteur.verifier_appel()
+
+    def test_un_nouveau_produit_repart_de_zero(self):
+        compteur = budget.Compteur(budget.Plafonds(appels_produit=2))
+        compteur.demarrer_produit()
+        compteur.verifier_appel()
+        compteur.verifier_appel()
+        compteur.terminer_produit()
+        compteur.demarrer_produit()
+        compteur.verifier_appel()     # ne doit pas lever
+
     def test_une_reponse_en_cache_ne_consomme_pas_de_budget(self):
         """Le cache est verifie avant le budget : relire ne coute rien."""
         compteur = budget.Compteur(budget.Plafonds(appels_jour=1))

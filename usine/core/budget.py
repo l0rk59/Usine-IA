@@ -14,6 +14,7 @@ chapitres sur douze qu'un dossier vide.
 
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional
@@ -70,7 +71,10 @@ class Compteur:
         self.plafonds = plafonds or Plafonds.depuis_reglages()
         self.produits_faits = 0
         self._debut_produit = 0.0
-        self._appels_debut_produit = 0
+        # Les requetes du produit en cours, comptees ICI et pas relues en
+        # base : la base recoit aussi celles des autres fils. Voir
+        # « brancher » pour la mesure.
+        self._appels_produit = 0
         # Le plafond de l'UTILISATEUR qui a coupe le produit en cours, s'il y
         # en a un. Les chaines attrapent de la meme facon ce refus et le
         # silence des fournisseurs (« PLUS_RIEN_A_DEMANDER ») ; l'usine
@@ -85,9 +89,7 @@ class Compteur:
         return store.compteur_intervalle(debut)
 
     def appels_produit(self) -> int:
-        if not self._debut_produit:
-            return 0
-        return store.compteur_intervalle(self._debut_produit)
+        return self._appels_produit if self._debut_produit else 0
 
     def jetons_aujourdhui(self) -> int:
         debut = time.mktime(time.strptime(
@@ -103,7 +105,7 @@ class Compteur:
     def demarrer_produit(self) -> None:
         self.refus = ""
         self._debut_produit = time.time()
-        self._appels_debut_produit = self.appels_aujourdhui()
+        self._appels_produit = 0
 
     def terminer_produit(self, reussi: bool = True) -> None:
         if reussi:
@@ -137,6 +139,7 @@ class Compteur:
         except BudgetEpuise as exc:
             self.refus = str(exc)
             raise
+        self._appels_produit += 1
 
     def _verifier_appel(self) -> None:
         p = self.plafonds
@@ -181,16 +184,24 @@ class Compteur:
 # Garde branchee sur le routeur IA
 # --------------------------------------------------------------------------
 
-_garde: Optional[Callable[[], None]] = None
+# Une garde PAR FIL. Le tableau de bord fait tourner l'usine continue dans un
+# fil, et l'on peut appuyer sur « Generer » pendant ce temps. Mesure du
+# 24/09/2026, plafond de douze appels par produit, deux ebooks qui en
+# demandent dix chacun : seuls, ils passaient ; ensemble, les DEUX sortaient
+# inacheves et l'usine s'arretait sur « budget epuise ». La garde etait
+# globale — le produit du tableau de bord, qui n'a aucun plafond, se faisait
+# couper par celui de la boucle — et le compte par produit relisait en base
+# les appels de tous les fils.
+_local = threading.local()
 
 
 def brancher(compteur: Optional[Compteur]) -> None:
-    """Installe (ou retire) la garde consultee avant chaque appel IA."""
-    global _garde
-    _garde = compteur.verifier_appel if compteur is not None else None
+    """Installe (ou retire) la garde du fil courant."""
+    _local.garde = compteur.verifier_appel if compteur is not None else None
 
 
 def verifier() -> None:
-    """Appele par le routeur. Sans budget branche, ne fait rien."""
-    if _garde is not None:
-        _garde()
+    """Appele par le routeur. Sans budget branche dans ce fil, ne fait rien."""
+    garde: Optional[Callable[[], None]] = getattr(_local, "garde", None)
+    if garde is not None:
+        garde()

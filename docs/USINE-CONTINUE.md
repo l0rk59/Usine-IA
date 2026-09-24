@@ -137,6 +137,18 @@ sont réduits à leur plan, le PDF et l'EPUB sont générés. Perdre neuf chapit
 parce que le dixième a dépassé n'aurait aucun sens. L'usine s'arrête ensuite :
 c'est **votre** plafond, c'est à vous de le lever.
 
+**Le plafond de la boucle n'est que le sien.** Le tableau de bord fait tourner
+l'usine continue dans un fil, et l'on peut appuyer sur « Générer » pendant ce
+temps. Mesure du 24/09/2026, plafond de douze appels par produit, deux ebooks
+qui en demandent dix chacun : seuls, ils passaient ; ensemble, **les deux**
+sortaient inachevés et l'usine s'arrêtait sur « budget épuisé ». La garde était
+globale au processus — le produit du tableau de bord, qui n'a aucun plafond,
+se faisait couper par celui de la boucle — et le compte par produit relisait
+en base les appels de tous les fils. La garde est maintenant propre au fil qui
+l'a branchée, et le compteur tient lui-même le compte de son produit. Le
+plafond **du jour**, lui, reste global : il compte tout ce qui a été dépensé,
+d'où que ce soit parti.
+
 ## Quand les fournisseurs se taisent : attendre, puis finir
 
 Les quotas gratuits des fournisseurs ne sont pas votre budget. Ils se vident
