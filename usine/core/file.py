@@ -144,6 +144,36 @@ def echouer(identifiant: int, erreur: str = "") -> str:
         return statut
 
 
+def reporter(identifiant: int, erreur: str, produit_id: str = "") -> None:
+    """Remet une niche en attente SANS lui compter l'essai qu'elle vient de faire.
+
+    Pour un seul cas : les fournisseurs se sont tus avant que le produit
+    sorte. Ce n'est pas la niche qui a echoue — la suivante echouerait de la
+    meme facon. « echouer » comptait pourtant l'essai, et deux essais font un
+    echec definitif. Voir « UsineContinue._silence » pour la mesure.
+
+    Si le produit a eu le temps d'exister, c'est lui que la niche reprendra :
+    en fabriquer un second laisserait le premier inacheve sur le disque, sans
+    rien pour le finir.
+    """
+    _assurer()
+    with store.cursor() as cur:
+        cur.execute("SELECT options FROM file_production WHERE id=?",
+                    (identifiant,))
+        ligne = cur.fetchone()
+        options = json.loads((ligne["options"] if ligne else "") or "{}")
+        if produit_id:
+            options["reprendre_id"] = produit_id
+        cur.execute(
+            "UPDATE file_production SET statut='en_attente',"
+            " tentatives=MAX(0, tentatives - 1), erreur=?, options=?,"
+            " produit_id=COALESCE(NULLIF(?, ''), produit_id), maj_le=?"
+            " WHERE id=?",
+            ((erreur or "")[:400], json.dumps(options, ensure_ascii=False),
+             produit_id, time.time(), identifiant),
+        )
+
+
 def a_finir(identifiant: int, produit_id: str, manquants: int) -> Dict[str, Any]:
     """Remet en tete de file une niche dont le produit est reste inacheve.
 
@@ -163,7 +193,10 @@ def a_finir(identifiant: int, produit_id: str, manquants: int) -> Dict[str, Any]
         ligne = cur.fetchone()
         options = json.loads((ligne["options"] if ligne else "") or "{}")
         avant = options.get("manquants")
-        progres = avant is None or manquants < int(avant)
+        # « 0 » avant : le produit a ete coupe avant sa premiere section, il
+        # n'y avait rien a compter. Le prendre pour une mesure ferait croire
+        # a la premiere vraie reprise qu'elle n'a rien fait avancer.
+        progres = not avant or manquants < int(avant)
         options["reprendre_id"] = produit_id
         options["manquants"] = manquants
         options["sans_progres"] = (0 if progres

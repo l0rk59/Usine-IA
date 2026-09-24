@@ -191,6 +191,46 @@ Et si aucun fournisseur ne peut revenir — aucune clé, aucun serveur local qui
 écoute — l'usine le dit et s'arrête ; la niche attend en tête de file la
 prochaine session.
 
+### Coupé avant la fin du produit : la niche ne perd rien
+
+Tout ce qui précède ne couvrait qu'un cas : le produit coupé **après** son
+export, qui rend la main avec des sections manquantes. Un produit coupé plus
+tôt — sur son plan, sur sa bible, ou n'importe où dans une chaîne sans boucle
+comme le mémo ou le quiz — ne rend rien : il lève. Et la boucle traitait cette
+erreur comme les autres : une faute de la niche, un essai compté.
+
+Mesure du 24/09/2026 : trois niches en file, quotas déjà vides au moment où
+l'usine démarre.
+
+```
+[1] ebook — « sujet numero 2 du matin »
+    Etape 1/5 — construction du plan...
+  echec : Tous les fournisseurs ont echoue (echec)
+File vide — l'usine s'arrete.
+
+quiz   echec  2 essais
+memo   echec  2 essais
+ebook  echec  2 essais        16 appels, 0 attente
+```
+
+Deux essais font un échec définitif. Les trois niches étaient jetées **en moins
+d'une seconde, sans une minute d'attente**, et l'usine s'arrêtait sur « file
+vide ». La boucle faite pour attendre les quotas vidait sa file au premier
+quota vide — typiquement le matin, quand on la relance avant minuit UTC.
+
+C'est maintenant la même règle que pour le produit coupé en route : ce n'est
+pas un échec de la niche. Elle **garde sa place et son essai** (`file.reporter`),
+et l'usine attend, avec les mêmes paliers. Si le produit a eu le temps
+d'exister — son dossier, son carnet — c'est **lui** que la niche reprendra :
+en fabriquer un second laissait le premier inachevé sur le disque, sans rien
+pour le finir. Le bouton « Générer » confie de même à la boucle un produit
+coupé avant son export ; seul celui coupé après l'était.
+
+Ce que cette règle ne sait pas faire, et qu'elle ne prétend pas faire : une
+niche dont *tous* les fournisseurs refuseraient *chaque fois* la demande
+attendrait indéfiniment, une heure entre deux essais. Le routeur ne distingue
+pas ce refus d'une panne, et la boucle ne l'invente pas.
+
 ## Ce que la boucle oubliait de faire
 
 Le tableau de bord et l'usine continue reçoivent la même chose — un type, un

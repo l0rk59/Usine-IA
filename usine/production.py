@@ -688,6 +688,9 @@ class UsineContinue:
         trace.nettoyer()
         self.faits: List[Dict[str, Any]] = []
         self.motif_fin = ""
+        # Les silences des fournisseurs d'affilee : chacun allonge l'attente
+        # suivante, un produit mene au bout la remet au plancher.
+        self.silences = 0
 
     # -- signaux -----------------------------------------------------------
     def _installer_signaux(self) -> None:
@@ -787,11 +790,13 @@ class UsineContinue:
         self.compteur.demarrer_produit()
         budget.brancher(self.compteur)
         debut = time.time()
+        contexte = None
         try:
             if reprise_id and module_reprise.par_le_catalogue(reprise_id):
-                self.journal("  reprise du produit inacheve, depuis son carnet "
-                             "({} section(s) a ecrire)".format(
-                                 options.get("manquants", "?")))
+                self.journal("  reprise du produit inacheve, depuis son carnet{}"
+                             .format(" ({} section(s) a ecrire)".format(
+                                 options["manquants"])
+                                 if options.get("manquants") else ""))
                 resume = module_reprise.reprendre(reprise_id, journal=journal)
             else:
                 # Le meme chemin que le bouton « Generer » du tableau de bord.
@@ -816,6 +821,9 @@ class UsineContinue:
             self.journal("  {} — l'usine s'arrete, la niche reste en file."
                          .format(exc))
             return False
+        except llm.PlusDeFournisseur as exc:
+            return self._silence(entree, exc, reprise_id or (
+                contexte.produit_id if contexte is not None else ""))
         except Exception as exc:
             statut_suivant = file.echouer(entree["id"], str(exc))
             self.compteur.terminer_produit(reussi=False)
@@ -823,6 +831,7 @@ class UsineContinue:
             return False
         finally:
             budget.brancher(None)
+        self.silences = 0
 
         fiche = store.lire_produit(resume.get("produit_id", "")) or {}
         if fiche.get("statut") == "en_cours" and not self.compteur.refus:
@@ -866,6 +875,36 @@ class UsineContinue:
             # perdue. Le suivant ne ferait pas mieux tant que rien n'a rouvert.
             self._attendre_de_quoi_continuer(0, entree)
         return True
+
+    # -- fournisseurs muets avant la fin du produit ----------------------------
+    def _silence(self, entree: Dict[str, Any], exc: Exception,
+                 produit_id: str) -> bool:
+        """Les fournisseurs se sont tus avant que le produit sorte.
+
+        Mesure du 24/09/2026 : trois niches en file, quotas vides au moment
+        ou la boucle demarre. Chacune echouait au premier appel ; « echouer »
+        comptait l'essai, la suivante echouait pareil, et deux essais font un
+        echec definitif. Les trois niches etaient jetees en moins d'une
+        seconde, sans une minute d'attente, et l'usine s'arretait sur « file
+        vide ». La boucle faite pour attendre les quotas vidait sa file au
+        premier quota vide — la reprise automatique ne couvrait que le produit
+        coupe EN COURS de route, qui, lui, rend la main au lieu de lever.
+
+        Meme regle que pour ce produit-la, donc : ce n'est pas un echec de la
+        niche, elle garde son essai et sa place, et l'on attend. Comme
+        ailleurs, une niche dont TOUS les fournisseurs refuseraient chaque
+        fois la demande attendrait indefiniment : le routeur ne distingue pas
+        ce refus d'une panne, et la boucle ne l'invente pas.
+        """
+        self.compteur.terminer_produit(reussi=False)
+        existe = bool(produit_id and store.lire_produit(produit_id))
+        file.reporter(entree["id"], str(exc), produit_id if existe else "")
+        self.journal("  les fournisseurs se sont tus avant la fin{} : la "
+                     "niche garde sa place et son essai.".format(
+                         " — ce produit sera repris, pas refait" if existe else ""))
+        self.silences += 1
+        self._attendre_de_quoi_continuer(self.silences - 1, entree)
+        return False
 
     # -- produit inacheve : le reprendre, sans qu'on le demande -----------------
     def _inacheve(self, entree: Dict[str, Any], resume: Dict[str, Any],

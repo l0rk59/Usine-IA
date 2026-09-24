@@ -261,6 +261,137 @@ class LeBoutonGenererNeLaissePasDeTrou(_Cas):
         self.assertEqual(file.compter()["total"], 0)
 
 
+class LesQuotasVidesAvantLaFin(_Cas):
+    """Mesure du 24/09/2026 : trois niches en file, quotas vides au moment ou
+    la boucle demarre. Les trois etaient marquees « echec » pour de bon en
+    moins d'une seconde, sans une minute d'attente, et l'usine s'arretait sur
+    « file vide ». La reprise automatique ne couvrait que le produit coupe
+    APRES son export ; un produit coupe avant levait, et la boucle comptait
+    l'essai comme une faute de la niche."""
+
+    def test_la_file_attend_au_lieu_de_se_vider(self):
+        fournisseurs = Fournisseurs(coupe_apres=0)
+        llm.definir_simulateur(fournisseurs)
+        for rang, genre in enumerate(("quiz", "memo", "ebook")):
+            file.ajouter("la paie des artisans numero {}".format(rang), genre,
+                         options={"chapitres": 3})
+        moteur = Moteur(fournisseurs)
+        moteur.tourner()
+        self.assertEqual(file.compter()["echec"], 0,
+                         "une niche a ete jetee pendant que les quotas etaient vides")
+        self.assertEqual(len(moteur.faits), 3)
+        self.assertEqual(moteur.sommeils, [300],
+                         "l'usine doit attendre une fois, puis tout finir")
+
+    def test_une_longue_panne_ne_coute_aucun_essai(self):
+        """Deux essais font un echec definitif. Une panne de trois attentes
+        les aurait consommes : la premiere vraie erreur, une fois les
+        fournisseurs revenus, jetait alors la niche sans lui laisser sa
+        seconde chance."""
+        fournisseurs = Fournisseurs(coupe_apres=0)
+        une_erreur = []
+
+        def appel(messages, role):
+            # Sur l'invite du memo lui-meme : le brief, qui passe avant, se
+            # passe volontiers d'une reponse, et l'erreur n'irait pas plus
+            # loin que lui.
+            if (messages[-1]["content"].startswith("Construis un memo")
+                    and len(moteur.sommeils) >= 3 and not une_erreur):
+                une_erreur.append(1)
+                raise ValueError("reponse illisible, une fois")
+            return fournisseurs(messages, role)
+
+        llm.definir_simulateur(appel)
+        file.ajouter("la paie des saisonniers", "memo")
+        moteur = Moteur(fournisseurs)
+        rouvrir = moteur._dormir
+
+        def dormir(secondes):
+            if len(moteur.sommeils) < 2:
+                moteur.sommeils.append(secondes)
+                return True
+            return rouvrir(secondes)
+
+        moteur._dormir = dormir
+        moteur.tourner()
+        self.assertEqual(len(moteur.sommeils), 3)
+        self.assertEqual(une_erreur, [1], "la vraie erreur n'a pas ete jouee")
+        self.assertEqual(file.compter()["echec"], 0)
+        self.assertEqual(len(moteur.faits), 1)
+
+    def test_un_produit_fini_remet_l_attente_au_plancher(self):
+        """Chaque silence allonge l'attente suivante ; un produit mene au
+        bout la remet au plancher. Sans cela, une nuit de quotas
+        intermittents finissait en attentes d'une heure."""
+        llm.prochaine_ouverture = lambda role="standard": 0.0
+        fournisseurs = Fournisseurs(coupe_apres=0)
+        llm.definir_simulateur(fournisseurs)
+        file.ajouter("la paie des saisonniers", "memo")
+        file.ajouter("la paie des intermittents", "memo")
+        moteur = Moteur(fournisseurs)
+        faits = moteur.faits
+
+        def dormir(secondes):
+            moteur.sommeils.append(secondes)
+            fournisseurs.ouverts = True
+            # Rouvert le temps d'un produit, puis de nouveau muet.
+            fournisseurs.coupe_apres = (fournisseurs.appels + 50
+                                        if not faits else None)
+            return True
+
+        vrai_fabriquer = moteur._fabriquer
+
+        def fabriquer(entree):
+            fait = vrai_fabriquer(entree)
+            if len(faits) == 1 and fournisseurs.coupe_apres is not None:
+                fournisseurs.coupe_apres = 0
+            return fait
+
+        moteur._dormir, moteur._fabriquer = dormir, fabriquer
+        moteur.tourner()
+        self.assertEqual(len(faits), 2)
+        self.assertEqual(moteur.sommeils,
+                         [production.PALIERS_D_ATTENTE[0]] * 2)
+
+    def test_un_produit_commence_est_repris_pas_refait(self):
+        """Coupe apres la creation du dossier : refaire la niche laissait le
+        premier produit inacheve sur le disque, sans rien pour le finir."""
+        fournisseurs = Fournisseurs(coupe_apres=2)
+        llm.definir_simulateur(fournisseurs)
+        file.ajouter("la tva des auto-entrepreneurs", "memo")
+        moteur = Moteur(fournisseurs)
+        moteur.tourner()
+        self.assertTrue(any("sera repris, pas refait" in l for l in moteur.lignes),
+                        "la coupe n'est pas tombee apres la creation du produit : "
+                        "le test n'exerce rien")
+        produits = store.lister_produits()
+        self.assertEqual(len(produits), 1, "un second produit a ete fabrique")
+        self.assertEqual(produits[0]["statut"], "pret")
+        self.assertEqual(file.compter()["fait"], 1)
+
+    def test_le_bouton_confie_aussi_un_produit_coupe_avant_l_export(self):
+        from usine.web import serveur
+
+        llm.definir_simulateur(Fournisseurs(coupe_apres=2))
+        vraie_boucle = serveur._lancer_la_boucle
+        lances = []
+        serveur._lancer_la_boucle = lambda **kw: lances.append(kw)
+        serveur.TRAVAUX["g4"] = {"statut": "en_cours", "journal": []}
+        try:
+            serveur._lancer("g4", "memo", {"sujet": "la tva des artisans"})
+            journal = " ".join(str(l) for l in serveur.TRAVAUX["g4"]["journal"])
+        finally:
+            serveur._lancer_la_boucle = vraie_boucle
+            serveur.TRAVAUX.pop("g4", None)
+        produit = store.lister_produits()[0]
+        self.assertEqual(produit["statut"], "en_cours")
+        self.assertEqual(lances, [{"maximum": 1}])
+        self.assertIn("rien a faire", journal)
+        attente = file.lister(limite=5)
+        self.assertEqual([e["options"].get("reprendre_id") for e in attente],
+                         [produit["id"]])
+
+
 class LesDeuxLimites(_Cas):
 
     def test_le_plafond_de_l_utilisateur_arrete_sans_attendre(self):
@@ -415,6 +546,15 @@ class LeProgresSeCompteEnSections(unittest.TestCase):
     def setUp(self):
         atelier.isoler("reprise-auto-progres")
         file.vider(tout=True)
+
+    def test_un_produit_confie_avant_sa_premiere_section(self):
+        """Confie par le tableau de bord avant d'avoir ecrit quoi que ce
+        soit, le produit arrive avec « 0 » section a ecrire — rien de
+        mesure. Le prendre pour une mesure faisait croire a la premiere
+        vraie reprise qu'elle n'avait rien fait avancer."""
+        identifiant = file.ajouter("un sujet confie tot", "ebook")
+        file.a_finir(identifiant, "p1", 0)
+        self.assertEqual(file.a_finir(identifiant, "p1", 5)["sans_progres"], 0)
 
     def test_une_reprise_qui_avance_remet_le_compte_a_zero(self):
         file.ajouter("un sujet", "ebook")

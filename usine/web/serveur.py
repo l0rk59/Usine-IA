@@ -195,24 +195,33 @@ def _lancer_la_boucle(auto: bool = False, maximum: int = 0) -> threading.Thread:
     return fil
 
 
-def _finir_plus_tard(type_produit: str, resultat: Dict[str, Any],
+def _finir_plus_tard(type_produit: str, produit_id: str, epuise: bool,
                      sujet: str, journal: Callable[[str], None]) -> None:
     """Un produit coupe par les quotas est confie a la boucle, qui attendra.
 
     Seulement quand les fournisseurs se sont tus : un produit inacheve pour
     une autre raison (une section illisible) se reprend a la main, parce
     qu'attendre ne le reparerait pas.
+
+    Coupe AVANT l'export, le produit existe aussi — son dossier, son carnet,
+    son titre au catalogue. Il restait la, inacheve, sans rien pour le finir :
+    seul le produit coupe apres l'export etait confie a la boucle.
     """
     from ..production import confier_a_la_boucle, verrou_actif
 
-    fiche = store.lire_produit(resultat.get("produit_id", "")) or {}
-    if fiche.get("statut") != "en_cours" or not resultat.get("budget_epuise"):
+    fiche = (store.lire_produit(produit_id) or {}) if produit_id else {}
+    if fiche.get("statut") != "en_cours" or not epuise:
         return
     manquants = len((fiche.get("meta") or {}).get("manquants") or [])
     confier_a_la_boucle(type_produit, sujet, fiche["id"], manquants)
-    journal("Les fournisseurs n'ont plus rien a donner : {} section(s) a "
-            "ecrire. L'usine finira ce produit seule des qu'ils rouvrent — "
-            "rien a faire.".format(manquants))
+    if manquants:
+        journal("Les fournisseurs n'ont plus rien a donner : {} section(s) a "
+                "ecrire. L'usine finira ce produit seule des qu'ils rouvrent — "
+                "rien a faire.".format(manquants))
+    else:
+        journal("Le produit est commence et garde au carnet. L'usine le "
+                "finira seule des que les fournisseurs rouvrent — rien a "
+                "faire.")
     if verrou_actif() is None:
         # Pour ce produit seulement : la file peut contenir d'autres niches,
         # que personne n'a demande de fabriquer maintenant.
@@ -283,7 +292,8 @@ def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None
     try:
         journal("Demarrage...")
         resultat = porte.fabriquer(type_produit, ctx, options, journal)
-        _finir_plus_tard(type_produit, resultat, sujet, journal)
+        _finir_plus_tard(type_produit, str(resultat.get("produit_id") or ""),
+                         bool(resultat.get("budget_epuise")), sujet, journal)
         with _VERROU:
             TRAVAUX[travail_id].update(statut="termine", resultat=resultat)
         journal("Termine.")
@@ -293,6 +303,8 @@ def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None
             TRAVAUX[travail_id].update(statut="echec", erreur=message)
         journal("Echec : {}".format(message))
         evenements.publier("produit", etat="echec", detail=message)
+        if isinstance(exc, llm.PlusDeFournisseur):
+            _finir_plus_tard(type_produit, ctx.produit_id, True, sujet, journal)
 
 
 def _lancer_prospection(travail_id: str, fiction: bool = False) -> None:
