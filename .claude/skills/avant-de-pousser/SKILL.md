@@ -57,17 +57,28 @@ installe. C'est ainsi qu'il tourne sur un telephone.
 
 ## Si la CI echoue alors que le local passe
 
-Trois causes, dans cet ordre de frequence :
+Quatre causes, dans cet ordre de frequence :
 
-1. **La version de Python.** La CI teste 3.9, 3.11 et 3.13. Une syntaxe
-   recente (`match`, un generique `list[str]` sans `from __future__`) passe en
-   local et casse en 3.9.
+1. **La version de Python.** La CI teste 3.9, 3.11, 3.13 et 3.14 — la
+   derniere est celle du telephone (`SPECS-APPAREIL.md`). Une syntaxe recente
+   (`match`, un generique `list[str]` sans `from __future__`) passe en local
+   et casse en 3.9 ; une API retiree passe en 3.9 et casse sur le telephone.
+   `uv python install 3.14` donne la seconde en local.
 2. **Un `.pyc` perime en local.** Deux versions d'un fichier de meme taille
    ecrites dans la meme seconde partagent leur cache compile — les tests
    tournent alors sur du code qui n'existe plus.
    `find . -name __pycache__ -exec rm -rf {} +` puis relancer.
 3. **Un fichier non suivi par git.** Le code marche en local parce qu'un
    fichier existe ; il n'est pas dans le commit. `git status --short` le dit.
+4. **Un fil qui survit a son module.** Le meme commit passe sur une execution
+   et echoue sur l'autre : ce n'est pas un alea, c'est un fil lance par un
+   module precedent qui tourne encore — il ecrit dans l'atelier suivant et
+   utilise son simulateur. Vu le 24/09/2026 : « no such table » un jour, un
+   compte d'appels faux le lendemain. `atelier.isoler` attend desormais les
+   fils du tableau de bord (`attendre_les_travaux`, dans `tests/atelier.py`) ;
+   un nouveau fil d'arriere-plan doit passer par le meme point, ou etre
+   attendu de la meme facon. Ne jamais relancer la CI pour voir : lire le
+   journal de l'execution rouge.
 
 ## Apres une correction de bug
 

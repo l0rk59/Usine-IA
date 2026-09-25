@@ -21,7 +21,7 @@ import json
 import time
 import urllib.parse
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from .http import HttpErreur, insister, requete
@@ -41,6 +41,17 @@ _MOTS_FRANCAIS = {
     "comment", "pourquoi", "sur", "dans", "chez", "aux", "et", "ou", "son",
     "ses", "mon", "votre", "vos", "ce", "cette", "qui", "que",
 }
+
+
+def _maintenant_utc() -> datetime:
+    """L'heure UTC, sans « datetime.utcnow ».
+
+    Le telephone tourne sous Python 3.14 (SPECS-APPAREIL.md), ou
+    « utcnow » est deprecie et promis a la suppression ; Termux met Python a
+    jour par « pkg upgrade », et l'etude de marche serait tombee ce jour-la.
+    « timezone.utc » existe depuis Python 3.2 : rien ne change ailleurs.
+    """
+    return datetime.now(timezone.utc)
 
 
 def _semble_francais(sujet: str) -> bool:
@@ -237,7 +248,7 @@ def wikipedia_interet(sujet: str, langue: str = "fr", mois: int = 12,
             source.erreur = "aucun article correspondant"
             return source
 
-        fin = datetime.utcnow().replace(day=1)
+        fin = _maintenant_utc().replace(day=1)
         debut = fin - timedelta(days=31 * mois)
 
         # Deux pieges opposes : le premier resultat n'est pas toujours le bon
@@ -370,7 +381,7 @@ def open_library(sujet: str, timeout: int = 20) -> Source:
         docs = data.get("docs") or []
         annees = [d.get("first_publish_year") for d in docs
                   if isinstance(d.get("first_publish_year"), int)]
-        recents = [a for a in annees if a >= datetime.utcnow().year - 5]
+        recents = [a for a in annees if a >= _maintenant_utc().year - 5]
         source.disponible = True
         source.donnees = {
             "ouvrages_totaux": data.get("numFound", 0),
@@ -412,7 +423,7 @@ def sonder(sujet: str, journal=None, timeout: int = 20) -> Dict[str, Any]:
 
     rapport: Dict[str, Any] = {
         "sujet": sujet,
-        "date": datetime.utcnow().strftime("%Y-%m-%d"),
+        "date": _maintenant_utc().strftime("%Y-%m-%d"),
         "sources": {
             nom: {"disponible": s.disponible, "erreur": s.erreur, **s.donnees}
             for nom, s in resultats.items()

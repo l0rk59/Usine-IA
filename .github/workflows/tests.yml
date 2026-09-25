@@ -16,8 +16,10 @@ jobs:
       fail-fast: false
       matrix:
         # Termux livre la version courante ; les anciennes restent en place
-        # longtemps sur un telephone qu'on ne met pas a jour.
-        python: ["3.9", "3.11", "3.13"]
+        # longtemps sur un telephone qu'on ne met pas a jour. 3.14 est celle
+        # du telephone (SPECS-APPAREIL.md, releve du 14/09/2026 : 3.14.6) :
+        # elle manquait, et c'etait la seule qui compte vraiment.
+        python: ["3.9", "3.11", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
