@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -82,9 +83,22 @@ def _version_binaire(nom: str) -> str:
         # Beaucoup d'outils ecrivent leur version sur la sortie d'erreur.
         texte = (sortie.stdout or "") or (sortie.stderr or "")
         premiere = texte.strip().splitlines()[0] if texte.strip() else ""
+        # Un refus d'option n'est pas une version. Les outils termux-* n'ont
+        # pas d'option de version : la fiche du telephone affichait
+        # « getopt: unrecognized option `--version' » dans la colonne
+        # Version. Et on s'arrete la, sans essayer l'option suivante :
+        # « termux-open version » ou « termux-share version » pourraient
+        # ouvrir ou partager quelque chose sur le telephone.
+        if sortie.returncode != 0 and _REFUS_D_OPTION.search(premiere):
+            return "(version inconnue)"
         if premiere:
             return premiere[:80]
     return "(version inconnue)"
+
+
+_REFUS_D_OPTION = re.compile(
+    r"unrecognized option|illegal option|invalid option|unknown option|usage:",
+    re.IGNORECASE)
 
 
 def _modules_absents() -> List[str]:

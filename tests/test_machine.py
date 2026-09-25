@@ -117,6 +117,38 @@ class FicheTechnique(unittest.TestCase):
         self.assertIn("# Fiche technique de l'appareil",
                       cible.read_text(encoding="utf-8"))
 
+    def test_un_refus_d_option_n_est_pas_une_version(self):
+        """Les outils termux-* n'ont pas d'option de version : la fiche du
+        telephone affichait leur message d'erreur comme version. Et l'on ne
+        tente pas l'option suivante — « termux-open version » pourrait ouvrir
+        quelque chose sur le telephone."""
+        import subprocess
+        from unittest import mock
+
+        essayees = []
+
+        def lancer(arguments, **_options):
+            essayees.append(arguments[1])
+            return subprocess.CompletedProcess(
+                arguments, 1, "", "getopt: unrecognized option `--version'\n")
+
+        with mock.patch.object(specs, "_binaire", return_value="/bin/termux-open"), \
+                mock.patch.object(specs.subprocess, "run", side_effect=lancer):
+            version = specs._version_binaire("termux-open")
+        self.assertEqual(version, "(version inconnue)")
+        self.assertEqual(essayees, ["--version"])
+
+    def test_une_vraie_version_passe(self):
+        import subprocess
+        from unittest import mock
+
+        with mock.patch.object(specs, "_binaire", return_value="/bin/ollama"), \
+                mock.patch.object(specs.subprocess, "run", return_value=
+                                  subprocess.CompletedProcess(
+                                      ["ollama"], 0, "ollama version is 0.31.1\n", "")):
+            self.assertEqual(specs._version_binaire("ollama"),
+                             "ollama version is 0.31.1")
+
     def test_hors_du_telephone_la_fiche_du_depot_reste_intacte(self):
         """Elle decrit le telephone. Lancee dans un conteneur, la commande la
         remplacait par la fiche de la machine du moment — deux fois deja."""
