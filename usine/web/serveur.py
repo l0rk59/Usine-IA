@@ -1663,8 +1663,11 @@ def _etat() -> Dict[str, Any]:
         "version": __version__,
         "base": "",
         "fournisseurs": fournisseurs,
+        # Une cle, pas un genre de fournisseur : un jeton Pollinations est
+        # une cle, et « sans_cle » le faisait compter pour rien — la page
+        # disait « Aucune cle API » a qui en avait une.
         "avec_cle": sum(1 for f in fournisseurs
-                        if f["disponible"] and not f["local"] and not f["sans_cle"]),
+                        if f["disponible"] and not f["local"] and f["nb_cles"]),
         "cles": pool_cles.resume(),
         "travaux": travaux,
         "types": _types_offerts(),

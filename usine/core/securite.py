@@ -41,7 +41,8 @@ def expurger(texte: str) -> str:
     La console n'y passe pas, et c'est un constat plutot qu'un oubli : rien
     n'y fait transiter de secret. Le corps d'une reponse HTTP en erreur —
     le seul endroit ou un service renverrait une cle — est porte par
-    « HttpErreur.corps » et n'est affiche nulle part. Cette docstring
+    « HttpErreur.corps », et un seul endroit l'affiche : l'audit des quotas
+    (« diagnostic »), qui le fait passer par ici. Cette docstring
     annoncait trois destinations pour une seule ; une garantie de securite
     qui surestime sa couverture est pire qu'une absence de garantie, parce
     qu'on cesse de chercher.

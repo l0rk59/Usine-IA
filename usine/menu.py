@@ -1386,20 +1386,28 @@ def _menu_machine(executer: Callable[[List[str]], int]) -> None:
         demander("\n  Appuyez sur Entree")
 
 
+def etat_des_fournisseurs() -> str:
+    """La ligne d'accueil : combien de fournisseurs ont une cle.
+
+    Une cle, pas un genre de fournisseur : un jeton Pollinations en est une,
+    et le compter pour rien faisait dire « Aucune cle API » a qui en avait.
+    """
+    disponibles = config.active_providers()
+    distants = [p for p in disponibles if not p.local]
+    avec_cle = [p for p in distants if p.nb_cles()]
+    if avec_cle:
+        return ("  " + c("v", "32") + " {} fournisseur(s) avec cle, "
+                "rotation active".format(len(avec_cle)))
+    if distants:
+        return "  " + c("!", "33") + " Aucune cle API : quota tres limite"
+    return "  " + c("x", "31") + " Aucun fournisseur — voir « Cles et quotas »"
+
+
 def menu_principal(executer: Callable[[List[str]], int]) -> int:
     while True:
         effacer()
         entete("USINE-IA  v{}".format(__version__))
-        disponibles = config.active_providers()
-        distants = [p for p in disponibles if not p.local]
-        avec_cle = [p for p in distants if not p.keyless]
-        if avec_cle:
-            print("  " + c("v", "32") + " {} fournisseur(s) avec cle, "
-                  "rotation active".format(len(avec_cle)))
-        elif distants:
-            print("  " + c("!", "33") + " Aucune cle API : quota tres limite")
-        else:
-            print("  " + c("x", "31") + " Aucun fournisseur — voir « Cles et quotas »")
+        print(etat_des_fournisseurs())
         produits = [p for p in store.lister_produits(50)
                     if p["statut"] != "bonus_integre"]
         print("  " + c("*", "36") + " {} produit(s) fabrique(s)".format(len(produits)))

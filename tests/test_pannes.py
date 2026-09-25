@@ -520,6 +520,39 @@ class DocteurSansCle(unittest.TestCase):
         self.assertEqual(etat["anonymes"], [])
         self.assertEqual(etat["verdict"]["etat"], "bloque")
 
+    def test_un_jeton_pollinations_est_une_cle(self):
+        """Le menu et la page comptaient les fournisseurs « avec cle » par
+        genre : Pollinations est « sans cle », donc son jeton ne comptait
+        pas, et l'accueil disait « Aucune cle API » a qui en avait un."""
+        import os
+        from unittest import mock
+
+        from usine import menu
+        from usine.core import cles as pool_cles
+        from usine.web import serveur
+
+        variables = {p.api_key_env: "" for p in config.PROVIDERS
+                     if p.api_key_env}
+        variables["POLLINATIONS_TOKEN"] = "jeton-" + "P" * 24
+        with mock.patch.dict(os.environ, variables):
+            os.environ.pop("USINE_PROVIDERS", None)
+            pool_cles.oublier()
+            try:
+                page = serveur._etat()["avec_cle"]
+                accueil = menu.etat_des_fournisseurs()
+                verdict = self._etat_sans_oubli()
+            finally:
+                pool_cles.oublier()
+        self.assertEqual(page, 1)
+        self.assertIn("1 fournisseur(s) avec cle", accueil)
+        self.assertEqual(verdict["etat"], "pret")
+
+    def _etat_sans_oubli(self):
+        from usine.core import diagnostic as module_diagnostic
+
+        return module_diagnostic.etat_installation(
+            avec_reseau=False, avec_locaux=False)["verdict"]
+
     def test_une_ia_locale_prete_passe_avant_le_palier_anonyme(self):
         from usine.core import diagnostic as module_diagnostic
 
