@@ -110,6 +110,15 @@ class TestAucuneFonctionSansAppelant(unittest.TestCase):
     # Vide, et c'est voulu. Ajouter un nom ici demande d'ecrire pourquoi.
     TOLEREES = frozenset()
 
+    # Les methodes que la bibliotheque standard appelle par leur nom : le
+    # serveur HTTP (do_GET, do_POST, log_message) et l'analyseur HTML
+    # (handle_*). Elles n'ont pas d'appelant dans le depot, et c'est normal.
+    APPELEES_PAR_LA_BIBLIOTHEQUE = frozenset({
+        "do_GET", "do_POST", "do_HEAD", "log_message",
+        "handle_starttag", "handle_endtag", "handle_data",
+        "handle_startendtag",
+    })
+
     @staticmethod
     def _noms_lies(fonction):
         """Noms que la fonction fabrique elle-meme : parametres, variables, imports.
@@ -193,14 +202,37 @@ class TestAucuneFonctionSansAppelant(unittest.TestCase):
             for noeud in arbre.body:
                 if not isinstance(noeud, ast.FunctionDef):
                     continue
-                if noeud.name.startswith("_") or noeud.name == "main":
+                # Les fonctions privees en sont, depuis le 25/09/2026. Les
+                # exempter a laisse « cli._detailler_local » sans appelant
+                # treize jours : elle verifiait que l'IA locale servait un
+                # modele, et le diagnostic disait « pret » a un ollama vide.
+                # Le tiret bas dit « pas pour les autres modules », pas
+                # « appele par quelqu'un ». Restent exemptes les fonctions
+                # que Python appelle lui-meme : « __getattr__ » d'un module.
+                if noeud.name.startswith("__") or noeud.name == "main":
                     continue
                 if noeud.name not in vues:
                     seules.append("{}:{}".format(
                         fichier.relative_to(racine), noeud.name))
+            # Les methodes aussi : « Provider.api_key » lisait une cle en
+            # contournant le pool, et personne ne l'appelait. Une methode
+            # nommee par la bibliotheque standard est appelee par elle.
+            for classe in (n for n in ast.walk(arbre)
+                           if isinstance(n, ast.ClassDef)):
+                for noeud in classe.body:
+                    if not isinstance(noeud, (ast.FunctionDef,
+                                              ast.AsyncFunctionDef)):
+                        continue
+                    if (noeud.name.startswith("__")
+                            or noeud.name in cls.APPELEES_PAR_LA_BIBLIOTHEQUE):
+                        continue
+                    if noeud.name not in vues:
+                        seules.append("{}:{}.{}".format(
+                            fichier.relative_to(racine), classe.name,
+                            noeud.name))
         return seules
 
-    def test_aucune_fonction_publique_n_est_sans_emploi(self):
+    def test_aucune_fonction_n_est_sans_emploi(self):
         restantes = [o for o in self.orphelines(RACINE)
                      if o.rsplit(":", 1)[-1] not in self.TOLEREES]
         self.assertEqual(restantes, [])
@@ -234,13 +266,30 @@ class TestAucuneFonctionSansAppelant(unittest.TestCase):
             # « autre » n'est pas appelee non plus : seule « utile » l'est.
             self.assertEqual(self.orphelines(racine), ["usine/module.py:autre"])
 
-    def test_le_detecteur_ignore_les_fonctions_privees(self):
+    def test_le_detecteur_trouve_une_fonction_privee_sans_appelant(self):
         import tempfile
 
         with tempfile.TemporaryDirectory() as brut:
             racine = self._depot(pathlib.Path(brut),
-                                 "def _interne():\n    return 1\n")
-            self.assertEqual(self.orphelines(racine), [])
+                                 "def _interne():\n    return 1\n\n\n"
+                                 "def __getattr__(nom):\n    return nom\n")
+            self.assertEqual(self.orphelines(racine),
+                             ["usine/module.py:_interne"])
+
+    def test_le_detecteur_trouve_une_methode_sans_appelant(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as brut:
+            racine = self._depot(
+                pathlib.Path(brut),
+                "class Serveur:\n"
+                "    def do_GET(self):\n        return self.servir()\n\n"
+                "    def servir(self):\n        return 1\n\n"
+                "    @property\n    def oubliee(self):\n        return 2\n\n\n"
+                "def fabriquer():\n    return Serveur()\n\n\n"
+                "fabriquer()\n")
+            self.assertEqual(self.orphelines(racine),
+                             ["usine/module.py:Serveur.oubliee"])
 
     def test_un_parametre_homonyme_ne_compte_pas_pour_un_appel(self):
         """Le defaut exact qui a laisse « http.en_ligne » sans appelant.

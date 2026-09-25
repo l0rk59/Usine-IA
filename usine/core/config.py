@@ -161,11 +161,6 @@ class Provider:
             return precis
         return Quota(rpm=self.rpm, rpd=self.rpd)
 
-    @property
-    def api_key(self) -> str:
-        """Premiere cle declaree. Le routeur utilise le pool, pas cette propriete."""
-        return env(self.api_key_env) if self.api_key_env else ""
-
     def nb_cles(self) -> int:
         if not self.api_key_env:
             return 0

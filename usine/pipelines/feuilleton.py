@@ -23,7 +23,6 @@ ajoute :
 from __future__ import annotations
 
 import json
-import re
 from typing import Any, Dict, List, Sequence
 
 from ..agents import equipe
@@ -94,11 +93,6 @@ def episodes_sans_suspens(episodes: Sequence[Dict[str, Any]]) -> List[int]:
     """
     return [rang for rang, episode in enumerate(episodes[:-1], 1)
             if not (episode.get("suspens") or "").strip()]
-
-
-def _phrases(texte: str) -> List[str]:
-    return [p.strip() for p in re.split(r"(?<=[.!?…])\s+", texte or "")
-            if p.strip()]
 
 
 def mesurer_les_recaps(episodes: Sequence[Dict[str, Any]],

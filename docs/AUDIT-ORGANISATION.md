@@ -80,8 +80,19 @@ livrer.
 | modules jamais importés | un seul, `usine/__main__.py`, qui est le point d'entrée |
 | boutons du tableau de bord sans écouteur | aucun |
 | options du catalogue jamais lues | aucune (invariants déjà en place) |
-| fonctions publiques sans appelant | aucune (invariant déjà en place) |
+| fonctions publiques sans appelant | aucune (invariant déjà en place) — mais voir ci-dessous |
 | docs citant du code disparu | **aucune** — voir ci-dessous |
+
+**« Aucune fonction sans appelant » ne regardait que les fonctions
+publiques.** Le 25/09/2026, `cli._detailler_local` était sans appelant depuis
+treize jours : c'est elle qui vérifiait qu'un ollama servait un modèle, et
+`usine docteur` disait « prêt » à un ollama vide. Le tiret bas dit « pas pour
+les autres modules », pas « appelée par quelqu'un ». Le détecteur couvre
+désormais les fonctions privées et les méthodes ; il en a trouvé deux autres,
+retirées : `feuilleton._phrases`, jamais appelée depuis sa création, et
+`Provider.api_key`, qui lisait une clé en contournant le pool. Seules restent
+exemptées les méthodes que la bibliothèque standard appelle par leur nom
+(`do_GET`, `handle_starttag`…), et la liste est nommée dans le test.
 
 **Mon détecteur de docs a accusé 26 fois, et il avait tort 26 fois.** Il
 comparait les chemins à la racine du dépôt, alors que les notes citent
