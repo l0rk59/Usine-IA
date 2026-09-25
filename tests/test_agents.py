@@ -79,6 +79,28 @@ class TestRelectureCroisee(unittest.TestCase):
         self.assertEqual(mesure["sur_un_autre_modele"], 1)
         self.assertEqual(mesure["part"], 0.5)
 
+    def test_une_relecture_impossible_dit_pourquoi_sur_une_ligne(self):
+        """Le bilan du routeur tient sur plusieurs lignes ; coupe a
+        quatre-vingts signes, il s'affichait « cerebras : 4118 jetons ) »,
+        la raison perdue et le mot « indisponible » ecrit deux fois."""
+        bilan = ("Aucun fournisseur n'a pu repondre.\n  Pas essayes :\n"
+                 "    - cerebras : limite par minute atteinte, libre dans 13 s")
+
+        def plus_personne(*_a, **_k):
+            raise llm.PlusDeFournisseur(bilan)
+
+        llm.definir_simulateur(plus_personne)
+        try:
+            critique = equipe.critiquer(_contexte(), "Un texte original a relire "
+                                        "pour ce seul test.", "Un titre unique")
+        finally:
+            llm.definir_simulateur(simulateur)
+        resume = critique.resume()
+        self.assertFalse(critique.mesuree)
+        self.assertNotIn("\n", resume)
+        self.assertIn("limite par minute atteinte", resume)
+        self.assertEqual(resume.count("indisponible"), 1)
+
     def test_sans_relecture_la_part_n_est_pas_inventee(self):
         rapport = equipe.rapport_qualite({"A": []})
         self.assertIsNone(rapport["relecture_croisee"]["part"])

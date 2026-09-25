@@ -89,6 +89,27 @@ La fenêtre par minute est **glissante** : la place se libère quand le plus vie
 appel en sort, pas à la minute ronde. Le routeur attend donc ce qu'il faut, et
 pas une minute entière à chaque fois.
 
+**« Ce qu'il faut » n'y était pas (corrigé le 25/09/2026).** Le routeur
+attendait **une fois**, puis écartait le fournisseur si la fenêtre était encore
+pleine — et quand tous l'étaient, le produit s'arrêtait. Avec une seule clé
+Cerebras (5 requêtes par minute), par le vrai routeur contre un faux serveur à
+une demi-seconde de latence : l'ebook s'arrêtait au cinquième appel, « six
+sections non écrites », pour une fenêtre qui se rouvrait trente secondes plus
+tard. Le même ebook va maintenant au bout : 28 appels en cinq minutes quarante,
+soit exactement le rythme autorisé.
+
+Le routeur refait donc un tour quand un fournisseur n'attend que la fin de sa
+fenêtre, dans la limite de deux fenêtres (`ATTENTE_PAR_MINUTE_MAX`) : au-delà,
+quelque chose d'autre consomme la même clé. Une clé pleine ne fait plus sauter
+les autres clés du même fournisseur, qui ont chacune leur fenêtre. Et une
+demande qui pèse à elle seule plus qu'une minute de budget n'est jamais
+attendue : aucune attente ne la ferait passer.
+
+Le défaut était invisible pour une raison précise : la fumée tourne sous
+simulateur, qui remplace le routeur, et les tests du routeur ne remplissaient
+jamais une fenêtre par une rafale. Rejouée par le vrai routeur, la fumée
+échouait sur trois chaînes.
+
 Un plafond à zéro signifie « non publié par le fournisseur », donc non
 modélisé. On ne l'invente pas.
 

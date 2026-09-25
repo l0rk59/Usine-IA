@@ -608,6 +608,12 @@ def _attente(p: config.Provider, role: str, cout: int,
     return attente
 
 
+# Ce qu'un appel peut attendre, en tout, qu'une fenetre par minute se
+# rouvre : deux fenetres entieres. Au-dela, quelque chose d'autre consomme la
+# meme cle (un autre fil, un autre appareil), et attendre ne suffit plus.
+ATTENTE_PAR_MINUTE_MAX = 125.0
+
+
 def _laisser_passer(p: config.Provider, role: str, cout: int,
                     cle_id: str = "") -> bool:
     """Attend si besoin, et dit si cette cle peut servir la demande."""
@@ -789,178 +795,211 @@ def generer(
             "Aucun fournisseur configure. Lancez 'usine cles' pour la marche a suivre."
         )
 
-    bilan = _Bilan()
-    for p in fournisseurs:
-        # Le repos vaut pour le fournisseur entier ; le quota, lui, se
-        # verifie cle par cle plus bas — c'est tout l'interet d'en avoir
-        # plusieurs.
-        if _au_repos(p):
-            bilan.ecarte(p.name, "en repos")
-            continue
-        cout = _cout_estime(messages, max_tokens, p)
-
-        # Un fournisseur peut detenir plusieurs cles : on les essaie toutes avant
-        # de le declarer indisponible. C'est la rotation de cles.
-        lot = pool_cles.pool(p.name, p.api_key_env)
-        candidates: List[Optional[pool_cles.Cle]] = []
-        if p.api_key_env and len(lot):
-            candidates = list(lot.ordonnees(p.quota(role).rpd,
-                                            _compte_pour(p, role)))
-            if not candidates:
-                bilan.ecarte(p.name, "toutes les cles sont saturees")
+    # Une limite PAR MINUTE n'est pas un quota epuise : elle se libere en
+    # moins d'une minute. Le routeur attendait une fois, puis ecartait le
+    # fournisseur, et quand tous l'etaient le produit s'arretait. Mesure du
+    # 25/09/2026, une seule cle Cerebras (cinq requetes par minute) : un
+    # ebook s'arretait au cinquieme appel, « six sections non ecrites », pour
+    # une fenetre qui se rouvrait trente secondes plus tard. On attend donc
+    # qu'elle se rouvre, et on refait un tour — seulement quand un
+    # fournisseur n'attend que cela, et jamais plus de deux fenetres.
+    attendu_par_minute = 0.0
+    while True:
+        bilan = _Bilan()
+        libre_dans: Optional[float] = None
+        for p in fournisseurs:
+            # Le repos vaut pour le fournisseur entier ; le quota, lui, se
+            # verifie cle par cle plus bas — c'est tout l'interet d'en avoir
+            # plusieurs.
+            if _au_repos(p):
+                bilan.ecarte(p.name, "en repos")
                 continue
-        else:
-            candidates.append(None)  # fournisseur local ou sans cle
+            cout = _cout_estime(messages, max_tokens, p)
 
-        fournisseur_hors_jeu = False
-        for cle in candidates:
-            if fournisseur_hors_jeu:
-                break
-            identifiant_cle = cle.id if cle else ""
-            if not _quota_ok(p, role, identifiant_cle):
-                bilan.ecarte(p.name, "quota du jour atteint — il repart a "
-                             "{} (minuit UTC)".format(_heure(
-                                 (int(time.time() // 86400) + 1) * 86400.0)))
-                continue
-            if not _laisser_passer(p, role, cout, identifiant_cle):
-                bilan.ecarte(p.name, "{} jetons demandes, budget par minute "
-                                     "insuffisant".format(cout))
-                break
+            # Un fournisseur peut detenir plusieurs cles : on les essaie toutes avant
+            # de le declarer indisponible. C'est la rotation de cles.
+            lot = pool_cles.pool(p.name, p.api_key_env)
+            candidates: List[Optional[pool_cles.Cle]] = []
+            if p.api_key_env and len(lot):
+                candidates = list(lot.ordonnees(p.quota(role).rpd,
+                                                _compte_pour(p, role)))
+                if not candidates:
+                    bilan.ecarte(p.name, "toutes les cles sont saturees")
+                    continue
+            else:
+                candidates.append(None)  # fournisseur local ou sans cle
 
-            for essai in range(tentatives_par_fournisseur):
-                try:
-                    # Le delai du fournisseur prime sur celui de l'appelant :
-                    # un modele local a besoin de minutes la ou un service
-                    # distant a besoin de secondes.
-                    rep = _appel(p, messages, role, temperature, max_tokens,
-                                 json_mode, max(timeout, p.timeout), cle,
-                                 langue=langue)
-                    if rep.tronquee:
-                        evenements.publier(
-                            "tronquee", fournisseur=rep.fournisseur,
-                            modele=rep.modele,
-                            plafond=min(max_tokens, p.max_sortie))
-                    if cache and not rep.tronquee:
-                        store.cache_set(cle_cache, rep.texte, rep.fournisseur,
-                                        rep.modele)
-                    return rep
-                except HttpErreur as exc:
-                    _journaliser(p.name,
-                                 module_modeles.modele_effectif(p, role),
-                                 False, 0, 0,
-                                 str(exc), cle_id=cle.id if cle else "")
-                    bilan.essai(p.name, _expliquer(
-                        p, exc, module_modeles.modele_effectif(p, role)),
-                        refus=exc.statut == REFUS_DU_MODELE)
+            fournisseur_hors_jeu = False
+            for cle in candidates:
+                if fournisseur_hors_jeu:
+                    break
+                identifiant_cle = cle.id if cle else ""
+                if not _quota_ok(p, role, identifiant_cle):
+                    bilan.ecarte(p.name, "quota du jour atteint — il repart a "
+                                 "{} (minuit UTC)".format(_heure(
+                                     (int(time.time() // 86400) + 1) * 86400.0)))
+                    continue
+                # L'attente faite ici compte dans la borne, comme celle
+                # d'entre deux tours : sans cela, un autre fil qui remplit la
+                # meme cle faisait attendre deux fois la borne annoncee.
+                avant_attente = time.time()
+                passe = _laisser_passer(p, role, cout, identifiant_cle)
+                attendu_par_minute += time.time() - avant_attente
+                if not passe:
+                    reste = _attente(p, role, cout, identifiant_cle)
+                    if reste is None:
+                        bilan.ecarte(p.name, "{} jetons demandes : plus que "
+                                     "le budget d'une minute entiere".format(cout))
+                        break
+                    libre_dans = (reste if libre_dans is None
+                                  else min(libre_dans, reste))
+                    bilan.ecarte(p.name, "limite par minute atteinte, libre "
+                                 "dans {:.0f} s".format(reste))
+                    # La cle suivante, pas le fournisseur suivant : les
+                    # plafonds par minute se comptent par cle, et une autre
+                    # cle est peut-etre libre. « break » la sautait.
+                    continue
 
-                    if _service_ferme(exc):
-                        # Le seul echec vraiment definitif du lot, et le seul
-                        # qui n'avait aucun repos : un service retire repondait
-                        # « retire » a chaque bascule, sur chaque scene, pour
-                        # toujours. Journal du 15/09/2026 puis du 16/09/2026,
-                        # meme fournisseur, meme reponse — deux observations,
-                        # un jour d'ecart.
-                        #
-                        # Vingt-quatre heures et non « pour toujours » : une
-                        # fermeture progressive peut se reouvrir, et l'usine
-                        # n'a pas a trancher a la place de l'editeur. Ce qu'elle
-                        # peut trancher, c'est qu'un service qui se declare
-                        # retire ne reviendra pas dans l'heure.
-                        _reposer(p.name, 86400, "service retire")
-                        break
-                    if exc.statut in (401, 403):
-                        # Cle refusee : on ecarte la cle, pas le fournisseur.
-                        if cle:
-                            lot.mettre_au_repos(cle, 3600, "cle refusee")
-                        else:
-                            _reposer(p.name, 3600, "cle refusee")
-                        break
-                    if exc.statut == 429:
-                        # Le service dit lui-meme combien de temps attendre :
-                        # l'ecouter evite d'attendre dix minutes pour cinq
-                        # secondes, ou de revenir trop tot et de reprendre un
-                        # 429 — ce qui, lui, consomme du quota.
-                        demande = exc.patienter()
-                        if cle:
-                            lot.mettre_au_repos(cle, demande or 120,
-                                                "limite de debit")
-                        else:
-                            _reposer(p.name, demande or 90, "limite de debit")
-                        break
-                    if exc.statut == 402:
-                        if cle:
-                            lot.mettre_au_repos(cle, 3600, "credit epuise")
-                        else:
-                            _reposer(p.name, 1800, "credit epuise")
-                        break
-                    if _modele_inconnu(exc):
-                        # Modele inconnu. Avant de mettre le fournisseur au
-                        # repos une demi-heure, on lui demande ce qu'il sert.
-                        #
-                        # Mesure du 13/09/2026 : les deux modeles NVIDIA
-                        # configures ne figuraient plus dans les 82 servis.
-                        # Chaque appel rendait donc 404, NVIDIA passait au
-                        # repos, et une cle valide ne servait a rien sans que
-                        # rien ne le dise. Un catalogue de fournisseur bouge
-                        # toutes les quelques semaines : recopier le bon
-                        # identifiant reparait la panne du jour, pas la
-                        # suivante.
-                        refuse = module_modeles.modele_effectif(p, role)
-                        remplacant = module_modeles.substituer(p, role, refuse)
-                        if remplacant:
-                            bilan.essai(p.name, "« {} » n'est plus servi, "
-                                        "l'usine passe a « {} »".format(
-                                            refuse, remplacant))
+                for essai in range(tentatives_par_fournisseur):
+                    try:
+                        # Le delai du fournisseur prime sur celui de l'appelant :
+                        # un modele local a besoin de minutes la ou un service
+                        # distant a besoin de secondes.
+                        rep = _appel(p, messages, role, temperature, max_tokens,
+                                     json_mode, max(timeout, p.timeout), cle,
+                                     langue=langue)
+                        if rep.tronquee:
                             evenements.publier(
-                                "substitution", fournisseur=p.name, role=role,
-                                avant=refuse, apres=remplacant)
-                            continue
-                        _reposer(p.name, 1800, "modele inconnu")
-                        fournisseur_hors_jeu = True
-                        break
-                    if not exc.temporaire:
-                        break
-                    # Sauf un serveur LOCAL qui refuse la connexion. « _appel »
-                    # l'enveloppe en « HTTP 0 : reseau indisponible », marque
-                    # temporaire — ce qui est juste pour un service distant
-                    # (sur un telephone, passer du wifi a la 4G coupe vraiment
-                    # quelques secondes) et faux pour 127.0.0.1 : rien n'ecoute
-                    # sur ce port, et rien n'y ecoutera 1,5 seconde plus tard.
-                    # Seul l'utilisateur peut lancer ollama.
-                    #
-                    # Mesure du 23/09/2026 : onze secondes perdues a CHAQUE
-                    # appel, deux essais par serveur eteint, jamais de repos —
-                    # des que les services distants etaient epuises, c'est-a-
-                    # dire exactement quand on a besoin du repli local.
-                    #
-                    # Pas de repos non plus : un refus est instantane, le
-                    # redemander a l'appel suivant ne coute rien, et c'est ce
-                    # qui permet de reprendre ollama a la seconde ou on le lance.
-                    if p.local and _connexion_refusee(exc):
-                        break
-                    _patienter(min(8.0, 1.5 * (essai + 1)) + random.random())
-                except Exception as exc:
-                    _journaliser(p.name,
-                                 module_modeles.modele_effectif(p, role),
-                                 False, 0, 0,
-                                 repr(exc), cle_id=cle.id if cle else "")
-                    bilan.essai(p.name, _expliquer(
-                        p, exc, module_modeles.modele_effectif(p, role)))
-                    # Une exception qui n'est pas une « HttpErreur » veut dire,
-                    # en pratique, qu'on n'a pas su LIRE la reponse : un JSON
-                    # tronque par une coupure, un corps vide, une structure
-                    # inattendue. C'est transitoire — le meme modele redemande
-                    # rend en general quelque chose de lisible.
-                    #
-                    # Mesure du 15/09/2026 : ce « break » etait sec. Une
-                    # « HttpErreur » temporaire valait deux essais et six
-                    # secondes d'attente ; une reponse illisible valait UN
-                    # essai et zero seconde, et le fournisseur etait abandonne.
-                    # Les deux pannes se ressemblent pourtant du point de vue
-                    # de l'usine : le service n'a rien donne d'exploitable.
-                    if essai == tentatives_par_fournisseur - 1:
-                        break
-                    _patienter(min(8.0, 1.5 * (essai + 1)) + random.random())
+                                "tronquee", fournisseur=rep.fournisseur,
+                                modele=rep.modele,
+                                plafond=min(max_tokens, p.max_sortie))
+                        if cache and not rep.tronquee:
+                            store.cache_set(cle_cache, rep.texte, rep.fournisseur,
+                                            rep.modele)
+                        return rep
+                    except HttpErreur as exc:
+                        _journaliser(p.name,
+                                     module_modeles.modele_effectif(p, role),
+                                     False, 0, 0,
+                                     str(exc), cle_id=cle.id if cle else "")
+                        bilan.essai(p.name, _expliquer(
+                            p, exc, module_modeles.modele_effectif(p, role)),
+                            refus=exc.statut == REFUS_DU_MODELE)
+
+                        if _service_ferme(exc):
+                            # Le seul echec vraiment definitif du lot, et le seul
+                            # qui n'avait aucun repos : un service retire repondait
+                            # « retire » a chaque bascule, sur chaque scene, pour
+                            # toujours. Journal du 15/09/2026 puis du 16/09/2026,
+                            # meme fournisseur, meme reponse — deux observations,
+                            # un jour d'ecart.
+                            #
+                            # Vingt-quatre heures et non « pour toujours » : une
+                            # fermeture progressive peut se reouvrir, et l'usine
+                            # n'a pas a trancher a la place de l'editeur. Ce qu'elle
+                            # peut trancher, c'est qu'un service qui se declare
+                            # retire ne reviendra pas dans l'heure.
+                            _reposer(p.name, 86400, "service retire")
+                            break
+                        if exc.statut in (401, 403):
+                            # Cle refusee : on ecarte la cle, pas le fournisseur.
+                            if cle:
+                                lot.mettre_au_repos(cle, 3600, "cle refusee")
+                            else:
+                                _reposer(p.name, 3600, "cle refusee")
+                            break
+                        if exc.statut == 429:
+                            # Le service dit lui-meme combien de temps attendre :
+                            # l'ecouter evite d'attendre dix minutes pour cinq
+                            # secondes, ou de revenir trop tot et de reprendre un
+                            # 429 — ce qui, lui, consomme du quota.
+                            demande = exc.patienter()
+                            if cle:
+                                lot.mettre_au_repos(cle, demande or 120,
+                                                    "limite de debit")
+                            else:
+                                _reposer(p.name, demande or 90, "limite de debit")
+                            break
+                        if exc.statut == 402:
+                            if cle:
+                                lot.mettre_au_repos(cle, 3600, "credit epuise")
+                            else:
+                                _reposer(p.name, 1800, "credit epuise")
+                            break
+                        if _modele_inconnu(exc):
+                            # Modele inconnu. Avant de mettre le fournisseur au
+                            # repos une demi-heure, on lui demande ce qu'il sert.
+                            #
+                            # Mesure du 13/09/2026 : les deux modeles NVIDIA
+                            # configures ne figuraient plus dans les 82 servis.
+                            # Chaque appel rendait donc 404, NVIDIA passait au
+                            # repos, et une cle valide ne servait a rien sans que
+                            # rien ne le dise. Un catalogue de fournisseur bouge
+                            # toutes les quelques semaines : recopier le bon
+                            # identifiant reparait la panne du jour, pas la
+                            # suivante.
+                            refuse = module_modeles.modele_effectif(p, role)
+                            remplacant = module_modeles.substituer(p, role, refuse)
+                            if remplacant:
+                                bilan.essai(p.name, "« {} » n'est plus servi, "
+                                            "l'usine passe a « {} »".format(
+                                                refuse, remplacant))
+                                evenements.publier(
+                                    "substitution", fournisseur=p.name, role=role,
+                                    avant=refuse, apres=remplacant)
+                                continue
+                            _reposer(p.name, 1800, "modele inconnu")
+                            fournisseur_hors_jeu = True
+                            break
+                        if not exc.temporaire:
+                            break
+                        # Sauf un serveur LOCAL qui refuse la connexion. « _appel »
+                        # l'enveloppe en « HTTP 0 : reseau indisponible », marque
+                        # temporaire — ce qui est juste pour un service distant
+                        # (sur un telephone, passer du wifi a la 4G coupe vraiment
+                        # quelques secondes) et faux pour 127.0.0.1 : rien n'ecoute
+                        # sur ce port, et rien n'y ecoutera 1,5 seconde plus tard.
+                        # Seul l'utilisateur peut lancer ollama.
+                        #
+                        # Mesure du 23/09/2026 : onze secondes perdues a CHAQUE
+                        # appel, deux essais par serveur eteint, jamais de repos —
+                        # des que les services distants etaient epuises, c'est-a-
+                        # dire exactement quand on a besoin du repli local.
+                        #
+                        # Pas de repos non plus : un refus est instantane, le
+                        # redemander a l'appel suivant ne coute rien, et c'est ce
+                        # qui permet de reprendre ollama a la seconde ou on le lance.
+                        if p.local and _connexion_refusee(exc):
+                            break
+                        _patienter(min(8.0, 1.5 * (essai + 1)) + random.random())
+                    except Exception as exc:
+                        _journaliser(p.name,
+                                     module_modeles.modele_effectif(p, role),
+                                     False, 0, 0,
+                                     repr(exc), cle_id=cle.id if cle else "")
+                        bilan.essai(p.name, _expliquer(
+                            p, exc, module_modeles.modele_effectif(p, role)))
+                        # Une exception qui n'est pas une « HttpErreur » veut dire,
+                        # en pratique, qu'on n'a pas su LIRE la reponse : un JSON
+                        # tronque par une coupure, un corps vide, une structure
+                        # inattendue. C'est transitoire — le meme modele redemande
+                        # rend en general quelque chose de lisible.
+                        #
+                        # Mesure du 15/09/2026 : ce « break » etait sec. Une
+                        # « HttpErreur » temporaire valait deux essais et six
+                        # secondes d'attente ; une reponse illisible valait UN
+                        # essai et zero seconde, et le fournisseur etait abandonne.
+                        # Les deux pannes se ressemblent pourtant du point de vue
+                        # de l'usine : le service n'a rien donne d'exploitable.
+                        if essai == tentatives_par_fournisseur - 1:
+                            break
+                        _patienter(min(8.0, 1.5 * (essai + 1)) + random.random())
+        if (libre_dans is not None
+                and attendu_par_minute + libre_dans <= ATTENTE_PAR_MINUTE_MAX):
+            _patienter(libre_dans)
+            attendu_par_minute += libre_dans
+            continue
+        break
 
     if bilan.tous_ont_refuse():
         raise DemandeRefusee(

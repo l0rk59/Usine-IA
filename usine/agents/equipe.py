@@ -102,6 +102,28 @@ def grille() -> str:
     return prompts.modele("grille_qualite")
 
 
+def cause_lisible(exc: BaseException, longueur: int = 110) -> str:
+    """La cause d'un echec, sur une ligne et sans phrase coupee.
+
+    Le bilan du routeur tient sur plusieurs lignes. Le couper a quatre-vingts
+    signes affichait, sous chaque chapitre : « relecture indisponible — pas
+    de note (relecture indisponible : Aucun fournisseur n'a pu repondre.
+    Pas essayes : - cerebras : 4118 jetons ) » — deux fois le meme mot, une
+    liste tronquee au milieu d'une ligne, et la raison perdue.
+    """
+    lignes = [l.strip(" -") for l in str(exc).splitlines()]
+    # « Essayes : », « Pas essayes : » : des titres de liste, pas des causes.
+    lignes = [l for l in lignes if l and not l.endswith(":")]
+    if not lignes:
+        return type(exc).__name__
+    texte = lignes[0].rstrip(".")
+    if len(lignes) > 1:
+        texte += " — " + " ; ".join(lignes[1:])
+    if len(texte) > longueur:
+        texte = texte[:longueur].rsplit(" ", 1)[0].rstrip(" ;,—") + "…"
+    return texte
+
+
 def critiquer(
     contexte: Any,
     texte: str,
@@ -140,9 +162,7 @@ def critiquer(
         )
     except Exception as exc:
         evenements.publier("qualite", etat="critique_indisponible", detail=str(exc))
-        return Critique(note=0.0, mesuree=False,
-                        verdict="relecture indisponible : {}".format(
-                            str(exc)[:80]))
+        return Critique(note=0.0, mesuree=False, verdict=cause_lisible(exc))
 
     if not isinstance(donnees, dict):
         return Critique(note=0.0, mesuree=False,

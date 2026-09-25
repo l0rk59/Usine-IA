@@ -38,8 +38,8 @@
   {
     "titre": "le routeur ecarte le fournisseur au lieu d'appeler",
     "fichier": "usine/core/llm.py",
-    "avant": "if not _laisser_passer(p, role, cout, identifiant_cle):",
-    "apres": "if False:",
+    "avant": "                if not passe:",
+    "apres": "                if False:",
     "tests": [
       "tests.test_routeur"
     ]

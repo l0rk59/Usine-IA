@@ -329,6 +329,120 @@ class TestRoleLongContexte(unittest.TestCase):
             self.assertGreaterEqual(fournisseur.max_sortie, 1024, fournisseur.name)
 
 
+class UneLimiteParMinuteSeLeve(unittest.TestCase):
+    """Une limite par minute n'est pas un quota epuise : elle se leve seule.
+
+    Mesure du 25/09/2026, une seule cle Cerebras (cinq requetes par minute),
+    par le vrai routeur : un ebook s'arretait au cinquieme appel, « six
+    sections non ecrites ». Le routeur attendait une fois treize secondes,
+    trouvait la fenetre encore pleine, ecartait le fournisseur, et le produit
+    s'arretait faute de fournisseur — pour une fenetre qui se rouvrait trente
+    secondes plus tard.
+
+    L'horloge est simulee : aucun de ces tests n'attend pour de vrai.
+    """
+
+    def setUp(self):
+        _vider_appels()
+        self.cerebras = config.PROVIDERS_BY_NAME["cerebras"]
+        self.lot = pool_cles.Pool("cerebras", [
+            pool_cles.Cle(valeur="csk-" + "P" * 32, fournisseur="cerebras", rang=0),
+            pool_cles.Cle(valeur="csk-" + "S" * 32, fournisseur="cerebras", rang=1),
+        ])
+        self.horloge = [time.time()]
+        self.attentes = []
+
+    def _patienter(self, secondes):
+        self.attentes.append(secondes)
+        self.horloge[0] += secondes
+
+    def _appels(self, cle, nombre, il_y_a):
+        """« nombre » appels reussis de cette cle, il y a « il_y_a » secondes."""
+        modele = llm._compte_pour(self.cerebras, "standard")
+        with store.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO appels(fournisseur, modele, ts, jour, ok, tokens,"
+                " cle_id) VALUES ('cerebras',?,?,?,1,10,?)",
+                [(modele, self.horloge[0] - il_y_a + k * 0.5, store._jour(),
+                  cle.id) for k in range(nombre)])
+
+    def _generer(self, cles, **options):
+        lot = pool_cles.Pool("cerebras", cles)
+        with mock.patch("time.time", lambda: self.horloge[0]), \
+                mock.patch.object(llm, "_patienter", self._patienter), \
+                mock.patch.object(pool_cles, "pool", return_value=lot), \
+                mock.patch.object(llm, "post_json", return_value=_reponse()), \
+                mock.patch.object(config, "active_providers",
+                                  return_value=[self.cerebras]):
+            return llm.generer("court", cache=False, **options)
+
+    def test_le_routeur_attend_que_la_fenetre_se_rouvre(self):
+        premiere = self.lot.cles[0]
+        self._appels(premiere, self.cerebras.quota("standard").rpm, il_y_a=10)
+        reponse = self._generer([premiere])
+        self.assertEqual(reponse.fournisseur, "cerebras")
+        # La fenetre se rouvre quand le plus vieil appel a une minute : il
+        # en avait dix. Ni moins (elle serait encore pleine), ni beaucoup plus.
+        self.assertGreaterEqual(sum(self.attentes), 48)
+        self.assertLessEqual(sum(self.attentes), llm.ATTENTE_PAR_MINUTE_MAX)
+
+    def test_une_autre_cle_libre_sert_sans_attendre_la_premiere(self):
+        """Les plafonds par minute se comptent par cle. La premiere cle
+        pleine faisait abandonner le fournisseur, la seconde jamais essayee.
+        La seconde a davantage servi aujourd'hui, mais pas dans la minute :
+        le pool propose donc bien la premiere d'abord."""
+        premiere, seconde = self.lot.cles
+        self._appels(premiere, self.cerebras.quota("standard").rpm, il_y_a=10)
+        self._appels(seconde, 20, il_y_a=600)
+        reponse = self._generer([premiere, seconde])
+        self.assertEqual(reponse.cle, seconde.affichage)
+        # Une seule attente : celle, deja ancienne, qui donne sa chance a la
+        # premiere cle avant de passer a la suivante.
+        self.assertLessEqual(len(self.attentes), 1)
+
+    def test_une_demande_plus_grosse_qu_une_minute_n_attend_pas(self):
+        """L'autre cas, qui ne se leve pas : la demande pese a elle seule
+        plus que le budget d'une minute. Attendre ne servirait a rien."""
+        groq = config.PROVIDERS_BY_NAME["groq"]
+        q = groq.quota("standard")
+        self.assertTrue(q.tpm, "Groq doit publier un plafond par minute")
+        lot = pool_cles.Pool("groq", [
+            pool_cles.Cle(valeur="gsk_" + "G" * 32, fournisseur="groq", rang=0)])
+        with mock.patch.object(llm, "_patienter", self._patienter), \
+                mock.patch.object(pool_cles, "pool", return_value=lot), \
+                mock.patch.object(llm, "post_json", return_value=_reponse()), \
+                mock.patch.object(config, "active_providers",
+                                  return_value=[groq]):
+            with self.assertRaises(llm.PlusDeFournisseur) as contexte:
+                llm.generer("x " * (q.tpm * 2), cache=False, max_tokens=100)
+        self.assertEqual(self.attentes, [])
+        self.assertIn("budget d'une minute entiere", str(contexte.exception))
+
+    def test_l_attente_a_une_borne(self):
+        """Un autre fil qui remplit sans cesse la meme cle : on n'attend pas
+        indefiniment, on le dit."""
+        premiere = self.lot.cles[0]
+        rpm = self.cerebras.quota("standard").rpm
+
+        def patienter_pendant_qu_un_autre_consomme(secondes):
+            self._patienter(secondes)
+            self._appels(premiere, rpm, il_y_a=1)
+
+        with mock.patch("time.time", lambda: self.horloge[0]), \
+                mock.patch.object(llm, "_patienter",
+                                  patienter_pendant_qu_un_autre_consomme), \
+                mock.patch.object(pool_cles, "pool",
+                                  return_value=pool_cles.Pool("cerebras", [premiere])), \
+                mock.patch.object(llm, "post_json", return_value=_reponse()), \
+                mock.patch.object(config, "active_providers",
+                                  return_value=[self.cerebras]):
+            self._appels(premiere, rpm, il_y_a=1)
+            with self.assertRaises(llm.PlusDeFournisseur) as contexte:
+                llm.generer("court", cache=False)
+        self.assertLessEqual(sum(self.attentes), llm.ATTENTE_PAR_MINUTE_MAX + 62)
+        self.assertIn("limite par minute", str(contexte.exception))
+
+
 if __name__ == "__main__":
     unittest.main()
 
