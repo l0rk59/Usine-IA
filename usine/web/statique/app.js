@@ -467,7 +467,9 @@ $('docteur-lancer').addEventListener('click', async () => {
     }
   }
   $('docteur').innerHTML =
-    `<div class="verdict-bloc ${d.verdict.etat === 'bloque' ? '' : 'gagnant'}">
+    /* « essai » n'est pas une reussite : sans cle, l'usine demarre et
+       s'arrete sur un quota que personne ne publie. */
+    `<div class="verdict-bloc ${['pret', 'local'].includes(d.verdict.etat) ? 'gagnant' : ''}">
        <strong>${echapper(d.verdict.etat)}</strong>
        <div>${echapper(d.verdict.message)}${d.verdict.remede
          ? `<br><code>${echapper(d.verdict.remede)}</code>` : ''}</div></div>`
@@ -484,10 +486,32 @@ $('docteur-lancer').addEventListener('click', async () => {
         : 'Reseau indisponible — seule l\'IA locale fonctionnera')
     + ligne(d.node, d.node ? 'Node.js present : verification complete du JavaScript'
         : 'Node.js absent : JavaScript verifie en mode degrade')
-    + (d.locaux.length
-        ? ligne(true, 'IA locale : ' + d.locaux.join(', '))
-        : ligne(true, 'Aucune IA locale detectee'));
+    + lignesLocaux(d.serveurs_locaux || []);
 });
+
+/* Un serveur local qui repond n'est pas un serveur pret : ollama demarre
+   sans aucun modele. La page disait « IA locale : ollama » dans ce cas. */
+function lignesLocaux(serveurs) {
+  const repondent = serveurs.filter((s) => s.repond);
+  if (!repondent.length) {
+    return '<div class="controle bon">Aucune IA locale detectee</div>';
+  }
+  return repondent.map((s) => {
+    let texte;
+    let bon = true;
+    if (s.modeles === null) {
+      texte = `IA locale : ${s.nom} (liste des modeles illisible)`;
+    } else if (!s.utilisable) {
+      bon = false;
+      texte = `IA locale : ${s.nom} repond, mais ne sert aucun modele qui ecrit`
+        + (s.nom === 'ollama' ? ` — ollama pull ${s.attendu}` : '');
+    } else {
+      texte = `IA locale : ${s.nom}, modele ${s.utilisable}`
+        + (s.utilisable !== s.attendu ? ` (« ${s.attendu} » absent)` : '');
+    }
+    return `<div class="controle ${bon ? 'bon' : 'souci'}">${echapper(texte)}</div>`;
+  }).join('');
+}
 
 /* --------------------------------------------------- commerce et doublons */
 async function chargerCommerce() {

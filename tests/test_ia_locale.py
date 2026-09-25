@@ -31,15 +31,32 @@ def setUpModule():
 class FauxServeur:
     """Un serveur compatible OpenAI, qui se comporte comme on le lui dit."""
 
-    def __init__(self, comportement="ok", texte="Reponse du modele local."):
+    def __init__(self, comportement="ok", texte="Reponse du modele local.",
+                 modeles=("qwen2.5:3b",)):
         self.comportement = comportement
         self.texte = texte
+        # Ce que « /models » annonce. None : ce que rend un ollama neuf, sans
+        # aucun modele tire — « "data": null », pas une liste vide.
+        self.modeles = modeles
         self.requetes = []
         serveur_ref = self
 
         class Poignee(BaseHTTPRequestHandler):
             def log_message(self, *args):
                 pass
+
+            def do_GET(self):
+                if serveur_ref.modeles == "illisible":
+                    corps = b"<html>pas une liste</html>"
+                    self.send_response(200)
+                    self.send_header("Content-Length", str(len(corps)))
+                    self.end_headers()
+                    self.wfile.write(corps)
+                    return
+                donnees = (None if serveur_ref.modeles is None else
+                           [{"id": m, "object": "model"}
+                            for m in serveur_ref.modeles])
+                self._repondre(200, {"object": "list", "data": donnees})
 
             def do_POST(self):
                 taille = int(self.headers.get("Content-Length") or 0)
@@ -229,6 +246,123 @@ class TestGenerationLocale(unittest.TestCase):
         with FauxServeur() as serveur, Atelier("ollama", serveur.url):
             llm.generer("Bonjour, compte-moi.", cache=False)
         self.assertEqual(store.compteur_jour("ollama"), avant + 1)
+
+
+class _LlamacppEteint:
+    """llama.cpp ecoute sur 8080 : un serveur de developpement y repond
+    peut-etre. Le port 1 ne repond jamais, ce qui rend le test deterministe."""
+
+    def __enter__(self):
+        self._url = config.PROVIDERS_BY_NAME["llamacpp"].base_url
+        config.PROVIDERS_BY_NAME["llamacpp"].base_url = "http://127.0.0.1:1/v1"
+        return self
+
+    def __exit__(self, *args):
+        config.PROVIDERS_BY_NAME["llamacpp"].base_url = self._url
+
+
+class TestCeQueSertLeServeurLocal(unittest.TestCase):
+    """« Production hors ligne possible » pour un serveur qui ne sert rien.
+
+    La verification du modele vivait dans la ligne de commande. Elle a perdu
+    son appelant le 12/09/2026, quand les controles sont passes dans
+    « core.diagnostic », et le diagnostic s'est contente depuis d'un « 200 ».
+    Or ollama demarre sans aucun modele.
+    """
+
+    def _sonder(self, **options):
+        from usine.core import diagnostic
+
+        with FauxServeur(**options) as serveur, \
+                Atelier("ollama", serveur.url), _LlamacppEteint():
+            serveurs = {s["nom"]: s for s in diagnostic.serveurs_locaux()}
+            actifs = diagnostic.locaux_actifs()
+        return serveurs["ollama"], actifs
+
+    def test_un_ollama_sans_modele_n_est_pas_une_ia_prete(self):
+        ollama, actifs = self._sonder(modeles=None)
+        self.assertTrue(ollama["repond"])
+        self.assertEqual(ollama["modeles"], [])
+        self.assertNotIn("ollama", actifs)
+
+    def test_un_ollama_qui_sert_le_modele_attendu_est_pret(self):
+        ollama, actifs = self._sonder()
+        self.assertEqual(ollama["utilisable"], "qwen2.5:3b")
+        self.assertIn("ollama", actifs)
+
+    def test_un_modele_voisin_n_est_pas_le_modele_attendu(self):
+        """L'ancien controle prenait « qwen2.5:0.5b » pour « qwen2.5:3b » :
+        il comparait le prefixe avant les deux-points."""
+        ollama, actifs = self._sonder(modeles=("qwen2.5:0.5b",))
+        self.assertEqual(ollama["utilisable"], "qwen2.5:0.5b")
+        self.assertNotEqual(ollama["utilisable"], ollama["attendu"])
+        self.assertIn("ollama", actifs)  # le routeur le prendra a sa place
+
+    def test_un_nom_sans_etiquette_est_servi_sous_latest(self):
+        ollama_conf = config.PROVIDERS_BY_NAME["ollama"]
+        anciens = dict(ollama_conf.models)
+        ollama_conf.models["standard"] = "llama3.2"
+        try:
+            ollama, _ = self._sonder(modeles=("nomic-embed-text:latest",
+                                              "llama3.2:latest"))
+        finally:
+            ollama_conf.models.clear()
+            ollama_conf.models.update(anciens)
+        self.assertEqual(ollama["utilisable"], "llama3.2")
+
+    def test_un_serveur_d_embeddings_n_ecrit_rien(self):
+        ollama, actifs = self._sonder(modeles=("nomic-embed-text:latest",))
+        self.assertEqual(ollama["utilisable"], "")
+        self.assertNotIn("ollama", actifs)
+
+    def test_une_liste_illisible_ne_fait_accuser_personne(self):
+        """On ne sait pas : on ne l'ecarte pas, comme avant."""
+        ollama, actifs = self._sonder(modeles="illisible")
+        self.assertIsNone(ollama["modeles"])
+        self.assertIn("ollama", actifs)
+
+    def test_un_serveur_eteint_ne_repond_pas(self):
+        from usine.core import diagnostic
+
+        with _LlamacppEteint():
+            serveurs = {s["nom"]: s for s in diagnostic.serveurs_locaux()}
+        self.assertFalse(serveurs["llamacpp"]["repond"])
+
+
+class TestDocteurLocal(unittest.TestCase):
+    """Ce que « usine docteur » ecrit d'un serveur local."""
+
+    def _ecrire(self, serveur):
+        import io
+        from contextlib import redirect_stdout
+
+        from usine import cli
+
+        sortie = io.StringIO()
+        with redirect_stdout(sortie):
+            cli._afficher_local(dict({"nom": "ollama", "attendu": "qwen2.5:3b",
+                                      "modeles": None, "utilisable": ""},
+                                     **serveur))
+        return sortie.getvalue()
+
+    def test_un_ollama_eteint_n_a_pas_de_coche_verte(self):
+        """Un fournisseur local est toujours « disponible » : c'est une
+        adresse. La liste cochait en vert un ollama jamais installe."""
+        texte = self._ecrire({"repond": False})
+        self.assertIn("ne repond pas", texte)
+        self.assertIn("ollama serve", texte)
+        self.assertNotIn("v", texte.split("ollama")[0])
+
+    def test_un_ollama_vide_donne_la_commande_qui_manque(self):
+        texte = self._ecrire({"repond": True, "modeles": []})
+        self.assertIn("ne sert aucun modele", texte)
+        self.assertIn("ollama pull qwen2.5:3b", texte)
+
+    def test_un_remplacant_est_annonce(self):
+        texte = self._ecrire({"repond": True, "modeles": ["qwen2.5:0.5b"],
+                              "utilisable": "qwen2.5:0.5b"})
+        self.assertIn("qwen2.5:0.5b", texte)
+        self.assertIn("« qwen2.5:3b » absent", texte)
 
 
 if __name__ == "__main__":

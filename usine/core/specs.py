@@ -227,12 +227,24 @@ def _manques(releve: Dict[str, Any]) -> List[Dict[str, str]]:
                         "donc de les recuperer depuis une autre application",
         })
     if not any(f["nb_cles"] for f in releve["fournisseurs"]):
+        # La fiche du telephone disait « bloquant » avec ollama installe, et
+        # « ne suffit pas a un produit entier » d'un quota que personne ne
+        # publie. Elle dit ce qui reste, avec les mots de la fiche du
+        # fournisseur ; la fiche ne sonde aucun serveur, donc elle ne sait
+        # pas si ollama sert un modele et le dit.
+        ollama = any(b["nom"] == "ollama" and b["present"]
+                     for b in releve["binaires"])
         manques.append({
             "quoi": "une cle API",
-            "gravite": "bloquant",
+            "gravite": "recommande" if ollama else "bloquant",
             "commande": "usine cles",
-            "pourquoi": "sans cle, seul le quota anonyme partage est "
-                        "disponible et il ne suffit pas a un produit entier",
+            "pourquoi": (
+                "sans cle, l'usine produit avec ollama s'il sert un modele "
+                "(« ollama pull »), en plusieurs minutes par chapitre"
+                if ollama else
+                "sans cle, il ne reste que le palier anonyme de Pollinations : "
+                "quota non publie, partage par adresse IP — assez pour "
+                "essayer, pas pour produire en volume"),
         })
     return manques
 

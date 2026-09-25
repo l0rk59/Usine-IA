@@ -40,21 +40,81 @@ def espace_libre() -> Dict[str, Any]:
             "total_mo": usage.total // (1024 * 1024)}
 
 
-def locaux_actifs(timeout: int = 3) -> List[str]:
-    """Serveurs d'IA locale qui repondent vraiment."""
+def serveurs_locaux(timeout: int = 3) -> List[Dict[str, Any]]:
+    """Ce que chaque serveur d'IA locale sert reellement.
+
+    Un serveur qui repond n'est pas un serveur pret : ollama demarre sans
+    aucun modele. « ollama serve » lance, « ollama pull » oublie, et le
+    diagnostic annoncait « production hors ligne possible » pour un serveur
+    qui ne pouvait rien ecrire. La verification du modele existait dans la
+    ligne de commande ; elle a perdu son appelant le 12/09/2026, quand les
+    controles ont demenage ici, et plus rien ne la faisait.
+
+    « modeles » vaut None quand la liste ne se lit pas : on ne sait pas, et
+    on ne le confond pas avec « aucun modele ».
+    """
+    from . import modeles as module_modeles
     from .http import HttpErreur, requete
 
-    actifs: List[str] = []
+    serveurs: List[Dict[str, Any]] = []
     for nom in ("ollama", "llamacpp"):
         fournisseur = config.PROVIDERS_BY_NAME[nom]
+        attendu = fournisseur.model_for("standard")
+        ligne: Dict[str, Any] = {"nom": nom, "repond": False, "modeles": None,
+                                 "attendu": attendu, "utilisable": ""}
+        serveurs.append(ligne)
         url = fournisseur.base_url.rstrip("/") + "/models"
         try:
-            statut, _ = requete(url, timeout=timeout)
+            statut, corps = requete(url, timeout=timeout)
         except (HttpErreur, OSError):
             continue
-        if statut == 200:
-            actifs.append(nom)
-    return actifs
+        if statut != 200:
+            continue
+        ligne["repond"] = True
+        ligne["modeles"] = _modeles_servis(corps)
+        if ligne["modeles"]:
+            # ollama sert « llama3.2 » sous le nom « llama3.2:latest » : un
+            # nom sans etiquette n'est pas absent.
+            if attendu + ":latest" in ligne["modeles"]:
+                ligne["utilisable"] = attendu
+                continue
+            # Le choix du routeur, pas un autre : quand le modele configure
+            # manque, il prend celui-la a sa place (« modeles.substituer »).
+            # Un serveur qui ne sert que des modeles d'embeddings n'ecrit rien.
+            ligne["utilisable"] = module_modeles.choisir(
+                ligne["modeles"], "standard", prefere=attendu)
+    return serveurs
+
+
+def _modeles_servis(corps: bytes) -> Optional[List[str]]:
+    try:
+        charge = json.loads(corps.decode("utf-8", "replace"))
+    except ValueError:
+        return None
+    if not isinstance(charge, dict) or "data" not in charge:
+        return None
+    # ollama sans aucun modele rend « "data": null », pas une liste vide.
+    entrees = charge["data"] or []
+    if not isinstance(entrees, list):
+        return None
+    return [str(e.get("id")) for e in entrees
+            if isinstance(e, dict) and e.get("id")]
+
+
+def local_pret(serveur: Dict[str, Any]) -> bool:
+    """Le serveur repond, et sert un modele qui ecrit.
+
+    Une liste illisible compte comme prete : on ne sait pas, et accuser un
+    serveur qui marche peut-etre ferait chercher une panne qui n'existe pas.
+    """
+    if not serveur["repond"]:
+        return False
+    return serveur["modeles"] is None or bool(serveur["utilisable"])
+
+
+def locaux_actifs(timeout: int = 3) -> List[str]:
+    """Serveurs d'IA locale qui repondent ET servent un modele qui ecrit."""
+    return [s["nom"] for s in serveurs_locaux(timeout) if local_pret(s)]
 
 
 def _catalogue_distant(fournisseur: config.Provider,
@@ -126,7 +186,7 @@ def modeles_disparus(timeout: int = 10) -> Dict[str, Any]:
     injoignables: List[str] = []
     for fournisseur in config.active_providers():
         if fournisseur.local:
-            continue  # un modele local se verifie deja par « locaux_actifs »
+            continue  # un modele local se verifie deja par « serveurs_locaux »
         servis = _catalogue_distant(fournisseur, timeout)
         if servis is None:
             injoignables.append(fournisseur.name)
@@ -671,7 +731,20 @@ def etat_installation(avec_reseau: bool = True,
     # lance quand plus rien ne marche.
     base = store.diagnostic_base()
     fournisseurs = llm.diagnostic(compteurs=not base)
-    distants = [f for f in fournisseurs if f["disponible"] and not f["local"]]
+    # Seuls comptent ceux que le routeur appellera : « USINE_PROVIDERS » peut
+    # en ecarter.
+    appeles = set(config.provider_order())
+    distants = [f for f in fournisseurs
+                if f["disponible"] and not f["local"] and f["nom"] in appeles]
+    # Le palier anonyme de Pollinations est toujours « disponible », cle ou
+    # pas. Le compter comme un fournisseur pret faisait dire a « docteur »
+    # « L'usine peut produire » sur une installation sans aucune cle — alors
+    # que le menu et le tableau de bord, au meme moment, disaient « quota tres
+    # limite ». Le verdict « bloque » n'etait plus atteignable, ni le verdict
+    # « local » : la commande qu'on lance quand rien ne marche ne pouvait
+    # plus le dire.
+    avec_cle = [f for f in distants if f["nb_cles"]]
+    anonymes = [f["nom"] for f in distants if not f["nb_cles"]]
 
     etat: Dict[str, Any] = {
         "python": sys.version.split()[0],
@@ -681,13 +754,16 @@ def etat_installation(avec_reseau: bool = True,
         "espace": espace_libre(),
         "telephone": telephone.etat(),
         "fournisseurs": fournisseurs,
-        "distants_prets": len(distants),
+        "distants_prets": len(avec_cle),
+        "anonymes": anonymes,
         "pool": pool_cles.resume(),
         "base": base,
         "consommation": {} if base else store.stats_fournisseurs(),
     }
     etat["reseau"] = _reseau() if avec_reseau else None
-    etat["locaux"] = locaux_actifs() if avec_locaux else []
+    etat["serveurs_locaux"] = serveurs_locaux() if avec_locaux else []
+    etat["locaux"] = [s["nom"] for s in etat["serveurs_locaux"]
+                      if local_pret(s)]
     # Une requete par fournisseur : assez lent pour ne pas le faire a chaque
     # rafraichissement du tableau de bord, assez important pour que
     # « usine docteur --modeles » existe.
@@ -727,5 +803,15 @@ def _verdict(etat: Dict[str, Any]) -> Dict[str, str]:
                 "message": "IA locale detectee : {}. Production hors ligne "
                            "possible, mais comptez plusieurs minutes par "
                            "chapitre.".format(", ".join(etat["locaux"]))}
+    if etat.get("anonymes"):
+        # Ni « pret » ni « bloque » : l'usine demarre, et s'arretera sur un
+        # quota que personne ne publie. Les mots sont ceux de la fiche du
+        # fournisseur (config.py), poses a son integration.
+        return {"etat": "essai", "remede": "usine cles",
+                "message": "Aucune cle API : seul le palier anonyme de {} "
+                           "repond. Son quota n'est pas publie et il est "
+                           "partage par adresse IP : assez pour essayer "
+                           "l'usine, pas pour produire en volume."
+                           .format(", ".join(etat["anonymes"]))}
     return {"etat": "bloque", "remede": "usine cles",
             "message": "Aucun fournisseur pret. Lancez « usine cles »."}

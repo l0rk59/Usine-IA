@@ -441,9 +441,9 @@ class DocteurAvecUneCle(unittest.TestCase):
         # « cmd_docteur » sonde le reseau et les serveurs locaux. On coupe les
         # deux plutot que d'appeler etat_installation nous-memes : c'est
         # justement le chemin reel de la commande qu'on veut voir tourner.
-        reseau, locaux = module_diagnostic._reseau, module_diagnostic.locaux_actifs
+        reseau, locaux = module_diagnostic._reseau, module_diagnostic.serveurs_locaux
         module_diagnostic._reseau = lambda: False
-        module_diagnostic.locaux_actifs = lambda timeout=3: []
+        module_diagnostic.serveurs_locaux = lambda timeout=3: []
         os.environ["GROQ_API_KEY"] = "gsk_" + "0" * 32
         try:
             pool_cles.oublier()
@@ -452,11 +452,122 @@ class DocteurAvecUneCle(unittest.TestCase):
                 code = cli.cmd_docteur(_Sansargument())
             texte = sortie.getvalue()
         finally:
-            module_diagnostic._reseau, module_diagnostic.locaux_actifs = reseau, locaux
+            module_diagnostic._reseau, module_diagnostic.serveurs_locaux = reseau, locaux
             os.environ.pop("GROQ_API_KEY", None)
             pool_cles.oublier()
         self.assertEqual(code, 0)
         self.assertIn("Pool de cles", texte)
+
+
+class DocteurSansCle(unittest.TestCase):
+    """Le cas du telephone : aucune cle, et « docteur » disait « pret ».
+
+    Le palier anonyme de Pollinations est toujours « disponible ». Le compter
+    comme un fournisseur pret faisait ecrire « L'usine peut produire » sur
+    une installation sans aucune cle, pendant que le menu et le tableau de
+    bord disaient « quota tres limite ». Les verdicts « bloque » et « local »
+    n'etaient plus atteignables.
+    """
+
+    def _etat(self, ordre=None, cles=()):
+        import os
+        from unittest import mock
+
+        from usine.core import cles as pool_cles
+        from usine.core import diagnostic as module_diagnostic
+
+        variables = {p.api_key_env: "" for p in config.PROVIDERS
+                     if p.api_key_env}
+        variables.update(dict(cles))
+        if ordre is not None:
+            variables["USINE_PROVIDERS"] = ordre
+        with mock.patch.dict(os.environ, variables):
+            if ordre is None:
+                os.environ.pop("USINE_PROVIDERS", None)
+            pool_cles.oublier()
+            try:
+                return module_diagnostic.etat_installation(
+                    avec_reseau=False, avec_locaux=False)
+            finally:
+                pool_cles.oublier()
+
+    def test_sans_cle_le_verdict_n_est_pas_pret(self):
+        etat = self._etat()
+        self.assertEqual(etat["distants_prets"], 0)
+        self.assertEqual(etat["anonymes"], ["pollinations"])
+        self.assertEqual(etat["verdict"]["etat"], "essai")
+        self.assertEqual(etat["verdict"]["remede"], "usine cles")
+        self.assertNotIn("peut produire", etat["verdict"]["message"])
+
+    def test_une_cle_rend_le_verdict_pret(self):
+        etat = self._etat(cles={"GROQ_API_KEY": "gsk_" + "A" * 32})
+        self.assertEqual(etat["distants_prets"], 1)
+        self.assertEqual(etat["verdict"]["etat"], "pret")
+
+    def test_un_fournisseur_que_le_routeur_n_appelle_pas_ne_compte_pas(self):
+        """« USINE_PROVIDERS » ecarte Pollinations : il ne reste rien."""
+        etat = self._etat(ordre="groq,ollama")
+        self.assertEqual(etat["anonymes"], [])
+        self.assertEqual(etat["verdict"]["etat"], "bloque")
+
+    def test_une_ia_locale_prete_passe_avant_le_palier_anonyme(self):
+        from usine.core import diagnostic as module_diagnostic
+
+        verdict = module_diagnostic._verdict(
+            {"distants_prets": 0, "locaux": ["ollama"],
+             "anonymes": ["pollinations"]})
+        self.assertEqual(verdict["etat"], "local")
+
+    def test_la_liste_des_fournisseurs_ne_coche_pas_un_ollama_eteint(self):
+        """Un fournisseur local est toujours « disponible » : c'est une
+        adresse, pas une preuve. La ligne portait une coche verte."""
+        import io
+        from contextlib import redirect_stdout
+
+        from usine.core import diagnostic as module_diagnostic
+
+        eteints = [{"nom": nom, "repond": False, "modeles": None,
+                    "attendu": "x", "utilisable": ""}
+                   for nom in ("ollama", "llamacpp")]
+        reseau, locaux = module_diagnostic._reseau, module_diagnostic.serveurs_locaux
+        module_diagnostic._reseau = lambda: False
+        module_diagnostic.serveurs_locaux = lambda timeout=3: eteints
+        try:
+            sortie = io.StringIO()
+            with redirect_stdout(sortie):
+                cli.cmd_docteur(_Sansargument())
+        finally:
+            module_diagnostic._reseau, module_diagnostic.serveurs_locaux = reseau, locaux
+        lignes = [l for l in sortie.getvalue().splitlines()
+                  if " ollama " in l and "local" in l]
+        self.assertEqual(len(lignes), 1, sortie.getvalue())
+        self.assertIn("ne repond pas", lignes[0])
+
+    def test_la_ligne_de_commande_ne_coche_pas_l_essai(self):
+        """« ok » en vert devant « aucune cle » se lit « tout va bien »."""
+        import io
+        from contextlib import redirect_stdout
+
+        from usine.core import diagnostic as module_diagnostic
+
+        reseau, locaux = module_diagnostic._reseau, module_diagnostic.serveurs_locaux
+        etat_reel = module_diagnostic.etat_installation
+        module_diagnostic._reseau = lambda: False
+        module_diagnostic.serveurs_locaux = lambda timeout=3: []
+        module_diagnostic.etat_installation = (
+            lambda **k: dict(etat_reel(**k), verdict={
+                "etat": "essai", "remede": "usine cles",
+                "message": "Aucune cle API : palier anonyme"}))
+        try:
+            sortie = io.StringIO()
+            with redirect_stdout(sortie):
+                cli.cmd_docteur(_Sansargument())
+        finally:
+            module_diagnostic._reseau, module_diagnostic.serveurs_locaux = reseau, locaux
+            module_diagnostic.etat_installation = etat_reel
+        ligne = [l for l in sortie.getvalue().splitlines()
+                 if "palier anonyme" in l][0]
+        self.assertNotIn("[ok]", ligne)
 
 
 class _Sansargument:

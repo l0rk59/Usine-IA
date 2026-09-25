@@ -987,12 +987,12 @@ class TestDocteur(BaseServeur):
         # Les deux controles reseau sont neutralises : la suite ne doit
         # dependre d'aucune connexion.
         with mock.patch.object(diagnostic, "_reseau", lambda: True), \
-                mock.patch.object(diagnostic, "locaux_actifs", lambda **k: []):
+                mock.patch.object(diagnostic, "serveurs_locaux", lambda **k: []):
             _, etat = self.json("/api/docteur")
         for cle in ("python", "workdir", "env_present", "node", "espace",
                     "fournisseurs", "verdict", "reseau", "locaux"):
             self.assertIn(cle, etat)
-        self.assertIn(etat["verdict"]["etat"], ("pret", "local", "bloque"))
+        self.assertIn(etat["verdict"]["etat"], ("pret", "local", "essai", "bloque"))
         self.assertTrue(etat["verdict"]["message"])
 
     def test_le_verdict_dit_quoi_faire_quand_rien_n_est_pret(self):
@@ -1012,7 +1012,8 @@ class TestDocteur(BaseServeur):
         self.assertIn("module_diagnostic.etat_installation(", source)
         # Ce que le garde-fou surveille vraiment : que « docteur » n'aille pas
         # refaire lui-meme un controle que le module porte deja.
-        for refait in ("shutil.disk_usage", "def _reseau", "locaux_actifs()"):
+        for refait in ("shutil.disk_usage", "def _reseau", "locaux_actifs()",
+                       "serveurs_locaux()"):
             self.assertNotIn(refait, source)
 
     def _faux_catalogue(self, servis, statut=200):

@@ -2225,9 +2225,15 @@ def cmd_docteur(args: argparse.Namespace) -> int:
 
     titre_console("Fournisseurs IA")
     lignes = etat["fournisseurs"]
+    serveurs = {s["nom"]: s for s in etat.get("serveurs_locaux", [])}
     for ligne in lignes:
         genre = "local" if ligne["local"] else ("sans cle" if ligne["sans_cle"] else "cle API")
-        if ligne["disponible"]:
+        if ligne["local"] and ligne["nom"] in serveurs:
+            # Un fournisseur local est toujours « disponible » : c'est une
+            # adresse, pas une preuve. La coche verte s'affichait pour un
+            # ollama jamais installe ; ce qui compte est ce qu'il sert.
+            _afficher_local(serveurs[ligne["nom"]])
+        elif ligne["disponible"]:
             nb = ligne.get("nb_cles", 0)
             suffixe = " [{} cles]".format(nb) if nb > 1 else ""
             # Le plafond en jetons est souvent celui qui s'epuise le premier :
@@ -2432,7 +2438,7 @@ def cmd_docteur(args: argparse.Namespace) -> int:
 
     titre_console("Verdict")
     verdict = etat["verdict"]
-    (alerte if verdict["etat"] == "bloque" else ok)(verdict["message"])
+    (ok if verdict["etat"] in ("pret", "local") else alerte)(verdict["message"])
     if verdict["etat"] == "local":
         print("      Comptez plusieurs minutes par chapitre : un modele de 3")
         print("      milliards de parametres produit 3 a 10 jetons par seconde")
@@ -2469,31 +2475,39 @@ def cmd_docteur(args: argparse.Namespace) -> int:
     return 0
 
 
-def _detailler_local(fournisseur, corps: bytes) -> None:
-    """Dit si le modele attendu est REELLEMENT present sur le serveur.
+def _afficher_local(serveur: Dict[str, Any]) -> None:
+    """Ce que sert un serveur local, ou le geste qui lui manque.
 
-    Un serveur qui repond n'est pas un serveur pret : ollama demarre sans
-    aucun modele. « ollama serve » lance, « ollama pull » oublie, et la
-    production echouait au premier chapitre avec un 404 que rien
-    n'expliquait.
+    L'ancienne version etait restee sans appelant depuis que les controles
+    ont demenage dans « core.diagnostic » ; elle se taisait de toute facon
+    sur le seul cas qu'elle decrivait — un ollama sans aucun modele — et
+    prenait « qwen2.5:0.5b » pour « qwen2.5:3b », a cause d'un prefixe.
     """
-    attendu = fournisseur.model_for("standard")
-    try:
-        charge = json.loads(corps.decode("utf-8", "replace"))
-        presents = [str(m.get("id") or "") for m in (charge.get("data") or [])]
-    except (ValueError, AttributeError):
-        presents = []
-    if not presents:
+    nom, attendu = serveur["nom"], serveur["attendu"]
+    tete = "  {} {:<13} {:<9} "
+    if not serveur["repond"]:
+        print(tete.format(_c("-", "90"), nom, "local") + "ne repond pas — "
+              + config.PROVIDERS_BY_NAME[nom].signup)
         return
-    if any(attendu == m or m.startswith(attendu.split(":")[0])
-           for m in presents):
-        ok("  {} : modele « {} » present".format(fournisseur.name, attendu))
-    else:
-        alerte("  {} repond, mais « {} » n'y est pas.".format(
-            fournisseur.name, attendu))
-        print("      Presents : {}".format(", ".join(presents[:4]) or "aucun"))
-        if fournisseur.name == "ollama":
+    if serveur["modeles"] is None:
+        print(tete.format(_c("v", "32"), nom, "local") + attendu
+              + _c("  (liste des modeles illisible)", "90"))
+        return
+    if not serveur["utilisable"]:
+        servis = ", ".join(serveur["modeles"][:3])
+        print(tete.format(_c("!", "33"), nom, "local")
+              + ("repond, mais ne sert aucun modele qui ecrit ({})".format(servis)
+                 if servis else "repond, mais ne sert aucun modele"))
+        if nom == "ollama":
             print("      " + _c("ollama pull " + attendu, "1"))
+        return
+    remarque = ""
+    if serveur["utilisable"] != attendu:
+        # Le routeur prendra celui-la : autant le dire avant qu'il le fasse.
+        remarque = _c("  (« {} » absent : celui-ci le remplacera)".format(
+            attendu), "90")
+    print(tete.format(_c("v", "32"), nom, "local") + serveur["utilisable"]
+          + remarque)
 
 
 def cmd_cles(args: argparse.Namespace) -> int:

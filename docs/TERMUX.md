@@ -147,6 +147,42 @@ API) et reste moins bonne sur les plans structurés en JSON. Utilisez-la comme
 filet de sécurité, pas comme moteur principal — c'est exactement la place que
 lui donne la chaîne de bascule.
 
+### Ce que « docteur » vérifie, et ce qu'il disait à tort
+
+`usine docteur` demande à chaque serveur local **ce qu'il sert**, pas
+seulement s'il répond. Une ligne par serveur :
+
+| Ce qui s'affiche | Ce que cela veut dire |
+|---|---|
+| `v ollama local qwen2.5:3b` | prêt, avec le modèle configuré |
+| `v ollama local qwen2.5:0.5b (« qwen2.5:3b » absent : …)` | prêt, mais c'est ce modèle-là qui écrira |
+| `! ollama local repond, mais ne sert aucun modele` | `ollama pull` a été oublié |
+| `- ollama local ne repond pas` | le serveur n'est pas lancé |
+
+Trois défauts, corrigés le 25/09/2026, que la fiche du téléphone rendait
+visibles (ollama installé, aucune clé) :
+
+- **Sans aucune clé, le verdict était « prêt, l'usine peut produire ».** Le
+  palier anonyme de Pollinations est toujours disponible, et il comptait
+  comme un fournisseur prêt. Au même moment, le menu et le tableau de bord
+  disaient « quota très limité ». Le verdict est désormais **« essai »** :
+  l'usine démarre, sur un quota que Pollinations ne publie pas. Et les
+  verdicts « bloqué » et « local », qui ne pouvaient plus s'afficher, le
+  peuvent de nouveau.
+- **Un ollama sans aucun modèle passait pour une IA locale prête.** La
+  vérification du modèle existait, mais elle avait perdu son appelant le
+  12/09/2026 ; elle se taisait d'ailleurs sur ce cas précis, et prenait
+  `qwen2.5:0.5b` pour `qwen2.5:3b` parce qu'elle ne comparait que le début du
+  nom. Le routeur, qui attend un serveur local pour reprendre, s'y fiait
+  aussi.
+- **La liste des fournisseurs cochait en vert un ollama jamais installé.**
+  Un fournisseur local est toujours « disponible » : c'est une adresse, pas
+  une preuve.
+
+`usine specs` ne sonde aucun serveur. Avec ollama installé et sans clé, sa
+fiche classe la clé en « recommandé » et non plus en « bloquant » — sans
+prétendre savoir si un modèle est tiré.
+
 ---
 
 ## Problèmes courants

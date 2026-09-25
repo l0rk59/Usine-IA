@@ -108,6 +108,35 @@ class FicheTechnique(unittest.TestCase):
         manques = specs._manques(faux)
         self.assertFalse([m for m in manques if m["quoi"].startswith("termux-")])
 
+    def _manque_de_cle(self, ollama_present):
+        faux = dict(self.releve)
+        faux["fournisseurs"] = [dict(f, nb_cles=0)
+                                for f in self.releve["fournisseurs"]]
+        faux["binaires"] = [dict(b, present=ollama_present)
+                            if b["nom"] == "ollama" else b
+                            for b in self.releve["binaires"]]
+        return [m for m in specs._manques(faux) if m["quoi"] == "une cle API"][0]
+
+    def test_sans_cle_avec_ollama_la_cle_n_est_pas_bloquante(self):
+        """La fiche du telephone, le 14/09/2026 : ollama present, et « une
+        cle API » marquee bloquante — l'usine produit pourtant avec ollama."""
+        manque = self._manque_de_cle(ollama_present=True)
+        self.assertEqual(manque["gravite"], "recommande")
+        self.assertIn("ollama pull", manque["pourquoi"])
+
+    def test_sans_cle_ni_ollama_la_cle_est_bloquante(self):
+        manque = self._manque_de_cle(ollama_present=False)
+        self.assertEqual(manque["gravite"], "bloquant")
+        self.assertIn("Pollinations", manque["pourquoi"])
+
+    def test_la_fiche_n_enonce_pas_un_quota_que_personne_ne_publie(self):
+        """« il ne suffit pas a un produit entier » : aucune mesure derriere.
+        Le fournisseur ne publie pas son quota anonyme."""
+        for present in (True, False):
+            with self.subTest(ollama=present):
+                self.assertNotIn("produit entier",
+                                 self._manque_de_cle(present)["pourquoi"])
+
     def test_la_commande_ecrit_le_fichier_et_le_dit(self):
         cible = config.WORKDIR / "fiche-essai.md"
         code, texte = _muet(["specs", "--vers", str(cible)])
