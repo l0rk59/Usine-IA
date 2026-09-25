@@ -308,8 +308,21 @@ def _apres_production(args: argparse.Namespace, ctx: Contexte,
     )
 
 
-def _resume_console(resume: Dict[str, Any]) -> None:
-    titre_console("Produit livre")
+def _resume_console(resume: Dict[str, Any]) -> int:
+    """Ce qui a ete fabrique, et le code de sortie qui va avec.
+
+    Un produit inacheve — des sections reduites a leur plan, faute de
+    fournisseur — s'annoncait « Produit livre » a la console, « Produit
+    pret » dans la notification du telephone, et la commande rendait 0.
+    Mesure du 25/09/2026, sans cle : sept sections sur sept manquaient, et
+    tout disait le contraire. Il s'annonce maintenant pour ce qu'il est, et
+    la commande rend 3, comme quand les fournisseurs se taisent avant meme
+    qu'il commence : un script qui enchaine les fabrications doit pouvoir
+    le savoir.
+    """
+    fiche = store.lire_produit(str(resume.get("produit_id") or "")) or {}
+    inacheve = apres.pas_encore_vendable(fiche)
+    titre_console("Produit inacheve" if inacheve else "Produit livre")
     print("  " + _c(resume["titre"], "1"))
     print("  Dossier : " + resume["dossier"])
     for nom in resume.get("fichiers", []):
@@ -323,8 +336,12 @@ def _resume_console(resume: Dict[str, Any]) -> None:
         "termux-open '{}'".format(a_ouvrir), "2"))
     # Une fabrication dure 10 a 20 minutes : personne ne regarde le terminal
     # pendant ce temps. La notification est ce qui rappelle le telephone.
+    if inacheve:
+        alerte(inacheve[0].upper() + inacheve[1:])
     if reglages.lire("notifications", True):
-        telephone.notifier("Produit pret", resume["titre"][:70], ouvrir=a_ouvrir)
+        telephone.notifier("Produit inacheve" if inacheve else "Produit pret",
+                           resume["titre"][:70], ouvrir=a_ouvrir)
+    return 3 if inacheve else 0
 
 
 def cmd_ebook(args: argparse.Namespace) -> int:
@@ -339,8 +356,7 @@ def cmd_ebook(args: argparse.Namespace) -> int:
     description = "Ebook de {} chapitres, {} mots. {}".format(
         resume["chapitres"], resume["mots"], resume.get("sous_titre", "")
     )
-    _resume_console(_apres_production(args, ctx, resume, description))
-    return 0
+    return _resume_console(_apres_production(args, ctx, resume, description))
 
 
 def cmd_nouvelle(args: argparse.Namespace) -> int:
@@ -356,8 +372,7 @@ def cmd_nouvelle(args: argparse.Namespace) -> int:
         description = "Tome {} de « {} ». ".format(
             resume["rang"], args.serie) + description
     dire_la_prose(resume)
-    _resume_console(_apres_production(args, ctx, resume, description))
-    return 0
+    return _resume_console(_apres_production(args, ctx, resume, description))
 
 
 def cmd_roman(args: argparse.Namespace) -> int:
@@ -378,8 +393,7 @@ def cmd_roman(args: argparse.Namespace) -> int:
         " — " + resume["sous_titre"] if resume.get("sous_titre") else "",
         resume["scenes"], resume["mots"])
     dire_la_prose(resume)
-    _resume_console(_apres_production(args, ctx, resume, description))
-    return 0
+    return _resume_console(_apres_production(args, ctx, resume, description))
 
 
 def cmd_journal(args: argparse.Namespace) -> int:
@@ -521,8 +535,7 @@ def cmd_auto(args: argparse.Namespace) -> int:
     # Les options propres au type gardent leurs valeurs par defaut : personne
     # n'a pu les donner, puisque le type vient d'etre decide.
     resume = catalogue.executer(fiche.cle, ctx, _defauts_du_type(fiche))
-    _resume_console(_apres_production(args, ctx, resume, fiche.resume))
-    return 0
+    return _resume_console(_apres_production(args, ctx, resume, fiche.resume))
 
 
 def _par_le_catalogue(args: argparse.Namespace, cle: str, ctx: Contexte,
@@ -575,10 +588,9 @@ def cmd_prompts(args: argparse.Namespace) -> int:
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un pack de prompts")
     resume = _par_le_catalogue(args, "prompts", ctx)
-    _resume_console(_apres_production(
+    return _resume_console(_apres_production(
         args, ctx, resume, "Pack de {} prompts professionnels.".format(resume["prompts"])
     ))
-    return 0
 
 
 def cmd_emails(args: argparse.Namespace) -> int:
@@ -587,11 +599,10 @@ def cmd_emails(args: argparse.Namespace) -> int:
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'une sequence e-mail")
     resume = _par_le_catalogue(args, "emails", ctx)
-    _resume_console(_apres_production(
+    return _resume_console(_apres_production(
         args, ctx, resume,
         "Sequence de {} messages, etalee sur {} jours.".format(
             resume["messages"], resume["jours"])))
-    return 0
 
 
 def cmd_memo(args: argparse.Namespace) -> int:
@@ -600,11 +611,10 @@ def cmd_memo(args: argparse.Namespace) -> int:
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un memo")
     resume = _par_le_catalogue(args, "memo", ctx)
-    _resume_console(_apres_production(
+    return _resume_console(_apres_production(
         args, ctx, resume,
         "Memo de {} blocs, {} reperes.".format(
             resume["blocs"], resume["entrees"])))
-    return 0
 
 
 def cmd_quiz(args: argparse.Namespace) -> int:
@@ -613,10 +623,9 @@ def cmd_quiz(args: argparse.Namespace) -> int:
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un quiz")
     resume = _par_le_catalogue(args, "quiz", ctx)
-    _resume_console(_apres_production(
+    return _resume_console(_apres_production(
         args, ctx, resume,
         "Quiz de {} questions, corrige explique.".format(resume["questions"])))
-    return 0
 
 
 def cmd_interactive(args: argparse.Namespace) -> int:
@@ -637,8 +646,7 @@ def cmd_interactive(args: argparse.Namespace) -> int:
     for defaut in resume.get("defauts_restants") or []:
         alerte(defaut)
     dire_la_prose(resume)
-    _resume_console(_apres_production(args, ctx, resume, description))
-    return 0
+    return _resume_console(_apres_production(args, ctx, resume, description))
 
 
 def cmd_recueil(args: argparse.Namespace) -> int:
@@ -662,8 +670,7 @@ def cmd_recueil(args: argparse.Namespace) -> int:
     for lecture in resume.get("lectures") or []:
         alerte(lecture)
     dire_la_prose(resume)
-    _resume_console(_apres_production(args, ctx, resume, description))
-    return 0
+    return _resume_console(_apres_production(args, ctx, resume, description))
 
 
 def cmd_feuilleton(args: argparse.Namespace) -> int:
@@ -679,10 +686,9 @@ def cmd_feuilleton(args: argparse.Namespace) -> int:
                "raison de revenir.".format(", ".join(
                    str(e) for e in resume["episodes_sans_suspens"])))
     dire_la_prose(resume)
-    _resume_console(_apres_production(
+    return _resume_console(_apres_production(
         args, ctx, resume,
         "{} episodes, {} mots.".format(resume["episodes"], resume["mots"])))
-    return 0
 
 
 def cmd_conte(args: argparse.Namespace) -> int:
@@ -697,11 +703,10 @@ def cmd_conte(args: argparse.Namespace) -> int:
                          lisibilite["plafond_demande"], resume["tranche"]))
     for lecture in resume.get("lectures") or []:
         alerte(lecture)
-    _resume_console(_apres_production(
+    return _resume_console(_apres_production(
         args, ctx, resume,
         "{} doubles-pages, {} illustration(s).".format(
             resume["pages"], resume["illustrations"])))
-    return 0
 
 
 def cmd_formation(args: argparse.Namespace) -> int:
@@ -710,11 +715,10 @@ def cmd_formation(args: argparse.Namespace) -> int:
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'une mini-formation")
     resume = _par_le_catalogue(args, "formation", ctx)
-    _resume_console(_apres_production(
+    return _resume_console(_apres_production(
         args, ctx, resume,
         "Mini-formation en {} modules, cahier d'exercices inclus.".format(resume["modules"])
     ))
-    return 0
 
 
 def cmd_outils(args: argparse.Namespace) -> int:
@@ -723,10 +727,9 @@ def cmd_outils(args: argparse.Namespace) -> int:
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'une boite a outils")
     resume = _par_le_catalogue(args, "outils", ctx)
-    _resume_console(_apres_production(
+    return _resume_console(_apres_production(
         args, ctx, resume, "Boite de {} outils pratiques.".format(resume["outils"])
     ))
-    return 0
 
 
 def cmd_modeles(args: argparse.Namespace) -> int:
@@ -735,10 +738,9 @@ def cmd_modeles(args: argparse.Namespace) -> int:
     ctx = contexte_depuis(args)
     titre_console("Fabrication de modeles Notion / tableur")
     resume = _par_le_catalogue(args, "modeles", ctx)
-    _resume_console(_apres_production(
+    return _resume_console(_apres_production(
         args, ctx, resume,
         "Systeme de {} bases liees, CSV prets a importer.".format(resume["bases"])))
-    return 0
 
 
 def cmd_impression(args: argparse.Namespace) -> int:
@@ -747,11 +749,10 @@ def cmd_impression(args: argparse.Namespace) -> int:
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un cahier imprimable")
     resume = _par_le_catalogue(args, "impression", ctx)
-    _resume_console(_apres_production(
+    return _resume_console(_apres_production(
         args, ctx, resume,
         "Cahier de {} fiches a imprimer, formats A4 et Lettre US.".format(
             resume["fiches"])))
-    return 0
 
 
 def cmd_logiciel(args: argparse.Namespace) -> int:
@@ -767,12 +768,12 @@ def cmd_logiciel(args: argparse.Namespace) -> int:
         etat = "verifie et demarre"
     elif resume["demarre"] is False:
         etat = "verifie, mais l'essai reel a echoue"
-    _resume_console(_apres_production(
+    code = _resume_console(_apres_production(
         args, ctx, resume,
         "{} en {} fichiers, {}.".format(
             logiciel.CIBLES[resume["cible"]]["nom"].capitalize(),
             resume["fichiers_code"], etat)))
-    return 0 if resume["code_valide"] else 1
+    return code or (0 if resume["code_valide"] else 1)
 
 
 def cmd_ventes(args: argparse.Namespace) -> int:
@@ -1880,10 +1881,9 @@ def cmd_social(args: argparse.Namespace) -> int:
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un pack de contenu")
     resume = _par_le_catalogue(args, "social", ctx)
-    _resume_console(_apres_production(
+    return _resume_console(_apres_production(
         args, ctx, resume, "Pack de {} publications prets a publier.".format(resume["posts"])
     ))
-    return 0
 
 
 def cmd_idees(args: argparse.Namespace) -> int:
@@ -1951,9 +1951,9 @@ def cmd_complet(args: argparse.Namespace) -> int:
         "Ebook de {} chapitres ({} mots), boite a outils et pack de publications "
         "de lancement inclus.".format(principal["chapitres"], principal["mots"]),
     )
-    _resume_console(resume)
+    code = _resume_console(resume)
     print("\n  Duree totale : {:.0f} min".format((time.time() - debut) / 60))
-    return 0
+    return code
 
 
 def _deplacer_bonus(source: Path, cible: Path, produit_id: str = "") -> None:
@@ -2102,9 +2102,8 @@ def cmd_reprendre(args: argparse.Namespace) -> int:
         # pas de ligne de commande a rejouer, et il n'en faut pas.
         titre_console("Reprise — {}".format(produit["titre"]))
         _annoncer_ce_qui_manque(manquants, dossier)
-        _resume_console(module_reprise.reprendre(
+        return _resume_console(module_reprise.reprendre(
             produit["id"], journal=lambda message: print("  " + message)))
-        return 0
     commande = carnet.commande(dossier)
     if not commande:
         erreur("Ce produit n'a pas garde la commande qui l'a fabrique.")

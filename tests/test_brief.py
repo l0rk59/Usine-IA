@@ -305,9 +305,11 @@ class LeRomanExiste(unittest.TestCase):
             return simulateur(invite, role=role, **kw)
 
         llm.definir_simulateur(coupure)
-        code, _ = _muet(["roman", "un naufrage en mer du Nord",
-                         "--chapitres", "8"])
-        self.assertEqual(code, 0)
+        code, texte = _muet(["roman", "un naufrage en mer du Nord",
+                             "--chapitres", "8"])
+        # Inacheve, donc 3 ; exporte quand meme, donc le bandeau.
+        self.assertEqual(code, 3)
+        self.assertIn("Produit inacheve", texte)
         produit = store.lister_produits()[0]
         self.assertEqual(produit["statut"], "en_cours")
         self.assertTrue((produit.get("meta") or {}).get("manquants"))

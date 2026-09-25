@@ -98,6 +98,11 @@ sections non écrites », pour une fenêtre qui se rouvrait trente secondes plus
 tard. Le même ebook va maintenant au bout : 28 appels en cinq minutes quarante,
 soit exactement le rythme autorisé.
 
+**Et sans aucune clé**, la situation d'un téléphone fraîchement installé : le
+palier anonyme de Pollinations est déclaré à 3 requêtes par minute. Avant le
+correctif, l'ebook s'arrêtait au **troisième** appel, sept sections sur sept
+non écrites. Après : complet, 28 appels en neuf minutes quarante.
+
 Le routeur refait donc un tour quand un fournisseur n'attend que la fin de sa
 fenêtre, dans la limite de deux fenêtres (`ATTENTE_PAR_MINUTE_MAX`) : au-delà,
 quelque chose d'autre consomme la même clé. Une clé pleine ne fait plus sauter

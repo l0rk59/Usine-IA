@@ -233,3 +233,19 @@ finit le produit. Le tableau de bord ne propose plus les deux boutons sur un
 produit inachevé : il propose « Reprendre ».
 
 Les cinq mutations de la campagne sont vues.
+
+## La ligne de commande disait « livré », le téléphone « prêt »
+
+Même famille, dernier endroit. Mesure du 25/09/2026, sans clé, par le vrai
+routeur : un ebook s'arrête faute de fournisseur, sept sections sur sept ne
+sont pas écrites, la fiche dit « inachevé » — et la console titre « Produit
+livré », la notification du téléphone dit « Produit prêt », la commande rend
+0. Sur un téléphone, la notification est souvent la seule chose qu'on lit.
+
+`_resume_console` relit la fiche par `apres.pas_encore_vendable` : le titre
+devient « Produit inachevé », la notification aussi, la ligne suivante nomme
+`usine reprendre`, et la commande rend **3** — le code qu'elle rendait déjà
+quand les fournisseurs se taisent avant même que le produit commence. Un
+script qui enchaîne les fabrications peut enfin le savoir. Le tableau de bord
+et l'usine continue n'avaient pas ce défaut : ils confiaient déjà un produit
+coupé à la boucle.

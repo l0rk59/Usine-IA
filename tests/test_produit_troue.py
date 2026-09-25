@@ -436,6 +436,62 @@ class UneChaineQuiPerdUneEtapeLeDit(unittest.TestCase):
 
 
 
+class LaLigneDeCommandeNeLeDitPasPret(unittest.TestCase):
+    """La fiche disait « inacheve » ; la console, la notification et le code
+    de sortie disaient le contraire.
+
+    Mesure du 25/09/2026, sans cle, par le vrai routeur : sept sections sur
+    sept non ecrites, et « Produit livre », « Produit pret » sur le
+    telephone, code 0. Le tableau de bord et l'usine continue, eux, le
+    confiaient deja a la boucle.
+    """
+
+    def _fabriquer(self, plafond):
+        from unittest import mock
+
+        from usine import cli
+        from usine.core import telephone
+
+        compte = {"n": 0}
+
+        def coupe(messages, role="standard", **kw):
+            compte["n"] += 1
+            if plafond and compte["n"] > plafond:
+                raise OSError("[Errno 101] Network is unreachable")
+            return simulateur(messages, role)
+
+        notifications = []
+        llm.definir_simulateur(coupe)
+        sortie = io.StringIO()
+        try:
+            with mock.patch.object(telephone, "notifier",
+                                   lambda titre, *a, **k: notifications.append(titre)), \
+                    redirect_stdout(sortie), redirect_stderr(sortie):
+                code = cli.principal(["prompts", "une coupure annoncee {}".format(
+                    plafond), "--sans-image", "-q", "rapide"])
+        finally:
+            llm.definir_simulateur(None)
+        return code, sortie.getvalue(), notifications
+
+    def test_un_produit_coupe_s_annonce_inacheve(self):
+        atelier.isoler("troue-annonce")
+        code, texte, notifications = self._fabriquer(3)
+        self.assertEqual(store.lister_produits(1)[0]["statut"], "en_cours")
+        self.assertEqual(code, 3)
+        self.assertIn("Produit inacheve", texte)
+        self.assertNotIn("Produit livre", texte)
+        self.assertIn("usine reprendre", texte)
+        self.assertNotIn("Produit pret", notifications)
+
+    def test_un_produit_entier_reste_annonce_pret(self):
+        """L'autre sens : sans lui, un « Produit inacheve » fige passerait."""
+        atelier.isoler("troue-annonce-complet")
+        code, texte, notifications = self._fabriquer(0)
+        self.assertEqual(code, 0)
+        self.assertIn("Produit livre", texte)
+        self.assertIn("Produit pret", notifications)
+
+
 class UnProduitTroueNeSePrepareEtreVendu(unittest.TestCase):
     """Le kit de vente et l'archive sortaient aussi pour un produit inacheve.
 
