@@ -19,6 +19,12 @@ python3 scripts/fuites.py                       # aucune cle API suivie par git
 python3 -m usine --version                      # le module se lance tel quel
 ```
 
+**Lire le code de sortie, pas la derniere ligne.** `python3 tests/fumee.py |
+tail -3` rend le code de `tail`, c'est-a-dire zero : le 25/09/2026, une fumee
+en echec (« ECHECS : idees, ab-creer ») est passee pour verte de cette facon,
+et seul un nombre de fichiers en baisse l'a trahie. Pour abreger la sortie,
+`set -o pipefail` d'abord.
+
 **Puis regarder la CI elle-meme**, pas seulement le local. Du 12 au 23/09/2026
 elle a ete rouge a chaque poussee sans que personne ne le remarque : le
 controle des secrets cherchait « gsk_ » seul et signalait la documentation et
@@ -35,7 +41,11 @@ apparaissent.
 **Le test de fumee** exerce chaque chaine par la vraie ligne de commande, avec
 le simulateur a la place du routeur IA. Il attrape ce que les tests unitaires
 ne voient pas : un cablage manquant dans le catalogue, un argument de CLI mal
-nomme, un export qui n'ecrit rien.
+nomme, un export qui n'ecrit rien. Ce qu'il ne peut pas voir : le routeur
+lui-meme, que le simulateur remplace. « --hors-ligne : zero connexion » a ete
+mesure ainsi, et c'etait faux — le texte partait chez Groq. Ce qui touche au
+reseau se teste par le vrai routeur, contre de faux serveurs
+(`tests/test_hors_ligne.py`).
 
 **`compileall`** attrape une erreur de syntaxe dans un module qu'aucun test
 n'importe. Il y en a : les modules de rendu rarement touches, par exemple.

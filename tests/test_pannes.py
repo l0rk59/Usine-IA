@@ -271,18 +271,28 @@ class ReseauCoupe(unittest.TestCase):
         que se trouve le message qu'on veut lire.
         """
         import io as flux
+        import os
         from contextlib import redirect_stderr, redirect_stdout
+        from unittest import mock
 
+        from usine.core import cles as pool_cles
         from usine.core import http
 
         vrai = http.en_ligne
         http.en_ligne = lambda timeout=6: en_ligne
         sortie = flux.StringIO()
+        # Le scenario est un telephone qui MARCHAIT : il avait une cle, et
+        # c'est Groq qui ne repond plus. Sans cle, l'usine a raison de dire
+        # « usine cles » avant de commencer — ce test ne passait que parce
+        # que cette alerte ne pouvait jamais s'afficher.
         try:
-            with redirect_stdout(sortie), redirect_stderr(sortie):
-                code = cli.principal(argv)
+            with mock.patch.dict(os.environ, {"GROQ_API_KEY": "gsk_" + "B" * 32}):
+                pool_cles.oublier()
+                with redirect_stdout(sortie), redirect_stderr(sortie):
+                    code = cli.principal(argv)
         finally:
             http.en_ligne = vrai
+            pool_cles.oublier()
         return code, sortie.getvalue()
 
     def _sans_fournisseur(self):
@@ -517,6 +527,35 @@ class DocteurSansCle(unittest.TestCase):
             {"distants_prets": 0, "locaux": ["ollama"],
              "anonymes": ["pollinations"]})
         self.assertEqual(verdict["etat"], "local")
+
+    def test_avant_chaque_fabrication_l_absence_de_cle_est_dite(self):
+        """L'alerte existait et ne pouvait pas s'afficher : elle attendait
+        qu'aucun fournisseur local ne soit « disponible », et ils le sont
+        toujours — ce sont des adresses. La ligne d'avant disait « actifs :
+        ollama, llamacpp » sur un telephone ou aucun ne tournait."""
+        import io
+        import os
+        from contextlib import redirect_stdout
+        from unittest import mock
+
+        from usine.core import cles as pool_cles
+
+        variables = {p.api_key_env: "" for p in config.PROVIDERS
+                     if p.api_key_env}
+        with mock.patch.dict(os.environ, variables):
+            os.environ.pop("USINE_PROVIDERS", None)
+            pool_cles.oublier()
+            try:
+                sortie = io.StringIO()
+                with redirect_stdout(sortie):
+                    self.assertTrue(cli._verifier_fournisseurs())
+            finally:
+                pool_cles.oublier()
+        texte = sortie.getvalue()
+        self.assertIn("Aucune cle API", texte)
+        self.assertIn("usine cles", texte)
+        self.assertIn("local, s'il tourne", texte)
+        self.assertNotIn("actifs", texte)
 
     def test_la_liste_des_fournisseurs_ne_coche_pas_un_ollama_eteint(self):
         """Un fournisseur local est toujours « disponible » : c'est une

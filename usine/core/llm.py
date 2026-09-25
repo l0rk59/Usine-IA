@@ -24,7 +24,7 @@ from . import cles as pool_cles
 from . import modeles as module_modeles
 from . import texte as module_texte
 from . import config, evenements, store
-from .http import HttpErreur, post_json
+from .http import HttpErreur, hors_ligne_actif, post_json
 
 # Fournisseurs mis au repos apres un echec dur : nom -> timestamp de reprise.
 # Le dictionnaire est un cache ; la verite est en base, pour survivre a un
@@ -766,6 +766,17 @@ def generer(
         return Reponse(texte, "simulateur", role)
 
     fournisseurs = config.active_providers()
+    if hors_ligne_actif():
+        # « --hors-ligne » promettait « IA locale », et le routeur n'en savait
+        # rien : mesure du 25/09/2026, « usine ebook ... --hors-ligne » avec
+        # une cle Groq a envoye ses invites a Groq. Filtrer ici, et pas
+        # seulement refuser la connexion plus bas : un distant qui echoue se
+        # fait mettre au repos, et le resterait apres la commande.
+        fournisseurs = [f for f in fournisseurs if f.local]
+        if not fournisseurs:
+            raise PlusDeFournisseur(
+                "Hors ligne, et aucun serveur d'IA locale n'est configure "
+                "(USINE_PROVIDERS les ecarte). Rien n'a ete envoye.")
     if eviter:
         exclus = {n.lower() for n in eviter}
         restants = [f for f in fournisseurs if f.name not in exclus]

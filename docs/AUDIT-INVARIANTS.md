@@ -173,12 +173,30 @@ recommence les mêmes mesures.
 | Fuite de clé API | une fausse clé, dix commandes, tout l'atelier passé au peigne | rien, nulle part |
 | Traversée de répertoire | onze chemins hostiles sur le tableau de bord, dont une évasion par lien symbolique | tous refusés (400/403) |
 | Sujet hostile | `../../etc/passwd`, `$(rm -rf /)`, octets nuls | `slug()` les ramène à de l'alphanumérique |
-| `--hors-ligne` | sockets espionnées, connexions comptées | zéro connexion |
+| `--hors-ligne` | sockets espionnées, connexions comptées | zéro connexion — **faux, voir ci-dessous** |
 | Conformité EPUB | huit EPUB cassés de huit façons précises | huit vus (sept erreurs, un avertissement) |
 | Sauvegarde | fabriquer, sauvegarder, tout effacer, restaurer | 3 produits, 27 fichiers, réglages : tout retrouvé |
 | Concurrence | cinq fabrications simultanées | dossiers distincts, compteur d'appels exact |
 | Budget du jour | plafonds de 5, 12 et 30 appels | **écart +0** ; sous un petit plafond, l'usine refuse de commencer |
 | Documentation | chemins et fonctions cités, liens entre notes | rien de mort |
+
+### Une mesure qui ne mesurait rien (corrigé le 25/09/2026)
+
+« `--hors-ligne` : zéro connexion » était vrai **sous le simulateur**, et le
+simulateur remplace le routeur IA — c'est-à-dire exactement l'endroit où la
+fuite se produisait. En vrai, `usine ebook … --hors-ligne` avec une clé Groq
+envoyait ses invites à Groq : l'option n'était lue que par les images, le
+marché et la veille. Et sans sujet, le choix de la niche interrogeait
+Wikipédia.
+
+Le refus est maintenant posé là où passe toute connexion, dans `core/http.py`
+(`hors_ligne`), et le routeur n'y propose que les serveurs locaux. Le test
+(`tests/test_hors_ligne.py`) fabrique un ebook par le vrai routeur et le vrai
+client HTTP, jusqu'à un faux ollama et un faux fournisseur distant qui compte
+ce qu'il reçoit : zéro invite, zéro socket hors de l'appareil.
+
+La leçon vaut pour toute mesure faite avec un substitut : elle ne dit rien de
+ce que le substitut remplace.
 
 ### Ce que le tour a quand même trouvé
 

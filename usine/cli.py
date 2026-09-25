@@ -18,6 +18,8 @@ from . import __version__
 from .core import apprentissage, budget, config, experience, images
 from .core import file as file_prod
 from .core import llm, marche
+from .core.http import hors_ligne as http_hors_ligne
+from .core.http import hors_ligne_actif as http_hors_ligne_actif
 from .core import prompts as registre_prompts
 from .core import empreinte, reglages, securite, store, telephone, ventes
 from .core import verification
@@ -210,22 +212,38 @@ def _avertir_sujet(sujet: str) -> None:
 
 def _verifier_fournisseurs() -> bool:
     disponibles = config.active_providers()
+    hors_ligne = http_hors_ligne_actif()
+    if hors_ligne:
+        disponibles = [p for p in disponibles if p.local]
     if disponibles:
-        distants = [p.name for p in disponibles if not p.local]
+        # Un fournisseur local est toujours « disponible » : c'est une
+        # adresse, pas un serveur qui tourne. Cette ligne disait « actifs :
+        # ollama, llamacpp » sur un telephone ou aucun des deux n'etait
+        # installe — et comme ils l'etaient toujours, l'alerte « aucune
+        # cle » plus bas ne pouvait jamais s'afficher.
+        avec_cle = [p.name for p in disponibles if not p.local and p.nb_cles()]
+        anonymes = [p.name for p in disponibles if not p.local and not p.nb_cles()]
         locaux = [p.name for p in disponibles if p.local]
         details = []
-        if distants:
-            details.append("API : " + ", ".join(distants))
+        if avec_cle:
+            details.append("API : " + ", ".join(avec_cle))
+        if anonymes:
+            details.append("sans cle : " + ", ".join(anonymes))
         if locaux:
-            details.append("local : " + ", ".join(locaux))
-        ok("Fournisseurs actifs — " + " | ".join(details))
-        avec_cle = [p for p in disponibles if not p.local and not p.keyless]
-        if not avec_cle and not locaux:
-            alerte("Seul Pollinations est disponible : son quota anonyme est partage "
-                   "par adresse IP et s'epuise vite.")
+            details.append("local, s'il tourne : " + ", ".join(locaux))
+        ok("Fournisseurs — " + " | ".join(details))
+        if hors_ligne:
+            ok("Hors ligne : aucune invite ne part vers une API.")
+        elif not avec_cle:
+            alerte("Aucune cle API : le palier anonyme de Pollinations ne "
+                   "publie pas son quota, et il est partage par adresse IP.")
             alerte("Pour fabriquer un produit entier, ajoutez une cle gratuite : "
                    + _c("usine cles", "1"))
         return True
+    if hors_ligne:
+        erreur("Hors ligne, et aucun serveur d'IA locale n'est configure.")
+        print("\n  USINE_PROVIDERS les ecarte : ajoutez-y « ollama ».")
+        return False
     erreur("Aucun fournisseur IA disponible.")
     print("\n  Lancez " + _c("usine cles", "1") + " pour obtenir une cle gratuite "
           "en 2 minutes,\n  ou demarrez une IA locale (voir " +
@@ -2836,7 +2854,7 @@ def _options_communes(sous: argparse.ArgumentParser, avec_sujet: bool = True) ->
                       choices=sorted(vente.PLATEFORMES), help="plateforme de vente visee")
     sous.add_argument("--zip", action="store_true", help="produire l'archive livrable")
     sous.add_argument("--hors-ligne", dest="hors_ligne", action="store_true",
-                      help="ne rien telecharger (IA locale, couverture generee sur place)")
+                      help="aucune connexion hors de l'appareil (IA locale seulement, couverture generee sur place)")
     sous.add_argument("--sans-image", dest="sans_image", action="store_true",
                       help="ne pas generer d'images")
 
@@ -3406,7 +3424,10 @@ def principal(argv: Optional[List[str]] = None) -> int:
         # Android suspend Termux quelques minutes apres l'extinction de
         # l'ecran. Une fabrication de 15 minutes n'y survit pas : le verrou
         # de veille est pris pour elle seule, et relache a la sortie.
-        with telephone.veille_maintenue(_fabrication(args.commande)):
+        # « --hors-ligne » vaut pour toute la commande : le brief, la
+        # fabrication, le kit de vente. Le routeur ne le savait pas.
+        with telephone.veille_maintenue(_fabrication(args.commande)), \
+                http_hors_ligne(bool(getattr(args, "hors_ligne", False))):
             return args.fonction(args)
     except KeyboardInterrupt:
         print()
@@ -3445,7 +3466,12 @@ def principal(argv: Optional[List[str]] = None) -> int:
             print("    " + _c("usine reprendre " + commence["id"], "1"))
         else:
             print("\n  " + _explique_le_cache())
-        if not en_ligne():
+        if getattr(args, "hors_ligne", False):
+            # Pas de sonde du reseau ici : « hors ligne » veut dire aucune
+            # connexion, meme pour savoir pourquoi.
+            print("\n  Hors ligne, seule l'IA locale est appelee. "
+                  "Diagnostic : " + _c("usine docteur", "1"))
+        elif not en_ligne():
             print("  Le reseau est coupe. Rebranchez le wifi ou les donnees "
                   "mobiles, puis relancez la meme commande.")
         else:

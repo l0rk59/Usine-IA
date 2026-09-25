@@ -18,7 +18,10 @@ sys.path.insert(0, str(RACINE))
 
 ATELIER = tempfile.mkdtemp(prefix="usine-fumee-")
 os.environ["USINE_HOME"] = ATELIER
-os.environ["USINE_PROVIDERS"] = "pollinations"  # jamais appele : le simulateur intercepte
+# Jamais appeles : le simulateur intercepte. Ollama y figure parce que
+# « --hors-ligne » n'appelle que l'IA locale, et refuse de commencer sans
+# elle dans la liste.
+os.environ["USINE_PROVIDERS"] = "pollinations,ollama"
 
 from usine import cli  # noqa: E402
 from usine.core import llm, store  # noqa: E402

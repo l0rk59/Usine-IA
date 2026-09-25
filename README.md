@@ -171,7 +171,7 @@ usine ebook "la fiscalité du freelance" \
 | `--qualite` | `rapide` (0 relecture), `standard` (1), `exigeant` (2) |
 | `--marketing` | ajoute le kit de vente |
 | `--zip` | emballe l'archive à livrer |
-| `--hors-ligne` | ne télécharge rien (IA locale, couverture dessinée sur place) |
+| `--hors-ligne` | aucune connexion ne sort du téléphone : IA locale seulement, couverture dessinée sur place |
 
 Pour ne pas retaper les mêmes à chaque fois :
 

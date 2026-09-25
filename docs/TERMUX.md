@@ -134,6 +134,14 @@ usine docteur                # doit détecter ollama
 usine ebook "mon sujet" --hors-ligne
 ```
 
+`--hors-ligne` garantit qu'**aucune connexion ne sort du téléphone** : ni
+invite vers une API, ni image, ni sondage du marché, pas même pour vérifier si
+le réseau répond. Seuls restent permis la boucle locale et l'adresse de votre
+serveur d'IA locale — y compris un ordinateur du réseau de la maison, si
+`OLLAMA_BASE_URL` y pointe. Jusqu'au 25/09/2026, l'option ne tenait pas cette
+promesse pour le texte : il partait chez le premier fournisseur distant qui
+avait une clé.
+
 Choix du modèle selon la RAM du téléphone :
 
 | RAM | Modèle conseillé | Qualité |

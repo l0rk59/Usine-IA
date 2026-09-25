@@ -10,13 +10,16 @@ donc une illustration pour de bon, et le journal disait « 0 image ».
 
 from __future__ import annotations
 
+import contextlib
 import gzip
 import json
 import random
 import socket
 import ssl
+import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any, Callable, Dict, Optional, Tuple, TypeVar
 
@@ -68,6 +71,68 @@ class HttpErreur(Exception):
         return self.statut in (408, 409, 425, 429, 500, 502, 503, 504, 529, 0)
 
 
+class HorsLigne(HttpErreur):
+    """Une connexion que l'usine se refuse : « --hors-ligne » est en cours.
+
+    Definitive, pas temporaire : « insister » ne doit pas la rejouer avec
+    attente, elle dirait non dans deux secondes comme maintenant.
+    """
+
+    def __init__(self, hote: str):
+        super().__init__(0, "hors ligne : aucune connexion vers {}".format(
+            hote or "?"))
+
+    @property
+    def temporaire(self) -> bool:
+        return False
+
+
+_fil = threading.local()
+_BOUCLE = ("127.0.0.1", "localhost", "::1")
+
+
+@contextlib.contextmanager
+def hors_ligne(actif: bool = True):
+    """Le temps du bloc, ce fil ne sort pas de l'appareil.
+
+    « --hors-ligne » promettait « ne rien telecharger ». Chaque module
+    devait s'en souvenir, et le routeur IA ne le faisait pas : ses invites
+    partaient chez le premier fournisseur distant. L'audit du 14/09/2026 avait
+    compte « zero connexion » — avec le simulateur, qui remplace le routeur,
+    donc exactement la ou la fuite se produisait. Toute connexion passe par
+    ce module : c'est ici qu'on la refuse, une fois pour toutes.
+
+    Restent permis la boucle locale et l'adresse des serveurs d'IA locale,
+    qui peut etre celle d'un ordinateur du reseau domestique : l'utilisateur
+    l'a configuree pour cela. Par fil, parce que le tableau de bord fabrique
+    plusieurs produits a la fois dans le meme processus.
+    """
+    avant = getattr(_fil, "hors_ligne", False)
+    _fil.hors_ligne = avant or bool(actif)
+    try:
+        yield
+    finally:
+        _fil.hors_ligne = avant
+
+
+def hors_ligne_actif() -> bool:
+    return bool(getattr(_fil, "hors_ligne", False))
+
+
+def _verifier_sortie(url: str) -> None:
+    if not hors_ligne_actif():
+        return
+    hote = (urllib.parse.urlsplit(url).hostname or "").lower()
+    if hote in _BOUCLE:
+        return
+    from . import config
+
+    locaux = {(urllib.parse.urlsplit(p.base_url).hostname or "").lower()
+              for p in config.PROVIDERS if p.local}
+    if hote not in locaux:
+        raise HorsLigne(hote)
+
+
 def _contexte_ssl() -> ssl.SSLContext:
     return ssl.create_default_context()
 
@@ -100,6 +165,7 @@ def requete_complete(
     perissable s'il en est — et rien ne les avait jamais confrontes a ce que
     le service DIT lui-meme.
     """
+    _verifier_sortie(url)
     tetes = {"User-Agent": USER_AGENT, "Accept-Encoding": "gzip"}
     tetes.update(entetes or {})
     req = urllib.request.Request(url, data=donnees, headers=tetes, method=methode)
@@ -148,6 +214,8 @@ def en_ligne(timeout: int = 6) -> bool:
     On passe par HTTPS plutot que par un socket brut : c'est le seul test qui
     reste valable derriere un proxy d'entreprise ou un reseau mobile filtre.
     """
+    if hors_ligne_actif():
+        return False  # meme pas pour savoir : c'est une connexion
     try:
         statut, _ = requete("https://text.pollinations.ai/", "GET", timeout=timeout)
         return statut < 500
