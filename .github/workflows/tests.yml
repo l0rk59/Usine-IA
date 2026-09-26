@@ -12,6 +12,11 @@ on:
 jobs:
   suite:
     runs-on: ubuntu-latest
+    # La suite tient en trois minutes ; sans borne, un fil qui ne meurt pas
+    # (c'est arrive : un travail du tableau de bord survivait a son module)
+    # tiendrait le coureur six heures, le defaut GitHub (verifie le
+    # 26/09/2026), et la CI semblerait juste lente.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -43,6 +48,11 @@ jobs:
 
   hygiene:
     runs-on: ubuntu-latest
+    # La suite tient en trois minutes ; sans borne, un fil qui ne meurt pas
+    # (c'est arrive : un travail du tableau de bord survivait a son module)
+    # tiendrait le coureur six heures, le defaut GitHub (verifie le
+    # 26/09/2026), et la CI semblerait juste lente.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

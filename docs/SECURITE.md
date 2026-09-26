@@ -176,3 +176,31 @@ que l'utilisateur a peut-être déjà mis en vente.
   en erreur — seul endroit où un service renverrait une clé — est porté par
   `HttpErreur.corps` et n'est affiché nulle part.
 
+
+## Les fichiers livrés n'ont plus l'origine de l'usine
+
+Un produit « logiciel » est du code écrit par le modèle, `index.html`
+compris ; `lire.html` et `quiz.html` portent son texte. Le tableau de bord
+servait tout cela sous sa propre origine (`/fichier/…`), c'est-à-dire avec le
+droit de parler à `/api` sans jeton.
+
+Mesuré le 26/09/2026 dans Chromium : une page déposée dans un dossier de
+produit a lu `/api/etat` et réécrit le réglage `marque` — celui qui signe la
+notice et le kit de vente de chaque produit livré. Le modèle écrit ce qu'un
+fournisseur lui fait écrire ; ce chemin faisait d'une injection d'invite un
+accès à la commande de l'usine.
+
+Les documents capables de porter un script (HTML, XHTML, SVG, XML) partent
+maintenant avec `Content-Security-Policy: sandbox allow-scripts` : le quiz
+continue de se corriger, les images relatives se chargent, mais le document
+vit dans une origine opaque — la lecture de `/api` est bloquée par le
+navigateur, et l'écriture est refusée par la garde d'origine existante, qui
+rejette déjà `Origin: null` sur tout ce qui modifie. Rejoué après coup :
+`bloque|bloque`, marque intacte. Un PDF ou une image n'y passent pas — un PDF
+en bac à sable ne s'affiche plus dans certains navigateurs, et une image
+n'exécute rien.
+
+La page de l'usine, elle, déclare qu'elle ne charge rien d'extérieur
+(`default-src 'self'`) et refuse d'être encadrée (`frame-ancestors 'none'`,
+`X-Frame-Options: DENY`) : encadrée dans une page tierce, la commande de
+fabrication se cliquerait à travers un calque invisible.

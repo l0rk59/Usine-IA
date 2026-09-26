@@ -107,6 +107,78 @@ class BaseServeur(unittest.TestCase):
         return statut, json.loads(brut)
 
 
+class LesFichiersLivresNOntPasLOrigineDeLUsine(BaseServeur):
+    """Un produit « logiciel » est du code ecrit par le modele, index.html
+    compris. Servi tel quel sous /fichier/, il partageait l'origine du
+    tableau de bord : un script dedans parlait a /api/usine et /api/fabriquer
+    en meme-origine, sans jeton. Mesure du 26/09/2026 dans Chromium : une
+    page deposee dans un dossier de produit lisait /api/etat et posait une
+    demande d'arret. Le bac a sable CSP coupe cela sans casser le quiz, qui
+    garde ses scripts (allow-scripts, origine opaque).
+    """
+
+    def entetes(self, chemin):
+        requete = urllib.request.Request(self.base + chemin)
+        try:
+            with urllib.request.urlopen(requete, timeout=20) as reponse:
+                return reponse.status, dict(reponse.headers)
+        except urllib.error.HTTPError as exc:
+            return exc.code, dict(exc.headers)
+
+    def _poser(self, nom, contenu=b"<html><script>1</script></html>"):
+        dossier = config.PRODUITS_DIR / "essai-origine"
+        dossier.mkdir(parents=True, exist_ok=True)
+        (dossier / nom).write_bytes(contenu)
+        return "/fichier/essai-origine/" + nom
+
+    def test_un_document_scriptable_part_en_bac_a_sable(self):
+        for nom in ("lire.html", "couverture.svg", "page.xml"):
+            with self.subTest(fichier=nom):
+                statut, entetes = self.entetes(self._poser(nom))
+                self.assertEqual(statut, 200)
+                self.assertEqual(entetes.get("Content-Security-Policy"),
+                                 "sandbox allow-scripts")
+
+    def test_un_pdf_ou_une_image_s_ouvrent_sans_bac_a_sable(self):
+        """L'autre sens : un PDF en bac a sable ne s'affiche plus dans
+        certains navigateurs, et une image n'execute rien."""
+        for nom in ("livre.pdf", "couverture.png"):
+            with self.subTest(fichier=nom):
+                statut, entetes = self.entetes(self._poser(nom, b"%PDF-1.4"))
+                self.assertEqual(statut, 200)
+                self.assertNotIn("Content-Security-Policy", entetes)
+
+    def test_la_page_de_l_usine_ne_charge_qu_elle_meme(self):
+        """La CSP du tableau de bord : rien d'exterieur, jamais encadree.
+
+        Encadree dans une page tierce, la commande de fabrication se
+        cliquerait a travers un calque invisible.
+        """
+        statut, entetes = self.entetes("/")
+        self.assertEqual(statut, 200)
+        csp = entetes.get("Content-Security-Policy") or ""
+        self.assertIn("default-src 'self'", csp)
+        self.assertIn("frame-ancestors 'none'", csp)
+        self.assertNotIn("sandbox", csp)  # la page garde son origine
+        self.assertEqual(entetes.get("X-Frame-Options"), "DENY")
+
+    def test_le_dernier_constructeur_de_la_page_echappe_aussi(self):
+        """« remplirListe » etait le dernier gabarit sans echappement du
+        fichier. Tons et tailles sont des constantes du depot aujourd'hui ;
+        le jour ou une valeur libre y arrive, il serait le seul trou."""
+        source = (RACINE / "usine" / "web" / "statique" / "app.js").read_text(
+            encoding="utf-8")
+        debut = source.index("function remplirListe")
+        gabarit = source[debut:source.index("}", source.index("join", debut))]
+        self.assertIn("${echapper(valeur)}", gabarit)
+        self.assertIn("${echapper(libelle)}", gabarit)
+
+    def test_le_script_de_la_page_n_est_pas_mis_en_bac_a_sable(self):
+        statut, entetes = self.entetes("/statique/app.js")
+        self.assertEqual(statut, 200)
+        self.assertNotIn("Content-Security-Policy", entetes)
+
+
 class TestVeille(BaseServeur):
 
     def _consulter(self, sujet="meal planning", periode="year"):

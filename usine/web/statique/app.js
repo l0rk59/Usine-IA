@@ -29,7 +29,10 @@ function remplirListe(select, valeurs, defaut) {
     .map((v) => {
       const [valeur, libelle] = Array.isArray(v) ? v : [v, v];
       const choisi = valeur === defaut ? ' selected' : '';
-      return `<option value="${valeur}"${choisi}>${libelle}</option>`;
+      /* Tons et tailles sont des constantes du depot aujourd'hui — mais
+         c'etait le dernier gabarit sans echappement de ce fichier, et le
+         jour ou une valeur libre y arrive, il devient le seul trou. */
+      return `<option value="${echapper(valeur)}"${choisi}>${echapper(libelle)}</option>`;
     })
     .join('');
 }

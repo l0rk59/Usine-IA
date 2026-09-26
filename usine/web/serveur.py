@@ -807,8 +807,20 @@ class Gestionnaire(BaseHTTPRequestHandler):
             mime = "application/javascript; charset=utf-8"
         elif cible.suffix == ".css":
             mime = "text/css; charset=utf-8"
-        self._repondre(200, cible.read_bytes(), mime,
-                       {"Cache-Control": "no-cache"})
+        entetes = {"Cache-Control": "no-cache"}
+        if mime.startswith("text/html"):
+            # La page ne charge rien d'exterieur : le dire au navigateur coute
+            # une ligne et arrete net un script qui aurait passe l'echappement.
+            # « data: » pour la seule exception, l'icone d'onglet ;
+            # « unsafe-inline » pour les largeurs de jauges posees en style=.
+            # « frame-ancestors » : encadree dans une page tierce, la commande
+            # de fabrication se cliquerait a travers un calque invisible.
+            entetes["Content-Security-Policy"] = (
+                "default-src 'self'; img-src 'self' data:; "
+                "style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; "
+                "base-uri 'none'; form-action 'self'")
+            entetes["X-Frame-Options"] = "DENY"
+        self._repondre(200, cible.read_bytes(), mime, entetes)
 
     # -- veille, doublons, sauvegarde ------------------------------------
     def _lancer_veille(self, options: Dict[str, Any]):
@@ -1197,6 +1209,14 @@ class Gestionnaire(BaseHTTPRequestHandler):
                        {"Content-Disposition":
                         'attachment; filename="{}"'.format(cible.name)})
 
+    # Les types de documents dans lesquels un navigateur execute du script :
+    # HTML, XHTML, SVG, XML (feuilles XSLT). Une image matricielle ou un PDF
+    # n'en font pas partie, et n'ont pas a payer le bac a sable.
+    SCRIPTABLES = frozenset({
+        "text/html", "application/xhtml+xml", "image/svg+xml",
+        "text/xml", "application/xml",
+    })
+
     def _servir_produit(self, relatif: str) -> None:
         """Sert un fichier produit, en refusant toute sortie du dossier atelier."""
         if not relatif or ".." in relatif.split("/"):
@@ -1215,7 +1235,21 @@ class Gestionnaire(BaseHTTPRequestHandler):
         type_mime = mimetypes.guess_type(cible.name)[0] or "application/octet-stream"
         if cible.suffix in (".md", ".txt", ".csv"):
             type_mime = "text/plain; charset=utf-8"
-        self._repondre(200, cible.read_bytes(), type_mime)
+        # Ces fichiers sont du contenu GENERE — et pour les produits
+        # « logiciel », du code que le modele a ecrit, index.html compris.
+        # Servis tels quels, ils partageaient l'origine du tableau de bord :
+        # un script dedans parlait a /api/usine ou /api/fabriquer en
+        # meme-origine, sans jeton. Mesure du 26/09/2026 dans Chromium : une
+        # page deposee dans un dossier de produit lisait /api/etat et posait
+        # une demande d'arret. Le bac a sable donne au document une origine
+        # opaque : le quiz continue de se corriger (allow-scripts), les
+        # images relatives se chargent, mais /api redevient une autre origine.
+        # Seuls les types capables de porter un script y passent : un PDF en
+        # bac a sable ne s'affiche plus dans certains navigateurs.
+        entetes = None
+        if type_mime.split(";")[0] in self.SCRIPTABLES:
+            entetes = {"Content-Security-Policy": "sandbox allow-scripts"}
+        self._repondre(200, cible.read_bytes(), type_mime, entetes)
 
 
 def _lien_fichier(chemin: Any) -> str:
