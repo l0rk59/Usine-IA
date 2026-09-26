@@ -6,7 +6,12 @@ name: tests
 
 on:
   push:
-    branches: ["**"]
+    # « main » seul. Chaque poussee alimentait DEUX executions identiques :
+    # la branche miroir de session porte toujours le meme commit que main,
+    # et les cinq jobs tournaient deux fois pour la meme information. Sur un
+    # depot prive, les minutes Actions sont comptees — le 26/09/2026, le
+    # plafond du mois est tombe en fin de journee, et toute la CI avec.
+    branches: ["main"]
   pull_request:
   # Relancer a la main, sans commit. Le 26/09/2026, les cinq jobs d'une
   # poussee sont morts en deux secondes, sans etape ni journal — les
