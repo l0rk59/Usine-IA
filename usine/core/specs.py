@@ -36,19 +36,19 @@ from . import config, telephone, verification
 # fait installer personne.
 BINAIRES = (
     ("python3", "obligatoire", "l'usine entiere"),
-    ("git", "recommande", "« usine maj » met a jour sans retelecharger"),
+    ("git", "recommande", "« usine maj » met à jour sans retélécharger"),
     ("node", "optionnel",
-     "le JavaScript genere par la chaine « logiciel » n'est verifie qu'en "
+     "le JavaScript généré par la chaîne « logiciel » n'est vérifié qu'en "
      "mode degrade : une erreur de syntaxe fine passe"),
     ("termux-notification", "optionnel",
-     "aucune notification quand un produit sort, pendant que l'ecran est "
-     "eteint"),
+     "aucune notification quand un produit sort, pendant que l'écran est "
+     "éteint"),
     ("termux-battery-status", "optionnel",
      "l'usine continue ne peut pas s'arreter sur batterie faible"),
     ("termux-open", "optionnel", "impossible d'ouvrir un PDF depuis le menu"),
     ("termux-share", "optionnel", "impossible de partager une archive"),
     ("termux-wake-lock", "optionnel",
-     "Android suspend une fabrication longue quand l'ecran s'eteint"),
+     "Android suspend une fabrication longue quand l'écran s'éteint"),
     ("ollama", "optionnel", "pas de production hors ligne"),
     ("curl", "optionnel", "confort de diagnostic uniquement"),
 )
@@ -198,7 +198,7 @@ def _manques(releve: Dict[str, Any]) -> List[Dict[str, str]]:
             "quoi": "module Python « {} »".format(module),
             "gravite": "bloquant",
             "commande": "{} python".format(poser),
-            "pourquoi": "l'usine ne demarre pas sans lui",
+            "pourquoi": "l'usine ne démarre pas sans lui",
         })
     paquets = {"node": "nodejs-lts", "ollama": "ollama", "git": "git",
                "curl": "curl"}
@@ -220,7 +220,7 @@ def _manques(releve: Dict[str, Any]) -> List[Dict[str, str]]:
         })
     if termux and not releve["stockage_partage"]:
         manques.append({
-            "quoi": "acces au stockage partage",
+            "quoi": "accès au stockage partagé",
             "gravite": "recommande",
             "commande": "termux-setup-storage",
             "pourquoi": "impossible d'enregistrer les produits dans /sdcard, "
@@ -235,14 +235,14 @@ def _manques(releve: Dict[str, Any]) -> List[Dict[str, str]]:
         ollama = any(b["nom"] == "ollama" and b["present"]
                      for b in releve["binaires"])
         manques.append({
-            "quoi": "une cle API",
+            "quoi": "une clé API",
             "gravite": "recommande" if ollama else "bloquant",
             "commande": "usine cles",
             "pourquoi": (
-                "sans cle, l'usine produit avec ollama s'il sert un modele "
+                "sans clé, l'usine produit avec ollama s'il sert un modèle "
                 "(« ollama pull »), en plusieurs minutes par chapitre"
                 if ollama else
-                "sans cle, il ne reste que le palier anonyme de Pollinations : "
+                "sans clé, il ne reste que le palier anonyme de Pollinations : "
                 "quota non publie, partage par adresse IP — assez pour "
                 "essayer, pas pour produire en volume"),
         })
@@ -260,9 +260,9 @@ def en_markdown(releve: Optional[Dict[str, Any]] = None) -> str:
         "",
         "Relevee par `usine specs` le {}.".format(releve["releve_le"]),
         "",
-        "Ce document repond a une question que `usine docteur` ne pose pas :",
-        "**qu'est-ce qui devrait etre dans `install.sh` pour que cet appareil",
-        "marche sans bricolage ?** Aucune cle API n'y figure.",
+        "Ce document répond à une question que `usine docteur` ne pose pas :",
+        "**qu'est-ce qui devrait être dans `install.sh` pour que cet appareil",
+        "marche sans bricolage ?** Aucune clé API n'y figure.",
         "",
         "## Ce qui manque",
         "",
@@ -270,7 +270,7 @@ def en_markdown(releve: Optional[Dict[str, Any]] = None) -> str:
     if not manques:
         lignes += ["Rien. Cet appareil a tout ce que l'usine sait utiliser.", ""]
     else:
-        lignes += ["| Ce qui manque | Gravite | Pour l'avoir | Ce que son absence coute |",
+        lignes += ["| Ce qui manque | Gravité | Pour l'avoir | Ce que son absence coûte |",
                    "|---|---|---|---|"]
         for manque in manques:
             lignes.append("| {} | {} | `{}` | {} |".format(
@@ -283,14 +283,14 @@ def en_markdown(releve: Optional[Dict[str, Any]] = None) -> str:
         "",
         "| | |",
         "|---|---|",
-        "| Systeme | {} |".format(releve["plateforme"]),
+        "| Système | {} |".format(releve["plateforme"]),
         "| Architecture | {} |".format(releve["machine"]),
         "| Python | {} |".format(releve["python_complet"]),
         "| Termux | {} |".format("oui" if termux.get("termux") else "non"),
         "| termux-api | {} |".format("present" if termux.get("api") else "absent"),
     ]
     if releve["memoire_mo"]:
-        lignes.append("| Memoire vive | {} Mo |".format(releve["memoire_mo"]))
+        lignes.append("| Mémoire vive | {} Mo |".format(releve["memoire_mo"]))
     if releve["espace"]:
         lignes.append("| Disque libre | {} Mo sur {} Mo |".format(
             releve["espace"]["libre_mo"], releve["espace"]["total_mo"]))
@@ -301,7 +301,7 @@ def en_markdown(releve: Optional[Dict[str, Any]] = None) -> str:
     lignes += ["| Dossier de travail | `{}` |".format(releve["workdir"]), ""]
 
     lignes += ["## Outils", "",
-               "| Outil | Etat | Version | Si absent |", "|---|---|---|---|"]
+               "| Outil | État | Version | Si absent |", "|---|---|---|---|"]
     for binaire in releve["binaires"]:
         lignes.append("| `{}` | {} | {} | {} |".format(
             binaire["nom"],
@@ -311,20 +311,20 @@ def en_markdown(releve: Optional[Dict[str, Any]] = None) -> str:
     lignes.append("")
 
     lignes += ["## Fournisseurs configures", "",
-               "Nombre de cles seulement : aucune valeur n'est ecrite ici.",
+               "Nombre de clés seulement : aucune valeur n'est écrite ici.",
                "",
-               "| Fournisseur | Variable | Cles | Genre |", "|---|---|---|---|"]
+               "| Fournisseur | Variable | Clés | Genre |", "|---|---|---|---|"]
     for fournisseur in releve["fournisseurs"]:
         genre = ("local" if fournisseur["local"]
-                 else "sans cle" if fournisseur["sans_cle"] else "cle API")
+                 else "sans clé" if fournisseur["sans_cle"] else "clé API")
         lignes.append("| {} | `{}` | {} | {} |".format(
             fournisseur["nom"], fournisseur["variable"] or "—",
             fournisseur["nb_cles"], genre))
     lignes += [
         "",
-        "## Modules de la bibliotheque standard",
+        "## Modules de la bibliothèque standard",
         "",
-        "L'usine n'utilise que la bibliotheque standard. Ces modules-la sont "
+        "L'usine n'utilise que la bibliothèque standard. Ces modules-là sont "
         "ceux dont elle ne peut pas se passer :",
         "",
         "```",

@@ -172,19 +172,19 @@ def produire_kit(ctx: Contexte, titre: str, description_produit: str,
     # Fiche lisible, a copier-coller dans la boutique
     lignes = [
         "# Fiche de vente — {}\n".format(titre),
-        "## Titres a tester\n",
+        "## Titres à tester\n",
         "\n".join("- " + t for t in fiche.get("titres", [])),
         "\n## Accroche\n",
         str(fiche.get("accroche", "")),
         "\n## Description ({})\n".format(plateforme),
         str(fiche.get("description", "")),
-        "\n## Benefices\n",
+        "\n## Bénéfices\n",
         "\n".join("- " + str(b) for b in fiche.get("benefices", [])),
-        "\n## Ce que l'acheteur recoit\n",
+        "\n## Ce que l'acheteur reçoit\n",
         "\n".join("- " + str(c) for c in fiche.get("contenu_livre", [])),
-        "\n## Mots-cles / tags\n",
+        "\n## Mots-clés / tags\n",
         ", ".join(str(m) for m in fiche.get("mots_cles", [])),
-        "\n## Prix conseille\n",
+        "\n## Prix conseillé\n",
         json.dumps(fiche.get("prix_conseille", {}), ensure_ascii=False, indent=2),
     ]
     chemin_fiche = cible / "fiche-produit.md"
@@ -211,7 +211,7 @@ def produire_kit(ctx: Contexte, titre: str, description_produit: str,
         ctx.journal("  séquence indisponible : {}".format(exc))
         emails = []
     if emails:
-        lignes_email = ["# Sequence de lancement — {}\n".format(titre)]
+        lignes_email = ["# Séquence de lancement — {}\n".format(titre)]
         for email in emails:
             lignes_email.append("\n## Jour {} — {}\n".format(email["jour"], email["objet"]))
             if email["preheader"]:

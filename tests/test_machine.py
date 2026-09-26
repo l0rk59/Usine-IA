@@ -74,7 +74,7 @@ class FicheTechnique(unittest.TestCase):
         self.assertNotIn("secret_a_ne_jamais_ecrire", repr(releve_avec_cle))
         # Le NOMBRE de cles, lui, a sa place : c'est ce qui dit si l'appareil
         # est configure, sans rien reveler.
-        self.assertIn("| Fournisseur | Variable | Cles | Genre |", texte)
+        self.assertIn("| Fournisseur | Variable | Clés | Genre |", texte)
 
     def test_un_binaire_absent_dit_ce_que_son_absence_coute(self):
         """« installez nodejs » sans dire pourquoi ne fait installer personne."""
@@ -115,7 +115,7 @@ class FicheTechnique(unittest.TestCase):
         faux["binaires"] = [dict(b, present=ollama_present)
                             if b["nom"] == "ollama" else b
                             for b in self.releve["binaires"]]
-        return [m for m in specs._manques(faux) if m["quoi"] == "une cle API"][0]
+        return [m for m in specs._manques(faux) if m["quoi"] == "une clé API"][0]
 
     def test_sans_cle_avec_ollama_la_cle_n_est_pas_bloquante(self):
         """La fiche du telephone, le 14/09/2026 : ollama present, et « une
