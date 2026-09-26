@@ -280,7 +280,7 @@ def _ecrire_un_recit(ctx: Contexte, fiche: Dict[str, Any], scenes: int,
         redaction.manque(repere, str(exc))
         return None
     except Exception as exc:
-        ctx.journal("    recit abandonne : {}".format(exc))
+        ctx.journal("    récit abandonné : {}".format(exc))
         redaction.manque(repere, str(exc))
         return None
     # Le « ok » efface, a la reprise, l'echec d'une premiere fabrication
@@ -327,7 +327,7 @@ def produire(ctx: Contexte, recits: int = 0) -> Dict[str, Any]:
     demande = int(recits or ctx.chapitres or RECITS)
     demande = max(RECITS_MIN, min(demande, RECITS_MAX))
 
-    ctx.journal("Etape 1/4 — le fil du recueil et ses {} premisses..."
+    ctx.journal("Étape 1/4 — le fil du recueil et ses {} prémisses..."
                 .format(demande))
     # Une reprise repart du fil du carnet : un fil redemande changerait les
     # premisses sous les recits deja ecrits.
@@ -342,7 +342,7 @@ def produire(ctx: Contexte, recits: int = 0) -> Dict[str, Any]:
             "« {} » et « {} »".format(fil["recits"][g]["titre"],
                                       fil["recits"][d]["titre"])
             for g, d, _score in jumelles)
-        ctx.journal("  {} couple(s) de premisses jumelles : {}".format(
+        ctx.journal("  {} couple(s) de prémisses jumelles : {}".format(
             len(jumelles), couples))
         ancien = ctx.sujet
         try:
@@ -357,7 +357,7 @@ def produire(ctx: Contexte, recits: int = 0) -> Dict[str, Any]:
     titre = fil["titre"]
     dossier = preparer(ctx, "recueil", titre)
     if repris:
-        ctx.journal("  Reprise : fil et {} section(s) deja au carnet."
+        ctx.journal("  Reprise : fil et {} section(s) déjà au carnet."
                     .format(carnet.compte(dossier)))
     else:
         carnet.noter_plan(dossier, {"fil": fil, "chapitres": fil["recits"]})
@@ -366,7 +366,7 @@ def produire(ctx: Contexte, recits: int = 0) -> Dict[str, Any]:
               "{} recits, proximite max {}".format(
                   len(fil["recits"]), proximite.get("score", 0)))
 
-    ctx.journal("Etape 2/4 — redaction des {} recits...".format(
+    ctx.journal("Étape 2/4 — rédaction des {} récits...".format(
         len(fil["recits"])))
     ecrits: List[Dict[str, Any]] = []
     redaction = Redaction(ctx, dossier)
@@ -387,7 +387,7 @@ def produire(ctx: Contexte, recits: int = 0) -> Dict[str, Any]:
     ctx.etape("recits", "partiel" if redaction.manquants else "ok",
               "{} recit(s) sur {}".format(len(ecrits), len(fil["recits"])))
 
-    ctx.journal("Etape 3/4 — mesure de la variete...")
+    ctx.journal("Étape 3/4 — mesure de la variété...")
     mesure = mesurer_la_variete(ecrits)
     mesure["proximite_maximale"] = proximite
     lectures = lire_la_variete(mesure)
@@ -410,7 +410,7 @@ def produire(ctx: Contexte, recits: int = 0) -> Dict[str, Any]:
     for lecture in lectures_prose:
         ctx.journal("  [prose] " + lecture)
 
-    ctx.journal("Etape 4/4 — export...")
+    ctx.journal("Étape 4/4 — export...")
     t = libelles.textes(ctx.langue_iso)
     blocs = [livraison.Bloc(
         titre=t["recueil_fil"], corps=fil["fil"] or t["recueil_fil_defaut"])]

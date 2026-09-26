@@ -73,16 +73,16 @@ def _systeme(ctx: Contexte, nombre: int) -> Dict[str, Any]:
 
 
 def produire(ctx: Contexte, nombre: int = 4) -> Dict[str, Any]:
-    ctx.journal("Etape 1/3 — conception du systeme ({} bases)...".format(nombre))
+    ctx.journal("Étape 1/3 — conception du système ({} bases)...".format(nombre))
     systeme = _systeme(ctx, nombre)
     titre = systeme["titre"]
     dossier = preparer(ctx, "modeles", titre)
     ctx.etape("systeme", "ok", "{} bases".format(len(systeme["bases"])))
-    ctx.journal('  Systeme : « {} »'.format(titre))
+    ctx.journal('  Système : « {} »'.format(titre))
     evenements.publier("section", etape="modeles", titre=titre,
                        total=len(systeme["bases"]))
 
-    ctx.journal("Etape 2/3 — guide d'installation...")
+    ctx.journal("Étape 2/3 — guide d'installation...")
     perdu = ""
     try:
         guide = equipe.REDACTEUR.travailler(ctx, (
@@ -109,7 +109,7 @@ def produire(ctx: Contexte, nombre: int = 4) -> Dict[str, Any]:
     # de se passer, revient a ne rien noter.
     ctx.etape("guide", "echec" if perdu else "ok", perdu)
 
-    ctx.journal("Etape 3/3 — export...")
+    ctx.journal("Étape 3/3 — export...")
     fichiers = _exporter(ctx, systeme, guide)
     resume = {
         "produit_id": ctx.produit_id,

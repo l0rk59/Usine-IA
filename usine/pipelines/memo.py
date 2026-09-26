@@ -80,18 +80,18 @@ def produire(ctx: Contexte, nombre: int = 8,
     titre = libelles.libelle(ctx.langue_iso, "memo_titre", sujet=ctx.sujet)
     dossier = preparer(ctx, "memo", titre)
 
-    ctx.journal("Etape 1/2 — structure du memo...")
+    ctx.journal("Étape 1/2 — structure du mémo...")
     blocs = _structure(ctx, nombre)
     # Le modele deborde volontiers : on tranche ici, et on le DIT. Livrer
     # dix-neuf blocs sous le nom de « memo » serait tenir une promesse pour
     # une autre.
     if len(blocs) > BLOCS_MAX:
         ctx.journal("  {} blocs proposes, {} gardes : au-dela ce n'est plus "
-                    "un memo.".format(len(blocs), BLOCS_MAX))
+                    "un mémo.".format(len(blocs), BLOCS_MAX))
         blocs = blocs[:BLOCS_MAX]
     ctx.etape("structure", "ok", "{} blocs".format(len(blocs)))
 
-    ctx.journal("Etape 2/2 — export...")
+    ctx.journal("Étape 2/2 — export...")
     fichiers = _exporter(ctx, titre, blocs, recto_verso)
     entrees = sum(len(b["lignes"]) for b in blocs)
     resume = {

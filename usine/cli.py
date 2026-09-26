@@ -129,8 +129,8 @@ def sujet_ou_choix(args: argparse.Namespace) -> str:
         # Un domaine propose et non mesure reste un choix du modele. Le dire
         # ici est le seul moment ou cela change quelque chose pour celui qui
         # decide de continuer ou non.
-        alerte("Aucune source de marche n'a repondu : cette niche est "
-               "proposee, pas mesuree.")
+        alerte("Aucune source de marché n'a répondu : cette niche est "
+               "proposée, pas mesurée.")
     args.sujet = choix["sujet"]
     # Les reglages de fiction voyagent avec la promesse : ils sont poses sur
     # « args » pour que « contexte_depuis » les trouve comme s'ils avaient ete
@@ -206,7 +206,7 @@ def contexte_depuis(args: argparse.Namespace) -> Contexte:
 def _avertir_sujet(sujet: str) -> None:
     """Signale les domaines ou un produit genere expose son vendeur."""
     for domaine, avertissement in securite.analyser_sujet(sujet):
-        alerte("Domaine sensible detecte : {}".format(domaine))
+        alerte("Domaine sensible détecté : {}".format(domaine))
         print("      " + avertissement)
 
 
@@ -235,17 +235,17 @@ def _verifier_fournisseurs() -> bool:
         if hors_ligne:
             ok("Hors ligne : aucune invite ne part vers une API.")
         elif not avec_cle:
-            alerte("Aucune cle API : le palier anonyme de Pollinations ne "
+            alerte("Aucune clé API : le palier anonyme de Pollinations ne "
                    "publie pas son quota, et il est partage par adresse IP.")
-            alerte("Pour fabriquer un produit entier, ajoutez une cle gratuite : "
+            alerte("Pour fabriquer un produit entier, ajoutez une clé gratuite : "
                    + _c("usine cles", "1"))
         return True
     if hors_ligne:
-        erreur("Hors ligne, et aucun serveur d'IA locale n'est configure.")
+        erreur("Hors ligne, et aucun serveur d'IA locale n'est configuré.")
         print("\n  USINE_PROVIDERS les ecarte : ajoutez-y « ollama ».")
         return False
     erreur("Aucun fournisseur IA disponible.")
-    print("\n  Lancez " + _c("usine cles", "1") + " pour obtenir une cle gratuite "
+    print("\n  Lancez " + _c("usine cles", "1") + " pour obtenir une clé gratuite "
           "en 2 minutes,\n  ou demarrez une IA locale (voir " +
           _c("usine docteur", "1") + ").")
     return False
@@ -286,7 +286,7 @@ def _apres_production(args: argparse.Namespace, ctx: Contexte,
         # d'etre tenu — et sans adresse, la promesse n'est pas ecrite. Le
         # vendeur doit le savoir : c'est lui qui decide, pas nous.
         alerte("Aucune adresse de contact : la notice livree ne propose donc "
-               "pas de version adaptee aux lecteurs qui en auraient besoin.")
+               "pas de version adaptée aux lecteurs qui en auraient besoin.")
         print("      " + _c("usine reglages", "1")
               + "  ou  " + _c("--contact vous@exemple.fr", "1"))
     # « --marketing » force, « --sans-marketing » empeche, et sans les deux on
@@ -322,7 +322,7 @@ def _resume_console(resume: Dict[str, Any]) -> int:
     """
     fiche = store.lire_produit(str(resume.get("produit_id") or "")) or {}
     inacheve = apres.pas_encore_vendable(fiche)
-    titre_console("Produit inacheve" if inacheve else "Produit livre")
+    titre_console("Produit inachevé" if inacheve else "Produit livré")
     print("  " + _c(resume["titre"], "1"))
     print("  Dossier : " + resume["dossier"])
     for nom in resume.get("fichiers", []):
@@ -339,7 +339,7 @@ def _resume_console(resume: Dict[str, Any]) -> int:
     if inacheve:
         alerte(inacheve[0].upper() + inacheve[1:])
     if reglages.lire("notifications", True):
-        telephone.notifier("Produit inacheve" if inacheve else "Produit pret",
+        telephone.notifier("Produit inachevé" if inacheve else "Produit prêt",
                            resume["titre"][:70], ouvrir=a_ouvrir)
     return 3 if inacheve else 0
 
@@ -385,7 +385,7 @@ def cmd_roman(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un roman")
-    print("  Trente scenes relues et controlees : comptez une a trois heures.")
+    print("  Trente scènes relues et contrôlées : comptez une à trois heures.")
     print("  Une coupure ne perd rien : " + _c("usine reprendre", "1")
           + " finit ce qui manque.")
     resume = _par_le_catalogue(args, "roman", ctx)
@@ -427,14 +427,14 @@ def cmd_series(args: argparse.Namespace) -> int:
         from .pipelines import nouvelle as chaine_nouvelle
 
         if not module_serie.lire(args.nom):
-            alerte("Aucune serie « {} ».".format(args.nom))
+            alerte("Aucune série « {} ».".format(args.nom))
             return 1
         titre_console("Rafraichissement de « {} »".format(args.nom))
         refaits = chaine_nouvelle.rafraichir_serie(args.nom, journal=print)
         if not refaits:
-            ok("Aucun tome anterieur a refaire : leur page de fin est a jour.")
+            ok("Aucun tome antérieur à refaire : leur page de fin est à jour.")
             return 0
-        ok("{} tome(s) refaits. Leur derniere page annonce desormais les "
+        ok("{} tome(s) refaits. Leur dernière page annonce désormais les "
            "tomes parus depuis.".format(len(refaits)))
         print("      Redeposez ces fichiers chez votre distributeur pour que "
               "les lecteurs les voient.")
@@ -443,11 +443,11 @@ def cmd_series(args: argparse.Namespace) -> int:
     if args.nom:
         bible = module_serie.lire(args.nom)
         if not bible:
-            alerte("Aucune serie « {} ». Elle naitra au premier tome : "
+            alerte("Aucune série « {} ». Elle naîtra au premier tome : "
                    "usine nouvelle \"...\" --serie \"{}\"".format(
                        args.nom, args.nom))
             return 1
-        titre_console("Serie « {} »".format(bible.get("nom") or args.nom))
+        titre_console("Série « {} »".format(bible.get("nom") or args.nom))
         cadre = bible.get("cadre") or {}
         if cadre.get("lieu") or cadre.get("epoque"):
             print("  Cadre : {} — {}".format(cadre.get("lieu") or "?",
@@ -472,21 +472,21 @@ def cmd_series(args: argparse.Namespace) -> int:
         attente = module_serie.tomes_a_rafraichir(args.nom)
         if attente:
             print()
-            alerte("{} tome(s) ont une derniere page qui n'annonce pas les "
+            alerte("{} tome(s) ont une dernière page qui n'annonce pas les "
                    "suivants.".format(len(attente)))
             print("      " + _c('usine series "{}" --rafraichir'.format(args.nom), "1"))
         return 0
 
     series = module_serie.lister()
     if not series:
-        print("Aucune serie. Une serie commence a son premier tome :")
+        print("Aucune série. Une série commence à son premier tome :")
         print("  " + _c('usine nouvelle "votre idee" --serie "Nom de la serie"', "1"))
         return 0
-    titre_console("Series")
+    titre_console("Séries")
     for ligne in series:
         print("  {:<28} {} tome(s), {} personnage(s)".format(
             ligne["nom"], ligne["tomes"], ligne["personnages"]))
-    print("\n  Detail : " + _c("usine series \"<nom>\"", "1"))
+    print("\n  Détail : " + _c("usine series \"<nom>\"", "1"))
     return 0
 
 
@@ -526,8 +526,8 @@ def cmd_auto(args: argparse.Namespace) -> int:
     fiche = catalogue.obtenir(choix["type"]) or catalogue.obtenir("ebook")
     ok("Type retenu : {} — « {} »".format(fiche.nom, choix["sujet"]))
     if choix.get("source") == "froid" and not choix.get("mesure", True):
-        alerte("Aucune source de marche n'a repondu : cette niche est "
-               "proposee, pas mesuree.")
+        alerte("Aucune source de marché n'a répondu : cette niche est "
+               "proposée, pas mesurée.")
     args.sujet = choix["sujet"]
     args._type = fiche.cle
     ctx = contexte_depuis(args)
@@ -597,7 +597,7 @@ def cmd_emails(args: argparse.Namespace) -> int:
     if not _verifier_fournisseurs():
         return 2
     ctx = contexte_depuis(args)
-    titre_console("Fabrication d'une sequence e-mail")
+    titre_console("Fabrication d'une séquence e-mail")
     resume = _par_le_catalogue(args, "emails", ctx)
     return _resume_console(_apres_production(
         args, ctx, resume,
@@ -609,7 +609,7 @@ def cmd_memo(args: argparse.Namespace) -> int:
     if not _verifier_fournisseurs():
         return 2
     ctx = contexte_depuis(args)
-    titre_console("Fabrication d'un memo")
+    titre_console("Fabrication d'un mémo")
     resume = _par_le_catalogue(args, "memo", ctx)
     return _resume_console(_apres_production(
         args, ctx, resume,
@@ -632,7 +632,7 @@ def cmd_interactive(args: argparse.Namespace) -> int:
     if not _verifier_fournisseurs():
         return 2
     ctx = contexte_depuis(args)
-    titre_console("Fabrication d'un livre dont le lecteur est le heros")
+    titre_console("Fabrication d'un livre dont le lecteur est le héros")
     # Comme pour le roman : la quantite arrive par « --chapitres », l'option
     # commune aux types. Un « --sections » propre a ce type ferait deux
     # drapeaux pour le meme chiffre, et le second ecraserait le premier.
@@ -642,7 +642,7 @@ def cmd_interactive(args: argparse.Namespace) -> int:
     if resume.get("carte_elaguee"):
         # Une degradation se dit a l'ecran, pas seulement dans le JSON : c'est
         # la seule facon que l'utilisateur sache s'il doit refabriquer.
-        alerte("La carte a du etre elaguee pour rester jouable.")
+        alerte("La carte a dû être élaguée pour rester jouable.")
     for defaut in resume.get("defauts_restants") or []:
         alerte(defaut)
     dire_la_prose(resume)
@@ -664,7 +664,7 @@ def cmd_recueil(args: argparse.Namespace) -> int:
         variete["protagonistes_distincts"], variete["fins_distinctes"]))
     proche = variete.get("proximite_maximale") or {}
     if proche.get("titres"):
-        print("  Les deux recits les plus proches : « {} » et « {} » "
+        print("  Les deux récits les plus proches : « {} » et « {} » "
               "({}).".format(proche["titres"][0][:26],
                              proche["titres"][1][:26], proche["score"]))
     for lecture in resume.get("lectures") or []:
@@ -682,7 +682,7 @@ def cmd_feuilleton(args: argparse.Namespace) -> int:
     for lecture in resume.get("lectures") or []:
         alerte(lecture)
     if resume.get("episodes_sans_suspens"):
-        alerte("Episodes sans suspens declare : {} — le lecteur n'a aucune "
+        alerte("Épisodes sans suspens déclaré : {} — le lecteur n'a aucune "
                "raison de revenir.".format(", ".join(
                    str(e) for e in resume["episodes_sans_suspens"])))
     dire_la_prose(resume)
@@ -725,7 +725,7 @@ def cmd_outils(args: argparse.Namespace) -> int:
     if not _verifier_fournisseurs():
         return 2
     ctx = contexte_depuis(args)
-    titre_console("Fabrication d'une boite a outils")
+    titre_console("Fabrication d'une boîte à outils")
     resume = _par_le_catalogue(args, "outils", ctx)
     return _resume_console(_apres_production(
         args, ctx, resume, "Boite de {} outils pratiques.".format(resume["outils"])
@@ -736,7 +736,7 @@ def cmd_modeles(args: argparse.Namespace) -> int:
     if not _verifier_fournisseurs():
         return 2
     ctx = contexte_depuis(args)
-    titre_console("Fabrication de modeles Notion / tableur")
+    titre_console("Fabrication de modèles Notion / tableur")
     resume = _par_le_catalogue(args, "modeles", ctx)
     return _resume_console(_apres_production(
         args, ctx, resume,
@@ -762,7 +762,7 @@ def cmd_logiciel(args: argparse.Namespace) -> int:
     titre_console("Fabrication d'un outil logiciel")
     resume = _par_le_catalogue(args, "logiciel", ctx)
     if not resume["code_valide"]:
-        alerte("Du code n'a pas passe la verification : voir verification.json")
+        alerte("Du code n'a pas passé la vérification : voir verification.json")
     etat = "verifie"
     if resume["demarre"] is True:
         etat = "verifie et demarre"
@@ -791,8 +791,8 @@ def cmd_ventes(args: argparse.Namespace) -> int:
     if args.rattacher:
         propositions = ventes.rattacher_automatiquement()
         if not propositions:
-            print("  Rien a rattacher : toutes les ventes ont deja leur produit,")
-            print("  ou aucun titre connu ne ressemble aux references importees.")
+            print("  Rien à rattacher : toutes les ventes ont déjà leur produit,")
+            print("  ou aucun titre connu ne ressemble aux références importées.")
             return 0
         for reference, produit_id, score in propositions:
             ventes.lier(reference, produit_id)
@@ -816,7 +816,7 @@ def _ajouter_vente(args: argparse.Namespace) -> int:
     }
     ligne["empreinte"] = None       # saisie manuelle : pas de dedoublonnage
     if ventes.enregistrer(ligne, produit_id=args.ajouter):
-        ok("{} x {:.2f} {} enregistre pour {}".format(
+        ok("{} x {:.2f} {} enregistré pour {}".format(
             ligne["unites"], ligne["brut"], ligne["devise"], args.ajouter))
     return 0
 
@@ -849,9 +849,9 @@ def _importer_ventes(args: argparse.Namespace) -> int:
     ajoutes = sum(1 for ligne in lecture.lignes if ventes.enregistrer(ligne))
     deja = len(lecture.lignes) - ajoutes
     print()
-    ok("{} vente(s) ajoutee(s)".format(ajoutes))
+    ok("{} vente(s) ajoutée(s)".format(ajoutes))
     if deja:
-        print("  {} deja connue(s) — reimporter le meme export n'ajoute rien."
+        print("  {} déjà connue(s) — réimporter le même export n'ajoute rien."
               .format(deja))
     if lecture.ignorees:
         alerte("{} ligne(s) sans date ou sans montant lisible, ignorees."
@@ -873,11 +873,11 @@ def _resume_ventes(args: argparse.Namespace) -> int:
     titre_console("Ventes")
     totaux = ventes.total_par_devise(args.depuis)
     if not totaux:
-        print("  Aucune vente enregistree.")
+        print("  Aucune vente enregistrée.")
         print("\n  " + _c("usine ventes --importer export.csv --sur gumroad", "1"))
         print("  " + _c("usine ventes --ajouter <produit_id> --brut 29", "1"))
         print("\n  Sans cette donnee, « usine bilan » sait quel ton donne vos")
-        print("  meilleures notes, jamais quelle niche a paye.")
+        print("  meilleures notes, jamais quelle niche a payé.")
         return 0
 
     for total in totaux:
@@ -890,7 +890,7 @@ def _resume_ventes(args: argparse.Namespace) -> int:
             print("      {} ligne(s) sans revenu net dans l'export.".format(
                 total["net_inconnu"]))
         if total["rembourses"]:
-            print("      {} remboursement(s), deja deduit(s).".format(
+            print("      {} remboursement(s), déjà déduit(s).".format(
                 total["rembourses"]))
 
     produits = ventes.par_produit(args.nombre)
@@ -909,9 +909,9 @@ def _resume_ventes(args: argparse.Namespace) -> int:
                 ligne["produits"]))
     prix = ventes.prix_observes()
     if prix:
-        titre_console("Prix reellement encaisses")
+        titre_console("Prix réellement encaissés")
         for ligne in prix:
-            print("  {} : median {:.2f}, moitie centrale {:.2f} a {:.2f}"
+            print("  {} : médian {:.2f}, moitié centrale {:.2f} à {:.2f}"
                   " ({} ventes)".format(ligne["devise"], ligne["median"],
                                         ligne["bas"], ligne["haut"],
                                         ligne["ventes"]))
@@ -942,7 +942,7 @@ def cmd_veille(args: argparse.Namespace) -> int:
 
     douleurs = rapport.douleurs
     if douleurs:
-        print("\n  " + _c("Formulations de probleme", "1"))
+        print("\n  " + _c("Formulations de problème", "1"))
         for discussion in douleurs[:args.nombre]:
             print("    - {}".format(discussion.titre[:72]))
 
@@ -959,7 +959,7 @@ def cmd_veille(args: argparse.Namespace) -> int:
             "trace sans que cela dise rien de son marche.", 68):
         print("    " + ligne)
     print("\n  " + _c('usine idees "{}"'.format(args.sujet[:36]), "1")
-          + " s'en sert deja pour formuler les promesses.")
+          + " s'en sert déjà pour formuler les promesses.")
     return 0
 
 
@@ -975,9 +975,9 @@ def cmd_sauvegarde(args: argparse.Namespace) -> int:
         if not fiche["valide"]:
             erreur(fiche["probleme"])
             return 1
-        print("  Creee le      : {}".format(fiche.get("cree_le", "?")))
+        print("  Créée le      : {}".format(fiche.get("cree_le", "?")))
         print("  Schema        : version {}".format(fiche.get("schema", "?")))
-        print("  Reglages      : {}".format(
+        print("  Réglages      : {}".format(
             "inclus" if fiche.get("avec_reglages") else "absents"))
         print("  Fichiers de produits : {}".format(
             fiche.get("fichiers_produits", 0)))
@@ -992,15 +992,15 @@ def cmd_sauvegarde(args: argparse.Namespace) -> int:
     taille = archive.stat().st_size
     ok("{} ({} Ko)".format(archive, max(1, taille // 1024)))
     print("\n  Contient l'historique de production, les empreintes, les tests")
-    print("  A/B et " + _c("les ventes", "1") + " — c'est cette derniere qui ne")
+    print("  A/B et " + _c("les ventes", "1") + " — c'est cette dernière qui ne")
     print("  se refabrique pas.")
     if not args.avec_produits:
         print("\n  Les fichiers des produits ne sont PAS inclus : "
               + _c("--avec-produits", "1"))
-    print("  Les cles API non plus : elles vivent dans .env, et une archive")
+    print("  Les clés API non plus : elles vivent dans .env, et une archive")
     print("  se copie sur un ordinateur ou dans un nuage.")
-    print("\n  Copiez-la hors du telephone. Une sauvegarde restee sur")
-    print("  l'appareil ne protege de rien.")
+    print("\n  Copiez-la hors du téléphone. Une sauvegarde restée sur")
+    print("  l'appareil ne protège de rien.")
     return 0
 
 
@@ -1014,8 +1014,8 @@ def _restaurer(args: argparse.Namespace, sauvegarde) -> int:
     print("  Archive du {}, schema {}".format(
         fiche.get("cree_le", "?"), fiche.get("schema", "?")))
     if not args.oui:
-        alerte("Cette operation remplace l'atelier actuel.")
-        print("      L'ancienne base est mise de cote, pas supprimee.")
+        alerte("Cette opération remplace l'atelier actuel.")
+        print("      L'ancienne base est mise de côté, pas supprimée.")
         print("      Confirmez avec " + _c("--oui", "1"))
         return 1
     resultat = sauvegarde.restaurer(chemin, avec_produits=not args.sans_produits)
@@ -1028,10 +1028,10 @@ def _restaurer(args: argparse.Namespace, sauvegarde) -> int:
             print("      " + _c("usine usine arreter", "1")
                   + " attend la fin du produit en cours.")
         return 1
-    ok("Atelier restaure ({} fichier(s) de produits).".format(
+    ok("Atelier restauré ({} fichier(s) de produits).".format(
         resultat["fichiers_produits"]))
     if resultat["ancienne_base"]:
-        print("  Ancienne base conservee : {}".format(
+        print("  Ancienne base conservée : {}".format(
             resultat["ancienne_base"]))
     return 0
 
@@ -1040,12 +1040,12 @@ def cmd_doublons(args: argparse.Namespace) -> int:
     """Les produits qui se recouvrent, tous types confondus."""
     if args.reconstruire:
         return _reconstruire_empreintes()
-    titre_console("Ce que l'usine a ecrit deux fois")
+    titre_console("Ce que l'usine a écrit deux fois")
     empreintes = store.lister_empreintes(args.type or "")
     if len(empreintes) < 2:
-        print("  Moins de deux produits enregistres : rien a comparer.")
-        print("  Les empreintes sont posees a la fabrication ; les produits")
-        print("  fabriques avant cette version n'en ont pas.")
+        print("  Moins de deux produits enregistrés : rien à comparer.")
+        print("  Les empreintes sont posées à la fabrication ; les produits")
+        print("  fabriqués avant cette version n'en ont pas.")
         return 0
 
     charges = [{
@@ -1083,7 +1083,7 @@ def cmd_doublons(args: argparse.Namespace) -> int:
         print("    {}  |  {}".format(courant["produit_id"][:34],
                                      voisin.produit_id[:34]))
     print("\n  Une place de marche retire les doublons, et un acheteur qui")
-    print("  prend deux fois le meme livre demande deux remboursements.")
+    print("  prend deux fois le même livre demande deux remboursements.")
     return 1
 
 
@@ -1096,7 +1096,7 @@ def _reconstruire_empreintes() -> int:
     produits = [p for p in store.lister_produits(1000)
                 if p["id"] not in connues and p["statut"] != "bonus_integre"]
     if not produits:
-        ok("Tous les produits connus ont deja leur empreinte.")
+        ok("Tous les produits connus ont déjà leur empreinte.")
         return 0
 
     faits, sans_matiere = 0, []
@@ -1116,7 +1116,7 @@ def _reconstruire_empreintes() -> int:
             print("      {}".format(titre[:56]))
         print("      Dossier deplace ou supprime, ou type sans fichier texte.")
     if faits:
-        print("\n  " + _c("usine doublons", "1") + " compare desormais tout "
+        print("\n  " + _c("usine doublons", "1") + " compare désormais tout "
               "le catalogue.")
     return 0
 
@@ -1126,13 +1126,13 @@ def cmd_reglages(args: argparse.Namespace) -> int:
         modifications = {}
         for paire in args.definir:
             if "=" not in paire:
-                erreur("Format attendu : nom=valeur (recu : {})".format(paire))
+                erreur("Format attendu : nom=valeur (reçu : {})".format(paire))
                 return 1
             nom, valeur = paire.split("=", 1)
             nom = nom.strip()
             if nom not in reglages.DEFAUTS:
-                erreur("Reglage inconnu : {}".format(nom))
-                print("  Reglages valides : " + ", ".join(reglages.DEFAUTS))
+                erreur("Réglage inconnu : {}".format(nom))
+                print("  Réglages valides : " + ", ".join(reglages.DEFAUTS))
                 return 1
             modifications[nom] = valeur
         reglages.ecrire(modifications)
@@ -1141,9 +1141,9 @@ def cmd_reglages(args: argparse.Namespace) -> int:
         return 0
     if args.reinitialiser:
         reglages.reinitialiser()
-        ok("Reglages remis a zero.")
+        ok("Réglages remis à zéro.")
         return 0
-    titre_console("Reglages")
+    titre_console("Réglages")
     # L'etiquette pour lire, le nom pour « --definir » : la CLI est le seul
     # endroit ou l'identifiant sert a quelque chose, donc il reste, entre
     # parentheses, apres ce qu'il veut dire.
@@ -1189,12 +1189,12 @@ def cmd_file(args: argparse.Namespace) -> int:
         for sujet in ajoutees:
             ok("ajoute : {} ({})".format(sujet, args.type))
         for sujet in doublons:
-            alerte("deja en file : {}".format(sujet))
+            alerte("déjà en file : {}".format(sujet))
         for sujet in ajoutees:
             for proche in empreinte.sujets_proches(sujet, args.type)[:2]:
-                alerte("« {} » recouvre une niche deja produite : « {} »".format(
+                alerte("« {} » recouvre une niche déjà produite : « {} »".format(
                     sujet, proche["sujet"]))
-                print("      Produit : {} — verifiez avant de vendre les deux."
+                print("      Produit : {} — vérifiez avant de vendre les deux."
                       .format(proche["titre"][:52]))
         print("\n  File : " + _resume_file())
         return 0
@@ -1204,7 +1204,7 @@ def cmd_file(args: argparse.Namespace) -> int:
 
         titre_console("Promesses de lecture")
         print("  Une fiction ne se cherche pas comme une niche. Le lecteur\n"
-              "  n'achete pas la solution d'un probleme : il achete une\n"
+              "  n'achète pas la solution d'un problème : il achète une\n"
               "  experience qu'il veut revivre — un sous-genre, des tropes,\n"
               "  une ambiance, et une fin qu'on ne lui refuse pas.\n")
         rapport = prospecter_fiction(
@@ -1213,11 +1213,11 @@ def cmd_file(args: argparse.Namespace) -> int:
         if rapport["ajoutees"]:
             ok("{} promesse(s) mise(s) en file.".format(rapport["ajoutees"]))
         elif rapport["en_file"]:
-            alerte("Aucune promesse NEUVE : les {} sont deja en file."
+            alerte("Aucune promesse NEUVE : les {} sont déjà en file."
                    .format(rapport["en_file"]))
         elif rapport["pistes"]:
-            alerte("Aucune promesse retenue : toutes recouvrent un recit "
-                   "deja ecrit.")
+            alerte("Aucune promesse retenue : toutes recouvrent un récit "
+                   "déjà écrit.")
         print("\n  File : " + _resume_file())
         return 0 if rapport["ajoutees"] else 1
 
@@ -1232,40 +1232,40 @@ def cmd_file(args: argparse.Namespace) -> int:
         if not rapport["graine"]:
             return 1
         if rapport["ajoutees"]:
-            ok("{} niche(s) ajoutee(s) a la file.".format(rapport["ajoutees"]))
+            ok("{} niche(s) ajoutée(s) à la file.".format(rapport["ajoutees"]))
         elif rapport["pistes"]:
             # Nommer la VRAIE cause. « Toutes recouvrent un produit deja
             # fabrique » etait affiche meme quand aucune ne recouvrait quoi
             # que ce soit : elles etaient deja en file, ce qui appelle un
             # autre geste — produire ce qui attend, pas chercher ailleurs.
             if rapport.get("en_file") and not rapport["ecartees"]:
-                alerte("Aucune piste NEUVE : les {} pistes sont deja en file "
+                alerte("Aucune piste NEUVE : les {} pistes sont déjà en file "
                        "d'attente.".format(rapport["en_file"]))
                 print("      Lancez « usine produire » pour les fabriquer, ou "
                       "explorez une autre graine.")
             else:
                 alerte("Aucune piste retenue : toutes recouvrent un produit "
-                       "deja fabrique, ou sont deja en file.")
+                       "déjà fabriqué, ou sont déjà en file.")
         print("\n  File : " + _resume_file())
         return 0 if rapport["ajoutees"] else 1
 
     if args.retirer:
         for identifiant in args.retirer:
             if file_prod.retirer(identifiant):
-                ok("entree {} retiree".format(identifiant))
+                ok("entrée {} retirée".format(identifiant))
             else:
-                alerte("entree {} introuvable ou deja terminee".format(identifiant))
+                alerte("entrée {} introuvable ou déjà terminée".format(identifiant))
         print("\n  File : " + _resume_file())
         return 0
 
     if args.rejouer is not None:
         nombre = file_prod.rejouer(args.rejouer or 0)
-        ok("{} entree(s) remise(s) en file".format(nombre))
+        ok("{} entrée(s) remise(s) en file".format(nombre))
         return 0
 
     if args.vider or args.tout_vider:
         nombre = file_prod.vider(tout=args.tout_vider)
-        ok("{} entree(s) supprimee(s)".format(nombre))
+        ok("{} entrée(s) supprimée(s)".format(nombre))
         return 0
 
     entrees = file_prod.lister(args.statut, 60)
@@ -1297,7 +1297,7 @@ def cmd_usine(args: argparse.Namespace) -> int:
 
     if args.action == "arreter":
         if demander_arret():
-            ok("Arret demande. L'usine termine le produit en cours puis s'arrete.")
+            ok("Arrêt demandé. L'usine termine le produit en cours puis s'arrête.")
             return 0
         alerte("Aucune usine en marche.")
         return 1
@@ -1323,9 +1323,9 @@ def cmd_usine(args: argparse.Namespace) -> int:
             print("  Produits livres cette session : {}".format(
                 session.get("nombre_faits", 0)))
         else:
-            print("  " + _c("a l'arret", "90"))
+            print("  " + _c("à l'arrêt", "90"))
             if etat["session"].get("motif_fin"):
-                print("  Derniere session : " + etat["session"]["motif_fin"])
+                print("  Dernière session : " + etat["session"]["motif_fin"])
 
         compte = etat["file"]
         print("\n  " + _c("File", "1") + "   : " + _resume_file())
@@ -1346,7 +1346,7 @@ def cmd_usine(args: argparse.Namespace) -> int:
                 print("    produits : {} / {}".format(
                     b["produits_faits"], b["produits_jour_max"]))
         else:
-            alerte("Aucun budget defini : "
+            alerte("Aucun budget défini : "
                    + _c("usine reglages --definir budget_appels_jour=250", "1"))
         return 0
 
@@ -1354,9 +1354,9 @@ def cmd_usine(args: argparse.Namespace) -> int:
     if not _verifier_fournisseurs():
         return 2
     if verrou_actif() is not None:
-        erreur("Une usine tourne deja (pid {}).".format(verrou_actif()))
+        erreur("Une usine tourne déjà (pid {}).".format(verrou_actif()))
         print("  Suivre : " + _c("usine usine statut", "1"))
-        print("  Arreter : " + _c("usine usine arreter", "1"))
+        print("  Arrêter : " + _c("usine usine arreter", "1"))
         return 1
 
     for paire in args.budget or []:
@@ -1451,7 +1451,7 @@ def _rythme_ab(args: argparse.Namespace) -> int:
         if not mesure["periode"]:
             print("  {} {:<40} {}".format(
                 _c("[" + variante["etiquette"] + "]", "1;36"),
-                variante["contenu"][:40], _c("periode non renseignee", "33")))
+                variante["contenu"][:40], _c("période non renseignée", "33")))
             continue
         print("  {} {:<40} {:>3} vente(s) en {:>3.0f} j = {:.2f}/jour".format(
             _c("[" + variante["etiquette"] + "]", "1;36"),
@@ -1460,7 +1460,7 @@ def _rythme_ab(args: argparse.Namespace) -> int:
         print("      {}".format(_c(mesure["periode"], "90")))
     if sans_periode:
         print()
-        alerte("{} variante(s) sans periode : elles ne peuvent rien recevoir."
+        alerte("{} variante(s) sans période : elles ne peuvent rien recevoir."
                .format(len(sans_periode)))
         print("      " + _c("usine ab periode <variante> --du AAAA-MM-JJ", "1"))
 
@@ -1475,7 +1475,7 @@ def _rythme_ab(args: argparse.Namespace) -> int:
     titre_console("Comparaison")
     for resultat in comparaison["variantes"]:
         variante = {"etiquette": resultat["etiquette"]}
-        print("  {}  P(meilleure) {:>5.0f} %   rythme median {:.2f}/jour"
+        print("  {}  P(meilleure) {:>5.0f} %   rythme médian {:.2f}/jour"
               "   (90 % entre {:.2f} et {:.2f})".format(
                   _c("[" + variante["etiquette"] + "]", "1;36"),
                   resultat["probabilite_meilleure"] * 100,
@@ -1489,7 +1489,7 @@ def _rythme_ab(args: argparse.Namespace) -> int:
         print("  " + ligne)
     print()
     print("  " + _c("Ce test est sequentiel", "1") + " : les variantes n'ont pas")
-    print("  ete exposees en meme temps. Une semaine de vacances ou un partage")
+    print("  été exposées en même temps. Une semaine de vacances ou un partage")
     print("  inattendu se confond avec l'effet du titre, et aucun calcul ne")
     print("  repare cela. Alternez les variantes sur plusieurs cycles.")
     return 0 if conclusion["etat"] in ("gagnant", "tendance") else 1
@@ -1559,7 +1559,7 @@ def cmd_ab(args: argparse.Namespace) -> int:
         titre_console("Tests A/B")
         if not experiences:
             print("  Aucun test.")
-            print("\n  Creer : " + _c('usine ab creer --titre "votre titre"', "1"))
+            print("\n  Créer : " + _c('usine ab creer --titre "votre titre"', "1"))
             return 0
         for exp in experiences:
             analyse = experience.analyser(exp["id"])
@@ -1583,7 +1583,7 @@ def cmd_ab(args: argparse.Namespace) -> int:
             return 1
         ok("Variante {} en ligne du {} au {}".format(
             args.identifiant, args.du, args.au or "aujourd'hui"))
-        print("  Les ventes de cette periode lui seront attribuees :")
+        print("  Les ventes de cette période lui seront attribuées :")
         print("  " + _c("usine ab rythme <numero du test>", "1"))
         return 0
 
@@ -1609,9 +1609,9 @@ def cmd_ab(args: argparse.Namespace) -> int:
         except ValueError as exc:
             erreur(str(exc))
             return 1
-        ok("Observation enregistree : +{} vue(s), +{} action(s)".format(
+        ok("Observation enregistrée : +{} vue(s), +{} action(s)".format(
             args.vues or 0, args.actions or 0))
-        print("  Les chiffres s'additionnent aux releves precedents.")
+        print("  Les chiffres s'additionnent aux relevés précédents.")
         return 0
 
     if action in ("verdict", "planche", "clore"):
@@ -1690,7 +1690,7 @@ def _afficher_verdict(analyse: Dict[str, Any]) -> None:
 
 def _rappel_echelle() -> None:
     print()
-    print("  " + _c("A savoir avant de lancer le test", "1"))
+    print("  " + _c("À savoir avant de lancer le test", "1"))
     for ligne in _envelopper(
         "Un test A/B honnete demande beaucoup de trafic : a 5 % de conversion, "
         "il faut de l'ordre de 7 600 vues par variante pour detecter un ecart "
@@ -1730,7 +1730,7 @@ def cmd_marche(args: argparse.Namespace) -> int:
         chemin.write_text(json.dumps(rapport, ensure_ascii=False, indent=2),
                           encoding="utf-8")
         print("\n  Rapport complet : " + str(chemin))
-    print("\n  Etape suivante : " + _c('usine idees "{}"'.format(args.sujet), "1"))
+    print("\n  Étape suivante : " + _c('usine idees "{}"'.format(args.sujet), "1"))
     return 0
 
 
@@ -1757,7 +1757,7 @@ def cmd_bilan(args: argparse.Namespace) -> int:
         return 0
 
     titre_console("Bilan de production")
-    print("  {} production(s), {} reussie(s), {} echec(s)".format(
+    print("  {} production(s), {} réussie(s), {} échec(s)".format(
         donnees["productions"], donnees["reussites"], donnees["echecs"]))
     if donnees["note_moyenne"] is not None:
         notees = donnees.get("productions_notees") or 0
@@ -1771,7 +1771,7 @@ def cmd_bilan(args: argparse.Namespace) -> int:
         if notees and notees < donnees["reussites"]:
             print("    " + _c("sur {} produit(s) sur {} : les autres ne sont "
                               "pas de la prose, ou leurs sections sont trop "
-                              "courtes pour etre mesurees"
+                              "courtes pour être mesurées"
                               .format(notees, donnees["reussites"]), "2"))
     if donnees["gain_moyen_relecture"] is not None:
         print("  Gain moyen de la relecture : {:+.2f} point".format(
@@ -1792,13 +1792,13 @@ def cmd_bilan(args: argparse.Namespace) -> int:
                 groupe["appels_moyens"]))
 
     if donnees["defauts_frequents"]:
-        print("\n  " + _c("Defauts les plus frequents", "1"))
+        print("\n  " + _c("Défauts les plus fréquents", "1"))
         for defaut in donnees["defauts_frequents"][:5]:
             print("    {:>3}x  {}".format(defaut["occurrences"], defaut["defaut"]))
 
     _bilan_des_ventes()
 
-    titre_console("Conseils tires de vos donnees")
+    titre_console("Conseils tirés de vos données")
     for conseil in apprentissage.conseils():
         print("  " + _c("[{}]".format(conseil["sujet"]), "36"))
         for ligne in _envelopper(conseil["conseil"], 68):
@@ -1816,14 +1816,14 @@ def _bilan_des_ventes() -> None:
     """
     totaux = ventes.total_par_devise()
     if not totaux:
-        print("\n  " + _c("Aucune vente enregistree", "33"))
-        print("    Les conseils ci-dessous portent sur la QUALITE mesuree,")
+        print("\n  " + _c("Aucune vente enregistrée", "33"))
+        print("    Les conseils ci-dessous portent sur la QUALITÉ mesurée,")
         print("    pas sur ce qui se vend — l'usine n'en sait rien.")
         print("    " + _c("usine ventes --importer export.csv", "1"))
         return
     titre_console("Ce que les ventes disent")
     for total in totaux:
-        print("  {}  {} unites, {:.2f} encaisses".format(
+        print("  {}  {} unités, {:.2f} encaissés".format(
             _c(total["devise"], "1"), total["unites"] or 0, total["brut"] or 0))
     types = ventes.par_champ("type")
     if types:
@@ -1835,7 +1835,7 @@ def _bilan_des_ventes() -> None:
     prix = ventes.prix_observes()
     for ligne in prix:
         if ligne["ventes"] >= 3:
-            print("\n  Prix median reellement encaisse : {:.2f} {}"
+            print("\n  Prix médian réellement encaissé : {:.2f} {}"
                   " ({} ventes)".format(ligne["median"], ligne["devise"],
                                         ligne["ventes"]))
 
@@ -1848,7 +1848,7 @@ def cmd_prompts_systeme(args: argparse.Namespace) -> int:
         for fichier in fichiers:
             ok(str(fichier))
         print("\n  Editez ces fichiers, puis relancez une fabrication :")
-        print("  les modifications sont prises en compte au demarrage suivant.")
+        print("  les modifications sont prises en compte au démarrage suivant.")
         print("  Revenir aux valeurs d'origine : supprimez le fichier.")
         return 0
     if args.reinitialiser:
@@ -1906,7 +1906,7 @@ def cmd_idees(args: argparse.Namespace) -> int:
             ok(signal)
     for index, idee in enumerate(resultat["idees"], 1):
         print("\n  {}. {}".format(_c(str(index), "1;36"), _c(idee["titre"], "1")))
-        print("     type={} prix={} EUR difficulte={} concurrence={}".format(
+        print("     type={} prix={} EUR difficulté={} concurrence={}".format(
             idee["type"], idee["prix_eur"], idee["difficulte"], idee["concurrence"]))
         print("     " + idee["probleme"][:110])
         print("     " + _c('usine {} "{}"'.format(idee["type"], idee["titre"]), "2"))
@@ -1920,11 +1920,11 @@ def cmd_complet(args: argparse.Namespace) -> int:
         return 2
     debut = time.time()
     ctx = contexte_depuis(args)
-    titre_console("Offre complete — produit principal")
+    titre_console("Offre complète — produit principal")
     principal = ebook.produire(ctx)
     dossier = Path(principal["dossier"])
 
-    titre_console("Bonus 1 — boite a outils")
+    titre_console("Bonus 1 — boîte à outils")
     ctx_outils = contexte_depuis(args)
     ctx_outils.sujet = principal["titre"]
     ctx_outils.sans_image = True
@@ -1932,9 +1932,9 @@ def cmd_complet(args: argparse.Namespace) -> int:
         bonus_outils = boite_outils.produire(ctx_outils, nombre=6)
         _deplacer_bonus(Path(bonus_outils["dossier"]), dossier / "bonus-boite-outils",
                         bonus_outils["produit_id"])
-        ok("Boite a outils integree ({} outils)".format(bonus_outils["outils"]))
+        ok("Boîte à outils intégrée ({} outils)".format(bonus_outils["outils"]))
     except Exception as exc:
-        alerte("Bonus boite a outils ignore : {}".format(exc))
+        alerte("Bonus boîte à outils ignoré : {}".format(exc))
 
     titre_console("Bonus 2 — pack de contenu de lancement")
     ctx_social = contexte_depuis(args)
@@ -2097,7 +2097,7 @@ def cmd_reprendre(args: argparse.Namespace) -> int:
     """
     produit = _produit_vise(getattr(args, "produit_id", ""), statut="en_cours")
     if not produit:
-        erreur("Aucun produit inacheve a reprendre.")
+        erreur("Aucun produit inachevé à reprendre.")
         print("  Liste : " + _c("usine liste", "1"))
         return 1
     dossier = Path(produit["dossier"] or "")
@@ -2116,7 +2116,7 @@ def cmd_reprendre(args: argparse.Namespace) -> int:
     if not commande:
         erreur("Ce produit n'a pas garde la commande qui l'a fabrique.")
         print("  Il date d'avant le carnet de reprise. Relancez la commande "
-              "d'origine : les reponses deja obtenues sont en cache.")
+              "d'origine : les réponses déjà obtenues sont en cache.")
         return 1
     titre_console("Reprise — {}".format(produit["titre"]))
     _annoncer_ce_qui_manque(manquants, dossier)
@@ -2160,12 +2160,12 @@ def cmd_supprimer(args: argparse.Namespace) -> int:
         try:
             dossier.resolve().relative_to(config.PRODUITS_DIR.resolve())
         except ValueError:
-            erreur("Dossier hors de l'atelier, rien n'a ete efface : {}"
+            erreur("Dossier hors de l'atelier, rien n'a été effacé : {}"
                    .format(dossier))
             return 1
         shutil.rmtree(dossier, ignore_errors=True)
     store.supprimer_produit(produit["id"])
-    ok("Produit efface ({} Ko liberes).".format(poids // 1024))
+    ok("Produit effacé ({} Ko libérés).".format(poids // 1024))
     return 0
 
 
@@ -2175,7 +2175,7 @@ def cmd_liste(args: argparse.Namespace) -> int:
         print("  Aucun produit pour l'instant. Essayez : "
               + _c('usine ebook "votre sujet"', "1"))
         return 0
-    titre_console("Produits fabriques")
+    titre_console("Produits fabriqués")
     inacheves = 0
     for produit in produits:
         meta = produit.get("meta") or {}
@@ -2185,7 +2185,7 @@ def cmd_liste(args: argparse.Namespace) -> int:
         # « Produits fabriques » comme les autres.
         inacheve = produit["statut"] == "en_cours"
         inacheves += int(inacheve)
-        marque = _c("inacheve", "33") if inacheve else produit["statut"]
+        marque = _c("inachevé", "33") if inacheve else produit["statut"]
         print("  {}  {}".format(
             _c(time.strftime("%d/%m %H:%M", time.localtime(produit["cree_le"])), "2"),
             _c(produit["titre"][:58], "1"),
@@ -2194,7 +2194,7 @@ def cmd_liste(args: argparse.Namespace) -> int:
         if meta.get("mots"):
             print("     {} mots".format(meta["mots"]))
     if inacheves:
-        print("\n  {} produit(s) inacheve(s). {}".format(
+        print("\n  {} produit(s) inachevé(s). {}".format(
             inacheves, _explique_le_cache()))
     return 0
 
@@ -2231,7 +2231,7 @@ def cmd_docteur(args: argparse.Namespace) -> int:
         if tel["api"]:
             ok("termux-api present : notifications et garde batterie actives")
         else:
-            alerte("termux-api absent : ni notification de fin, ni arret sur "
+            alerte("termux-api absent : ni notification de fin, ni arrêt sur "
                    "batterie faible (pkg install termux-api)")
         if tel["batterie"]:
             niveau = tel["batterie"]["niveau"]
@@ -2243,9 +2243,9 @@ def cmd_docteur(args: argparse.Namespace) -> int:
     # verification du JavaScript genere : le repli structurel ne voit pas une
     # erreur de syntaxe fine.
     if etat["node"]:
-        ok("Node.js present : verification complete du JavaScript genere")
+        ok("Node.js présent : vérification complète du JavaScript généré")
     else:
-        alerte("Node.js absent : le JavaScript genere sera verifie en mode "
+        alerte("Node.js absent : le JavaScript généré sera vérifié en mode "
                "degrade (pkg install nodejs-lts)")
 
     titre_console("Fournisseurs IA")
@@ -2274,7 +2274,7 @@ def cmd_docteur(args: argparse.Namespace) -> int:
                 _compte(ligne["aujourdhui"]), ligne["rpd"], _c(budget, "90"),
                 _c(suffixe, "36")))
         else:
-            print("  {} {:<13} {:<9} definir {} — {}".format(
+            print("  {} {:<13} {:<9} définir {} — {}".format(
                 _c("-", "90"), ligne["nom"], genre, ligne["cle_env"], ligne["inscription"]))
 
     controle = etat.get("modeles")
@@ -2284,28 +2284,28 @@ def cmd_docteur(args: argparse.Namespace) -> int:
             alerte("{} ne sert plus : {}".format(
                 ecart["fournisseur"], ", ".join(ecart["manquants"])))
             if ecart["proposes"]:
-                print("      propose a la place : " +
+                print("      proposé à la place : " +
                       ", ".join(ecart["proposes"][:6]))
         if controle["ecarts"]:
             print("      Corrigez les identifiants dans usine/core/config.py.")
         intacts = [n for n in controle["consultes"]
                    if n not in {e["fournisseur"] for e in controle["ecarts"]}]
         if intacts:
-            ok("Modeles confirmes chez : " + ", ".join(intacts))
+            ok("Modèles confirmés chez : " + ", ".join(intacts))
         # « Personne n'a repondu » ne doit pas se lire « tout va bien » :
         # c'est precisement la confusion qui a laisse Groq mourir en silence.
         if controle["injoignables"]:
-            alerte("Non verifie (pas de cle, ou service injoignable) : "
+            alerte("Non vérifié (pas de clé, ou service injoignable) : "
                    + ", ".join(controle["injoignables"]))
         if not controle["consultes"]:
-            alerte("Aucun fournisseur n'a pu etre interroge : ce controle ne "
+            alerte("Aucun fournisseur n'a pu être interrogé : ce contrôle ne "
                    "dit rien, ni dans un sens ni dans l'autre.")
 
     if getattr(args, "essai", False):
         from .core import diagnostic as _d
 
-        titre_console("Essai reel de chaque modele")
-        print("  Un appel minimal par identifiant declare. Un modele peut "
+        titre_console("Essai réel de chaque modèle")
+        print("  Un appel minimal par identifiant déclaré. Un modèle peut "
               "figurer\n  au catalogue et refuser de servir : c'est "
               "precisement ce qu'un\n  catalogue ne peut pas dire.\n")
         essais = _d.essayer_modeles()
@@ -2318,29 +2318,29 @@ def cmd_docteur(args: argparse.Namespace) -> int:
                 print("      {}".format(_c(ligne["detail"][:86], "90")))
         print()
         if not essais["essais"]:
-            alerte("Aucun fournisseur disponible : rien n'a pu etre essaye.")
+            alerte("Aucun fournisseur disponible : rien n'a pu être essayé.")
         elif essais["muets"]:
-            alerte("{} modele(s) sur {} ne repondent pas.".format(
+            alerte("{} modèle(s) sur {} ne répondent pas.".format(
                 len(essais["muets"]), len(essais["essais"])))
             # Un identifiant perime se corrige dans config.py ; un credit
             # epuise ou un quota atteint ne se corrigent pas la, et envoyer
             # tout le monde au meme endroit ferait perdre du temps.
             inconnus = [l for l in essais["muets"] if l["etat"] == "inconnu"]
             if inconnus:
-                print("      Identifiants a corriger dans usine/core/config.py :")
+                print("      Identifiants à corriger dans usine/core/config.py :")
                 for ligne in inconnus:
                     print("        {} : {}".format(ligne["fournisseur"],
                                                    ligne["modele"]))
         else:
-            ok("Les {} modeles declares repondent.".format(len(essais["essais"])))
+            ok("Les {} modèles déclarés répondent.".format(len(essais["essais"])))
 
     if getattr(args, "quotas", False):
         from .core import diagnostic as _d
 
-        titre_console("Quotas ecrits contre quotas annonces")
+        titre_console("Quotas écrits contre quotas annoncés")
         print("  Les chiffres de config.py sont recopies d'une page de\n"
               "  documentation. La plupart des services annoncent les leurs\n"
-              "  dans les en-tetes de chaque reponse : un appel suffit.\n")
+              "  dans les en-têtes de chaque réponse : un appel suffit.\n")
         audit = _d.auditer_quotas()
         muets = []
         for ligne in audit["lignes"]:
@@ -2373,18 +2373,18 @@ def cmd_docteur(args: argparse.Namespace) -> int:
                     else _c("?", "33")
                 if mesure["correspond"]:
                     print("{} {} {:9} : {:>9} annonce — c'est le quota "
-                          "« {} » ecrit".format(
+                          "« {} » écrit".format(
                               entete, marque, mesure["genre"],
                               mesure["annonce"], mesure["correspond"]))
                 else:
-                    print("{} {} {:9} : {:>9} annonce — ne correspond a aucun "
-                          "quota ecrit".format(entete, marque, mesure["genre"],
+                    print("{} {} {:9} : {:>9} annoncé — ne correspond à aucun "
+                          "quota écrit".format(entete, marque, mesure["genre"],
                                                mesure["annonce"]))
                     if mesure["fenetre"]:
-                        print("               (remise a zero : {})".format(
+                        print("               (remise à zéro : {})".format(
                             mesure["fenetre"]))
                 if mesure.get("reste") is not None:
-                    print("               il en reste {} pour cette fenetre"
+                    print("               il en reste {} pour cette fenêtre"
                           .format(mesure["reste"]))
                 service = mesure.get("consomme_service")
                 usine = mesure.get("compte_usine")
@@ -2404,7 +2404,7 @@ def cmd_docteur(args: argparse.Namespace) -> int:
             # pas ». Les confondre, c'est prendre un silence pour un accord.
             alerte("Aucun chiffre publie par : " + ", ".join(sorted(muets)))
             print("      Ce n'est pas un accord, c'est une absence de "
-                  "reponse : ces quotas-la restent invérifiés.")
+                  "réponse : ces quotas-là restent invérifiés.")
 
     if getattr(args, "reparer", False):
         from .core import diagnostic as _d
@@ -2424,7 +2424,7 @@ def cmd_docteur(args: argparse.Namespace) -> int:
                 "  (repli : aucun modele de ce rang ne repond)"
                 if ligne.get("repli") else ""))
         for ligne in bilan["sans_recours"]:
-            alerte("{} / {} : « {} » ne repond pas, et rien dans son "
+            alerte("{} / {} : « {} » ne répond pas, et rien dans son "
                    "catalogue ne le remplace.".format(
                        ligne["fournisseur"], ligne["role"], ligne["modele"]))
         # Ce qui a ete ECARTE : ce n'est pas reparable ici, mais le taire
@@ -2436,25 +2436,25 @@ def cmd_docteur(args: argparse.Namespace) -> int:
         if par_cause:
             print()
             for (fournisseur, cause), roles in sorted(par_cause.items()):
-                alerte("{} : {} — {} role(s) non verifiable(s) ici."
+                alerte("{} : {} — {} rôle(s) non vérifiable(s) ici."
                        .format(fournisseur, cause, len(roles)))
             print("      Ces pannes-la ne se reparent pas en changeant de "
-                  "modele :")
+                  "modèle :")
             print("      un quota se recharge, un credit s'achete, un service "
                   "retire ne revient pas.")
         vivants = bilan.get("vivants", [])
         if vivants:
             noms = sorted({l["fournisseur"] for l in vivants})
             print()
-            ok("{} modele(s) repondent, chez : {}".format(
+            ok("{} modèle(s) répondent, chez : {}".format(
                 len(vivants), ", ".join(noms)))
         if not bilan["repares"] and not bilan["sans_recours"]:
             if par_cause and not vivants:
                 # Le cas qui ne doit surtout pas se lire « tout va bien ».
-                alerte("Aucun identifiant mort — mais aucun modele n'a "
-                       "repondu non plus. Ce controle ne dit rien.")
+                alerte("Aucun identifiant mort — mais aucun modèle n'a "
+                       "répondu non plus. Ce contrôle ne dit rien.")
             else:
-                ok("Aucun identifiant mort : rien a reparer.")
+                ok("Aucun identifiant mort : rien à réparer.")
         elif bilan["repares"]:
             print("\n      Ces choix sont gardes pour les prochaines "
                   "fabrications.")
@@ -2465,9 +2465,9 @@ def cmd_docteur(args: argparse.Namespace) -> int:
     verdict = etat["verdict"]
     (ok if verdict["etat"] in ("pret", "local") else alerte)(verdict["message"])
     if verdict["etat"] == "local":
-        print("      Comptez plusieurs minutes par chapitre : un modele de 3")
-        print("      milliards de parametres produit 3 a 10 jetons par seconde")
-        print("      sur un telephone. Le delai d'attente est regle en")
+        print("      Comptez plusieurs minutes par chapitre : un modèle de 3")
+        print("      milliards de paramètres produit 3 à 10 jetons par seconde")
+        print("      sur un téléphone. Le délai d'attente est réglé en")
         print("      consequence ({} s par appel).".format(
             config.PROVIDERS_BY_NAME["ollama"].timeout))
     elif verdict.get("remede"):
@@ -2475,7 +2475,7 @@ def cmd_docteur(args: argparse.Namespace) -> int:
 
     details = etat["pool"]
     if details:
-        titre_console("Pool de cles — rotation automatique")
+        titre_console("Pool de clés — rotation automatique")
         for detail in details:
             # Surtout pas « etat » : cette boucle ecrasait le dictionnaire du
             # diagnostic par une chaine de couleur, et la section suivante
@@ -2511,18 +2511,18 @@ def _afficher_local(serveur: Dict[str, Any]) -> None:
     nom, attendu = serveur["nom"], serveur["attendu"]
     tete = "  {} {:<13} {:<9} "
     if not serveur["repond"]:
-        print(tete.format(_c("-", "90"), nom, "local") + "ne repond pas — "
+        print(tete.format(_c("-", "90"), nom, "local") + "ne répond pas — "
               + config.PROVIDERS_BY_NAME[nom].signup)
         return
     if serveur["modeles"] is None:
         print(tete.format(_c("v", "32"), nom, "local") + attendu
-              + _c("  (liste des modeles illisible)", "90"))
+              + _c("  (liste des modèles illisible)", "90"))
         return
     if not serveur["utilisable"]:
         servis = ", ".join(serveur["modeles"][:3])
         print(tete.format(_c("!", "33"), nom, "local")
-              + ("repond, mais ne sert aucun modele qui ecrit ({})".format(servis)
-                 if servis else "repond, mais ne sert aucun modele"))
+              + ("répond, mais ne sert aucun modèle qui écrit ({})".format(servis)
+                 if servis else "répond, mais ne sert aucun modèle"))
         if nom == "ollama":
             print("      " + _c("ollama pull " + attendu, "1"))
         return
@@ -2538,8 +2538,8 @@ def _afficher_local(serveur: Dict[str, Any]) -> None:
 def cmd_cles(args: argparse.Namespace) -> int:
     print(BANNIERE.format(version=__version__))
     print("""
-  L'usine marche avec n'importe quelle cle gratuite. Une seule suffit pour
-  demarrer ; avec deux ou trois, elle bascule automatiquement quand un quota
+  L'usine marche avec n'importe quelle clé gratuite. Une seule suffit pour
+  démarrer ; avec deux ou trois, elle bascule automatiquement quand un quota
   est atteint et ne s'arrete jamais en plein milieu d'un livre.
 
   {rec}
@@ -2552,38 +2552,38 @@ def cmd_cles(args: argparse.Namespace) -> int:
      https://aistudio.google.com/apikey
      GEMINI_API_KEY=AIza...
 
-  3. CEREBRAS — tres rapide, quota journalier genereux
+  3. CEREBRAS — très rapide, quota journalier généreux
      https://cloud.cerebras.ai/
      CEREBRAS_API_KEY=csk-...
 
-  4. MISTRAL — excellent en francais
+  4. MISTRAL — excellent en français
      https://console.mistral.ai/api-keys/
      MISTRAL_API_KEY=...
 
-  5. OPENROUTER — beaucoup de modeles :free (environ 50 requetes/jour)
+  5. OPENROUTER — beaucoup de modèles :free (environ 50 requêtes/jour)
      https://openrouter.ai/keys
      OPENROUTER_API_KEY=sk-or-...
 
   {aucune}
 
   Pollinations fonctionne sans aucune inscription : l'usine l'utilise
-  automatiquement en dernier recours, et pour generer les couvertures.
+  automatiquement en dernier recours, et pour générer les couvertures.
 
   {local}
 
-  Sans reseau, installez une IA locale :
+  Sans réseau, installez une IA locale :
      pkg install ollama && ollama serve
      ollama pull qwen2.5:3b        (environ 2 Go, correct des 4 Go de RAM)
-  Puis relancez l'usine : elle detecte le serveur toute seule.
+  Puis relancez l'usine : elle détecte le serveur toute seule.
 
   {miseenplace}
 
      cp .env.exemple .env
-     nano .env            (collez vos cles, une par ligne)
-     usine docteur        (verifie que tout repond)
+     nano .env            (collez vos clés, une par ligne)
+     usine docteur        (vérifie que tout répond)
 """.format(
-        rec=_c("-- LES CLES GRATUITES, PAR ORDRE DE PRIORITE --", "1;36"),
-        aucune=_c("-- SANS AUCUNE CLE --", "1;36"),
+        rec=_c("-- LES CLÉS GRATUITES, PAR ORDRE DE PRIORITÉ --", "1;36"),
+        aucune=_c("-- SANS AUCUNE CLÉ --", "1;36"),
         local=_c("-- HORS LIGNE, IA LOCALE --", "1;36"),
         miseenplace=_c("-- MISE EN PLACE --", "1;36"),
     ))
@@ -2605,17 +2605,17 @@ def cmd_cache(args: argparse.Namespace) -> int:
     if args.vider:
         nombre = store.cache_vider()
         module_modeles.oublier()
-        ok("{} reponses supprimees du cache".format(nombre))
+        ok("{} réponses supprimées du cache".format(nombre))
     else:
-        print("  {} reponses en cache".format(store.compter_reponses_cachees()))
+        print("  {} réponses en cache".format(store.compter_reponses_cachees()))
         remplaces = module_modeles.substitutions()
         if remplaces:
             # Une substitution silencieuse est le genre de reparation qui fait
             # perdre une journee le jour ou elle cesse de suffire.
-            print("\n  Modeles remplaces (l'identifiant configure n'est plus servi) :")
+            print("\n  Modèles remplacés (l'identifiant configuré n'est plus servi) :")
             for ou, modele in sorted(remplaces.items()):
                 print("    {:26} -> {}".format(ou, modele))
-        print("\n  Vider les reponses : " + _c("usine cache --vider", "1"))
+        print("\n  Vider les réponses : " + _c("usine cache --vider", "1"))
         print("  Rafraichir les catalogues : "
               + _c("usine cache --catalogues", "1"))
     return 0
@@ -2651,8 +2651,8 @@ def cmd_specs(args: argparse.Namespace) -> int:
         cible = module_maj.racine() / "SPECS-APPAREIL.md"
     else:
         cible = config.WORKDIR / "SPECS-APPAREIL.md"
-        alerte("Cet appareil n'est pas un telephone sous Termux : la fiche du "
-               "depot, qui decrit le telephone, n'est pas remplacee.")
+        alerte("Cet appareil n'est pas un téléphone sous Termux : la fiche du "
+               "dépôt, qui décrit le téléphone, n'est pas remplacée.")
         print("      Pour l'ecrire ailleurs : " + _c("usine specs --vers FICHIER", "1"))
     try:
         cible.write_text(texte, encoding="utf-8")
@@ -2668,10 +2668,10 @@ def cmd_specs(args: argparse.Namespace) -> int:
         print("      " + _c(manque["commande"], "1"))
     if not manques:
         ok("Rien ne manque sur cet appareil.")
-    ok("Fiche ecrite : {}".format(cible))
+    ok("Fiche écrite : {}".format(cible))
 
     if module_maj.est_un_clone() and (sur_le_telephone or args.vers):
-        print("\n  La pousser sur le depot :")
+        print("\n  La pousser sur le dépôt :")
         print("    " + _c("git add {} && git commit -m \"fiche technique\""
                           " && git push".format(cible.name), "1"))
     return 1 if bloquants else 0
@@ -2681,7 +2681,7 @@ def cmd_maj(args: argparse.Namespace) -> int:
     """Met a jour le code depuis le depot, sans toucher a l'atelier."""
     from .core import maj as module_maj
 
-    titre_console("Mise a jour de l'usine")
+    titre_console("Mise à jour de l'usine")
     dossier = module_maj.racine()
     print("  Installation : {}".format(dossier))
     print("  Version      : {}".format(module_maj.version_installee()))
@@ -2699,11 +2699,11 @@ def cmd_maj(args: argparse.Namespace) -> int:
         return 1
 
     if par_git:
-        print("\n  Depot git detecte : mise a jour par « git pull --ff-only ».")
+        print("\n  Dépôt git détecté : mise à jour par « git pull --ff-only ».")
         resultat = module_maj.par_git(getattr(args, "branche", "") or "")
     else:
         branche = getattr(args, "branche", "") or module_maj.BRANCHE_DEFAUT
-        print("\n  Pas de depot git ici : telechargement de l'archive « {} »."
+        print("\n  Pas de dépôt git ici : téléchargement de l'archive « {} »."
               .format(branche))
         resultat = module_maj.par_archive(branche)
 
@@ -2713,39 +2713,39 @@ def cmd_maj(args: argparse.Namespace) -> int:
             # « ff-only » refuse quand l'historique local a diverge. Le dire
             # evite de chercher une panne de reseau la ou il y a un commit
             # local.
-            print("  Si votre depot a diverge, l'archive ignore l'historique : "
+            print("  Si votre dépôt a divergé, l'archive ignore l'historique : "
                   + _c("usine maj --archive", "1"))
         return 1
 
     if not resultat.get("change"):
-        ok("Deja a jour ({}).".format(resultat.get("apres") or ""))
+        ok("Déjà à jour ({}).".format(resultat.get("apres") or ""))
         return 0
 
     # On verifie dans un processus NEUF : les modules deja charges ici sont
     # l'ancienne version et repondraient « tout va bien » quoi qu'on installe.
     controle = module_maj.verifier()
     if not controle.get("ok"):
-        erreur("L'usine mise a jour ne demarre pas : {}".format(
+        erreur("L'usine mise à jour ne démarre pas : {}".format(
             controle.get("erreur")))
         if par_git:
             print("  Revenir en arriere : "
                   + _c("git -C {} reset --hard {}".format(
                       dossier, resultat.get("avant", "HEAD@{1}")), "1"))
         return 1
-    ok("Mise a jour faite — {}".format(controle.get("version") or ""))
+    ok("Mise à jour faite — {}".format(controle.get("version") or ""))
     # Les fournisseurs apparus depuis l'installation n'existent pas dans le
     # « .env » de quelqu'un qui a deja installe : « install.sh » ne le cree
     # qu'une fois, et la mise a jour n'y touche pas. Il ouvre « nano .env », ne
     # voit pas la variable, et conclut que l'integration n'existe pas.
     ajoutees = module_maj.completer_env(dossier)
     if ajoutees:
-        ok("{} fournisseur(s) ajoute(s) a votre .env : {}".format(
+        ok("{} fournisseur(s) ajouté(s) à votre .env : {}".format(
             len(ajoutees), ", ".join(ajoutees)))
-        print("  Vos cles existantes n'ont pas ete touchees. Pour coller les "
+        print("  Vos clés existantes n'ont pas été touchées. Pour coller les "
               "nouvelles : " + _c("nano {}/.env".format(dossier), "1"))
     if resultat.get("remplaces"):
-        print("  Remplaces : " + ", ".join(str(n) for n in resultat["remplaces"]))
-    print("\n  Verifier l'installation : " + _c("usine docteur", "1"))
+        print("  Remplacés : " + ", ".join(str(n) for n in resultat["remplaces"]))
+    print("\n  Vérifier l'installation : " + _c("usine docteur", "1"))
     return 0
 
 
@@ -3098,7 +3098,7 @@ def construire_parseur() -> argparse.ArgumentParser:
                    metavar="DEPART",
                    help="chercher des PROMESSES DE LECTURE au lieu de niches : "
                         "sous-genre, tropes, ambiance, chaleur, fin. Un "
-                        "lecteur de roman n'achete pas la solution d'un "
+                        "lecteur de roman n'achète pas la solution d'un "
                         "probleme (sans argument : l'usine choisit)")
     p.add_argument("--type", default="ebook", choices=catalogue.cles(en_file=True),
                    help="type de produit a fabriquer")
@@ -3303,12 +3303,12 @@ def _annoncer_ce_qui_manque(manquants: List[Any], dossier: Path) -> None:
     from .pipelines import carnet
 
     if manquants:
-        print("  {} section(s) a refaire : {}".format(
+        print("  {} section(s) à refaire : {}".format(
             len(manquants), ", ".join(str(m) for m in manquants[:8])))
     else:
         print("  Coupe avant la fin de sa fabrication : elle reprend la ou "
-              "elle s'est arretee.")
-    print("  {} deja au carnet, elles ne seront pas repayees."
+              "elle s'est arrêtée.")
+    print("  {} déjà au carnet, elles ne seront pas repayées."
           .format(carnet.compte(dossier)))
 
 
@@ -3439,7 +3439,7 @@ def principal(argv: Optional[List[str]] = None) -> int:
             return args.fonction(args)
     except KeyboardInterrupt:
         print()
-        alerte("Interrompu. Le travail deja produit est conserve dans " +
+        alerte("Interrompu. Le travail déjà produit est conservé dans " +
                str(config.PRODUITS_DIR))
         return 130
     except SujetIntrouvable as exc:
@@ -3450,10 +3450,10 @@ def principal(argv: Optional[List[str]] = None) -> int:
         # simplement coupe.
         print()
         if not config.active_providers():
-            print("  Aucun fournisseur n'est configure.")
-            print("  Obtenir une cle gratuite : " + _c("usine cles", "1"))
+            print("  Aucun fournisseur n'est configuré.")
+            print("  Obtenir une clé gratuite : " + _c("usine cles", "1"))
         else:
-            print("  Les fournisseurs configures n'ont pas repondu.")
+            print("  Les fournisseurs configurés n'ont pas répondu.")
             print("  Diagnostic : " + _c("usine docteur", "1"))
         print("\n  Vous pouvez aussi donner la niche vous-meme :")
         print("    " + _c('usine {} "votre sujet"'.format(
@@ -3480,11 +3480,11 @@ def principal(argv: Optional[List[str]] = None) -> int:
             print("\n  Hors ligne, seule l'IA locale est appelee. "
                   "Diagnostic : " + _c("usine docteur", "1"))
         elif not en_ligne():
-            print("  Le reseau est coupe. Rebranchez le wifi ou les donnees "
-                  "mobiles, puis relancez la meme commande.")
+            print("  Le réseau est coupé. Rebranchez le wifi ou les données "
+                  "mobiles, puis relancez la même commande.")
         else:
             print("\n  Diagnostic : " + _c("usine docteur", "1"))
-            print("  Nouvelle cle : " + _c("usine cles", "1"))
+            print("  Nouvelle clé : " + _c("usine cles", "1"))
         return 3
     except sqlite3.DatabaseError as exc:
         # On ne croit pas l'exception sur parole : « DatabaseError » couvre
@@ -3506,13 +3506,13 @@ def principal(argv: Optional[List[str]] = None) -> int:
         if config.env_bool("USINE_DEBUG"):
             raise
         if not explication:
-            print("  Details complets : USINE_DEBUG=1 usine ...")
+            print("  Détails complets : USINE_DEBUG=1 usine ...")
         return 1
     except Exception as exc:
         erreur("{} : {}".format(type(exc).__name__, exc))
         if config.env_bool("USINE_DEBUG"):
             raise
-        print("  Details complets : USINE_DEBUG=1 usine ...")
+        print("  Détails complets : USINE_DEBUG=1 usine ...")
         return 1
     finally:
         store.close()

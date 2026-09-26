@@ -119,7 +119,7 @@ def produire(ctx: Contexte, pages: int = 12,
     """« reliure » est une marge interieure en MILLIMETRES, 0 pour aucune."""
     reliure_mm = RELIURE_MM if reliure and reliure < 0 else float(reliure or 0)
     reliure_points = round(reliure_mm * POINTS_PAR_MM, 2)
-    ctx.journal("Etape 1/3 — conception du cahier ({} fiches)...".format(pages))
+    ctx.journal("Étape 1/3 — conception du cahier ({} fiches)...".format(pages))
     if reliure_points:
         ctx.journal("  marge de reliure : {:.0f} mm, alternee".format(reliure_mm))
     cahier = _cahier(ctx, pages)
@@ -130,7 +130,7 @@ def produire(ctx: Contexte, pages: int = 12,
     evenements.publier("section", etape="impression", titre=titre,
                        total=len(cahier["fiches"]))
 
-    ctx.journal("Etape 2/3 — couverture...")
+    ctx.journal("Étape 2/3 — couverture...")
     couverture = None
     if not ctx.sans_image:
         couverture = images.generer_couverture(
@@ -138,7 +138,7 @@ def produire(ctx: Contexte, pages: int = 12,
             style="printable planner cover, minimal stationery, soft paper texture",
             en_ligne=not ctx.hors_ligne)
 
-    ctx.journal("Etape 3/3 — generation des deux formats...")
+    ctx.journal("Étape 3/3 — génération des deux formats...")
     fichiers: List[Path] = []
     t = libelles.textes(ctx.langue_iso)
     if couverture:

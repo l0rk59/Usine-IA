@@ -350,7 +350,7 @@ class TestMenuSeries(unittest.TestCase):
         with redirect_stdout(texte):
             with mock.patch("builtins.input", lambda invite="": ""):
                 menu.menu_series(lambda a: 0)
-        self.assertIn("Aucune serie", texte.getvalue())
+        self.assertIn("Aucune série", texte.getvalue())
         self.assertIn("Fabriquer un produit", texte.getvalue())
 
     def test_le_rafraichissement_lance_la_bonne_commande(self):
@@ -380,7 +380,7 @@ class TestMenuSeries(unittest.TestCase):
             with mock.patch("builtins.input",
                             lambda invite="": next(entrees, "0")):
                 menu.menu_series(lambda a: 0)
-        self.assertIn("a rafraichir", texte.getvalue())
+        self.assertIn("à rafraîchir", texte.getvalue())
 
 
 class TestMenuPrincipal(unittest.TestCase):
@@ -412,15 +412,15 @@ class TestMenuPrincipal(unittest.TestCase):
             2: ("commande", "idees"),
             3: ("ecran", "Usine continue")},
         2: {},          # « Produire en boucle » ouvre directement son ecran
-        3: {1: ("ecran", "Generer le kit de vente"),
-            2: ("ecran", "Aucune serie pour l'instant"),
+        3: {1: ("ecran", "Générer le kit de vente"),
+            2: ("ecran", "Aucune série pour l'instant"),
             3: ("ecran", "Tests A/B")},
         4: {1: ("commande", "veille"),
             2: ("commande", "marche"),
             3: ("ecran", "Ventes"),
             4: ("commande", "doublons"),
             5: ("commande", "bilan")},
-        5: {1: ("ecran", "Tout reinitialiser"),
+        5: {1: ("ecran", "Tout réinitialiser"),
             2: ("ecran", "pollinations"),
             3: ("ecran", "Prompts"),
             4: ("ecran", "Voir ce qu'il contient")},
@@ -499,7 +499,7 @@ def _entrees_de_section(numero: int) -> int:
     """Combien d'entrees une section affiche, lues dans sa source."""
     source = Path(menu.__file__).read_text(encoding="utf-8")
     titres = {1: "Fabriquer", 2: "", 3: "Mes produits",
-              4: "Comprendre le marche", 5: "Reglages", 6: "La machine",
+              4: "Comprendre le marché", 5: "Réglages", 6: "La machine",
               7: ""}
     titre = titres[numero]
     if not titre:
@@ -618,7 +618,7 @@ def _repondre_a_tout(invite=""):
         return "o"
     if "Votre choix" in invite:
         return "2"
-    if "l'usine decide)" in invite or "Marge" in invite:
+    if "l'usine décide)" in invite or "Marge" in invite:
         return "3"
     return ""
 

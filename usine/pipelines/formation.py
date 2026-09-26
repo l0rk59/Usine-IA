@@ -245,14 +245,14 @@ def _sequence_email(ctx: Contexte, programme: Dict[str, Any]) -> List[Dict[str, 
 def produire(ctx: Contexte, modules: int = 0,
              narration: bool = False) -> Dict[str, Any]:
     modules = modules or max(5, min(ctx.nb_chapitres, 10))
-    ctx.journal("Etape 1/5 — programme pedagogique ({} modules)...".format(modules))
+    ctx.journal("Étape 1/5 — programme pédagogique ({} modules)...".format(modules))
     programme = _programme(ctx, modules)
     titre = programme["titre"]
     dossier = preparer(ctx, "formation", titre)
     ctx.etape("programme", "ok", "{} modules".format(len(programme["modules"])))
     ctx.journal('  Formation : « {} »'.format(titre))
 
-    ctx.journal("Etape 2/5 — redaction des modules...")
+    ctx.journal("Étape 2/5 — rédaction des modules...")
     contenus: List[Tuple[str, str]] = []
     for index, module in enumerate(programme["modules"]):
         ctx.journal("  [{}/{}] {}".format(index + 1, len(programme["modules"]),
@@ -262,7 +262,7 @@ def produire(ctx: Contexte, modules: int = 0,
             corps = _rediger_module(ctx, programme, index, module)
         except Exception as exc:
             perdu = str(exc)
-            ctx.journal("     echec : {}".format(exc))
+            ctx.journal("     échec : {}".format(exc))
             # Le module est remplace par son PLAN : quelques puces la ou
             # l'acheteur attend une lecon. C'est un trou, pas un module.
             corps = libelles.libelle(
@@ -278,7 +278,7 @@ def produire(ctx: Contexte, modules: int = 0,
         ctx.etape("module-{}".format(index + 1),
                   "echec" if perdu else "ok", perdu)
 
-    ctx.journal("Etape 3/5 — quiz d'auto-evaluation...")
+    ctx.journal("Étape 3/5 — quiz d'auto-évaluation...")
     try:
         questions = _quiz(ctx, programme)
     except Exception as exc:
@@ -290,7 +290,7 @@ def produire(ctx: Contexte, modules: int = 0,
 
     scripts: List[Tuple[str, str]] = []
     if narration:
-        ctx.journal("Etape 4/6 — script de narration (un appel par module)...")
+        ctx.journal("Étape 4/6 — script de narration (un appel par module)...")
         try:
             scripts = _narration(ctx, programme, contenus)
         except Exception as exc:
@@ -299,17 +299,17 @@ def produire(ctx: Contexte, modules: int = 0,
         ctx.etape("narration", "ok" if scripts else "echec",
                   "{} script(s)".format(len(scripts)), essentiel=False)
 
-    ctx.journal("Etape {} — sequence e-mail de livraison...".format(
+    ctx.journal("Étape {} — séquence e-mail de livraison...".format(
         "5/6" if narration else "4/5"))
     try:
         emails = _sequence_email(ctx, programme)
     except Exception as exc:
-        ctx.journal("  sequence e-mail indisponible : {}".format(exc))
+        ctx.journal("  séquence e-mail indisponible : {}".format(exc))
         emails = []
     ctx.etape("emails", "ok" if emails else "echec",
               "{} e-mails".format(len(emails)), essentiel=False)
 
-    ctx.journal("Etape {} — export...".format("6/6" if narration else "5/5"))
+    ctx.journal("Étape {} — export...".format("6/6" if narration else "5/5"))
     fichiers = _exporter(ctx, programme, contenus, emails, questions, scripts)
     resume = {
         "produit_id": ctx.produit_id,

@@ -94,7 +94,7 @@ def apres_production(
     if pas_encore_vendable(fiche) and (
             veut(kit, "marketing_auto") or veut(archive, "archive_auto")):
         manquants = (fiche.get("meta") or {}).get("manquants") or []
-        dire("Kit de vente et archive : pas pour un produit inacheve{}. Ils "
+        dire("Kit de vente et archive : pas pour un produit inachevé{}. Ils "
              "seront faits quand il sera fini.".format(
                  " ({} section(s) manquent)".format(len(manquants))
                  if manquants else ""))
@@ -116,11 +116,11 @@ def apres_production(
             if produit.get("extrait"):
                 resume["extrait"] = produit["extrait"]
             prix = (produit["fiche"].get("prix_conseille") or {}).get("cible")
-            dire("Kit de vente pret ({} fichiers){}".format(
+            dire("Kit de vente prêt ({} fichiers){}".format(
                 len(produit["fichiers"]),
                 " — prix conseille {} EUR".format(prix) if prix else ""))
         except Exception as exc:
-            dire("Kit de vente non genere : {}".format(exc))
+            dire("Kit de vente non généré : {}".format(exc))
 
     if veut(archive, "archive_auto"):
         from .base import slug
@@ -138,5 +138,5 @@ def apres_production(
             dire("Archive : {} ({} Ko)".format(
                 chemin.name, chemin.stat().st_size // 1024))
         except Exception as exc:
-            dire("Archive non ecrite : {}".format(exc))
+            dire("Archive non écrite : {}".format(exc))
     return resume

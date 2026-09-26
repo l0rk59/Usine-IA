@@ -223,8 +223,8 @@ class UneInstallationNeuveSaitDemarrer(unittest.TestCase):
         lignes = []
         production.domaines_de_depart(journal=lignes.append)
         journal = "\n".join(lignes)
-        self.assertNotIn("ecarte", journal)
-        self.assertIn("demande non mesuree", journal)
+        self.assertNotIn("écarté", journal)
+        self.assertIn("demande non mesurée", journal)
 
     def test_le_plus_demande_passe_devant(self):
         from usine import production

@@ -593,7 +593,7 @@ def affiner(
                 ecartees = sum(1 for p in rendu if not p["retenue"])
                 if ecartees:
                     contexte.journal(
-                        "     deliberation : {} correction(s) ecartee(s) apres "
+                        "     délibération : {} correction(s) écartée(s) après "
                         "objection de l'auteur".format(ecartees))
             if not critique.problemes:
                 break

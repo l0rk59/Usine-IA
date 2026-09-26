@@ -98,7 +98,7 @@ class LUsineDecideCeQuiFaconneLeProduit(unittest.TestCase):
         invisible : c'est la meme opacite, avec une etape en plus."""
         self._decider("quiz", "le droit du travail")
         journal = "\n".join(self.lignes)
-        self.assertIn("L'usine decide", journal)
+        self.assertIn("L'usine décide", journal)
         self.assertIn("niveau", journal)
 
     def test_une_valeur_hors_liste_est_ecartee_et_non_corrigee(self):
@@ -124,7 +124,7 @@ class LUsineDecideCeQuiFaconneLeProduit(unittest.TestCase):
         llm.definir_simulateur(muet)
         self.assertEqual(self._decider("quiz", "la rupture conventionnelle"),
                          {})
-        self.assertIn("n'a pas pu decider", "\n".join(self.lignes))
+        self.assertIn("n'a pas pu décider", "\n".join(self.lignes))
 
 
 class CeQueLUsineNeDecidePas(unittest.TestCase):

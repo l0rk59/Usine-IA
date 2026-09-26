@@ -159,7 +159,7 @@ def meilleure_niche() -> Optional[Dict[str, Any]]:
 
     Le classement retombe sur la note qualite quand rien n'a ete vendu — et
     la note est une mesure de l'usine, pas du marche. Le journal disait
-    pourtant « Exploration autour de ce qui a le mieux marche : « Cannabis » »
+    pourtant « Exploration autour de ce qui a le mieux marché : « Cannabis » »
     a quelqu'un qui n'avait jamais rien vendu et dont « Cannabis » etait un
     essai. Journal reel du 16/09/2026.
 
@@ -230,7 +230,7 @@ def domaines_de_depart(
             contexte, invite, role_modele="raisonnement",
             temperature=0.9, max_tokens=1600)
     except Exception as exc:
-        dire("Impossible de proposer un domaine de depart : {}".format(exc))
+        dire("Impossible de proposer un domaine de départ : {}".format(exc))
         # Le silence des fournisseurs n'est pas l'absence de domaine : les
         # appelants le distinguent, parce que l'un se repare en attendant et
         # l'autre en donnant un sujet. Voir « prospecter ».
@@ -242,10 +242,10 @@ def domaines_de_depart(
     propres = [d for d in (proposes or [])
                if isinstance(d, dict) and (d.get("domaine") or "").strip()]
     if not propres:
-        dire("Le prospecteur n'a propose aucun domaine exploitable.")
+        dire("Le prospecteur n'a proposé aucun domaine exploitable.")
         return {"retenus": [], "mesures": [], "mesure": False}
 
-    dire("{} domaines proposes — mesure sur les sources publiques..."
+    dire("{} domaines proposés — mesure sur les sources publiques..."
          .format(len(propres)))
     retenus: List[Dict[str, Any]] = []
     mesures: List[Dict[str, Any]] = []
@@ -288,7 +288,7 @@ def domaines_de_depart(
                 "retenu" if demande == "forte" else "garde", nom, demande,
                 lecture.get("fiabilite", "")))
         else:
-            dire("  garde « {} » — demande non mesuree ({}) : ces sources ne "
+            dire("  garde « {} » — demande non mesurée ({}) : ces sources ne "
                  "savent pas juger ce mot-cle".format(
                      nom, lecture.get("fiabilite", "")))
         retenus.append({**piste, "demande": demande or "",
@@ -299,14 +299,14 @@ def domaines_de_depart(
     rang = {"forte": 0, "moyenne": 1, "": 2}
     retenus.sort(key=lambda d: rang.get(d.get("demande", ""), 2))
     if not mesure_possible:
-        dire("Aucune source de marche n'a repondu : ces domaines sont "
-             "PROPOSES, pas mesures.")
+        dire("Aucune source de marché n'a répondu : ces domaines sont "
+             "PROPOSÉS, pas mesurés.")
     # Une seule ligne de conclusion : chaque piste a deja eu la sienne
     # au-dessus. Les repeter toutes les trois faisait un journal ou l'on
     # lisait deux fois la meme chose, et ou la conclusion se noyait.
     if retenus:
         tete = retenus[0]
-        dire("  en tete : « {} » — demande {}".format(
+        dire("  en tête : « {} » — demande {}".format(
             tete["domaine"], tete.get("demande") or "non mesuree"))
     return {"retenus": retenus, "mesures": mesures, "mesure": mesure_possible}
 
@@ -375,7 +375,7 @@ def choisir_une_niche(
     en fabrique une. Journal reel du 16/09/2026, « roman » demande, aucun
     sujet donne :
 
-        Exploration autour de ce qui a le mieux marche : « Cannabis »...
+        Exploration autour de ce qui a le mieux marché : « Cannabis »...
         8 domaines proposes — mesure sur les sources publiques...
           garde « cours video montage video » ...
         Premiere niche, choisie par l'usine : « cours video montage video ».
@@ -446,13 +446,13 @@ def choisir_une_niche(
         # VENDU. Sinon c'est la note de l'usine qui classe, et l'annoncer
         # comme un resultat de marche envoie explorer autour d'un essai.
         if (meilleure or {}).get("brut"):
-            dire("Exploration autour de ce qui a le mieux marche : "
-                 "« {} » ({} EUR encaisses)...".format(
+            dire("Exploration autour de ce qui a le mieux marché : "
+                 "« {} » ({} EUR encaissés)...".format(
                      graine, meilleure["brut"]))
         else:
-            dire("Rien n'a encore ete vendu : exploration autour du produit "
+            dire("Rien n'a encore été vendu : exploration autour du produit "
                  "le mieux NOTE, « {} » — c'est une note de l'usine, pas une "
-                 "mesure du marche.".format(graine))
+                 "mesure du marché.".format(graine))
         contexte = Contexte(sujet=graine, journal=lambda _m: None,
                             sans_image=True)
         try:
@@ -473,7 +473,7 @@ def choisir_une_niche(
                 return {"sujet": titre,
                         "type": propose or type_produit or "ebook",
                         "source": "voisinage"}
-        dire("Toutes les pistes recouvrent un produit deja fait.")
+        dire("Toutes les pistes recouvrent un produit déjà fait.")
 
     froid = domaines_de_depart(journal=dire)
     # Un domaine de depart n'a pas de type : c'est un sujet, pas un produit.
@@ -484,7 +484,7 @@ def choisir_une_niche(
     for piste in froid["retenus"]:
         nom = piste["domaine"]
         if not empreinte.sujets_proches(nom, defaut):
-            dire("Premiere niche, choisie par l'usine : « {} ».".format(nom))
+            dire("Première niche, choisie par l'usine : « {} ».".format(nom))
             return {"sujet": nom, "type": defaut,
                     "source": "froid", "mesure": froid["mesure"]}
     return {"sujet": "", "type": defaut, "source": "",
@@ -557,7 +557,7 @@ def prospecter_fiction(nombre: int = 8, graine: str = "",
         for alerte in fiction.contrat_de_genre(piste):
             dire("  [!] « {} » : {}".format(piste["titre"][:30], alerte))
     if en_file:
-        dire("  {} promesse(s) etaient deja en file d'attente.".format(en_file))
+        dire("  {} promesse(s) étaient déjà en file d'attente.".format(en_file))
     return {"graine": graine, "ajoutees": ajoutees, "ecartees": ecartees,
             "en_file": en_file, "pistes": len(promesses),
             "promesses": promesses}
@@ -591,18 +591,18 @@ def prospecter(nombre: int = 8, graine: str = "",
         froid = domaines_de_depart(journal=dire)
         if not froid["retenus"]:
             if froid.get("muets"):
-                dire("Les fournisseurs ne repondent pas : rien ne peut etre "
+                dire("Les fournisseurs ne répondent pas : rien ne peut être "
                      "cherche tant qu'ils se taisent.")
             else:
-                dire("Aucun domaine de depart n'a pu etre trouve. Donnez-en "
+                dire("Aucun domaine de départ n'a pu être trouvé. Donnez-en "
                      "un et l'usine repartira de la.")
             return {"graine": "", "ajoutees": 0, "ecartees": [], "pistes": 0,
                     "froid": froid, "muets": bool(froid.get("muets"))}
         graine = froid["retenus"][0]["domaine"]
         depart_a_froid = True
 
-    dire("Exploration a partir de « {} »{}...".format(
-        graine, " (premiere niche, choisie par l'usine)" if depart_a_froid else ""))
+    dire("Exploration à partir de « {} »{}...".format(
+        graine, " (première niche, choisie par l'usine)" if depart_a_froid else ""))
     contexte = Contexte(sujet=graine, journal=lambda m: None, sans_image=True)
     try:
         resultat = idees.produire(contexte, nombre=nombre, avec_marche=True,
@@ -642,10 +642,10 @@ def prospecter(nombre: int = 8, graine: str = "",
     dire("{} piste(s) explorees, {} mise(s) en file.".format(
         len(pistes), ajoutees))
     for titre, deja in ecartees[:4]:
-        dire("  ecartee : « {} » recouvre « {} »".format(
+        dire("  écartée : « {} » recouvre « {} »".format(
             titre[:38], (deja or "")[:38]))
     if en_file:
-        dire("  {} piste(s) etaient deja en file d'attente.".format(en_file))
+        dire("  {} piste(s) étaient déjà en file d'attente.".format(en_file))
     return {"graine": graine, "ajoutees": ajoutees, "ecartees": ecartees,
             "en_file": en_file,
             "pistes": len(pistes), "froid": depart_a_froid}
@@ -708,11 +708,11 @@ class UsineContinue:
         def gerer(signum, cadre):  # noqa: ARG001
             if self.arret_demande:
                 self.arret_immediat = True
-                self.journal("Second signal : arret immediat.")
+                self.journal("Second signal : arrêt immédiat.")
                 raise KeyboardInterrupt
             self.arret_demande = True
-            self.journal("Arret demande — le produit en cours est termine "
-                         "puis l'usine s'arrete. (Ctrl+C a nouveau pour couper)")
+            self.journal("Arrêt demandé — le produit en cours est terminé "
+                         "puis l'usine s'arrête. (Ctrl+C à nouveau pour couper)")
 
         for nom in ("SIGINT", "SIGTERM"):
             if hasattr(signal, nom):
@@ -725,7 +725,7 @@ class UsineContinue:
         drapeau = config.WORKDIR / "usine.stop"
         if drapeau.exists():
             drapeau.unlink(missing_ok=True)
-            self.journal("Arret demande depuis un autre terminal.")
+            self.journal("Arrêt demandé depuis un autre terminal.")
             return True
         return False
 
@@ -804,7 +804,7 @@ class UsineContinue:
         contexte = None
         try:
             if reprise_id and module_reprise.par_le_catalogue(reprise_id):
-                self.journal("  reprise du produit inacheve, depuis son carnet{}"
+                self.journal("  reprise du produit inachevé, depuis son carnet{}"
                              .format(" ({} section(s) a ecrire)".format(
                                  options["manquants"])
                                  if options.get("manquants") else ""))
@@ -838,7 +838,7 @@ class UsineContinue:
         except Exception as exc:
             statut_suivant = file.echouer(entree["id"], str(exc))
             self.compteur.terminer_produit(reussi=False)
-            self.journal("  echec : {} ({})".format(exc, statut_suivant))
+            self.journal("  échec : {} ({})".format(exc, statut_suivant))
             return False
         finally:
             budget.brancher(None)
@@ -858,7 +858,7 @@ class UsineContinue:
             self.journal("  budget epuise ({}) : produit exporte en l'etat, "
                          "l'usine s'arrete.".format(self.compteur.refus))
         elif resume.get("budget_epuise"):
-            self.journal("  plus rien a demander pendant la fabrication : "
+            self.journal("  plus rien à demander pendant la fabrication : "
                          "produit exporte en l'etat.")
         # Le signalement de doublon est pose par la chaine de fabrication
         # dans la fiche du produit : on le relit ici pour en tenir compte au
@@ -946,11 +946,11 @@ class UsineContinue:
         if sans_progres >= REPRISES_SANS_PROGRES and not epuise:
             file.abandonner(entree["id"], "inacheve : {} section(s) echouent "
                             "encore apres {} reprises".format(manquants, sans_progres))
-            self.journal("  {} section(s) echouent encore apres {} reprises : le "
-                         "produit reste inacheve (« usine reprendre » pour "
-                         "reessayer a la main).".format(manquants, sans_progres))
+            self.journal("  {} section(s) échouent encore après {} reprises : le "
+                         "produit reste inachevé (« usine reprendre » pour "
+                         "réessayer à la main).".format(manquants, sans_progres))
             return False
-        self.journal("  inacheve : {} section(s) a ecrire — il repart en tete de "
+        self.journal("  inachevé : {} section(s) à écrire — il repart en tête de "
                      "file et sera fini automatiquement.".format(manquants))
         if epuise:
             self._attendre_de_quoi_continuer(sans_progres, entree)
@@ -981,7 +981,7 @@ class UsineContinue:
         palier = PALIERS_D_ATTENTE[min(sans_progres, len(PALIERS_D_ATTENTE) - 1)]
         attente = max(ouverture, palier)
         fin = time.time() + attente
-        self.journal("  plus rien a demander aux fournisseurs : reprise "
+        self.journal("  plus rien à demander aux fournisseurs : reprise "
                      "automatique vers {} ({} min).".format(
                          time.strftime("%H:%M", time.localtime(fin)),
                          int(round(attente / 60.0))))
@@ -1010,8 +1010,8 @@ class UsineContinue:
     def tourner(self) -> int:
         config.ensure_dirs()
         if not _poser_verrou():
-            self.journal("Une usine tourne deja (pid {}). "
-                         "Arretez-la avec « usine usine arreter ».".format(
+            self.journal("Une usine tourne déjà (pid {}). "
+                         "Arrêtez-la avec « usine usine arreter ».".format(
                              verrou_actif()))
             return 1
         (config.WORKDIR / "usine.stop").unlink(missing_ok=True)
@@ -1022,11 +1022,11 @@ class UsineContinue:
         self._veille_prise = telephone.verrou_veille(True) if self.veille else False
         if self._veille_prise:
             self.journal("Veille bloquee pendant la session "
-                         "(relachee a la fin).")
+                         "(relâchée à la fin).")
 
         orphelines = file.liberer_orphelins()
         if orphelines:
-            self.journal("{} niche(s) reprise(s) apres un arret precedent."
+            self.journal("{} niche(s) reprise(s) après un arrêt précédent."
                          .format(orphelines))
 
         plafonds = self.compteur.plafonds
@@ -1038,8 +1038,8 @@ class UsineContinue:
                              plafonds.produits_jour or "illimite",
                              plafonds.minutes_produit or "illimite"))
         else:
-            self.journal("Aucun budget defini : l'usine tournera jusqu'a "
-                         "epuisement des quotas de vos cles.")
+            self.journal("Aucun budget défini : l'usine tournera jusqu'à "
+                         "épuisement des quotas de vos clés.")
 
         code = 0
         try:
@@ -1129,7 +1129,7 @@ class UsineContinue:
             # Une batterie a plat demande un geste ; « file vide » non.
             urgente=self.arret_batterie)
         self.journal("")
-        self.journal("Session terminee : {} produit(s) en {:.0f} min — {}".format(
+        self.journal("Session terminée : {} produit(s) en {:.0f} min — {}".format(
             len(self.faits), duree, self.motif_fin or "fin"))
         notes = [f["note"] for f in self.faits if f.get("note") is not None]
         if notes:
@@ -1156,11 +1156,11 @@ class UsineContinue:
         doublons = [f for f in self.faits if f.get("doublon")]
         self.journal("")
         if doublons:
-            self.journal("[!] {} produit(s) de cette session ressemblent a "
-                         "des produits deja faits.".format(len(doublons)))
-            self.journal("    Verifiez avant de les mettre en vente : "
+            self.journal("[!] {} produit(s) de cette session ressemblent à "
+                         "des produits déjà faits.".format(len(doublons)))
+            self.journal("    Vérifiez avant de les mettre en vente : "
                          "usine doublons")
         if len(self.faits) > 1:
-            self.journal("Produire n'est pas publier : deposez un a deux "
+            self.journal("Produire n'est pas publier : déposez un à deux "
                          "produits par semaine")
             self.journal("et par plateforme. Voir docs/VENDRE.md.")

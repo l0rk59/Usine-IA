@@ -136,11 +136,11 @@ def produire(ctx: Contexte, nombre: int = 7, intention: str = "bienvenue",
     titre = libelles.libelle(ctx.langue_iso, "sequence_titre", titre=ctx.sujet)
     dossier = preparer(ctx, "emails", titre)
 
-    ctx.journal("Etape 1/3 — progression de la sequence...")
+    ctx.journal("Étape 1/3 — progression de la séquence...")
     plan = _plan(ctx, nombre, objectif, rythme)
     ctx.etape("plan", "ok", "{} messages".format(len(plan)))
 
-    ctx.journal("Etape 2/3 — redaction des messages...")
+    ctx.journal("Étape 2/3 — rédaction des messages...")
     for message in plan:
         ctx.journal("  [{}/{}] {}".format(message["rang"], len(plan),
                                           message["objet"]))
@@ -149,7 +149,7 @@ def produire(ctx: Contexte, nombre: int = 7, intention: str = "bienvenue",
             message.update(_rediger(ctx, message, plan, objectif))
         except Exception as exc:
             perdu = str(exc)
-            ctx.journal("     echec : {}".format(exc))
+            ctx.journal("     échec : {}".format(exc))
             # Un message reduit a son angle est une sequence trouee : on le
             # dit, et « essentiel » rend le produit invendable tant qu'il
             # manque. Une sequence de sept messages dont trois sont vides ne
@@ -160,7 +160,7 @@ def produire(ctx: Contexte, nombre: int = 7, intention: str = "bienvenue",
         ctx.etape("message-{}".format(message["rang"]),
                   "echec" if perdu else "ok", perdu or message["objet"])
 
-    ctx.journal("Etape 3/3 — export...")
+    ctx.journal("Étape 3/3 — export...")
     fichiers = _exporter(ctx, titre, plan, objectif, rythme)
     resume = {
         "produit_id": ctx.produit_id,

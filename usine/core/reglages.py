@@ -322,6 +322,20 @@ def non_groupes() -> List[str]:
     return [nom for nom in DEFAUTS if nom not in places]
 
 
+def _lisible(valeur: Any) -> str:
+    """Ce qu'on affiche d'une valeur de reglage.
+
+    « True » et « False » s'affichaient tels quels dans le menu et la ligne
+    de commande : le vocabulaire de Python, en face d'une case que
+    l'utilisateur coche en francais.
+    """
+    if valeur in ("", None):
+        return "(non défini)"
+    if isinstance(valeur, bool):
+        return "oui" if valeur else "non"
+    return str(valeur)
+
+
 def lignes_affichables() -> List[Dict[str, str]]:
     """Les reglages a montrer, DANS L'ORDRE DES GROUPES.
 
@@ -340,8 +354,7 @@ def lignes_affichables() -> List[Dict[str, str]]:
                 "groupe": groupe["cle"],
                 "titre_groupe": groupe["titre"],
                 "aide_groupe": groupe["aide"],
-                "valeur": "(non defini)" if valeurs.get(nom) in ("", None)
-                          else str(valeurs.get(nom)),
+                "valeur": _lisible(valeurs.get(nom)),
                 "description": DESCRIPTIONS.get(nom, ""),
             })
     return lignes

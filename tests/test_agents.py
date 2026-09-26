@@ -287,7 +287,7 @@ class TestTroncatureRemontee(unittest.TestCase):
         """Pendant qu'il est encore temps de reduire la longueur demandee."""
         ctx, dits = self._contexte()
         base_agents.signaler_troncature(ctx, "redacteur", self._reponse(True))
-        self.assertTrue(any("coupee au plafond" in d for d in dits))
+        self.assertTrue(any("coupée au plafond" in d for d in dits))
         self.assertTrue(any("redacteur" in d for d in dits))
 
     def test_le_contexte_accumule_pour_le_rapport(self):
@@ -303,7 +303,7 @@ class TestTroncatureRemontee(unittest.TestCase):
         ctx, dits = self._contexte()
         with mock.patch.object(llm, "generer", return_value=self._reponse(True)):
             equipe.REDACTEUR.travailler(ctx, "ecris")
-        self.assertTrue(any("coupee au plafond" in d for d in dits))
+        self.assertTrue(any("coupée au plafond" in d for d in dits))
         self.assertEqual(len(ctx.meta.get("tronquees") or []), 1)
 
     def test_une_reponse_complete_ne_dit_rien(self):

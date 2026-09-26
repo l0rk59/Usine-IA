@@ -377,14 +377,14 @@ def avertir_habillage(ctx: Contexte) -> None:
         return
     if not code:
         ctx.journal("Langue « {} » inconnue de l'usine : le texte fixe du "
-                    "produit (licence, sommaire, mentions) sera en francais, "
-                    "et ses metadonnees le declareront francais."
+                    "produit (licence, sommaire, mentions) sera en français, "
+                    "et ses métadonnées le déclareront français."
                     .format(ctx.langue))
         return
-    ctx.journal("Langue « {} » : le contenu sera redige dans cette langue, "
+    ctx.journal("Langue « {} » : le contenu sera rédigé dans cette langue, "
                 "mais le texte fixe du produit (licence, sommaire, mentions, "
-                "mots du genre) n'existe qu'en francais et en anglais — il "
-                "sera en anglais. A relire avant la vente.".format(ctx.langue))
+                "mots du genre) n'existe qu'en français et en anglais — il "
+                "sera en anglais. À relire avant la vente.".format(ctx.langue))
 
 
 # Ce qui, dans le contexte, decide de l'ecriture — et doit donc etre le meme
@@ -527,7 +527,7 @@ def _verifier_doublon(ctx: Contexte, type_produit: str, fichiers: List[Path],
     proches = [v for v in voisins if v.doublon]
     if not proches:
         return None
-    ctx.journal("  [!] Deja fabrique de tres proche :")
+    ctx.journal("  [!] Déjà fabriqué de très proche :")
     for voisin in proches[:3]:
         ctx.journal("      " + voisin.resume())
     return {"produits": [v.produit_id for v in proches[:5]],
@@ -612,8 +612,8 @@ def _mesurer_le_livre(ctx: Contexte, genre: str, fichiers: List[Path],
     except OSError as exc:
         # Un disque plein ne doit pas emporter un produit deja ecrit : la
         # note reste sur la fiche, seul le detail se perd.
-        ctx.journal("  rapport qualite non ecrit : {}".format(exc))
-    ctx.journal("  qualite mesuree : {}/10 sur {} section(s)".format(
+        ctx.journal("  rapport qualité non écrit : {}".format(exc))
+    ctx.journal("  qualité mesurée : {}/10 sur {} section(s)".format(
         rapport["note_moyenne"], len(sections)))
     return mesure
 
@@ -649,7 +649,7 @@ def _ce_que_le_pdf_ne_sait_pas_ecrire(ctx: Contexte, fichiers: List[Path],
     if not perdus:
         return {}
     ctx.journal(
-        "[!] Le PDF ne sait pas ecrire {} caractere(s) : {}. Ils y "
+        "[!] Le PDF ne sait pas écrire {} caractère(s) : {}. Ils y "
         "apparaissent en « ? » — l'EPUB et le HTML, eux, les gardent."
         .format(len(perdus), " ".join(perdus[:12])))
     return {"pdf_caracteres_absents": perdus[:40]}
@@ -700,9 +700,9 @@ def terminer(ctx: Contexte, fichiers: List[Path], meta: Optional[Dict[str, Any]]
         infos["tronquees"] = len(tronquees)
         infos["tronquees_detail"] = tronquees[:8]
         ctx.journal(
-            "[!] {} reponse(s) coupees au plafond de jetons : le texte "
-            "correspondant s'arrete avant sa fin. Reduisez --mots, ou "
-            "relancez : le passage coupe n'a pas ete mis en cache."
+            "[!] {} réponse(s) coupées au plafond de jetons : le texte "
+            "correspondant s'arrête avant sa fin. Réduisez --mots, ou "
+            "relancez : le passage coupé n'a pas été mis en cache."
             .format(len(tronquees)))
     produit_avant = store.lire_produit(ctx.produit_id) or {}
     genre = type_produit or produit_avant.get("type", "inconnu")
@@ -737,13 +737,13 @@ def terminer(ctx: Contexte, fichiers: List[Path], meta: Optional[Dict[str, Any]]
     anomalies = sorted(n for n, s in dernier.items() if s == "anomalie")
     if anomalies:
         infos["anomalies"] = anomalies
-        ctx.journal("[!] {} controle(s) ont trouve quelque chose : {}. Le "
+        ctx.journal("[!] {} contrôle(s) ont trouvé quelque chose : {}. Le "
                     "produit est complet — c'est son contenu qu'il faut "
                     "regarder.".format(len(anomalies), ", ".join(anomalies[:6])))
     if facultatives:
         infos["incomplets"] = facultatives
         ctx.journal(
-            "[!] {} etape(s) facultative(s) perdue(s) : {}. Le produit reste "
+            "[!] {} étape(s) facultative(s) perdue(s) : {}. Le produit reste "
             "vendable — relancez la commande pour les obtenir."
             .format(len(facultatives), ", ".join(facultatives[:6])))
 
@@ -752,7 +752,7 @@ def terminer(ctx: Contexte, fichiers: List[Path], meta: Optional[Dict[str, Any]]
     if manquants:
         infos["manquants"] = manquants
         ctx.journal(
-            "[!] {} section(s) non ecrites : {}. Le produit reste inacheve — "
+            "[!] {} section(s) non écrites : {}. Le produit reste inachevé — "
             "« usine reprendre » ne refera que celles-la."
             .format(len(manquants), ", ".join(manquants[:6])))
     # Le volume et la note, pour les chaines qui ne les rendent pas elles-memes.

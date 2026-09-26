@@ -168,7 +168,7 @@ def _titre(ctx: Contexte, combien: int) -> str:
 
 def produire(ctx: Contexte, nombre: int = 50, cible: str = "") -> Dict[str, Any]:
     visee = _cible(ctx, cible)
-    ctx.journal("Etape 1/3 — plan du pack ({} prompts)...".format(nombre))
+    ctx.journal("Étape 1/3 — plan du pack ({} prompts)...".format(nombre))
     categories = _categories(ctx, nombre, visee)
     planifies = sum(len(c["prompts"]) for c in categories)
     titre = _titre(ctx, planifies)
@@ -187,7 +187,7 @@ def produire(ctx: Contexte, nombre: int = 50, cible: str = "") -> Dict[str, Any]
               "{} categories, {} prompts sur {} demandes".format(
                   len(categories), planifies, nombre))
 
-    ctx.journal("Etape 2/3 — redaction des prompts...")
+    ctx.journal("Étape 2/3 — rédaction des prompts...")
     for index, categorie in enumerate(categories, 1):
         ctx.journal("  [{}/{}] {}".format(index, len(categories), categorie["nom"]))
         perdu = ""
@@ -195,7 +195,7 @@ def produire(ctx: Contexte, nombre: int = 50, cible: str = "") -> Dict[str, Any]
             categorie["details"] = _rediger_lot(ctx, categorie, visee)
         except Exception as exc:
             perdu = str(exc)
-            ctx.journal("     echec : {}".format(exc))
+            ctx.journal("     échec : {}".format(exc))
             # Les prompts sont remplaces par leur seul intitule : une liste de
             # titres la ou l'acheteur paie des prompts rediges.
             categorie["details"] = [
@@ -210,7 +210,7 @@ def produire(ctx: Contexte, nombre: int = 50, cible: str = "") -> Dict[str, Any]
                   "echec" if perdu else "ok",
                   perdu or categorie["nom"])
 
-    ctx.journal("Etape 3/3 — export...")
+    ctx.journal("Étape 3/3 — export...")
     total = sum(len(c.get("details", [])) for c in categories)
     if total != planifies:
         titre = renommer(ctx, _titre(ctx, total))

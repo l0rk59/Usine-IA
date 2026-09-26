@@ -395,13 +395,13 @@ def produire(ctx: Contexte, sections: int = 0) -> Dict[str, Any]:
     # section 7 du carnet ne serait plus celle vers laquelle renvoient les
     # choix.
     repris = carnet.plan(ctx.dossier) if ctx.dossier and ctx.dossier.name else None
-    ctx.journal("Etape 1/4 — la bible : distribution, cadre, enjeu...")
+    ctx.journal("Étape 1/4 — la bible : distribution, cadre, enjeu...")
     bible = (repris or {}).get("bible") or construire_bible(ctx)
     titre = bible["titre"]
     dossier = preparer(ctx, "interactive", titre)
     ctx.etape("bible", "ok", "{} personnage(s)".format(len(bible["personnages"])))
 
-    ctx.journal("Etape 2/4 — la carte : {} sections et leurs "
+    ctx.journal("Étape 2/4 — la carte : {} sections et leurs "
                 "embranchements...".format(demande))
     carte: List[Dict[str, Any]] = list((repris or {}).get("chapitres") or [])
     fautes: List[str] = []
@@ -416,7 +416,7 @@ def produire(ctx: Contexte, sections: int = 0) -> Dict[str, Any]:
         fautes = verifier_carte(carte, demande)
         if not fautes:
             break
-        ctx.journal("  carte incoherente, {} defaut(s) — on les nomme et on "
+        ctx.journal("  carte incohérente, {} défaut(s) — on les nomme et on "
                     "redemande :".format(len(fautes)))
         for faute in fautes[:4]:
             ctx.journal("    " + faute)
@@ -432,7 +432,7 @@ def produire(ctx: Contexte, sections: int = 0) -> Dict[str, Any]:
         ctx.journal("  carte elaguee pour rester jouable : {} section(s) sur "
                     "{} retenues.".format(len(carte), avant))
     if repris:
-        ctx.journal("  Reprise : bible, carte et {} section(s) deja au carnet."
+        ctx.journal("  Reprise : bible, carte et {} section(s) déjà au carnet."
                     .format(carnet.compte(dossier)))
     else:
         carnet.noter_plan(dossier, {"bible": bible, "chapitres": carte,
@@ -442,7 +442,7 @@ def produire(ctx: Contexte, sections: int = 0) -> Dict[str, Any]:
               "{} sections, {} fins".format(
                   len(carte), sum(1 for s in carte if s["fin"])))
 
-    ctx.journal("Etape 3/4 — redaction de {} section(s)...".format(len(carte)))
+    ctx.journal("Étape 3/4 — rédaction de {} section(s)...".format(len(carte)))
     redaction = Redaction(ctx, dossier)
     for rang, section in enumerate(carte, 1):
         texte = redaction.ecrire(
@@ -471,7 +471,7 @@ def produire(ctx: Contexte, sections: int = 0) -> Dict[str, Any]:
     for lecture in lectures_prose:
         ctx.journal("  [prose] " + lecture)
 
-    ctx.journal("Etape 4/4 — export...")
+    ctx.journal("Étape 4/4 — export...")
     fins = [s for s in carte if s["fin"]]
     t = libelles.textes(ctx.langue_iso)
     produit = livraison.Produit(

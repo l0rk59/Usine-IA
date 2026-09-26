@@ -199,7 +199,7 @@ class UneFabricationHorsLigne(unittest.TestCase):
         self.assertEqual(code, 0, texte[-1500:])
         self.assertEqual(distant.recus, 0)
         self.assertEqual(espion.hors_de_l_appareil(), [])
-        self.assertIn("proposee, pas mesuree", texte)
+        self.assertIn("proposée, pas mesurée", texte)
 
 
 class LaSortieEstFermee(unittest.TestCase):

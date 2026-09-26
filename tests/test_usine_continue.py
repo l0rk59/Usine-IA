@@ -685,4 +685,4 @@ class TestVerrouAtomique(unittest.TestCase):
         dits = []
         code = production.UsineContinue(journal=dits.append).tourner()
         self.assertEqual(code, 1)
-        self.assertTrue(any("tourne deja" in d for d in dits))
+        self.assertTrue(any("tourne déjà" in d for d in dits))

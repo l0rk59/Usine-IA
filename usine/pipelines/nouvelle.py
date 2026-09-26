@@ -266,7 +266,7 @@ def _grille_ou_retente(ctx, invite: str, budget: int):
     plus = min(8000, budget * 2)
     if plus <= budget:
         return grille
-    ctx.journal("  grille coupee a {} jetons : on redemande a {}."
+    ctx.journal("  grille coupée à {} jetons : on redemande à {}."
                 .format(budget, plus))
     # La reponse coupee n'a pas ete mise en cache par le routeur : la
     # relance repart bien vers le modele, pas vers la reponse tronquee.
@@ -1184,15 +1184,15 @@ def produire(ctx: Contexte, serie: str = "",
     declarer d'avance.
     """
     vise = ctx.nb_chapitres * ctx.mots_par_chapitre
-    ctx.journal("Format vise : {} — {} scenes, environ {} mots.".format(
+    ctx.journal("Format visé : {} — {} scènes, environ {} mots.".format(
         format_fiction(vise), ctx.nb_chapitres, vise))
     rappel = module_serie.rappel(serie) if serie else ""
     rang_prevu = module_serie.prochain_rang(serie) if serie else 0
     if serie:
-        ctx.journal("Serie « {} » — tome {}{}".format(
+        ctx.journal("Série « {} » — tome {}{}".format(
             serie, rang_prevu,
             "" if rang_prevu == 1 else " (le monde et la distribution sont repris)"))
-    ctx.journal("Etape 1/5 — la bible : distribution, cadre, enjeu...")
+    ctx.journal("Étape 1/5 — la bible : distribution, cadre, enjeu...")
     # Une reprise repart de la bible et de la grille du carnet. Les
     # reconstruire changerait la distribution, le cadre et l'ordre des beats
     # sous les scenes deja ecrites — c'est-a-dire exactement la continuite que
@@ -1206,10 +1206,10 @@ def produire(ctx: Contexte, serie: str = "",
     ctx.journal("  Distribution : {}".format(
         ", ".join(p["nom"] for p in bible["personnages"])))
 
-    ctx.journal("Etape 2/5 — la grille de beats...")
+    ctx.journal("Étape 2/5 — la grille de beats...")
     grille = (repris or {}).get("grille") or construire_grille(ctx, bible)
     if repris:
-        ctx.journal("  Reprise : bible, grille et {} scene(s) deja au carnet."
+        ctx.journal("  Reprise : bible, grille et {} scène(s) déjà au carnet."
                     .format(carnet.compte(dossier)))
     carnet.noter_plan(dossier, {"bible": bible, "grille": grille,
                                 "chapitres": grille.get("scenes") or []})
@@ -1225,7 +1225,7 @@ def produire(ctx: Contexte, serie: str = "",
         ctx.journal("  [!] domaine sensible « {} » : {}".format(domaine, avertissement))
         evenements.publier("alerte", domaine=domaine, detail=avertissement)
 
-    ctx.journal("Etape 3/5 — redaction des {} scenes...".format(total))
+    ctx.journal("Étape 3/5 — rédaction des {} scènes...".format(total))
     passes = ctx.nb_passes
     sections: List[Tuple[str, str]] = []
     memoires: List[str] = []
@@ -1236,8 +1236,8 @@ def produire(ctx: Contexte, serie: str = "",
     # modele. Mesure dans tests/test_memoire.py, expliquee dans docs/FICTION.md.
     memoire = M.choisir(total, MOTS_RESUME)
     if isinstance(memoire, M.MemoireHierarchique):
-        ctx.journal("  memoire hierarchique : parties de {} scenes "
-                    "(un resume plat n'en porte que {})".format(
+        ctx.journal("  mémoire hiérarchique : parties de {} scènes "
+                    "(un résumé plat n'en porte que {})".format(
                         memoire.scenes_par_partie, M.capacite(MOTS_RESUME)))
     budget_epuise = False
     manquants: List[str] = []
@@ -1256,7 +1256,7 @@ def produire(ctx: Contexte, serie: str = "",
             replier_memoire(memoire, scene, index, total)
             memoires.append(memoire.etat_courant())
             redigees.append(True)
-            ctx.journal("     deja ecrite — reprise du carnet")
+            ctx.journal("     déjà écrite — reprise du carnet")
             ctx.etape(repere, "ok", deja[0])
             continue
         if budget_epuise:
@@ -1275,12 +1275,12 @@ def produire(ctx: Contexte, serie: str = "",
         except PLUS_RIEN_A_DEMANDER as exc:
             budget_epuise = True
             manquants.append(repere)
-            ctx.journal("     {} — scenes restantes reduites a leur fiche".format(exc))
+            ctx.journal("     {} — scènes restantes réduites à leur fiche".format(exc))
             ctx.etape(repere, "echec", str(exc))
             corps, auteur, ecrite = repli_de_scene(scene), "", False
         except Exception as exc:
             manquants.append(repere)
-            ctx.journal("     echec : {} — scene conservee en resume".format(exc))
+            ctx.journal("     échec : {} — scène conservée en résumé".format(exc))
             ctx.etape(repere, "echec", str(exc))
             corps, auteur, ecrite = repli_de_scene(scene), "", False
         else:
@@ -1296,7 +1296,7 @@ def produire(ctx: Contexte, serie: str = "",
                     exiger_structure=False,
                 )
                 local[scene["titre"]] = controles
-                ctx.journal("     controle : " + controles[-1].resume())
+                ctx.journal("     contrôle : " + controles[-1].resume())
             except PLUS_RIEN_A_DEMANDER as exc:
                 budget_epuise = True
                 ctx.journal("     {} — corrections interrompues".format(exc))
@@ -1326,7 +1326,7 @@ def produire(ctx: Contexte, serie: str = "",
                                     scene["titre"], index, total)
             except PLUS_RIEN_A_DEMANDER as exc:
                 budget_epuise = True
-                ctx.journal("     {} — memoire figee sur les pivots".format(exc))
+                ctx.journal("     {} — mémoire figée sur les pivots".format(exc))
                 replier_memoire(memoire, scene, index, total)
             except Exception:
                 replier_memoire(memoire, scene, index, total)
@@ -1337,7 +1337,7 @@ def produire(ctx: Contexte, serie: str = "",
             carnet.noter_section(dossier, repere, scene["titre"], corps)
         ctx.etape(repere, "ok" if ecrite else "echec", scene["titre"])
 
-    ctx.journal("Etape 4/5 — controle de continuite...")
+    ctx.journal("Étape 4/5 — contrôle de continuité...")
     continuite = controler_continuite(bible, grille, sections, memoires,
                                       redigees, serie=serie,
                                       langue=ctx.langue_iso)
@@ -1375,7 +1375,7 @@ def produire(ctx: Contexte, serie: str = "",
                 ctx, sections, bible.get("premisse", ""))
         except PLUS_RIEN_A_DEMANDER as exc:
             budget_epuise = True
-            ctx.journal("  {} — lecture en lecteur ignoree".format(exc))
+            ctx.journal("  {} — lecture en lecteur ignorée".format(exc))
         except Exception as exc:
             ctx.journal("  lecture en lecteur indisponible : {}".format(exc))
         if lecture.get("disponible"):
@@ -1392,7 +1392,7 @@ def produire(ctx: Contexte, serie: str = "",
         json.dumps({"continuite": continuite, "memoires": memoires},
                    ensure_ascii=False, indent=2), encoding="utf-8")
 
-    ctx.journal("Etape 5/5 — mise en forme et export...")
+    ctx.journal("Étape 5/5 — mise en forme et export...")
     fichiers = exporter(ctx, bible, sections, serie=serie, rang=rang_prevu,
                         genre=genre)
 
@@ -1406,7 +1406,7 @@ def produire(ctx: Contexte, serie: str = "",
             "note_moyenne_finale": round(
                 sum(s[-1].note for s in local.values()) / len(local), 2),
         }
-        ctx.journal("  controle local : {} -> {} / 10".format(
+        ctx.journal("  contrôle local : {} -> {} / 10".format(
             rapport["controle_local"]["note_moyenne_initiale"],
             rapport["controle_local"]["note_moyenne_finale"]))
     rapport["mesure_finale"] = ctrl.controler_ensemble(
@@ -1423,7 +1423,7 @@ def produire(ctx: Contexte, serie: str = "",
         ctx.journal("  [prose] " + lecture)
     (dossier / "rapport-qualite.json").write_text(
         json.dumps(rapport, ensure_ascii=False, indent=2), encoding="utf-8")
-    ctx.journal("  note finale mesuree : {} / 10".format(
+    ctx.journal("  note finale mesurée : {} / 10".format(
         rapport["mesure_finale"]["note_moyenne"]))
 
     if alertes:
@@ -1445,7 +1445,7 @@ def produire(ctx: Contexte, serie: str = "",
             resume=memoires[-1] if memoires else bible.get("premisse", ""),
             produit_id=ctx.produit_id,
             faits=(continuite.get("canon") or {}))
-        ctx.journal("  range dans la serie « {} » au rang {}".format(serie, rang))
+        ctx.journal("  rangé dans la série « {} » au rang {}".format(serie, rang))
 
     resume = {
         "produit_id": ctx.produit_id,
@@ -1627,7 +1627,7 @@ def rafraichir_serie(nom: str, journal=print) -> List[Dict[str, Any]]:
         while sections and sections[-1][0] in titres_de_fin:
             sections.pop()
         if not sections:
-            journal("  tome {} : aucune scene relue, ignore".format(
+            journal("  tome {} : aucune scène relue, ignoré".format(
                 tome.get("rang")))
             continue
 

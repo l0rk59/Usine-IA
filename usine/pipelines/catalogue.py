@@ -390,7 +390,7 @@ class TypeProduit:
 
     @property
     def duree(self) -> str:
-        return "{} a {} min".format(*self.minutes)
+        return "{} à {} min".format(*self.minutes)
 
     @property
     def nom_quantite(self) -> str:

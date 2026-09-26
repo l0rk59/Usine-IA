@@ -204,11 +204,11 @@ def produire_kit(ctx: Contexte, titre: str, description_produit: str,
     )
     fichiers.append(chemin_page)
 
-    ctx.journal("  sequence de lancement...")
+    ctx.journal("  séquence de lancement...")
     try:
         emails = sequence_lancement(ctx, titre, fiche)
     except Exception as exc:
-        ctx.journal("  sequence indisponible : {}".format(exc))
+        ctx.journal("  séquence indisponible : {}".format(exc))
         emails = []
     if emails:
         lignes_email = ["# Sequence de lancement — {}\n".format(titre)]
@@ -232,7 +232,7 @@ def produire_kit(ctx: Contexte, titre: str, description_produit: str,
             edition = extrait.produire(ctx, dossier, titre, type_produit,
                                        chapitres_offerts)
         except Exception as exc:
-            ctx.journal("  extrait non genere : {}".format(exc))
+            ctx.journal("  extrait non généré : {}".format(exc))
         if edition:
             ctx.journal("  extrait offert : {} chapitre(s) sur {}".format(
                 edition["chapitres_offerts"],

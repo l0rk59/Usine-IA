@@ -479,9 +479,9 @@ class LaLigneDeCommandeNeLeDitPasPret(unittest.TestCase):
         self.assertEqual(store.lister_produits(1)[0]["statut"], "en_cours")
         self.assertEqual(code, 3)
         self.assertIn("Produit inacheve", texte)
-        self.assertNotIn("Produit livre", texte)
+        self.assertNotIn("Produit livré", texte)
         self.assertIn("usine reprendre", texte)
-        self.assertNotIn("Produit pret", notifications)
+        self.assertNotIn("Produit prêt", notifications)
 
     def test_l_annonce_du_tableau_de_bord_suit_le_statut(self):
         """Le tableau de bord recharge sa liste a l'annonce « produit ». Elle
@@ -513,8 +513,8 @@ class LaLigneDeCommandeNeLeDitPasPret(unittest.TestCase):
         atelier.isoler("troue-annonce-complet")
         code, texte, notifications = self._fabriquer(0)
         self.assertEqual(code, 0)
-        self.assertIn("Produit livre", texte)
-        self.assertIn("Produit pret", notifications)
+        self.assertIn("Produit livré", texte)
+        self.assertIn("Produit prêt", notifications)
 
 
 class UnProduitTroueNeSePrepareEtreVendu(unittest.TestCase):
@@ -552,7 +552,7 @@ class UnProduitTroueNeSePrepareEtreVendu(unittest.TestCase):
             self.assertFalse(list(config.PRODUITS_DIR.rglob("*.zip")),
                              "une archive d'acheteur pour un livre troue")
             self.assertFalse(coupe.get("marketing"))
-            self.assertTrue(any("pas pour un produit inacheve" in l
+            self.assertTrue(any("pas pour un produit inachevé" in l
                                 for l in journal), "le refus doit se dire")
             # Les commandes explicites refusent de meme, et disent comment
             # finir le produit.

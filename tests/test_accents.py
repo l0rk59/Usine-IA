@@ -145,6 +145,68 @@ class CeQueLeVendeurLit(unittest.TestCase):
                 self.assertEqual(fautes(texte), [], texte)
 
 
+class LesMessagesDuCode(unittest.TestCase):
+    """Le journal, la console et les notifications : ce qui defile sous les
+    yeux de l'utilisateur pendant chaque fabrication (« Etape 1/5 »,
+    « Termine. », « deja ecrit — repris du carnet »).
+
+    Lu dans l'arbre syntaxique : seul le PREMIER argument des fonctions qui
+    affichent compte, et pas ce qui sert de cle (« rapport["probleme"] ») ni
+    un nom de fichier (« verification.json »). Les commandes a taper
+    (« usine reglages ») restent sans accent : c'est ce qu'on tape.
+    """
+
+    AFFICHENT = frozenset({"journal", "ok", "alerte", "erreur",
+                           "titre_console", "dire", "notifier", "entete"})
+
+    def test_aucun_message_affiche_sans_ses_accents(self):
+        import ast
+
+        trouves = []
+        for fichier in sorted((RACINE / "usine").rglob("*.py")):
+            arbre = ast.parse(fichier.read_text(encoding="utf-8"))
+            for appel in ast.walk(arbre):
+                if not (isinstance(appel, ast.Call) and appel.args):
+                    continue
+                nom = getattr(appel.func, "attr", getattr(appel.func, "id", ""))
+                if nom not in self.AFFICHENT:
+                    continue
+                # Une cle (« rapport["probleme"] ») ou ce qu'on passe a
+                # « .format() » et « .get() » n'est pas le message.
+                cles = {id(c) for n in ast.walk(appel.args[0])
+                        if isinstance(n, ast.Subscript)
+                        for c in ast.walk(n.slice)}
+                cles |= {id(c) for n in ast.walk(appel.args[0])
+                         if isinstance(n, ast.Call)
+                         for a in n.args for c in ast.walk(a)}
+                for noeud in ast.walk(appel.args[0]):
+                    if (isinstance(noeud, ast.Constant)
+                            and isinstance(noeud.value, str)
+                            and id(noeud) not in cles):
+                        texte = re.sub(r"«\s*usine[^»]*»|\busine \w+|"
+                                       r"[\w-]+\.(?:json|md|csv|py|txt)\b",
+                                       "", noeud.value)
+                        for mot in fautes(texte):
+                            trouves.append("{}:{} {}".format(
+                                fichier.relative_to(RACINE), noeud.lineno, mot))
+        self.assertEqual(trouves, [])
+
+
+class LeMenuDuTelephone(unittest.TestCase):
+    """La vraie porte d'entree de l'usine : chaque ecran se lit sans faute
+    d'accent sur la liste fermee."""
+
+    def test_les_ecrans_des_sections(self):
+        frappes = iter(["1", "0", "3", "0", "4", "0", "5", "0", "6", "0", "0"])
+        sortie = io.StringIO()
+        with redirect_stdout(sortie), mock.patch(
+                "builtins.input", lambda invite="": next(frappes, "0")):
+            menu.menu_principal(lambda arguments: 0)
+        ecran = sortie.getvalue()
+        self.assertIn("Réglages", ecran)
+        self.assertEqual(fautes(ecran), [])
+
+
 class DesMotsPasDesIdentifiants(unittest.TestCase):
     """Un nom de code en face d'un champ se lit comme un fichier de
     configuration. Chaque reglage et chaque agent a un nom a montrer."""
@@ -217,6 +279,10 @@ class DesMotsPasDesIdentifiants(unittest.TestCase):
         ecran = sortie.getvalue()
         self.assertIn("Signature IA dans la licence", ecran)
         self.assertNotIn("signature_ia", ecran)
+        # Le vocabulaire de Python n'a rien a faire en face d'une case.
+        self.assertNotIn("True", ecran)
+        self.assertNotIn("False", ecran)
+        self.assertRegex(ecran, r"Signature IA dans la licence\s+.*oui")
 
     def test_la_ligne_de_commande_montre_l_etiquette_et_le_nom(self):
         """Le nom reste : c'est lui qu'on tape dans « --definir »."""

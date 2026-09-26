@@ -200,15 +200,15 @@ class LeJournalDitCeQuiClasse(unittest.TestCase):
     def test_sans_vente_le_journal_ne_parle_pas_de_marche(self):
         texte = self._journal_pour(0.0)
         self.assertIn("mieux NOTE", texte)
-        self.assertIn("pas une mesure du marche", texte)
-        self.assertNotIn("le mieux marche", texte, (
+        self.assertIn("pas une mesure du marché", texte)
+        self.assertNotIn("le mieux marché", texte, (
             "une note de l'usine est annoncee comme un resultat de vente"))
 
     def test_avec_une_vente_le_journal_le_dit_et_chiffre(self):
         """Le pendant : sans lui, se taire TOUJOURS sur les ventes passerait
         le test precedent sans rien distinguer."""
         texte = self._journal_pour(42.5)
-        self.assertIn("le mieux marche", texte)
+        self.assertIn("le mieux marché", texte)
         self.assertIn("42.5", texte)
 
 

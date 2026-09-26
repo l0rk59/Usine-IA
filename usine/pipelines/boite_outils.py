@@ -96,14 +96,14 @@ def _remplir(ctx: Contexte, boite: Dict[str, Any], outil: Dict[str, Any]) -> Dic
 
 
 def produire(ctx: Contexte, nombre: int = 10) -> Dict[str, Any]:
-    ctx.journal("Etape 1/3 — sommaire de la boite a outils ({} outils)...".format(nombre))
+    ctx.journal("Étape 1/3 — sommaire de la boîte à outils ({} outils)...".format(nombre))
     boite = _sommaire(ctx, nombre)
     titre = boite["titre"]
     dossier = preparer(ctx, "boite-outils", titre)
     ctx.etape("sommaire", "ok", "{} outils".format(len(boite["outils"])))
-    ctx.journal('  Boite : « {} »'.format(titre))
+    ctx.journal('  Boîte : « {} »'.format(titre))
 
-    ctx.journal("Etape 2/3 — redaction des outils...")
+    ctx.journal("Étape 2/3 — rédaction des outils...")
     for index, outil in enumerate(boite["outils"], 1):
         ctx.journal("  [{}/{}] {} ({})".format(index, len(boite["outils"]),
                                                outil["nom"], outil["type"]))
@@ -111,11 +111,11 @@ def produire(ctx: Contexte, nombre: int = 10) -> Dict[str, Any]:
             outil["contenu"] = _remplir(ctx, boite, outil)
             ctx.etape("outil-{}".format(index), "ok", outil["nom"])
         except Exception as exc:
-            ctx.journal("     echec : {}".format(exc))
+            ctx.journal("     échec : {}".format(exc))
             ctx.etape("outil-{}".format(index), "echec", str(exc))
             outil["contenu"] = {"intro": outil["resultat"], "points": []}
 
-    ctx.journal("Etape 3/3 — export...")
+    ctx.journal("Étape 3/3 — export...")
     fichiers = _exporter(ctx, boite)
     resume = {
         "produit_id": ctx.produit_id,

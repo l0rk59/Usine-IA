@@ -142,7 +142,7 @@ class FicheTechnique(unittest.TestCase):
         code, texte = _muet(["specs", "--vers", str(cible)])
         self.assertIn(code, (0, 1))     # 1 quand il manque quelque chose de bloquant
         self.assertTrue(cible.exists())
-        self.assertIn("Fiche ecrite", texte)
+        self.assertIn("Fiche écrite", texte)
         self.assertIn("# Fiche technique de l'appareil",
                       cible.read_text(encoding="utf-8"))
 
@@ -196,7 +196,7 @@ class FicheTechnique(unittest.TestCase):
             code, texte = _muet(["specs"])
         self.assertEqual(fiche.read_text(encoding="utf-8"), "la fiche du telephone")
         self.assertTrue((config.WORKDIR / "SPECS-APPAREIL.md").exists())
-        self.assertIn("n'est pas un telephone", texte)
+        self.assertIn("n'est pas un téléphone", texte)
 
     def test_sur_le_telephone_elle_part_a_la_racine(self):
         from unittest import mock

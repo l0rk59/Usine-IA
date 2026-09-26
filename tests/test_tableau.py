@@ -1041,7 +1041,7 @@ class TestSectionsDuTableau(unittest.TestCase):
                     for ligne in bloc.splitlines() if '("' in ligne]
         attendus = {"fabriquer": "Fabriquer", "produits": "Mes produits",
                     "continue": "Produire en boucle",
-                    "marche": "Comprendre le marche", "reglages": "Reglages",
+                    "marche": "Comprendre le marché", "reglages": "Réglages",
                     "machine": "La machine"}
         for section in self._sections():
             with self.subTest(section=section):

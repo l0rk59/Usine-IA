@@ -218,7 +218,7 @@ class LeBoutonGenererNeLaissePasDeTrou(_Cas):
             serveur.TRAVAUX.pop("g1", None)
 
         self.assertEqual(len(fils), 1, "la boucle doit etre lancee, une fois")
-        self.assertIn("rien a faire", journal)
+        self.assertIn("rien à faire", journal)
         produits = store.lister_produits()
         self.assertEqual(len(produits), 1)
         self.assertEqual(produits[0]["statut"], "pret")
@@ -391,7 +391,7 @@ class LesQuotasVidesAvantLaFin(_Cas):
         produit = store.lister_produits()[0]
         self.assertEqual(produit["statut"], "en_cours")
         self.assertEqual(lances, [{"maximum": 1}])
-        self.assertIn("rien a faire", journal)
+        self.assertIn("rien à faire", journal)
         attente = file.lister(limite=5)
         self.assertEqual([e["options"].get("reprendre_id") for e in attente],
                          [produit["id"]])
@@ -545,7 +545,7 @@ class LesDeuxLimites(_Cas):
         self.assertEqual(moteur.sommeils, [], "rien ne s'epuisait : rien a attendre")
         self.assertEqual(file.compter()["echec"], 1)
         self.assertEqual(store.lister_produits()[0]["statut"], "en_cours")
-        self.assertTrue(any("reessayer a la main" in l for l in moteur.lignes))
+        self.assertTrue(any("réessayer à la main" in l for l in moteur.lignes))
 
 
 class UneSeuleRepriseParProduit(_Cas):

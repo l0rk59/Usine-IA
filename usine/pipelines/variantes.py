@@ -329,7 +329,7 @@ def preparer_test(
         produit_id=produit_id)
 
     if sujet == "couverture":
-        ctx.journal("Generation des couvertures...")
+        ctx.journal("Génération des couvertures...")
         elements = generer_couvertures(ctx, titre_actuel, dossier, nombre)
         for element in elements:
             experience.ajouter_variante(
@@ -340,7 +340,7 @@ def preparer_test(
                        "message": "{} directions visuelles distinctes.".format(
                            len(elements))}
     else:
-        ctx.journal("Generation des titres...")
+        ctx.journal("Génération des titres...")
         elements = generer_titres(ctx, titre_actuel, description, nombre)
         for element in elements:
             experience.ajouter_variante(

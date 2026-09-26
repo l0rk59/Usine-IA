@@ -331,7 +331,7 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False, forme: str = "",
     """
     charpente = forme_de(ctx, forme)
     avec_exercices = str(exercices).strip().lower() == "avec"
-    ctx.journal("Etape 1/5 — construction du plan...")
+    ctx.journal("Étape 1/5 — construction du plan...")
     # Une reprise DOIT repartir du meme plan. Un plan reconstruit differe —
     # le modele n'est pas deterministe — et les chapitres deja ecrits se
     # retrouveraient ranges sous des titres qui ne sont plus les leurs.
@@ -341,7 +341,7 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False, forme: str = "",
     sous_titre = plan.get("sous_titre", "")
     dossier = preparer(ctx, "ebook", titre)
     if repris:
-        ctx.journal("  Reprise : plan et {} section(s) deja au carnet."
+        ctx.journal("  Reprise : plan et {} section(s) déjà au carnet."
                     .format(carnet.compte(dossier)))
     ctx.etape("plan", "ok", "{} chapitres".format(len(plan["chapitres"])))
     ctx.journal('  Titre retenu : « {} »'.format(titre))
@@ -364,11 +364,11 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False, forme: str = "",
 
     manquants: List[str] = []
 
-    ctx.journal("Etape 2/5 — avant-propos...")
+    ctx.journal("Étape 2/5 — avant-propos...")
     deja = carnet.section(dossier, "introduction")
     if deja:
         sections.append(deja)
-        ctx.journal("  deja ecrit — repris du carnet")
+        ctx.journal("  déjà écrit — repris du carnet")
     else:
         try:
             titre_intro, corps_intro = rediger_annexe(ctx, plan, "introduction",
@@ -382,10 +382,10 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False, forme: str = "",
             ctx.journal("  {} — avant-propos ignore".format(exc))
             ctx.etape("introduction", "echec", str(exc))
 
-    ctx.journal("Etape 3/5 — redaction des {} chapitres...".format(total))
+    ctx.journal("Étape 3/5 — rédaction des {} chapitres...".format(total))
     passes = ctx.nb_passes
     if passes:
-        ctx.journal("  qualite « {} » : {} relecture(s) editoriale(s) par chapitre"
+        ctx.journal("  qualité « {} » : {} relecture(s) éditoriale(s) par chapitre"
                     .format(ctx.qualite, passes))
     for index, chapitre in enumerate(plan["chapitres"]):
         ctx.journal("  [{}/{}] {}".format(index + 1, total, chapitre["titre"]))
@@ -395,7 +395,7 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False, forme: str = "",
         fait = carnet.section(dossier, repere)
         if fait:
             sections.append(fait)
-            ctx.journal("     deja ecrit — repris du carnet")
+            ctx.journal("     déjà écrit — repris du carnet")
             ctx.etape(repere, "ok", fait[0])
             continue
         if budget_epuise:
@@ -413,7 +413,7 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False, forme: str = "",
         except PLUS_RIEN_A_DEMANDER as exc:
             budget_epuise = True
             manquants.append(repere)
-            ctx.journal("     {} — chapitres restants reduits a leur plan".format(exc))
+            ctx.journal("     {} — chapitres restants réduits à leur plan".format(exc))
             ctx.etape(repere, "echec", str(exc))
             sections.append((chapitre["titre"], _repli(chapitre)))
             continue
@@ -426,7 +426,7 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False, forme: str = "",
             # sortie de boucle. Le livre se livrait « pret », et « usine
             # reprendre » ne refaisait jamais ce chapitre-la : le plan
             # partait chez l'acheteur a sa place, definitivement.
-            ctx.journal("     echec : {} — chapitre a refaire".format(exc))
+            ctx.journal("     échec : {} — chapitre à refaire".format(exc))
             manquants.append(repere)
             ctx.etape(repere, "echec", str(exc))
             sections.append((chapitre["titre"], _repli(chapitre)))
@@ -441,7 +441,7 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False, forme: str = "",
                     tentatives=2 if passes else 1,
                 )
                 local[chapitre["titre"]] = controles
-                ctx.journal("     controle : " + controles[-1].resume())
+                ctx.journal("     contrôle : " + controles[-1].resume())
             except PLUS_RIEN_A_DEMANDER as exc:
                 budget_epuise = True
                 ctx.journal("     {} — corrections interrompues".format(exc))
@@ -472,14 +472,14 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False, forme: str = "",
         carnet.noter_section(dossier, repere, chapitre["titre"], corps)
         ctx.etape(repere, "ok", chapitre["titre"])
 
-    ctx.journal("Etape 4/5 — conclusion...")
+    ctx.journal("Étape 4/5 — conclusion...")
     finie = carnet.section(dossier, "conclusion")
     if finie:
         sections.append(finie)
-        ctx.journal("  deja ecrite — reprise du carnet")
+        ctx.journal("  déjà écrite — reprise du carnet")
     elif budget_epuise:
         manquants.append("conclusion")
-        ctx.journal("  ignoree : plus rien a demander")
+        ctx.journal("  ignorée : plus rien à demander")
         ctx.etape("conclusion", "echec", "plus rien a demander")
     else:
         try:
@@ -491,7 +491,7 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False, forme: str = "",
         except PLUS_RIEN_A_DEMANDER as exc:
             budget_epuise = True
             manquants.append("conclusion")
-            ctx.journal("  {} — conclusion ignoree".format(exc))
+            ctx.journal("  {} — conclusion ignorée".format(exc))
             ctx.etape("conclusion", "echec", str(exc))
 
     ensemble = {}
@@ -502,7 +502,7 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False, forme: str = "",
                 ctx, sections, plan.get("promesse", ""))
         except PLUS_RIEN_A_DEMANDER as exc:
             budget_epuise = True
-            ctx.journal("  {} — relecture d'ensemble ignoree".format(exc))
+            ctx.journal("  {} — relecture d'ensemble ignorée".format(exc))
         except Exception as exc:
             ctx.journal("  relecture d'ensemble indisponible : {}".format(exc))
         if ensemble.get("disponible"):
@@ -530,7 +530,7 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False, forme: str = "",
                 ctx, sections, plan.get("promesse", ""))
         except PLUS_RIEN_A_DEMANDER as exc:
             budget_epuise = True
-            ctx.journal("  {} — lecture par l'audience ignoree".format(exc))
+            ctx.journal("  {} — lecture par l'audience ignorée".format(exc))
         except Exception as exc:
             ctx.journal("  lecture par l'audience indisponible : {}".format(exc))
         if lecture.get("disponible"):
@@ -545,7 +545,7 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False, forme: str = "",
         ctx.etape("lecteur", "ok" if lecture.get("disponible") else "echec",
                   lecture.get("resume", ""), essentiel=False)
 
-    ctx.journal("Etape 5/5 — mise en forme et export...")
+    ctx.journal("Étape 5/5 — mise en forme et export...")
     fichiers = exporter(ctx, plan, sections)
 
     rapport = equipe.rapport_qualite(qualite) if qualite else {}
@@ -576,9 +576,9 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False, forme: str = "",
                 rapport["note_moyenne_initiale"], rapport["note_moyenne_finale"]))
         if rapport.get("controle_local"):
             bloc = rapport["controle_local"]
-            ctx.journal("  controle local : {} -> {} / 10".format(
+            ctx.journal("  contrôle local : {} -> {} / 10".format(
                 bloc["note_moyenne_initiale"], bloc["note_moyenne_finale"]))
-        ctx.journal("  note finale mesuree : {} / 10".format(
+        ctx.journal("  note finale mesurée : {} / 10".format(
             rapport["mesure_finale"]["note_moyenne"]))
     if alertes:
         (dossier / "AVERTISSEMENT.txt").write_text(

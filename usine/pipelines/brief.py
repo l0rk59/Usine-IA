@@ -194,7 +194,7 @@ def decider_les_reglages(ctx: Any, type_produit: Any,
              + " ; ".join("{} = {}".format(n, v) for n, v in deja) + "\n"
              if deja else "")
 
-    ctx.journal("L'usine decide {} reglage(s) : {}...".format(
+    ctx.journal("L'usine décide {} réglage(s) : {}...".format(
         len(champs), ", ".join(c.nom for c in champs[:6])))
     try:
         brut = llm.generer_json(
@@ -206,7 +206,7 @@ def decider_les_reglages(ctx: Any, type_produit: Any,
                     "en francais, sans commentaire autour.",
             role="raisonnement", temperature=0.4, max_tokens=700)
     except Exception as exc:
-        ctx.journal("  l'usine n'a pas pu decider ({}) — les reglages "
+        ctx.journal("  l'usine n'a pas pu décider ({}) — les réglages "
                     "restent vides".format(type(exc).__name__))
         return {}
     if not isinstance(brut, dict):
@@ -271,7 +271,7 @@ def decider_les_reglages(ctx: Any, type_produit: Any,
     if ecartes:
         # Le compte, parce que huit lignes sous une annonce de neuf ne se
         # remarquent pas sur un ecran de telephone.
-        ctx.journal("  {} reglage(s) sur {} restent a la charge de la chaine."
+        ctx.journal("  {} réglage(s) sur {} restent à la charge de la chaîne."
                     .format(len(ecartes), len(champs)))
     return decides
 
@@ -304,7 +304,7 @@ def appliquer(ctx: Any, genre: str = "produit") -> Dict[str, Any]:
     manquants = a_decider(ctx)
     if not manquants:
         return {}
-    ctx.journal("Brief automatique : {} a decider...".format(
+    ctx.journal("Brief automatique : {} à décider...".format(
         ", ".join(manquants)))
     brief = demander(ctx.sujet, genre, journal=ctx.journal)
     if not brief:
@@ -344,7 +344,7 @@ def appliquer(ctx: Any, genre: str = "produit") -> Dict[str, Any]:
         ctx.journal("  pourquoi : {}".format(applique["pourquoi"]))
     # Les deux portes lisent ce journal. « --ton, --audience » s'affichait
     # aussi dans le tableau de bord, ou il n'existe aucune option a taper.
-    ctx.journal("  (pour imposer les votres : les champs Ton, Audience et "
+    ctx.journal("  (pour imposer les vôtres : les champs Ton, Audience et "
                 "Volume, ou --ton, --audience, --chapitres)")
     return applique
 

@@ -245,12 +245,12 @@ def _finir_plus_tard(type_produit: str, produit_id: str, epuise: bool,
     manquants = len((fiche.get("meta") or {}).get("manquants") or [])
     confier_a_la_boucle(type_produit, sujet, fiche["id"], manquants)
     if manquants:
-        journal("Les fournisseurs n'ont plus rien a donner : {} section(s) a "
-                "ecrire. L'usine finira ce produit seule des qu'ils rouvrent — "
-                "rien a faire.".format(manquants))
+        journal("Les fournisseurs n'ont plus rien à donner : {} section(s) à "
+                "écrire. L'usine finira ce produit seule dès qu'ils rouvrent — "
+                "rien à faire.".format(manquants))
     else:
-        journal("Le produit est commence et garde au carnet. L'usine le "
-                "finira seule des que les fournisseurs rouvrent — rien a "
+        journal("Le produit est commencé et gardé au carnet. L'usine le "
+                "finira seule dès que les fournisseurs rouvrent — rien à "
                 "faire.")
     if verrou_actif() is None:
         # Pour ce produit seulement : la file peut contenir d'autres niches,
@@ -301,13 +301,13 @@ def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None
                       if choix.get("muets") else "") or "aucune niche trouvee"
             with _VERROU:
                 TRAVAUX[travail_id].update(statut="echec", erreur=erreur)
-            journal("Les fournisseurs ne repondent pas : {}".format(erreur)
+            journal("Les fournisseurs ne répondent pas : {}".format(erreur)
                     if choix.get("muets")
                     else "Aucune niche trouvee : donnez-en une.")
             return
         if choix.get("source") == "froid" and not choix.get("mesure", True):
             journal("Aucune source de marche n'a repondu : cette niche est "
-                    "proposee, pas mesuree.")
+                    "proposée, pas mesurée.")
         options["sujet"] = sujet
         # Les reglages qui voyagent avec une promesse de lecture. Sans cette
         # ligne, la chaine RE-DEVINE genre, tropes, ambiance et fin a partir
@@ -326,18 +326,18 @@ def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None
 
     ctx = porte.contexte(sujet, options, journal)
     try:
-        journal("Demarrage...")
+        journal("Démarrage...")
         resultat = porte.fabriquer(type_produit, ctx, options, journal)
         _finir_plus_tard(type_produit, str(resultat.get("produit_id") or ""),
                          bool(resultat.get("budget_epuise")), sujet, journal)
         with _VERROU:
             TRAVAUX[travail_id].update(statut="termine", resultat=resultat)
-        journal("Termine.")
+        journal("Terminé.")
     except Exception as exc:
         message = securite.expurger(str(exc))
         with _VERROU:
             TRAVAUX[travail_id].update(statut="echec", erreur=message)
-        journal("Echec : {}".format(message))
+        journal("Échec : {}".format(message))
         evenements.publier("produit", etat="echec", detail=message)
         if isinstance(exc, llm.PlusDeFournisseur):
             _finir_plus_tard(type_produit, ctx.produit_id, True, sujet, journal)
@@ -367,17 +367,17 @@ def _lancer_prospection(travail_id: str, fiction: bool = False) -> None:
             # Le tableau de bord disait « 0 niche(s) mise(s) en file » sans
             # dire pourquoi. Sur un ecran de telephone, c'est indiscernable
             # d'une panne.
-            journal("Aucune niche neuve : les {} pistes sont deja en file. "
+            journal("Aucune niche neuve : les {} pistes sont déjà en file. "
                     "Lancez la production, ou explorez une autre graine."
                     .format(resultat["en_file"]))
         else:
             journal("Aucune niche neuve : les pistes recouvrent des produits "
-                    "deja fabriques.")
+                    "déjà fabriqués.")
     except Exception as exc:
         message = securite.expurger(str(exc))
         with _VERROU:
             TRAVAUX[travail_id].update(statut="echec", erreur=message)
-        journal("Echec : {}".format(message))
+        journal("Échec : {}".format(message))
 
 
 class Gestionnaire(BaseHTTPRequestHandler):
@@ -1377,12 +1377,12 @@ def _lancer_ab(travail_id: str, options: Dict[str, Any]) -> None:
                 resultat={"experience_id": resultat["experience_id"],
                           "distinction": resultat["distinction"],
                           "planche": _lien_fichier(resultat["planche"])})
-        journal("Test A/B pret.")
+        journal("Test A/B prêt.")
     except Exception as exc:
         message = securite.expurger(str(exc))
         with _VERROU:
             TRAVAUX[travail_id].update(statut="echec", erreur=message)
-        journal("Echec : " + message)
+        journal("Échec : " + message)
 
 
 def _lancer_marketing(travail_id: str, produit_id: str, prix: str) -> None:
@@ -1405,7 +1405,7 @@ def _lancer_marketing(travail_id: str, produit_id: str, prix: str) -> None:
             ton=str(meta.get("ton") or profil["ton"]))
         ctx.prix = prix
         ctx.produit_id = produit_id
-        journal("Redaction du kit de vente...")
+        journal("Rédaction du kit de vente...")
         description = "Produit de type {}. {}".format(
             produit["type"], meta.get("promesse") or produit["sujet"] or "")
         resultat = vente.produire_kit(
@@ -1417,12 +1417,12 @@ def _lancer_marketing(travail_id: str, produit_id: str, prix: str) -> None:
                 statut="termine",
                 resultat={"fichiers": [_lien_fichier(dossier / nom)
                                        for nom in resultat["fichiers"]]})
-        journal("Kit de vente pret.")
+        journal("Kit de vente prêt.")
     except Exception as exc:
         message = securite.expurger(str(exc))
         with _VERROU:
             TRAVAUX[travail_id].update(statut="echec", erreur=message)
-        journal("Echec : " + message)
+        journal("Échec : " + message)
 
 
 def _lancer_reprise(travail_id: str, produit_id: str) -> None:
@@ -1457,7 +1457,7 @@ def _lancer_reprise(travail_id: str, produit_id: str) -> None:
                 # argparse sort par « SystemExit », qu'un « except Exception »
                 # laisse passer : le fil mourait, et le travail restait
                 # « en cours » pour toujours dans le tableau de bord.
-                journal("La commande gardee pour ce produit ne se rejoue pas "
+                journal("La commande gardée pour ce produit ne se rejoue pas "
                         "(produit fabrique avant la version qui garde son "
                         "contexte) : relancez-le.")
                 code = exc.code if isinstance(exc.code, int) else 2
@@ -1475,7 +1475,7 @@ def _lancer_reprise(travail_id: str, produit_id: str) -> None:
         message = securite.expurger(str(exc))
         with _VERROU:
             TRAVAUX[travail_id].update(statut="echec", erreur=message)
-        journal("Echec : " + message)
+        journal("Échec : " + message)
 
 
 def _sonder_marche(marche_id: str, sujet: str) -> None:

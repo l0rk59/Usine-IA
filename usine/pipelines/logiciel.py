@@ -237,12 +237,12 @@ def _essai_reel(ctx: Contexte, fichiers: Dict[str, str],
                 "sortie": execution.sortie[:600],
             })
             if execution.refus:
-                ctx.journal("      {} : non execute ({})".format(
+                ctx.journal("      {} : non exécuté ({})".format(
                     intitule, execution.refus[:60]))
             elif execution.reussi:
-                ctx.journal("      {} : demarre correctement".format(intitule))
+                ctx.journal("      {} : démarre correctement".format(intitule))
             else:
-                ctx.journal("      {} : ECHEC — {}".format(
+                ctx.journal("      {} : ÉCHEC — {}".format(
                     intitule, (execution.erreur or "code {}".format(
                         execution.code_retour))[:70]))
     finally:
@@ -256,14 +256,14 @@ def produire(ctx: Contexte, cible: str = "cli",
     cible = cible if cible in CIBLES else "cli"
     fiche = CIBLES[cible]
 
-    ctx.journal("Etape 1/4 — specification ({})...".format(fiche["nom"]))
+    ctx.journal("Étape 1/4 — spécification ({})...".format(fiche["nom"]))
     specification = _specification(ctx, cible)
     titre = specification["titre"]
     dossier = preparer(ctx, "logiciel", titre)
     ctx.etape("specification", "ok", cible)
     ctx.journal('  « {} » — {}'.format(titre, specification.get("promesse", "")))
 
-    ctx.journal("Etape 2/4 — generation et verification du code...")
+    ctx.journal("Étape 2/4 — génération et vérification du code...")
     fichiers, rapports = _ecrire_et_verifier(ctx, specification, cible)
     synthese = verification.synthese(rapports)
     # Le verificateur a tourne : c'est une anomalie, pas une etape perdue. La
@@ -273,11 +273,11 @@ def produire(ctx: Contexte, cible: str = "cli",
               "{}/{} fichiers valides".format(synthese["valides"],
                                               synthese["fichiers"]))
 
-    ctx.journal("Etape 3/4 — essai reel...")
+    ctx.journal("Étape 3/4 — essai réel...")
     essais = _essai_reel(ctx, fichiers, rapports) if (
         executer and cible == "cli") else {"essais": [], "tout_demarre": None}
 
-    ctx.journal("Etape 4/4 — mise en carton...")
+    ctx.journal("Étape 4/4 — mise en carton...")
     chemins = _ecrire_sources(dossier, fichiers)
     livrables = _livrer(ctx, specification, cible, fichiers, synthese, essais)
 

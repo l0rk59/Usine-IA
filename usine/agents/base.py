@@ -37,8 +37,8 @@ def signaler_troncature(contexte: Any, agent: str,
         meta.setdefault("tronquees", []).append(detail)
     journal = getattr(contexte, "journal", None)
     if callable(journal):
-        journal("  [!] reponse coupee au plafond de jetons ({} via {}) : "
-                "le texte s'arrete avant sa fin".format(agent,
+        journal("  [!] réponse coupée au plafond de jetons ({} via {}) : "
+                "le texte s'arrête avant sa fin".format(agent,
                                                         reponse.fournisseur))
 
 

@@ -192,27 +192,27 @@ def produire(ctx: Contexte, episodes: int = 0) -> Dict[str, Any]:
     # reconstruire changerait la distribution et la question de chaque
     # episode sous les scenes deja ecrites.
     repris = carnet.plan(ctx.dossier) if ctx.dossier and ctx.dossier.name else None
-    ctx.journal("Etape 1/4 — la bible : distribution, cadre, enjeu...")
+    ctx.journal("Étape 1/4 — la bible : distribution, cadre, enjeu...")
     bible = (repris or {}).get("bible") or construire_bible(ctx)
     distribution = [p.get("nom", "") for p in bible.get("personnages", [])]
     ctx.etape("bible", "ok", "{} personnage(s)".format(len(distribution)))
 
-    ctx.journal("Etape 2/4 — l'arc de la saison, {} episodes...".format(demande))
+    ctx.journal("Étape 2/4 — l'arc de la saison, {} épisodes...".format(demande))
     arc = (repris or {}).get("arc") or _arc(ctx, demande)
     titre = arc["titre"]
     dossier = preparer(ctx, "feuilleton", titre)
     sans_suspens = episodes_sans_suspens(arc["episodes"])
     if sans_suspens:
-        ctx.journal("  [!] episodes sans suspens declare : {} — le lecteur "
+        ctx.journal("  [!] épisodes sans suspens déclaré : {} — le lecteur "
                     "n'a aucune raison de revenir.".format(
                         ", ".join(str(e) for e in sans_suspens)))
     ctx.etape("arc", "partiel" if sans_suspens else "ok",
               "{} episodes".format(len(arc["episodes"])))
 
-    ctx.journal("Etape 3/4 — redaction des episodes...")
+    ctx.journal("Étape 3/4 — rédaction des épisodes...")
     grille = (repris or {}).get("grille") or construire_grille(ctx, bible)
     if repris:
-        ctx.journal("  Reprise : bible, arc et {} section(s) deja au carnet."
+        ctx.journal("  Reprise : bible, arc et {} section(s) déjà au carnet."
                     .format(carnet.compte(dossier)))
     carnet.noter_plan(dossier, {"bible": bible, "arc": arc, "grille": grille,
                                 "chapitres": arc["episodes"]})
@@ -264,7 +264,7 @@ def produire(ctx: Contexte, episodes: int = 0) -> Dict[str, Any]:
     ctx.etape("episodes", "partiel" if redaction.manquants else "ok",
               "{} episode(s)".format(len(ecrits)))
 
-    ctx.journal("Etape 4/4 — mesure des rappels, puis export...")
+    ctx.journal("Étape 4/4 — mesure des rappels, puis export...")
     mesures = mesurer_les_recaps(ecrits, distribution)
     lectures = lire_les_recaps(mesures)
     for lecture in lectures:

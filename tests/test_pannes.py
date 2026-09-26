@@ -306,7 +306,7 @@ class ReseauCoupe(unittest.TestCase):
         self._sans_fournisseur()
         code, texte = self._principal(False, ["ebook", "un sujet quelconque"])
         self.assertEqual(code, 3)
-        self.assertIn("Le reseau est coupe", texte)
+        self.assertIn("Le réseau est coupé", texte)
         self.assertNotIn("usine cles", texte)
 
     def test_en_ligne_on_renvoie_bien_au_diagnostic(self):
@@ -318,7 +318,7 @@ class ReseauCoupe(unittest.TestCase):
         code, texte = self._principal(True, ["ebook", "un sujet quelconque"])
         self.assertEqual(code, 3)
         self.assertIn("usine cles", texte)
-        self.assertNotIn("Le reseau est coupe", texte)
+        self.assertNotIn("Le réseau est coupé", texte)
 
     def test_les_deux_branches_disent_que_la_relance_reprend_le_travail(self):
         self._sans_fournisseur()
@@ -369,7 +369,7 @@ class ReseauCoupe(unittest.TestCase):
         self.assertEqual([p["statut"] for p in produits], ["en_cours"])
         self.assertTrue((produits[0].get("meta") or {}).get("manquants"),
                         "les sections non ecrites doivent etre nommees")
-        self.assertIn("inacheve", liste)
+        self.assertIn("inachevé", liste)
         self.assertIn("sans repayer ce qui est fait", liste)
 
     def test_la_relance_ne_repaie_pas_les_appels_deja_faits(self):
@@ -470,7 +470,7 @@ class DocteurAvecUneCle(unittest.TestCase):
             os.environ.pop("GROQ_API_KEY", None)
             pool_cles.oublier()
         self.assertEqual(code, 0)
-        self.assertIn("Pool de cles", texte)
+        self.assertIn("Pool de clés", texte)
 
 
 class DocteurSansCle(unittest.TestCase):
@@ -548,7 +548,7 @@ class DocteurSansCle(unittest.TestCase):
             finally:
                 pool_cles.oublier()
         self.assertEqual(page, 1)
-        self.assertIn("1 fournisseur(s) avec cle", accueil)
+        self.assertIn("1 fournisseur(s) avec clé", accueil)
         self.assertEqual(verdict["etat"], "pret")
 
     def _etat_sans_oubli(self):
@@ -589,7 +589,7 @@ class DocteurSansCle(unittest.TestCase):
             finally:
                 pool_cles.oublier()
         texte = sortie.getvalue()
-        self.assertIn("Aucune cle API", texte)
+        self.assertIn("Aucune clé API", texte)
         self.assertIn("usine cles", texte)
         self.assertIn("local, s'il tourne", texte)
         self.assertNotIn("actifs", texte)
@@ -617,7 +617,7 @@ class DocteurSansCle(unittest.TestCase):
         lignes = [l for l in sortie.getvalue().splitlines()
                   if " ollama " in l and "local" in l]
         self.assertEqual(len(lignes), 1, sortie.getvalue())
-        self.assertIn("ne repond pas", lignes[0])
+        self.assertIn("ne répond pas", lignes[0])
 
     def test_la_ligne_de_commande_ne_coche_pas_l_essai(self):
         """« ok » en vert devant « aucune cle » se lit « tout va bien »."""

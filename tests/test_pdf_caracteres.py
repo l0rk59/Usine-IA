@@ -158,7 +158,7 @@ class LaChaineLeDitSurLaFicheDuProduit(unittest.TestCase):
         inapercu parce que les ideogrammes etaient dans le titre."""
         meta, journal = self._fabriquer("la cuisine japonaise 和食 pour tous")
         self.assertIn("和", meta.get("pdf_caracteres_absents") or [])
-        self.assertIn("Le PDF ne sait pas ecrire", journal)
+        self.assertIn("Le PDF ne sait pas écrire", journal)
 
     def test_un_produit_sans_pdf_n_est_pas_inspecte(self):
         """Signaler ce que « le PDF » ne sait pas ecrire a propos d'un produit
@@ -183,7 +183,7 @@ class LaChaineLeDitSurLaFicheDuProduit(unittest.TestCase):
         meta, journal = self._fabriquer("la comptabilite des tres petites "
                                         "entreprises et l'oeuf de Paques")
         self.assertFalse(meta.get("pdf_caracteres_absents"))
-        self.assertNotIn("Le PDF ne sait pas ecrire", journal)
+        self.assertNotIn("Le PDF ne sait pas écrire", journal)
 
 
 if __name__ == "__main__":

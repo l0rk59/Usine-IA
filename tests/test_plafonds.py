@@ -206,7 +206,7 @@ class UnReglageEcarteNeDisparaitPlusEnSilence(unittest.TestCase):
         ecran de telephone."""
         _, journal = self._journal(self.REPONSE,
                                    "la plongee en apnee")
-        self.assertIn("1 reglage(s) sur 9", journal)
+        self.assertIn("1 réglage(s) sur 9", journal)
 
     def test_rien_n_est_annonce_quand_tout_passe(self):
         """Le garde-fou qui crie a tort : une reponse entierement valide ne
@@ -215,4 +215,4 @@ class UnReglageEcarteNeDisparaitPlusEnSilence(unittest.TestCase):
         decides, journal = self._journal(bonne, "la taille des bonsais")
         self.assertEqual(decides.get("genre"), "policier")
         self.assertNotIn("non retenu", journal)
-        self.assertNotIn("restent a la charge", journal)
+        self.assertNotIn("restent à la charge", journal)

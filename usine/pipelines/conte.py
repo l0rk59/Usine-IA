@@ -294,7 +294,7 @@ def produire(ctx: Contexte, pages: int = 0,
     demande = int(pages or ctx.chapitres or regle["pages"])
     demande = max(PAGES_MIN, min(demande, PAGES_MAX))
 
-    ctx.journal("Etape 1/3 — le conte, {} doubles-pages pour {}...".format(
+    ctx.journal("Étape 1/3 — le conte, {} doubles-pages pour {}...".format(
         demande, tranche))
     conte = _pages(ctx, tranche, demande)
     titre = conte["titre"]
@@ -311,7 +311,7 @@ def produire(ctx: Contexte, pages: int = 0,
               "{} pages, {} phrases".format(len(conte["pages"]),
                                             mesure["phrases"]))
 
-    ctx.journal("Etape 2/3 — illustrations...")
+    ctx.journal("Étape 2/3 — illustrations...")
     illustrees = 0
     for page in conte["pages"]:
         if not page["illustration"] or ctx.sans_image:
@@ -333,7 +333,7 @@ def produire(ctx: Contexte, pages: int = 0,
               "ok" if illustrees == len(conte["pages"]) else "partiel",
               "{} image(s)".format(illustrees))
 
-    ctx.journal("Etape 3/3 — export...")
+    ctx.journal("Étape 3/3 — export...")
     t = libelles.textes(ctx.langue_iso)
     blocs = []
     ressources = []

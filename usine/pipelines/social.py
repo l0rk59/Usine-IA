@@ -179,7 +179,7 @@ def _titre(ctx: Contexte, combien: int, reseau: str) -> str:
 def produire(ctx: Contexte, nombre: int = 30, reseau: str = "linkedin",
              visuels: int = 0) -> Dict[str, Any]:
     reseau = reseau.lower()
-    ctx.journal("Etape 1/4 — calendrier editorial ({} posts, {})...".format(nombre, reseau))
+    ctx.journal("Étape 1/4 — calendrier éditorial ({} posts, {})...".format(nombre, reseau))
     calendrier = _calendrier(ctx, nombre, reseau)
     titre = _titre(ctx, len(calendrier), reseau)
     dossier = preparer(ctx, "social", titre)
@@ -188,7 +188,7 @@ def produire(ctx: Contexte, nombre: int = 30, reseau: str = "linkedin",
               "{} publications sur {} demandees".format(
                   len(calendrier), nombre))
 
-    ctx.journal("Etape 2/4 — redaction des publications...")
+    ctx.journal("Étape 2/4 — rédaction des publications...")
     posts: List[Dict[str, str]] = []
     taille_lot = 5
     lots = [calendrier[i : i + taille_lot] for i in range(0, len(calendrier), taille_lot)]
@@ -197,7 +197,7 @@ def produire(ctx: Contexte, nombre: int = 30, reseau: str = "linkedin",
         try:
             posts.extend(_rediger_lot(ctx, lot, reseau))
         except Exception as exc:
-            ctx.journal("     echec : {}".format(exc))
+            ctx.journal("     échec : {}".format(exc))
             ctx.etape("lot-{}".format(index), "echec", str(exc))
             posts.extend(
                 {"jour": str(p["jour"]), "texte": p["accroche"], "hashtags": "", "visuel": ""}
@@ -208,7 +208,7 @@ def produire(ctx: Contexte, nombre: int = 30, reseau: str = "linkedin",
               "{} posts pour {} au calendrier".format(
                   len(posts), len(calendrier)))
 
-    ctx.journal("Etape 3/4 — visuels...")
+    ctx.journal("Étape 3/4 — visuels...")
     chemins_visuels: List[Path] = []
     if visuels > 0 and not ctx.sans_image and not ctx.hors_ligne:
         dossier_visuels = dossier / "visuels"
@@ -225,7 +225,7 @@ def produire(ctx: Contexte, nombre: int = 30, reseau: str = "linkedin",
                 chemins_visuels.append(chemin)
     ctx.etape("visuels", "ok", "{} images".format(len(chemins_visuels)))
 
-    ctx.journal("Etape 4/4 — export...")
+    ctx.journal("Étape 4/4 — export...")
     if len(posts) != len(calendrier):
         titre = renommer(ctx, _titre(ctx, len(posts), reseau))
     fichiers = _exporter(ctx, titre, reseau, calendrier, posts)

@@ -314,7 +314,7 @@ def insister(action: Callable[[], T], tentatives: int = TENTATIVES,
         # le service les refuserait tous une seconde fois.
         pause = min(plafond, pause + random.random())
         if journal is not None:
-            journal("  reseau : {} — nouvel essai dans {:.0f} s ({}/{})".format(
+            journal("  réseau : {} — nouvel essai dans {:.0f} s ({}/{})".format(
                 dernier, pause, essai + 1, tentatives - 1))
         if not patienter(pause, arret):
             break

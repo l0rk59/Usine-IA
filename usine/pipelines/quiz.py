@@ -109,19 +109,19 @@ def produire(ctx: Contexte, nombre: int = 20, niveau: str = "intermediaire",
     titre = "Quiz — {}".format(ctx.sujet)
     dossier = preparer(ctx, "quiz", titre)
 
-    ctx.journal("Etape 1/2 — redaction des questions...")
+    ctx.journal("Étape 1/2 — rédaction des questions...")
     questions = _questions(ctx, nombre, niveau)
     perdues = nombre - len(questions)
     if perdues > 0:
         # On le dit plutot que de le taire : un quiz de douze questions vendu
         # pour vingt est un produit troue, et c'est a l'etape de le porter.
-        ctx.journal("  {} question(s) ecartees : corrige incoherent."
+        ctx.journal("  {} question(s) écartées : corrigé incohérent."
                     .format(perdues))
     ctx.etape("questions",
               "partiel" if perdues else "ok",
               "{} questions retenues sur {}".format(len(questions), nombre))
 
-    ctx.journal("Etape 2/2 — export...")
+    ctx.journal("Étape 2/2 — export...")
     fichiers = _exporter(ctx, titre, questions, niveau, not sans_bareme)
     # La page qui se corrige seule, hors ligne. Elle existait deja pour la
     # formation — « render/quiz.py » — et c'est exactement ce qu'un acheteur

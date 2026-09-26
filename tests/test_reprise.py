@@ -174,7 +174,7 @@ class CoupureEtReprise(unittest.TestCase):
     def test_reprendre_sans_produit_inacheve_le_dit(self):
         code, texte = _muet(["reprendre"])
         self.assertEqual(code, 1)
-        self.assertIn("Aucun produit inacheve", texte)
+        self.assertIn("Aucun produit inachevé", texte)
 
 
 class Carnet(unittest.TestCase):

@@ -186,7 +186,7 @@ class TestChaine(unittest.TestCase):
                               encoding="utf-8")
             base.terminer(contexte, [chemin], {}, type_produit="ebook")
 
-        self.assertTrue(any("Deja fabrique" in ligne for ligne in journal),
+        self.assertTrue(any("Déjà fabriqué" in ligne for ligne in journal),
                         "le second produit doit etre signale")
         self.assertEqual(len(store.lister_empreintes("ebook")) >= 2, True)
 
@@ -200,7 +200,7 @@ class TestChaine(unittest.TestCase):
         chemin.write_text("# Plantes\n\n## Les feuilles\n\n" + ETRANGER,
                           encoding="utf-8")
         base.terminer(contexte, [chemin], {}, type_produit="ebook")
-        self.assertFalse(any("Deja fabrique" in ligne for ligne in journal))
+        self.assertFalse(any("Déjà fabriqué" in ligne for ligne in journal))
 
     def test_deux_types_differents_ne_sont_pas_des_doublons(self):
         """Un ebook et un cahier sur le meme sujet sont complementaires."""
@@ -213,7 +213,7 @@ class TestChaine(unittest.TestCase):
             chemin = contexte.dossier / "notes.md"
             chemin.write_text("# T\n\n## S\n\n" + TEXTE, encoding="utf-8")
             base.terminer(contexte, [chemin], {}, type_produit=genre)
-        self.assertFalse(any("Deja fabrique" in ligne for ligne in journal))
+        self.assertFalse(any("Déjà fabriqué" in ligne for ligne in journal))
 
 
 class TestFicheProduit(unittest.TestCase):

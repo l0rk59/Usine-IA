@@ -349,13 +349,13 @@ class TestDocteurLocal(unittest.TestCase):
         """Un fournisseur local est toujours « disponible » : c'est une
         adresse. La liste cochait en vert un ollama jamais installe."""
         texte = self._ecrire({"repond": False})
-        self.assertIn("ne repond pas", texte)
+        self.assertIn("ne répond pas", texte)
         self.assertIn("ollama serve", texte)
         self.assertNotIn("v", texte.split("ollama")[0])
 
     def test_un_ollama_vide_donne_la_commande_qui_manque(self):
         texte = self._ecrire({"repond": True, "modeles": []})
-        self.assertIn("ne sert aucun modele", texte)
+        self.assertIn("ne sert aucun modèle", texte)
         self.assertIn("ollama pull qwen2.5:3b", texte)
 
     def test_un_remplacant_est_annonce(self):
