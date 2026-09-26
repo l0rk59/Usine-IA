@@ -13,6 +13,7 @@ un ecran de telephone, et regardent ce qui en sort.
 
 from __future__ import annotations
 
+import ast
 import io
 import itertools
 import os
@@ -28,6 +29,7 @@ RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 
 from tests import atelier  # noqa: E402
+from usine import cli  # noqa: E402
 from usine import menu  # noqa: E402
 from usine.core import experience, reglages, store, ventes  # noqa: E402
 from usine.core import file as file_prod  # noqa: E402
@@ -601,6 +603,154 @@ class TestReglageParListe(unittest.TestCase):
         """La liste fermee ne laisse aucun moyen d'ecrire n'importe quoi."""
         deroule(menu.menu_reglages, [str(self._rang_de("qualite")), "1"])
         self.assertEqual(reglages.lire("qualite"), "rapide")
+
+
+class ChaqueCommandeDuMenuParseDansLaCLI(unittest.TestCase):
+    """Chaque ligne de commande que le menu fabrique doit parser dans le vrai
+    parseur. Cette classe de defaut est deja arrivee : « Reprendre » lancait
+    « unrecognized arguments », code 2, apres que l'utilisateur avait repondu
+    a toutes les questions (AUDIT-AGENTS-FOURNISSEURS.md). Rien ne la
+    surveillait : une option renommee dans la CLI casse le menu en silence.
+
+    Le detecteur lit la STRUCTURE de menu.py : les « executer([...]) »
+    litteraux, et les « arguments = [...] » completes par += et append puis
+    passes a executer. Ce qu'il ne sait pas lire, il le rate plutot que
+    d'inventer : un argv dont la sous-commande n'est pas un litteral (l'ecran
+    de fabrication, qui part de produit["cle"]) n'est pas reconstruit.
+
+    Les variables deviennent le bouche-trou « 1 » ; quand le parseur repond
+    « invalid choice » sur ce bouche-trou precis, on rejoue avec un des choix
+    offerts — la valeur reelle vient d'une liste equivalente a l'execution.
+    Un refus sur un LITTERAL, lui, est un vrai defaut.
+    """
+
+    BOUCHE_TROU = "1"
+
+    @staticmethod
+    def _morceaux(noeud):
+        """Les elements d'une expression de liste : litteraux, ou None."""
+        if isinstance(noeud, ast.List):
+            return [e.value if isinstance(e, ast.Constant)
+                    and isinstance(e.value, str) else None
+                    for e in noeud.elts]
+        if isinstance(noeud, ast.BinOp) and isinstance(noeud.op, ast.Add):
+            gauche = ChaqueCommandeDuMenuParseDansLaCLI._morceaux(noeud.left)
+            droite = ChaqueCommandeDuMenuParseDansLaCLI._morceaux(noeud.right)
+            if gauche is not None and droite is not None:
+                return gauche + droite
+        if isinstance(noeud, ast.IfExp):
+            return ChaqueCommandeDuMenuParseDansLaCLI._morceaux(noeud.body)
+        return None
+
+    @classmethod
+    def _reconstruire(cls, source):
+        arbre = ast.parse(source)
+        argvs = []
+        for fonction in [n for n in ast.walk(arbre)
+                         if isinstance(n, ast.FunctionDef)]:
+            for n in ast.walk(fonction):
+                if (isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                        and n.func.id == "executer" and n.args):
+                    m = cls._morceaux(n.args[0])
+                    if m is not None:
+                        argvs.append((n.lineno, m))
+            consomme = any(
+                isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                and n.func.id == "executer" and n.args
+                and isinstance(n.args[0], ast.Name)
+                and n.args[0].id == "arguments"
+                for n in ast.walk(fonction))
+            if not consomme:
+                continue
+            base, ajouts, depart = None, [], 0
+            for n in ast.walk(fonction):
+                if (isinstance(n, ast.Assign) and len(n.targets) == 1
+                        and isinstance(n.targets[0], ast.Name)
+                        and n.targets[0].id == "arguments"):
+                    base, depart = cls._morceaux(n.value), n.lineno
+                elif (isinstance(n, ast.AugAssign)
+                      and isinstance(n.target, ast.Name)
+                      and n.target.id == "arguments"):
+                    m = cls._morceaux(n.value)
+                    if m:
+                        ajouts += m
+                elif (isinstance(n, ast.Call)
+                      and isinstance(n.func, ast.Attribute)
+                      and n.func.attr == "append"
+                      and isinstance(n.func.value, ast.Name)
+                      and n.func.value.id == "arguments" and n.args
+                      and isinstance(n.args[0], ast.Constant)):
+                    ajouts.append(n.args[0].value)
+            # Toutes les branches sont concatenees : deux options posees deux
+            # fois restent valides pour argparse (la derniere gagne).
+            if base and isinstance(base[0], str):
+                argvs.append((depart, base + ajouts))
+        return argvs
+
+    def _refus(self, argv, parseur):
+        """Le message du parseur si cet argv est refuse, sinon ""."""
+        import re
+
+        for _ in range(6):  # au plus un choix a poser par option a choix
+            try:
+                with redirect_stdout(io.StringIO()):
+                    with mock.patch.object(
+                            type(parseur), "error",
+                            lambda _s, message: (_ for _ in ()).throw(
+                                ValueError(message))):
+                        parseur.parse_args(argv)
+                return ""
+            except ValueError as exc:
+                message = str(exc)
+                trouve = re.search(
+                    r"invalid choice: '?{}'?.*choose from (.+)".format(
+                        self.BOUCHE_TROU), message)
+                if not trouve or self.BOUCHE_TROU not in argv:
+                    return message
+                choix = trouve.group(1).strip(")").split(",")[0].strip(" '\"")
+                argv[argv.index(self.BOUCHE_TROU)] = choix
+            except SystemExit:
+                return "sortie seche du parseur"
+        return "les choix ne suffisent pas : " + " ".join(argv)
+
+    def test_chaque_ligne_du_menu_parse(self):
+        source = (RACINE / "usine" / "menu.py").read_text(encoding="utf-8")
+        argvs = self._reconstruire(source)
+        # Le jour ou le menu change de forme au point que le detecteur ne
+        # reconstruit plus rien, ce test doit le dire au lieu de passer vide.
+        self.assertGreaterEqual(len(argvs), 30, "le detecteur a perdu le menu")
+        parseur = cli.construire_parseur()
+        for ligne, brut in argvs:
+            argv = [e if e is not None else self.BOUCHE_TROU for e in brut]
+            with self.subTest(ligne=ligne, commande=" ".join(argv)):
+                self.assertEqual(self._refus(list(argv), parseur), "")
+
+    def test_le_detecteur_verrait_une_option_renommee(self):
+        """Sans lui, le controle pourrait passer parce qu'il ne trouve rien.
+
+        Les deux formes du menu sont plantees : l'appel direct, et la liste
+        « arguments » completee puis passee a executer — la premiere campagne
+        de mutation a montre que casser le collecteur dynamique seul ne
+        faisait echouer aucun cas.
+        """
+        cas = {
+            "directe": ("def ecran(executer):\n"
+                        "    executer([\"ebook\", \"un sujet\","
+                        " \"--sans-imagee\"])\n"),
+            "dynamique": ("def ecran(executer):\n"
+                          "    arguments = [\"usine\", \"demarrer\"]\n"
+                          "    arguments.append(\"--maxx\")\n"
+                          "    executer(arguments)\n"),
+        }
+        parseur = cli.construire_parseur()
+        for forme, source in sorted(cas.items()):
+            with self.subTest(forme=forme):
+                argvs = self._reconstruire(source)
+                self.assertEqual(len(argvs), 1, "le collecteur " + forme
+                                 + " ne reconstruit plus")
+                argv = [e if e is not None else self.BOUCHE_TROU
+                        for e in argvs[0][1]]
+                self.assertNotEqual(self._refus(argv, parseur), "")
 
 
 if __name__ == "__main__":
