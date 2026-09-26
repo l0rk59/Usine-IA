@@ -614,6 +614,19 @@ def _attente(p: config.Provider, role: str, cout: int,
 ATTENTE_PAR_MINUTE_MAX = 125.0
 
 
+def _annoncer_attente(fournisseur: str, secondes: float) -> None:
+    """Une attente de plus de quelques secondes se dit.
+
+    Sans cle, le palier anonyme de Pollinations accepte trois requetes par
+    minute : le tableau de bord restait muet quarante secondes entre deux
+    chapitres, mesure du 25/09/2026 dans un vrai navigateur. Sur un
+    telephone, une page qui ne bouge plus se lit comme une page plantee.
+    """
+    if secondes >= 5:
+        evenements.publier("attente", fournisseur=fournisseur,
+                           secondes=int(round(secondes)))
+
+
 def _laisser_passer(p: config.Provider, role: str, cout: int,
                     cle_id: str = "") -> bool:
     """Attend si besoin, et dit si cette cle peut servir la demande."""
@@ -621,6 +634,7 @@ def _laisser_passer(p: config.Provider, role: str, cout: int,
     if pause is None:
         return False
     if pause > 0:
+        _annoncer_attente(p.name, pause)
         # Jusqu'a soixante-deux secondes : c'est la plus longue attente de
         # l'usine, et elle etait d'un seul bloc. Un Ctrl+C attendait donc une
         # minute entiere avant d'etre entendu, et sur un telephone
@@ -783,12 +797,22 @@ def generer(
             raise PlusDeFournisseur(
                 "Hors ligne, et aucun serveur d'IA locale n'est configure "
                 "(USINE_PROVIDERS les ecarte). Rien n'a ete envoye.")
+    # Les fournisseurs ecartes par « eviter » ne sont pas perdus : ils
+    # servent si les autres n'ont rien donne. Mieux vaut une relecture par le
+    # meme modele que pas de relecture du tout.
+    #
+    # La regle etait posee AVANT l'appel : on n'ecartait l'auteur que s'il
+    # « restait un autre » fournisseur. Or ollama et llama.cpp restent
+    # toujours — ce sont des adresses, disponibles meme eteintes. Mesure du
+    # 25/09/2026, tableau de bord, aucune cle, par le vrai routeur : chaque
+    # relecture partait vers un ollama eteint et revenait « relecture
+    # indisponible », chapitre apres chapitre. Aucun texte n'etait relu.
+    repli: List[config.Provider] = []
     if eviter:
         exclus = {n.lower() for n in eviter}
         restants = [f for f in fournisseurs if f.name not in exclus]
-        # On n'ecarte un fournisseur que s'il en reste un autre : mieux vaut une
-        # relecture par le meme modele que pas de relecture du tout.
         if restants:
+            repli = [f for f in fournisseurs if f.name in exclus]
             fournisseurs = restants
     if not fournisseurs:
         raise PlusDeFournisseur(
@@ -804,9 +828,10 @@ def generer(
     # qu'elle se rouvre, et on refait un tour — seulement quand un
     # fournisseur n'attend que cela, et jamais plus de deux fenetres.
     attendu_par_minute = 0.0
+    bilan = _Bilan()
     while True:
-        bilan = _Bilan()
         libre_dans: Optional[float] = None
+        qui_attend = ""
         for p in fournisseurs:
             # Le repos vaut pour le fournisseur entier ; le quota, lui, se
             # verifie cle par cle plus bas — c'est tout l'interet d'en avoir
@@ -851,8 +876,8 @@ def generer(
                         bilan.ecarte(p.name, "{} jetons demandes : plus que "
                                      "le budget d'une minute entiere".format(cout))
                         break
-                    libre_dans = (reste if libre_dans is None
-                                  else min(libre_dans, reste))
+                    if libre_dans is None or reste < libre_dans:
+                        libre_dans, qui_attend = reste, p.name
                     bilan.ecarte(p.name, "limite par minute atteinte, libre "
                                  "dans {:.0f} s".format(reste))
                     # La cle suivante, pas le fournisseur suivant : les
@@ -996,8 +1021,17 @@ def generer(
                         _patienter(min(8.0, 1.5 * (essai + 1)) + random.random())
         if (libre_dans is not None
                 and attendu_par_minute + libre_dans <= ATTENTE_PAR_MINUTE_MAX):
+            _annoncer_attente(qui_attend, libre_dans)
             _patienter(libre_dans)
             attendu_par_minute += libre_dans
+            # Un nouveau tour, un nouveau bilan : ce qui etait ecarte pour la
+            # minute ne l'est peut-etre plus.
+            bilan = _Bilan()
+            continue
+        if repli:
+            # Le bilan, lui, continue : le message final doit nommer aussi
+            # ceux qui ont ete essayes avant le repli.
+            fournisseurs, repli = repli, []
             continue
         break
 

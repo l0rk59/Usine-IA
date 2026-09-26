@@ -377,10 +377,18 @@ class UneLimiteParMinuteSeLeve(unittest.TestCase):
             return llm.generer("court", cache=False, **options)
 
     def test_le_routeur_attend_que_la_fenetre_se_rouvre(self):
+        from usine.core import evenements
+
         premiere = self.lot.cles[0]
         self._appels(premiere, self.cerebras.quota("standard").rpm, il_y_a=10)
+        evenements.vider()
         reponse = self._generer([premiere])
         self.assertEqual(reponse.fournisseur, "cerebras")
+        # Et il le dit : le tableau de bord restait muet pendant ces attentes.
+        attentes = [e for e in evenements.historique() if e["type"] == "attente"]
+        self.assertTrue(attentes)
+        self.assertEqual(attentes[0]["fournisseur"], "cerebras")
+        self.assertGreaterEqual(attentes[0]["secondes"], 5)
         # La fenetre se rouvre quand le plus vieil appel a une minute : il
         # en avait dix. Ni moins (elle serait encore pleine), ni beaucoup plus.
         self.assertGreaterEqual(sum(self.attentes), 48)
@@ -441,6 +449,68 @@ class UneLimiteParMinuteSeLeve(unittest.TestCase):
                 llm.generer("court", cache=False)
         self.assertLessEqual(sum(self.attentes), llm.ATTENTE_PAR_MINUTE_MAX + 62)
         self.assertIn("limite par minute", str(contexte.exception))
+
+
+class LaRelectureCroiseeNeSePerdPas(unittest.TestCase):
+    """« eviter » ecarte l'auteur d'une relecture ; il ne doit pas la tuer.
+
+    Mesure du 25/09/2026, tableau de bord, aucune cle, par le vrai routeur :
+    la regle « on n'ecarte l'auteur que s'il reste un autre fournisseur »
+    etait jugee avant l'appel, et ollama compte toujours comme disponible,
+    lance ou non. Chaque relecture partait vers un ollama eteint et revenait
+    « relecture indisponible » : pas un chapitre n'etait relu.
+    """
+
+    def setUp(self):
+        _vider_appels()
+        self.appeles = []
+
+    def _pools(self, *noms):
+        lots = {n: pool_cles.Pool(n, [pool_cles.Cle(
+            valeur="cle-" + n + "-" + "Z" * 24, fournisseur=n, rang=0)])
+            for n in noms}
+        return lambda nom, variable=None: lots.get(nom) or pool_cles.Pool(nom, [])
+
+    def _repondre(self, vivants):
+        def post(url, charge, entetes, timeout=0):
+            nom = next(n for n in ("groq", "mistral", "ollama")
+                       if config.PROVIDERS_BY_NAME[n].base_url.rstrip("/") in url)
+            self.appeles.append(nom)
+            if nom not in vivants:
+                raise HttpErreur(0, "reseau indisponible : [Errno 111] "
+                                    "Connection refused")
+            return _reponse("relu par " + nom)
+        return post
+
+    def _generer(self, fournisseurs, vivants):
+        with mock.patch.object(pool_cles, "pool",
+                               side_effect=self._pools("groq", "mistral")), \
+                mock.patch.object(llm, "post_json",
+                                  side_effect=self._repondre(vivants)), \
+                mock.patch.object(llm, "_patienter", lambda s: None), \
+                mock.patch.object(config, "active_providers",
+                                  return_value=[config.PROVIDERS_BY_NAME[n]
+                                                for n in fournisseurs]):
+            return llm.generer("relis ce texte", cache=False, eviter=["groq"])
+
+    def test_personne_d_autre_ne_repond_l_auteur_relit(self):
+        reponse = self._generer(["groq", "ollama"], vivants={"groq"})
+        self.assertEqual(reponse.fournisseur, "groq")
+        # L'autre a bien ete essaye d'abord : la relecture croisee reste
+        # preferee quand elle est possible.
+        self.assertEqual(self.appeles[0], "ollama")
+
+    def test_un_autre_modele_vivant_reste_prefere(self):
+        reponse = self._generer(["groq", "mistral", "ollama"],
+                                vivants={"groq", "mistral"})
+        self.assertEqual(reponse.fournisseur, "mistral")
+        self.assertNotIn("groq", self.appeles)
+
+    def test_quand_tout_echoue_le_message_nomme_tout_le_monde(self):
+        with self.assertRaises(llm.PlusDeFournisseur) as contexte:
+            self._generer(["groq", "ollama"], vivants=set())
+        self.assertIn("ollama", str(contexte.exception))
+        self.assertIn("groq", str(contexte.exception))
 
 
 if __name__ == "__main__":

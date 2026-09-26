@@ -547,9 +547,13 @@ def affiner(
     for passe in range(max(0, passes)):
         critique = critiquer(contexte, courant, intitule, promesse, fournisseur_auteur)
         historique.append(critique)
+        # « mesuree » voyage avec la note : une relecture qui n'a pas eu lieu
+        # porte 0, et la page affichait « relecture : 0/10 » — une note que
+        # personne n'avait donnee, chapitre apres chapitre.
         evenements.publier("qualite", etat="critique", intitule=intitule,
                            note=critique.note, passe=passe + 1,
-                           problemes=len(critique.problemes))
+                           problemes=len(critique.problemes),
+                           mesuree=critique.mesuree)
         if critique.acceptable and not critique.bloquants:
             break
         if not critique.problemes:

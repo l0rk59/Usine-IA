@@ -769,7 +769,15 @@ function traiter(evenement) {
     $('objectif').textContent = etat.objectif ? ' / ' + etat.objectif : '';
     $('etat-scene').textContent = evenement.titre || 'Production en cours';
   } else if (evenement.type === 'qualite') {
-    if (evenement.etat === 'critique') {
+    if (evenement.etat === 'critique' && evenement.mesuree === false) {
+      /* Une relecture qui n'a pas eu lieu n'a pas de note : l'afficher
+         « 0/10 » inventait un verdict severe que personne n'avait rendu. */
+      ajouterLigne(
+        `<span class="heure">${heure(evenement.ts)}</span> relecture ` +
+        `« ${echapper(evenement.intitule)} » : indisponible, pas de note`,
+        'souci');
+      $('qualite-resume').textContent = 'Derniere relecture : indisponible';
+    } else if (evenement.etat === 'critique') {
       ajouterLigne(
         `<span class="heure">${heure(evenement.ts)}</span> relecture ` +
         `« ${echapper(evenement.intitule)} » : ${evenement.note}/10, ` +
@@ -835,6 +843,12 @@ function traiter(evenement) {
   } else if (evenement.type === 'alerte') {
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
       `domaine sensible : ${echapper(evenement.domaine)}`, 'souci');
+  } else if (evenement.type === 'attente') {
+    /* Le routeur attend qu'une limite par minute se leve. Sans cette ligne,
+       la page restait muette jusqu'a une minute : on la croyait plantee. */
+    ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
+      `${echapper(evenement.fournisseur)} : limite par minute atteinte, ` +
+      `reprise dans ${Number(evenement.secondes) || 0} s`);
   } else if (evenement.type === 'journal') {
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
       echapper(evenement.message));
@@ -843,6 +857,14 @@ function traiter(evenement) {
     if (evenement.motif_fin) {
       ajouterLigne('usine arretee : ' + echapper(evenement.motif_fin), 'souci');
     }
+  } else if (evenement.type === 'produit' && evenement.statut === 'en_cours') {
+    /* Exporte, mais avec des sections a refaire : ni « termine », ni
+       « livre ». */
+    ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
+      `produit inacheve : ${echapper(evenement.titre)} — Reprendre le finira`,
+      'souci');
+    $('etat-scene').textContent = 'Produit inacheve';
+    chargerProduits();
   } else if (evenement.type === 'produit') {
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
       `produit termine : ${echapper(evenement.titre)}`, 'succes');
@@ -1077,9 +1099,25 @@ function relacher() {
 }
 
 async function surveiller(identifiant) {
-  const reponse = await fetch('/api/travaux/' + identifiant);
-  if (!reponse.ok) { relacher(); return; }
-  const travail = await reponse.json();
+  /* Une requete ratee — le telephone change de reseau, l'onglet sort de
+     veille — levait une exception que personne n'attrapait : le suivi
+     s'arretait pour toujours, et le bouton restait sur « Fabrication en
+     cours » bien apres la fin. La fabrication, elle, continue cote usine :
+     on redemande, sans rien conclure. */
+  let travail;
+  try {
+    const reponse = await fetch('/api/travaux/' + identifiant);
+    if (!reponse.ok) { relacher(); return; }
+    travail = await reponse.json();
+  } catch (e) {
+    if (!etat.liaisonPerdue) {
+      etat.liaisonPerdue = true;
+      ajouterLigne("liaison perdue avec l'usine — nouvel essai toutes les 5 s", 'souci');
+    }
+    setTimeout(() => surveiller(identifiant), 5000);
+    return;
+  }
+  etat.liaisonPerdue = false;
   if (travail.statut === 'en_cours') { setTimeout(() => surveiller(identifiant), 3000); return; }
   relacher();
   if (travail.statut === 'echec') {

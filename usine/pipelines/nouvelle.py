@@ -1465,8 +1465,6 @@ def produire(ctx: Contexte, serie: str = "",
         "note": (rapport.get("mesure_finale") or {}).get("note_moyenne"),
         "alertes": [d for d, _ in alertes],
     }
-    evenements.publier("produit", etat="termine", titre=titre, mots=mots,
-                       dossier=str(dossier))
     terminer(ctx, fichiers, {
         "mots": mots, "scenes": total, "promesse": bible.get("premisse"),
         "note": (rapport.get("mesure_finale") or {}).get("note_moyenne"),

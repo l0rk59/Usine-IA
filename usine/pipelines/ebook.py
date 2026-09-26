@@ -423,8 +423,6 @@ def produire(ctx: Contexte, relecture_ensemble: bool = False) -> Dict[str, Any]:
         "note": (rapport.get("mesure_finale") or {}).get("note_moyenne"),
         "alertes": [d for d, _ in alertes],
     }
-    evenements.publier("produit", etat="termine", titre=titre, mots=mots,
-                       dossier=str(dossier))
     mesure = rapport.get("mesure_finale") or {}
     defauts = []
     for section in mesure.get("sections", []):

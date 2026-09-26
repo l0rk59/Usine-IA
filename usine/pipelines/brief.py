@@ -330,7 +330,10 @@ def appliquer(ctx: Any, genre: str = "produit") -> Dict[str, Any]:
             applique["sections"], applique["mots_par_section"]))
     if applique.get("pourquoi"):
         ctx.journal("  pourquoi : {}".format(applique["pourquoi"]))
-    ctx.journal("  (imposez le votre avec --ton, --audience, --chapitres)")
+    # Les deux portes lisent ce journal. « --ton, --audience » s'affichait
+    # aussi dans le tableau de bord, ou il n'existe aucune option a taper.
+    ctx.journal("  (pour imposer les votres : les champs Ton, Audience et "
+                "Volume, ou --ton, --audience, --chapitres)")
     return applique
 
 

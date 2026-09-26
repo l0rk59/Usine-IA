@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..core import (apprentissage, budget, config, controle, empreinte,
-                    llm, store)
+                    evenements, llm, store)
 from ..render import libelles
 from . import carnet
 
@@ -772,11 +772,21 @@ def terminer(ctx: Contexte, fichiers: List[Path], meta: Optional[Dict[str, Any]]
     infos.update(_ce_que_le_pdf_ne_sait_pas_ecrire(
         ctx, fichiers, produit_avant.get("titre", "")))
 
+    statut = "en_cours" if manquants else "pret"
     store.maj_produit(
         ctx.produit_id,
-        statut="en_cours" if manquants else "pret",
+        statut=statut,
         meta=dict(infos, fichiers=[f.name for f in fichiers]),
     )
+    # Annonce APRES le statut, et d'ici pour toutes les chaines. Deux chaines
+    # l'annoncaient avant « terminer » : le tableau de bord rechargeait la
+    # liste a cet instant et lisait « en cours » — un livre fini affiche
+    # « inacheve », mesure du 25/09/2026 dans un vrai navigateur. Les seize
+    # autres ne l'annoncaient pas du tout.
+    evenements.publier("produit", etat="termine", statut=statut,
+                       titre=produit_avant.get("titre", "") or ctx.sujet,
+                       mots=int(infos.get("mots") or 0),
+                       dossier=str(ctx.dossier or ""))
     # Trace mesuree : c'est elle qui alimente « usine bilan » et « usine conseils ».
     appels, fournisseurs = llm.appels_du_fil_depuis(ctx.marque_appels)
     apprentissage.enregistrer(

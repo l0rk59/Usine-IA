@@ -101,6 +101,27 @@ class TestRelectureCroisee(unittest.TestCase):
         self.assertIn("limite par minute atteinte", resume)
         self.assertEqual(resume.count("indisponible"), 1)
 
+    def test_une_relecture_impossible_n_est_pas_publiee_comme_une_note(self):
+        """La page affichait « relecture : 0/10 » pour chaque chapitre dont
+        la relecture n'avait pas eu lieu : l'evenement portait la note, pas
+        le fait qu'elle n'existait pas."""
+        from usine.core import evenements
+
+        def plus_personne(*_a, **_k):
+            raise llm.PlusDeFournisseur("Aucun fournisseur n'a pu repondre.")
+
+        evenements.vider()
+        llm.definir_simulateur(plus_personne)
+        try:
+            equipe.affiner(_contexte(), "Un texte a relire pour ce test precis.",
+                           "Un intitule jamais vu")
+        finally:
+            llm.definir_simulateur(simulateur)
+        critiques = [e for e in evenements.historique()
+                     if e["type"] == "qualite" and e.get("etat") == "critique"]
+        self.assertTrue(critiques)
+        self.assertIs(critiques[0]["mesuree"], False)
+
     def test_sans_relecture_la_part_n_est_pas_inventee(self):
         rapport = equipe.rapport_qualite({"A": []})
         self.assertIsNone(rapport["relecture_croisee"]["part"])

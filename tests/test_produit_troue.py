@@ -483,6 +483,31 @@ class LaLigneDeCommandeNeLeDitPasPret(unittest.TestCase):
         self.assertIn("usine reprendre", texte)
         self.assertNotIn("Produit pret", notifications)
 
+    def test_l_annonce_du_tableau_de_bord_suit_le_statut(self):
+        """Le tableau de bord recharge sa liste a l'annonce « produit ». Elle
+        partait avant que la fiche soit posee : un livre fini s'y affichait
+        « inacheve ». Et seize chaines sur dix-huit ne l'envoyaient pas."""
+        from unittest import mock
+
+        from usine.core import evenements
+
+        vus = []
+        vrai = evenements.publier
+
+        def espion(genre, **donnees):
+            if genre == "produit":
+                fiche = store.lister_produits(1)[0]
+                vus.append((donnees.get("statut"), fiche["statut"]))
+            return vrai(genre, **donnees)
+
+        for plafond, attendu in ((3, "en_cours"), (0, "pret")):
+            with self.subTest(coupe=plafond):
+                atelier.isoler("troue-evenement-{}".format(plafond))
+                vus.clear()
+                with mock.patch.object(evenements, "publier", espion):
+                    self._fabriquer(plafond)
+                self.assertEqual(vus, [(attendu, attendu)])
+
     def test_un_produit_entier_reste_annonce_pret(self):
         """L'autre sens : sans lui, un « Produit inacheve » fige passerait."""
         atelier.isoler("troue-annonce-complet")

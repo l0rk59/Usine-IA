@@ -102,6 +102,9 @@ class LeBriefEstApplique(unittest.TestCase):
         self.assertIn("Brief automatique", texte)
         self.assertIn("niche :", texte)
         self.assertIn("--ton", texte, "il faut dire comment imposer le sien")
+        # Le meme journal s'affiche dans le tableau de bord, ou il n'y a pas
+        # d'option a taper : il nomme aussi les champs du formulaire.
+        self.assertIn("Ton, Audience et Volume", texte)
 
     def test_le_brief_change_vraiment_le_produit(self):
         """Sans cette mesure, le brief pourrait n'etre qu'un affichage."""

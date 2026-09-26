@@ -183,3 +183,46 @@ sur « Reprendre ». Une reprise à la fois par produit, désormais
 (`core/verrou.py`, le mécanisme du verrou de l'usine, sorti de
 `production.py` plutôt que recopié) ; la boucle laisse faire celui qui finit
 déjà. Et chaque écrivain du carnet a son propre fichier provisoire.
+
+## Piloté sans clé, par le vrai routeur, dans un vrai navigateur
+
+Le pilotage du 23/09 tournait sous simulateur. Rejoué le 25/09/2026 dans
+Chromium, sans aucune clé, contre un faux Pollinations qui respecte les
+3 requêtes par minute déclarées : le produit sort complet (le correctif des
+fenêtres par minute, [QUOTAS.md](QUOTAS.md)), et cinq défauts que seul ce
+montage pouvait montrer sont corrigés.
+
+- **Aucun chapitre n'était relu.** La relecture croisée écarte le modèle qui
+  a écrit — « sauf s'il ne reste personne d'autre ». Cette règle était jugée
+  avant l'appel, et ollama « reste » toujours : c'est une adresse, disponible
+  même éteinte. Chaque relecture partait vers un ollama qui ne tournait pas
+  et revenait « indisponible », neuf chapitres sur neuf. Les fournisseurs
+  écartés servent maintenant de repli : si personne d'autre ne répond,
+  l'auteur se relit — c'est le compromis déjà choisi ailleurs, « mieux vaut
+  une relecture par le même modèle que pas de relecture du tout ».
+- **La page affichait « relecture : 0/10 »** pour ces relectures qui
+  n'avaient pas eu lieu : une note que personne n'avait rendue. L'événement
+  porte maintenant « mesurée », et la page écrit « indisponible, pas de
+  note ».
+- **Quarante-cinq secondes de silence entre deux chapitres**, sept fois par
+  produit : le routeur attendait la fenêtre par minute sans le dire, et une
+  page immobile se lit comme une page plantée. Toute attente de cinq secondes
+  ou plus s'annonce désormais dans le journal, avec le fournisseur et la
+  durée.
+- **Un livre fini s'affichait « inachevé » dans la liste.** Deux chaînes
+  annonçaient « produit terminé » *avant* d'écrire la fiche ; la page
+  rechargeait la liste à cet instant et lisait l'ancien statut. Et seize
+  chaînes sur dix-huit ne l'annonçaient pas du tout. L'annonce vit maintenant
+  dans `terminer()`, après la pose du statut, pour toutes les chaînes — et
+  elle porte le statut : un produit exporté inachevé s'annonce « inachevé —
+  Reprendre le finira », pas « terminé ».
+- **Une seule requête de suivi perdue figeait le bouton** sur « Fabrication
+  en cours » pour toujours : l'exception du `fetch` n'était attrapée nulle
+  part, et le suivi ne reprenait jamais — le cas ordinaire d'un téléphone qui
+  change de réseau ou d'un onglet qui sort de veille. Le suivi réessaie
+  toutes les cinq secondes et le dit une fois. Vérifié en avortant deux
+  requêtes en plein vol : une ligne « liaison perdue », puis la fin normale.
+
+Et un mot : le brief conseillait « imposez le vôtre avec --ton, --audience »
+dans un navigateur où il n'y a rien à taper. Il nomme aussi les champs du
+formulaire.
