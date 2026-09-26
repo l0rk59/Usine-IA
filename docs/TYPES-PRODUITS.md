@@ -475,3 +475,44 @@ dans le livre, et l'acheteur peut la faire dessiner. Un album sans images se
 vend mal ; un album dont l'acheteur ne sait pas quoi faire dessiner ne se vend
 pas du tout.
 
+
+# L'ebook avait une seule forme
+
+*Mesuré le 26/09/2026.*
+
+Le type phare de l'usine n'avait **aucun réglage propre** — contre neuf pour un
+roman, trois pour une séquence e-mail. Sa charpente était écrite en dur dans
+l'invite de chaque chapitre : « au moins une liste numérotée d'étapes
+applicables aujourd'hui », un exemple chiffré, et une dernière page intitulée
+« votre plan des 30 prochains jours ». Un manuel qu'on consulte sur le droit
+des baux, un recueil de cas de négociation et un programme de remise en forme
+sur quatre semaines sortaient avec la même charpente et la même fin. Rien
+n'échouait : un réglage par défaut n'est pas neutre, il est juste invisible.
+
+Trois réglages, déclarés au catalogue, donc présents dans la ligne de commande,
+le menu Termux et le tableau de bord :
+
+| Réglage | Valeurs | Ce qu'il change |
+|---|---|---|
+| `--forme` | `methode`, `reference`, `programme`, `cas`, `questions` | le plan, l'ouverture et la structure de chaque chapitre, l'avant-propos (comment lire), la dernière page et son titre |
+| `--niveau` | `debutant`, `intermediaire`, `avance` | ce qu'on explique et ce qu'on saute |
+| `--exercices` | `avec`, `sans` | un encadré « Exercice » par chapitre, que le rendu met en valeur |
+
+Laissés vides, ils sont **décidés par l'usine d'après le sujet**, comme les
+réglages des autres types. L'invite de décision montre l'étiquette à côté de
+la clé (« cas (Études de cas) ») : une clé seule ne dit pas ce qu'elle
+fabrique. Si le modèle ne peut pas décider, l'ebook retombe sur la méthode pas
+à pas, et le journal le dit.
+
+Deux détails qui ne se voient qu'à l'usage :
+
+- la forme **prime** sur les habitudes des agents. Le rédacteur a pour règle
+  générale « donner des étapes numérotées exécutables aujourd'hui » ; l'invite
+  le dit en toutes lettres, sans quoi un manuel de référence recevait deux
+  consignes contradictoires ;
+- les valeurs restent des clés sans accent — on les tape en ligne de
+  commande — mais chaque liste affiche une **étiquette** (`Champ.etiquettes`),
+  et la ligne vide se lit « L'usine décide » au lieu d'une case blanche.
+
+`tests/test_ebook_formes.py` suit chaque réglage jusqu'à l'invite qui part au
+modèle ; quatorze mutations, toutes vues.

@@ -2878,6 +2878,7 @@ def construire_parseur() -> argparse.ArgumentParser:
 
     p = sous_parseurs.add_parser("ebook", help="fabriquer un ebook complet")
     _options_communes(p)
+    _options_du_type(p, "ebook")
     p.add_argument("--relecture-ensemble", action="store_true",
                    help="une lecture du livre entier a la recherche des "
                         "contradictions entre chapitres (1 appel IA de plus)")

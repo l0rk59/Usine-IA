@@ -136,7 +136,8 @@ def _catalogue() -> List[Dict[str, Any]]:
          "champs": [
              {"nom": c.nom, "libelle": c.libelle, "genre": c.genre,
               "defaut": c.defaut, "choix": list(c.choix), "aide": c.aide,
-              "unite": c.unite}
+              "unite": c.unite, "etiquettes": dict(c.etiquettes),
+              "decide_par_l_usine": c.decide_par_l_usine}
              for c in t.champs
          ]}
         for t in catalogue.tous(fabricables=True)

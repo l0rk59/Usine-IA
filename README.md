@@ -169,6 +169,9 @@ usine ebook "la fiscalité du freelance" \
 | `--ton` | `amical`, `expert`, `pedagogue`, `pro`, `punchy` — ou une phrase libre |
 | `--taille` / `--chapitres` | le volume |
 | `--qualite` | `rapide` (0 relecture), `standard` (1), `exigeant` (2) |
+| `--forme` (ebook) | `methode`, `reference`, `programme`, `cas`, `questions` : la charpente du livre |
+| `--niveau` (ebook) | `debutant`, `intermediaire`, `avance` |
+| `--exercices` (ebook) | `avec` : un exercice encadré par chapitre |
 | `--marketing` | ajoute le kit de vente |
 | `--zip` | emballe l'archive à livrer |
 | `--hors-ligne` | aucune connexion ne sort du téléphone : IA locale seulement, couverture dessinée sur place |

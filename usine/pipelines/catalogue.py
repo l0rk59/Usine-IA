@@ -51,6 +51,19 @@ def niveaux_quiz() -> Tuple[str, ...]:
     return tuple(NIVEAUX)
 
 
+def formes_ebook() -> Tuple[Tuple[str, str], ...]:
+    """Les formes d'un guide et leur nom, lus la ou ils decident de l'invite."""
+    from .ebook import FORMES
+
+    return tuple((cle, fiche["nom"]) for cle, fiche in FORMES.items())
+
+
+def niveaux_ebook() -> Tuple[str, ...]:
+    from .ebook import NIVEAUX
+
+    return tuple(NIVEAUX)
+
+
 def cibles_logiciel() -> Tuple[str, ...]:
     """Ce qu'un produit logiciel peut etre : outil, page web, extension."""
     from .logiciel import CIBLES
@@ -176,6 +189,11 @@ class Champ:
     # « serie » vide est un recit isole, et la premiere version faisait
     # inventer un nom de serie a chaque nouvelle.
     decide_par_l_usine: bool = True
+    # Ce qu'on LIT en face de chaque valeur d'une liste. La valeur reste la
+    # cle — celle qu'on tape en ligne de commande, sans accent — mais la
+    # liste deroulante affichait « reference » et « cas » la ou l'on devait
+    # lire « Manuel de référence » et « Études de cas ».
+    etiquettes: Tuple[Tuple[str, str], ...] = ()
 
     @property
     def drapeaux(self) -> Tuple[str, ...]:
@@ -475,8 +493,36 @@ TYPES: List[TypeProduit] = [
         formats=("pdf", "epub", "html", "md", "txt"),
         minutes=(10, 25),
         # Un appel de modele par produit, sur le livre entier : a la demande.
-        options={"relecture_ensemble": None},
+        options={"relecture_ensemble": None, "forme": None, "niveau": None,
+                 "exercices": None},
         mots_cles=("guide", "methode", "livre", "manuel", "apprendre"),
+        # Le type phare n'avait AUCUN reglage propre (mesure du 26/09/2026,
+        # contre neuf pour un roman) : chaque guide sortait en methode pas a
+        # pas, au meme niveau, sans exercice — quel que soit le sujet.
+        champs=(
+            Champ("forme", "--forme", "Forme du livre", genre="choix",
+                  choix=("",) + tuple(c for c, _ in formes_ebook()),
+                  etiquettes=formes_ebook(),
+                  aide="Ce qui décide de la charpente : une progression, un "
+                       "manuel qu'on consulte, un programme daté, des études "
+                       "de cas ou des questions-réponses. Par défaut, "
+                       "l'usine choisit d'après le sujet."),
+            Champ("niveau", "--niveau", "Niveau du lecteur", genre="choix",
+                  choix=("",) + niveaux_ebook(),
+                  etiquettes=(("debutant", "Débutant"),
+                              ("intermediaire", "Intermédiaire"),
+                              ("avance", "Avancé")),
+                  aide="Ce qu'on explique et ce qu'on saute. L'audience le "
+                       "suggère sans le dire : « des freelances » ne dit pas "
+                       "s'ils débutent."),
+            Champ("exercices", "--exercices", "Exercices", genre="choix",
+                  choix=("", "avec", "sans"),
+                  etiquettes=(("avec", "Un exercice par chapitre"),
+                              ("sans", "Sans exercice")),
+                  aide="Un exercice de vingt minutes à la fin de chaque "
+                       "chapitre, sur la situation du lecteur, mis en "
+                       "valeur dans le PDF et l'EPUB."),
+        ),
     ),
     TypeProduit(
         cle="nouvelle", nom="Nouvelle (fiction)", famille="fiction",

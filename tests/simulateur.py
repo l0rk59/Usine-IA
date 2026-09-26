@@ -177,7 +177,9 @@ def simulateur(messages, role):
             nom = ligne[2:].split(" (", 1)[0].strip()
             attendu = ligne.split("(", 1)[1].split(")", 1)[0] if "(" in ligne else ""
             if attendu.startswith("un de : "):
-                reponse[nom] = attendu[len("un de : "):].split(",")[0].strip()
+                # « methode (Méthode pas à pas) » : la cle, sans son etiquette.
+                premier = ligne.split("un de : ", 1)[1].split(",")[0]
+                reponse[nom] = premier.split(" (", 1)[0].strip()
             elif attendu == "un entier":
                 reponse[nom] = 7
             elif attendu == "oui ou non":

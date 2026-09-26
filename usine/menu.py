@@ -333,9 +333,14 @@ def _options_du_type(cle: str) -> Dict[str, object]:
                 chaine_conte.TRANCHES[t]["mots_phrase"])) for t in tranches])
         return {"tranche": tranches[index - 1]} if index else {}
     if cle == "ebook":
-        return {"relecture_ensemble": True} if demander_oui(
-            "Relire le livre entier a la recherche des contradictions "
-            "entre chapitres ? (1 appel IA)", False) else {}
+        # Lu sur le catalogue : la forme, le niveau et les exercices y sont
+        # declares avec leur etiquette, et ce menu est la vraie porte
+        # d'entree sur un telephone.
+        choisies = _choix_du_catalogue(cle, ("forme", "niveau", "exercices"))
+        if demander_oui("Relire le livre entier a la recherche des "
+                        "contradictions entre chapitres ? (1 appel IA)", False):
+            choisies["relecture_ensemble"] = True
+        return choisies
     if cle == "formation":
         return {"narration": True} if demander_oui(
             "Produire le script de narration a lire a voix haute ? "
@@ -402,6 +407,28 @@ def _options_du_type(cle: str) -> Dict[str, object]:
     return {}
 
 
+def _choix_du_catalogue(cle: str, noms: Tuple[str, ...]) -> Dict[str, object]:
+    """Les listes declarees au catalogue, proposees avec « l'usine decide ».
+
+    L'etiquette s'affiche, la cle part dans la commande : « Manuel de
+    référence » se lit, « --forme reference » se tape.
+    """
+    from .pipelines import catalogue
+
+    fiche = catalogue.obtenir(cle)
+    choisies: Dict[str, object] = {}
+    for champ in (fiche.champs if fiche else ()):
+        if champ.nom not in noms or champ.genre != "choix":
+            continue
+        valeurs = [v for v in champ.choix if v]
+        etiquettes = dict(champ.etiquettes)
+        index = choisir_ou_laisser(
+            champ.libelle, [(etiquettes.get(v, v), "") for v in valeurs])
+        if index:
+            choisies[champ.nom] = valeurs[index - 1]
+    return choisies
+
+
 # Comment chaque option du catalogue s'ecrit en ligne de commande. Deux
 # d'entre elles ne portent pas le meme nom des deux cotes : la CLI expose
 # « --sans-marche », le catalogue declare « avec_marche ». Recopier cette
@@ -418,6 +445,8 @@ _ARGUMENTS = {
     "rythme": lambda v: ["--rythme", str(v)],
     "recto_verso": lambda v: ["--recto-verso"] if v else [],
     "niveau": lambda v: ["--niveau", str(v)],
+    "forme": lambda v: ["--forme", str(v)],
+    "exercices": lambda v: ["--exercices", str(v)],
     "sans_bareme": lambda v: ["--sans-bareme"] if v else [],
 }
 

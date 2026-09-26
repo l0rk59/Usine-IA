@@ -176,6 +176,10 @@ def decider_les_reglages(ctx: Any, type_produit: Any,
     lignes, schema = [], []
     for champ in champs:
         choix = [v for v in (champ.choix or ()) if v]
+        # La cle seule ne dit rien au modele : « cas » ou « reference » ne
+        # se choisissent pas sans savoir ce qu'ils fabriquent.
+        noms = dict(getattr(champ, "etiquettes", ()) or ())
+        choix = ["{} ({})".format(v, noms[v]) if v in noms else v for v in choix]
         attendu = ("un de : " + ", ".join(choix) if choix
                    else "un entier" if champ.genre == "entier"
                    else "oui ou non" if champ.genre == "booleen"
@@ -230,7 +234,15 @@ def decider_les_reglages(ctx: Any, type_produit: Any,
             # pas : on l'ecarte. Accepter « thriller psychologique » la ou le
             # champ attend « thriller » ferait entrer dans la fiche une valeur
             # que rien d'autre ne sait relire.
-            correspond = [v for v in choix if v.lower() == valeur.lower()]
+            #
+            # Deux formes exactes sont lues, parce que l'invite montre les
+            # deux : la cle (« cas »), l'etiquette (« Études de cas »), ou la
+            # cle suivie de son etiquette, recopiee telle quelle.
+            noms = dict(getattr(champ, "etiquettes", ()) or ())
+            lue = valeur.split(" (", 1)[0].strip().lower()
+            correspond = [v for v in choix
+                          if lue == v.lower()
+                          or valeur.lower() == noms.get(v, "").lower()]
             if not correspond:
                 ecartes.append("{} : « {} » hors de la liste ({})".format(
                     champ.nom, valeur[:40], ", ".join(choix[:5])))

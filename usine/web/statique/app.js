@@ -1004,9 +1004,15 @@ function champDuType(champ) {
         ${aide}</span></label>`;
   }
   if (champ.genre === 'choix') {
+    /* La valeur reste la cle envoyee ; ce qu'on lit est son etiquette. La
+       ligne vide s'affichait vide : on ne savait pas qu'elle voulait dire
+       « l'usine choisit d'apres le sujet ». */
+    const noms = champ.etiquettes || {};
+    const lisible = (valeur) => noms[valeur]
+      || (valeur === '' && champ.decide_par_l_usine ? 'L\'usine décide' : valeur);
     const options = (champ.choix || []).map((valeur) =>
       `<option value="${echapper(valeur)}"${
-        valeur === champ.defaut ? ' selected' : ''}>${echapper(valeur)}</option>`
+        valeur === champ.defaut ? ' selected' : ''}>${echapper(lisible(valeur))}</option>`
     ).join('');
     return `<label class="champ" for="${id}">${echapper(champ.libelle)}
       <select id="${id}" data-champ="${echapper(champ.nom)}">${options}</select>

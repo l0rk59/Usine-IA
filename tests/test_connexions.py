@@ -562,7 +562,9 @@ class TestOptionsDuCatalogueAtteignables(unittest.TestCase):
         # Une reponse qui accepte le defaut partout, sauf la ou il faut une
         # valeur non nulle pour que l'option existe.
         attendus = {
-            "ebook": (["o"], "relecture_ensemble"),
+            # Forme, niveau et exercices viennent d'abord : trois fois
+            # « l'usine decide », puis la relecture.
+            "ebook": (["", "", "", "o"], "relecture_ensemble"),
             "formation": (["o"], "narration"),
             "impression": (["5"], "reliure"),
             # « 2 » : l'entree 1 est « l'usine decide », qui ne fixe rien.
@@ -601,7 +603,9 @@ class TestOptionsDuCatalogueAtteignables(unittest.TestCase):
             # couverte alors que le menu ne la proposait nulle part.
             for reponses in (["o"], ["n"], ["1"], ["5"], ["x"],
                              ["n", "n"], ["1", "n"], ["o", "n"],
-                             ["1", "5"], ["2", "o"]):
+                             ["1", "5"], ["2", "o"],
+                             # Trois listes puis une question : l'ebook.
+                             ["2", "2", "2", "o"]):
                 couvertes |= set(self._repondre(
                     lambda: menu._options_du_type(cle), reponses))
         for cle, nom in sorted(self._options_declarees()):
