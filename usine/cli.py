@@ -1144,9 +1144,17 @@ def cmd_reglages(args: argparse.Namespace) -> int:
         ok("Reglages remis a zero.")
         return 0
     titre_console("Reglages")
+    # L'etiquette pour lire, le nom pour « --definir » : la CLI est le seul
+    # endroit ou l'identifiant sert a quelque chose, donc il reste, entre
+    # parentheses, apres ce qu'il veut dire.
+    groupe_courant = ""
     for ligne in reglages.lignes_affichables():
-        print("  {:<14} {}".format(ligne["nom"], _c(ligne["valeur"], "1")))
-        print("  {:<14} {}".format("", _c(ligne["description"], "2")))
+        if ligne["groupe"] != groupe_courant:
+            groupe_courant = ligne["groupe"]
+            print("\n  " + _c(ligne["titre_groupe"], "1;36"))
+        print("  {} {}  {}".format(ligne["etiquette"], _c("(" + ligne["nom"] + ")", "2"),
+                                  _c(ligne["valeur"], "1")))
+        print("      " + _c(ligne["description"], "2"))
     print("\n  Modifier : " + _c('usine reglages --definir auteur="Votre Nom"', "1"))
     print("  Fichier  : " + str(reglages.chemin()))
     return 0

@@ -244,8 +244,8 @@ class TestNoticeDeContact(unittest.TestCase):
 
     def test_sans_adresse_aucune_promesse_n_est_faite(self):
         texte = self._notice("")
-        self.assertNotIn("Ecrivez a", texte)
-        self.assertNotIn("une version adaptee", texte)
+        self.assertNotIn("Écrivez à", texte)
+        self.assertNotIn("une version adaptée", texte)
 
     def test_aucun_texte_de_rappel_ne_part_chez_l_acheteur(self):
         """Le defaut exact : le repli etait une consigne au vendeur."""
@@ -253,7 +253,7 @@ class TestNoticeDeContact(unittest.TestCase):
 
     def test_avec_adresse_les_deux_passages_reviennent(self):
         texte = self._notice("contact@exemple.fr")
-        self.assertIn("une version adaptee", texte)
+        self.assertIn("une version adaptée", texte)
         self.assertIn("## Une question ?", texte)
         self.assertEqual(texte.count("contact@exemple.fr"), 2)
 
@@ -280,7 +280,7 @@ class TestNoticeDeContact(unittest.TestCase):
             texte = ecrire_notice(dossier, "Un titre", "", "Une autrice"
                                   ).read_text(encoding="utf-8")
         self.assertNotIn("votre adresse e-mail", texte)
-        self.assertNotIn("Ecrivez a", texte)
+        self.assertNotIn("Écrivez à", texte)
 
     def test_la_ligne_de_commande_ne_fabrique_pas_d_adresse(self):
         """Le bout en bout : c'est « usine ebook --zip » qui ecrit la notice,

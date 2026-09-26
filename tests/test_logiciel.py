@@ -243,8 +243,8 @@ class TestChaineLogicielle(unittest.TestCase):
     def test_la_documentation_annonce_ce_qui_a_ete_verifie(self):
         resultat = self._produire("cli")
         doc = (Path(resultat["dossier"]) / "notice.md").read_text(encoding="utf-8")
-        self.assertIn("Verification du code", doc)
-        self.assertIn("execution reelle", doc)
+        self.assertIn("Vérification du code", doc)
+        self.assertIn("exécution réelle", doc)
 
     def test_cible_inconnue_retombe_sur_le_cli(self):
         self.assertEqual(self._produire("inexistant")["cible"], "cli")

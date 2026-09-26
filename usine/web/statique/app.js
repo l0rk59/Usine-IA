@@ -212,7 +212,7 @@ async function chargerEtat() {
     const part = f.rpd && connu ? Math.min(100, (f.aujourdhui / f.rpd) * 100) : 0;
     const chaud = part > 75 ? ' chaud' : '';
     const etiquette = f.local ? 'local'
-      : (f.disponible ? `${connu ? f.aujourdhui : '?'}/${f.rpd}` : 'sans cle');
+      : (f.disponible ? `${connu ? f.aujourdhui : '?'}/${f.rpd}` : 'sans clé');
     const cles = f.nb_cles > 1 ? ` &times;${f.nb_cles}` : '';
     return `<div class="jauge${f.disponible ? '' : ' absent'}">
       <span class="nom">${echapper(f.nom)}${cles}</span>
@@ -222,8 +222,8 @@ async function chargerEtat() {
   }).join('');
 
   $('conseil').textContent = donnees.avec_cle > 0
-    ? `${donnees.avec_cle} fournisseur(s) avec cle — rotation automatique active.`
-    : "Aucune cle API : quota tres limite. Lancez « usine cles » dans Termux.";
+    ? `${donnees.avec_cle} fournisseur(s) avec clé — rotation automatique active.`
+    : "Aucune clé API : quota très limité. Lancez « usine cles » dans Termux.";
 
   remplirPeaux(donnees.peaux, (function () {
     try { return localStorage.getItem('usine-theme'); } catch (e) { return null; }
@@ -257,9 +257,11 @@ async function chargerEtat() {
     decrireType();
     $('auteur').value = donnees.reglages.auteur || '';
     $('audience').value = donnees.reglages.audience || '';
+    etat.etiquettesAgents = Object.fromEntries(
+      donnees.agents.map((a) => [a.nom, a.etiquette || a.nom]));
     $('agents').innerHTML = donnees.agents.map((a) =>
-      `<span class="agent" data-agent="${a.nom}">
-         <span class="pastille"></span>${echapper(a.nom)}</span>`).join('');
+      `<span class="agent" data-agent="${echapper(a.nom)}">
+         <span class="pastille"></span>${echapper(a.etiquette || a.nom)}</span>`).join('');
   }
 }
 
@@ -313,7 +315,7 @@ async function chargerProduits() {
     const liens = p.fichiers.map((f) =>
       `<a href="${echapper(f.url)}" target="_blank" rel="noopener">${echapper(f.nom)}</a>`
     ).join('');
-    const note = p.note ? ` &middot; qualite ${p.note}/10` : '';
+    const note = p.note ? ` &middot; qualité ${p.note}/10` : '';
     // La carte listait et servait les fichiers, sans savoir rien en faire —
     // alors que c'est le moment ou l'on veut le kit de vente ou l'archive.
     /* Un produit interrompu se presentait comme les autres. Il porte
@@ -322,8 +324,8 @@ async function chargerProduits() {
     const inacheve = p.statut === 'en_cours';
     const reste = (p.manquants || []).length;
     const marque = inacheve
-      ? `<span class="inacheve">inacheve${reste ? ' &middot; ' + reste
-         + ' section(s) a finir' : ''}</span>` : '';
+      ? `<span class="inacheve">inachevé${reste ? ' &middot; ' + reste
+         + ' section(s) à finir' : ''}</span>` : '';
     return `<div class="produit${inacheve ? ' incomplet' : ''}">
       <div class="titre">${echapper(p.titre)}</div>
       <div class="meta">${echapper(p.type)} &middot; ${date}${
@@ -350,7 +352,7 @@ $('produits').addEventListener('click', async (evenement) => {
      voisin plus souvent qu'on ne le croit. */
   if (jeu.supprimer) {
     if (!window.confirm("Effacer ce produit et son dossier ? "
-                        + "Cette action est definitive.")) return;
+                        + "Cette action est définitive.")) return;
     evenement.target.disabled = true;
     const z = document.querySelector(`[data-etat="${identifiant}"]`);
     if (z) z.textContent = 'suppression...';
@@ -367,7 +369,7 @@ $('produits').addEventListener('click', async (evenement) => {
       chargerProduits();
     } catch (e) {
       evenement.target.disabled = false;
-      if (z) z.textContent = "l'usine n'a pas repondu.";
+      if (z) z.textContent = "l'usine n'a pas répondu.";
     }
     return;
   }
@@ -384,7 +386,7 @@ $('produits').addEventListener('click', async (evenement) => {
   evenement.target.disabled = true;
   const action = jeu.livrer ? 'livrer' : (jeu.reprendre ? 'reprendre' : 'marketing');
   dire({ livrer: 'empaquetage...', reprendre: 'reprise en cours...',
-         marketing: 'redaction du kit de vente...' }[action]);
+         marketing: 'rédaction du kit de vente...' }[action]);
   let d;
   try {
     const reponse = await fetch('/api/produit', {
@@ -396,7 +398,7 @@ $('produits').addEventListener('click', async (evenement) => {
     // Sans ce filet, un serveur qui tombe laisse le bouton desactive et
     // l'utilisateur devant un « empaquetage... » qui ne finit jamais.
     rendre();
-    dire("l'usine n'a pas repondu.");
+    dire("l'usine n'a pas répondu.");
     return;
   }
   if (d.erreur) { rendre(); dire(echapper(d.erreur)); return; }
@@ -404,7 +406,7 @@ $('produits').addEventListener('click', async (evenement) => {
     // L'archive est ecrite A COTE du dossier du produit, pas dedans : la
     // liste de fichiers ne la verra jamais. On donne donc le lien ici.
     rendre();
-    dire(`<a href="${echapper(d.archive)}" download>Telecharger l'archive</a>
+    dire(`<a href="${echapper(d.archive)}" download>Télécharger l'archive</a>
           &middot; ${d.ko} Ko`);
     return;
   }
@@ -417,7 +419,7 @@ async function suivreKit(travail, identifiant, dire, rendre) {
     const reponse = await fetch('/api/travaux/' + travail);
     if (!reponse.ok) { rendre(); return; }
     t = await reponse.json();
-  } catch (e) { rendre(); dire("l'usine n'a pas repondu."); return; }
+  } catch (e) { rendre(); dire("l'usine n'a pas répondu."); return; }
   if (t.statut === 'en_cours') {
     setTimeout(() => suivreKit(travail, identifiant, dire, rendre), 3000);
     return;
@@ -433,11 +435,11 @@ async function suivreKit(travail, identifiant, dire, rendre) {
     dire(r.fichiers.filter(Boolean).map((f) =>
       `<a href="${echapper(f)}" target="_blank" rel="noopener">${
         echapper(f.split('/').pop())}</a>`).join(' &middot; ')
-      || 'kit de vente ecrit.');
+      || 'kit de vente écrit.');
     return;
   }
   const reste = (r.manquants || []).length;
-  dire(reste ? `${reste} section(s) manquent encore.` : 'produit termine.');
+  dire(reste ? `${reste} section(s) manquent encore.` : 'produit terminé.');
   etat.produitsCharges = '';
   chargerProduits();
 }
@@ -445,7 +447,7 @@ async function suivreKit(travail, identifiant, dire, rendre) {
 /* ------------------------------------------------------------- diagnostic */
 $('docteur-lancer').addEventListener('click', async () => {
   $('docteur-lancer').disabled = true;
-  $('docteur').innerHTML = '<span class="vide">verification en cours...</span>';
+  $('docteur').innerHTML = '<span class="vide">vérification en cours...</span>';
   const reponse = await fetch('/api/docteur');
   $('docteur-lancer').disabled = false;
   if (!reponse.ok) { $('docteur').innerHTML =
@@ -461,8 +463,8 @@ $('docteur-lancer').addEventListener('click', async () => {
   let telephone = '';
   if (tel.termux) {
     telephone = ligne(tel.api, tel.api
-      ? 'termux-api present : notifications et garde batterie actives'
-      : 'termux-api absent : ni notification, ni arret sur batterie faible');
+      ? 'termux-api présent : notifications et garde batterie actives'
+      : 'termux-api absent : ni notification, ni arrêt sur batterie faible');
     if (tel.batterie) {
       telephone += ligne(tel.batterie.niveau > 20 || tel.batterie.en_charge,
         `Batterie : ${tel.batterie.niveau} %`
@@ -481,14 +483,14 @@ $('docteur-lancer').addEventListener('click', async () => {
     + (d.base ? ligne(false, 'Base illisible : ' + d.base) : '')
     + ligne(true, 'Python ' + d.python)
     + ligne(true, 'Atelier : ' + d.workdir)
-    + ligne(d.env_present, d.env_present ? 'Fichier .env present'
+    + ligne(d.env_present, d.env_present ? 'Fichier .env présent'
         : 'Aucun fichier .env — lancez « usine cles »')
     + espace
     + telephone
-    + ligne(d.reseau, d.reseau ? 'Reseau disponible'
-        : 'Reseau indisponible — seule l\'IA locale fonctionnera')
-    + ligne(d.node, d.node ? 'Node.js present : verification complete du JavaScript'
-        : 'Node.js absent : JavaScript verifie en mode degrade')
+    + ligne(d.reseau, d.reseau ? 'Réseau disponible'
+        : 'Réseau indisponible — seule l\'IA locale fonctionnera')
+    + ligne(d.node, d.node ? 'Node.js présent : vérification complète du JavaScript'
+        : 'Node.js absent : JavaScript vérifié en mode dégradé')
     + lignesLocaux(d.serveurs_locaux || []);
 });
 
@@ -497,19 +499,19 @@ $('docteur-lancer').addEventListener('click', async () => {
 function lignesLocaux(serveurs) {
   const repondent = serveurs.filter((s) => s.repond);
   if (!repondent.length) {
-    return '<div class="controle bon">Aucune IA locale detectee</div>';
+    return '<div class="controle bon">Aucune IA locale détectée</div>';
   }
   return repondent.map((s) => {
     let texte;
     let bon = true;
     if (s.modeles === null) {
-      texte = `IA locale : ${s.nom} (liste des modeles illisible)`;
+      texte = `IA locale : ${s.nom} (liste des modèles illisible)`;
     } else if (!s.utilisable) {
       bon = false;
-      texte = `IA locale : ${s.nom} repond, mais ne sert aucun modele qui ecrit`
+      texte = `IA locale : ${s.nom} répond, mais ne sert aucun modèle qui écrit`
         + (s.nom === 'ollama' ? ` — ollama pull ${s.attendu}` : '');
     } else {
-      texte = `IA locale : ${s.nom}, modele ${s.utilisable}`
+      texte = `IA locale : ${s.nom}, modèle ${s.utilisable}`
         + (s.utilisable !== s.attendu ? ` (« ${s.attendu} » absent)` : '');
     }
     return `<div class="controle ${bon ? 'bon' : 'souci'}">${echapper(texte)}</div>`;
@@ -541,7 +543,7 @@ function afficherVentes(d) {
       : '<span class="note">net ' + (t.net || 0).toFixed(2) + '</span>';
     return `<div class="bloc">
       <div class="valeur">${(t.brut || 0).toFixed(2)} ${echapper(t.devise)}</div>
-      <div class="libelle">${t.unites || 0} unites vendues</div>
+      <div class="libelle">${t.unites || 0} unités vendues</div>
       ${net}</div>`;
   }).join('');
 
@@ -559,10 +561,10 @@ function afficherVentes(d) {
 
   const prix = (d.prix || []).filter((x) => x.ventes >= 3);
   $('commerce-prix').innerHTML = prix.length
-    ? prix.map((x) => `Prix median reellement encaisse : <strong>${
+    ? prix.map((x) => `Prix médian réellement encaissé : <strong>${
         x.median.toFixed(2)} ${echapper(x.devise)}</strong> (${x.ventes} ventes,
-        moitie centrale ${x.bas.toFixed(2)} a ${x.haut.toFixed(2)})`).join('<br/>')
-    : 'Moins de trois ventes : pas encore de prix median a montrer.';
+        moitié centrale ${x.bas.toFixed(2)} à ${x.haut.toFixed(2)})`).join('<br/>')
+    : 'Moins de trois ventes : pas encore de prix médian à montrer.';
 }
 
 function afficherDoublons(d) {
@@ -572,16 +574,16 @@ function afficherDoublons(d) {
   const manquantes = d.sans_empreinte || 0;
   $('doublons-manquants').hidden = manquantes === 0;
   $('doublons-manquants').textContent = manquantes
-    ? `${manquantes} produit(s) sans empreinte : ils ne sont compares a rien.`
+    ? `${manquantes} produit(s) sans empreinte : ils ne sont comparés à rien.`
     : '';
   $('doublons-reconstruire').hidden = manquantes === 0;
 
   const paires = d.doublons || [];
   if (!paires.length) {
     $('doublons').innerHTML = d.produits_compares > 1
-      ? `<span class="vide">${d.produits_compares} produits compares,
+      ? `<span class="vide">${d.produits_compares} produits comparés,
          aucun recouvrement notable.</span>`
-      : `<span class="vide">Moins de deux produits : rien a comparer.</span>`;
+      : `<span class="vide">Moins de deux produits : rien à comparer.</span>`;
     return;
   }
   $('doublons').innerHTML = paires.map((p) => `
@@ -618,15 +620,15 @@ async function chargerUsine() {
       zone.textContent = `En attente des fournisseurs — reprise automatique vers ${heure} : « ${courant.sujet} »`;
     } else {
       zone.textContent = courant
-        ? `En marche — ${courant.type} : « ${courant.sujet} » (${etat.session.nombre_faits || 0} livre(s))`
-        : `En marche — ${etat.session?.nombre_faits || 0} produit(s) livre(s)`;
+        ? `En marche — ${courant.type} : « ${courant.sujet} » (${etat.session.nombre_faits || 0} livré(s))`
+        : `En marche — ${etat.session?.nombre_faits || 0} produit(s) livré(s)`;
     }
   } else {
     zone.className = 'etat';
     const compte = etat.file;
     zone.textContent = compte.en_attente
-      ? `A l'arret — ${compte.en_attente} niche(s) en attente`
-      : "A l'arret — file vide";
+      ? `À l'arrêt — ${compte.en_attente} niche(s) en attente`
+      : "À l'arrêt — file vide";
   }
   $('usine-demarrer').disabled = etat.en_marche;
   $('usine-arreter').disabled = !etat.en_marche;
@@ -635,7 +637,7 @@ async function chargerUsine() {
   $('usine-budget').textContent = b.actif && b.appels_jour_max
     ? `Budget : ${b.appels_jour} / ${b.appels_jour_max} appels aujourd'hui`
       + (b.produits_jour_max ? ` · ${b.produits_faits} / ${b.produits_jour_max} produits` : '')
-    : "Aucun budget defini — reglez-le avec « usine reglages ».";
+    : "Aucun budget défini — réglez-le avec « usine reglages ».";
 
   const entrees = etat.prochaines || [];
   $('file-liste').innerHTML = entrees.length
@@ -712,9 +714,9 @@ $('file-ajouter').addEventListener('click', async () => {
       ? $('ton-libre').value.trim() : $('ton').value,
     qualite: $('qualite').value,
   });
-  if (donnees.doublon) ajouterLigne('deja en file : ' + echapper(sujet), 'souci');
+  if (donnees.doublon) ajouterLigne('déjà en file : ' + echapper(sujet), 'souci');
   else if (donnees.ajoute) {
-    ajouterLigne('ajoute a la file : ' + echapper(sujet), 'succes');
+    ajouterLigne('ajouté à la file : ' + echapper(sujet), 'succes');
     $('sujet').value = '';
   }
 });
@@ -729,7 +731,7 @@ $('usine-demarrer').addEventListener('click', async () => {
   });
   const donnees = await reponse.json();
   if (donnees.erreur) ajouterLigne('usine : ' + echapper(donnees.erreur), 'souci');
-  else ajouterLigne('usine continue demarree', 'succes');
+  else ajouterLigne('usine continue démarrée', 'succes');
   chargerUsine();
 });
 
@@ -740,12 +742,16 @@ $('usine-arreter').addEventListener('click', async () => {
   });
   const donnees = await reponse.json();
   ajouterLigne(donnees.arret_demande
-    ? "arret demande — le produit en cours se termine"
+    ? "arrêt demandé — le produit en cours se termine"
     : "aucune usine en marche", donnees.arret_demande ? 'succes' : 'souci');
   chargerUsine();
 });
 
 /* ------------------------------------------------------- flux temps reel */
+function nomAgent(nom) {
+  return (etat.etiquettesAgents && etat.etiquettesAgents[nom]) || nom;
+}
+
 function traiter(evenement) {
   etat.dernierEvenement = Math.max(etat.dernierEvenement, evenement.id || 0);
 
@@ -754,13 +760,13 @@ function traiter(evenement) {
     if (pastille) pastille.classList.toggle('actif', evenement.etat === 'debut');
     if (evenement.etat === 'debut') {
       scene.pulser(evenement.agent);
-      $('etat-scene').textContent = 'Agent ' + evenement.agent + ' au travail';
+      $('etat-scene').textContent = nomAgent(evenement.agent) + ' au travail';
     } else if (evenement.fournisseur) {
       scene.majEtat({ actifs: new Set([evenement.fournisseur]) });
       scene.jeton(evenement.fournisseur);
       ajouterLigne(
         `<span class="heure">${heure(evenement.ts)}</span> ` +
-        `<span class="agent-nom">${echapper(evenement.agent)}</span> ` +
+        `<span class="agent-nom">${echapper(nomAgent(evenement.agent))}</span> ` +
         `via ${echapper(evenement.fournisseur)}` +
         (evenement.tokens ? ` (${evenement.tokens} jetons)` : ''));
     }
@@ -779,7 +785,7 @@ function traiter(evenement) {
         `<span class="heure">${heure(evenement.ts)}</span> relecture ` +
         `« ${echapper(evenement.intitule)} » : indisponible, pas de note`,
         'souci');
-      $('qualite-resume').textContent = 'Derniere relecture : indisponible';
+      $('qualite-resume').textContent = 'Dernière relecture : indisponible';
     } else if (evenement.etat === 'critique') {
       ajouterLigne(
         `<span class="heure">${heure(evenement.ts)}</span> relecture ` +
@@ -787,14 +793,14 @@ function traiter(evenement) {
         `${evenement.problemes} correction(s)`,
         evenement.note >= 7.5 ? 'succes' : 'souci');
       $('qualite-resume').textContent =
-        `Derniere relecture : ${evenement.note}/10 (passe ${evenement.passe})`;
+        `Dernière relecture : ${evenement.note}/10 (passe ${evenement.passe})`;
     }
   } else if (evenement.type === 'tronquee') {
     // Publie depuis toujours, affiche par personne : une reponse coupee au
     // plafond passait pour une reponse complete jusque chez l'acheteur.
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
-      `reponse coupee au plafond (${echapper(evenement.fournisseur)}, ` +
-      `${evenement.plafond} jetons) : le texte s'arrete avant sa fin`, 'souci');
+      `réponse coupée au plafond (${echapper(evenement.fournisseur)}, ` +
+      `${evenement.plafond} jetons) : le texte s'arrête avant sa fin`, 'souci');
   } else if (evenement.type === 'niche') {
     /* La niche que l'usine vient de choisir seule. Sans cette ligne,
        l'evenement partait dans le vide : on voyait « (l'usine choisit) »
@@ -802,13 +808,13 @@ function traiter(evenement) {
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
       `niche choisie : <strong>${echapper(evenement.sujet)}</strong>` +
       (evenement.source === 'file' ? ' (elle attendait en file)'
-        : evenement.source === 'froid' ? ' (premiere niche de cet atelier)'
+        : evenement.source === 'froid' ? ' (première niche de cet atelier)'
         : ''), 'succes');
   } else if (evenement.type === 'lecteur') {
     /* Tout le reste de l'usine juge le texte. Le lecteur dit s'il a compris,
        ce qui est la seule question a laquelle un acheteur repond vraiment. */
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
-      `lecture par l'audience : clarte ${evenement.clarte ?? '?'}/10, ` +
+      `lecture par l'audience : clarté ${evenement.clarte ?? '?'}/10, ` +
       `${evenement.decrochages} decrochage(s)` +
       (evenement.promesse_tenue ? '' : ' &middot; <strong>promesse non tenue</strong>'),
       evenement.promesse_tenue && evenement.decrochages === 0 ? 'succes' : 'souci');
@@ -818,7 +824,7 @@ function traiter(evenement) {
        seule trace visible de l'echange — et la plus interessante, parce
        qu'une correction ECARTEE est une invention evitee. */
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
-      `deliberation — « ${echapper(evenement.probleme)} » : ` +
+      `délibération — « ${echapper(evenement.probleme)} » : ` +
       `${evenement.retenue ? 'correction maintenue' : 'ecartee'} ` +
       `(l'auteur objecte : ${echapper(evenement.objection)})`,
       evenement.retenue ? '' : 'succes');
@@ -836,11 +842,11 @@ function traiter(evenement) {
        change de modele, et pourquoi. */
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
       `${echapper(evenement.fournisseur)} ne sert plus ` +
-      `« ${echapper(evenement.avant)} » : l'usine passe a ` +
+      `« ${echapper(evenement.avant)} » : l'usine passe à ` +
       `« ${echapper(evenement.apres)} » (${echapper(evenement.role)})`, 'souci');
   } else if (evenement.type === 'controle') {
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
-      `controle « ${echapper(evenement.intitule)} » : ${evenement.note}/10, ` +
+      `contrôle « ${echapper(evenement.intitule)} » : ${evenement.note}/10, ` +
       `${evenement.anomalies} anomalie(s)`,
       evenement.bloquantes ? 'souci' : '');
   } else if (evenement.type === 'alerte') {
@@ -858,20 +864,20 @@ function traiter(evenement) {
   } else if (evenement.type === 'usine') {
     chargerUsine();
     if (evenement.motif_fin) {
-      ajouterLigne('usine arretee : ' + echapper(evenement.motif_fin), 'souci');
+      ajouterLigne('usine arrêtée : ' + echapper(evenement.motif_fin), 'souci');
     }
   } else if (evenement.type === 'produit' && evenement.statut === 'en_cours') {
     /* Exporte, mais avec des sections a refaire : ni « termine », ni
        « livre ». */
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
-      `produit inacheve : ${echapper(evenement.titre)} — Reprendre le finira`,
+      `produit inachevé : ${echapper(evenement.titre)} — Reprendre le finira`,
       'souci');
-    $('etat-scene').textContent = 'Produit inacheve';
+    $('etat-scene').textContent = 'Produit inachevé';
     chargerProduits();
   } else if (evenement.type === 'produit') {
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
-      `produit termine : ${echapper(evenement.titre)}`, 'succes');
-    $('etat-scene').textContent = 'Produit livre';
+      `produit terminé : ${echapper(evenement.titre)}`, 'succes');
+    $('etat-scene').textContent = 'Produit livré';
     chargerProduits();
     chargerCommerce();
   }
@@ -1124,7 +1130,7 @@ async function surveiller(identifiant) {
   if (travail.statut === 'en_cours') { setTimeout(() => surveiller(identifiant), 3000); return; }
   relacher();
   if (travail.statut === 'echec') {
-    ajouterLigne('echec : ' + echapper(travail.erreur), 'souci');
+    ajouterLigne('échec : ' + echapper(travail.erreur), 'souci');
   }
   chargerProduits();
 }
@@ -1136,13 +1142,13 @@ $('veille-lancer').addEventListener('click', async () => {
     /* Muet auparavant : le bouton ne faisait rien et ne disait
        rien. Un champ vide a cote d'un bouton mort se lit comme
        une panne, pas comme une consigne. */
-    $('veille-etat').textContent = 'donnez une niche a mesurer.';
+    $('veille-etat').textContent = 'donnez une niche à mesurer.';
     $('veille-niche').focus();
     return;
   }
   $('veille-niche').value = niche;
   $('veille-lancer').disabled = true;
-  $('veille-etat').textContent = 'consultation en cours — deux appels espaces...';
+  $('veille-etat').textContent = 'consultation en cours — deux appels espacés...';
   const reponse = await fetch('/api/veille', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sujet: niche, periode: $('veille-periode').value }),
@@ -1181,7 +1187,7 @@ function afficherVeille(r) {
     return;
   }
   $('veille-etat').textContent = `${r.discussions.length} discussion(s), ${
-    r.douleurs.length} formulation(s) de probleme.`;
+    r.douleurs.length} formulation(s) de problème.`;
   $('veille-resultat').hidden = false;
 
   $('veille-communautes').innerHTML = r.communautes.map((c) => c.lien
@@ -1240,9 +1246,9 @@ $('doublons-reconstruire').addEventListener('click', async () => {
   $('doublons-reconstruire').disabled = false;
   if (d.erreur) { $('doublons-etat').textContent = d.erreur; return; }
   const reste = d.reste
-    ? ` ${d.reste} sans texte relisible (dossier deplace ou type sans texte).`
+    ? ` ${d.reste} sans texte relisible (dossier déplacé ou type sans texte).`
     : '';
-  $('doublons-etat').textContent = `${d.reconstruites} empreinte(s) posee(s).${reste}`;
+  $('doublons-etat').textContent = `${d.reconstruites} empreinte(s) posée(s).${reste}`;
   chargerCommerce();
 });
 
@@ -1263,7 +1269,7 @@ function afficherSauvegardes(archives) {
     <div class="archive">
       <span class="nom">${echapper(a.nom)}</span>
       <span class="quand">${a.ko} Ko &middot; ${dateCourte(a.ts)}</span>
-      <a href="/archive/${encodeURIComponent(a.nom)}" download>Telecharger</a>
+      <a href="/archive/${encodeURIComponent(a.nom)}" download>Télécharger</a>
       <button class="discret refaire" data-restaurer="${echapper(a.nom)}"
         >Restaurer</button>
     </div>`).join('');
@@ -1294,7 +1300,7 @@ $('sauvegarde-creer').addEventListener('click', async () => {
   $('sauvegarde-creer').disabled = false;
   if (d.erreur) { $('sauvegarde-etat').textContent = d.erreur; return; }
   $('sauvegarde-etat').textContent =
-    `${echapper(d.archive.nom)} — ${d.archive.ko} Ko. Telechargez-la.`;
+    `${echapper(d.archive.nom)} — ${d.archive.ko} Ko. Téléchargez-la.`;
   afficherSauvegardes(d.sauvegardes);
 });
 
@@ -1320,11 +1326,11 @@ $('sauvegardes').addEventListener('click', async (evenement) => {
   archiveAremettre = nom;
   $('restauration-fiche').innerHTML = `
     <strong>${echapper(nom)}</strong><br/>
-    Ecrite le ${echapper(dateLisible(fiche.cree_le))} &middot; schema ${
-      fiche.schema} (l'usine en est a ${fiche.schema_courant})<br/>
-    ${fiche.avec_reglages ? 'Reglages inclus' : 'Sans les reglages'} &middot; ${
+    Écrite le ${echapper(dateLisible(fiche.cree_le))} &middot; schéma ${
+      fiche.schema} (l'usine en est à ${fiche.schema_courant})<br/>
+    ${fiche.avec_reglages ? 'Réglages inclus' : 'Sans les réglages'} &middot; ${
       fiche.fichiers_produits} fichier(s) de produits &middot; ${
-      fiche.fichiers_invites || 0} invite(s) personnalisee(s)`;
+      fiche.fichiers_invites || 0} invite(s) personnalisée(s)`;
   $('restauration-compris').checked = false;
   $('restauration-faire').disabled = true;
   $('restauration').hidden = false;
@@ -1360,10 +1366,10 @@ $('restauration-faire').addEventListener('click', async () => {
   $('restauration').hidden = true;
   archiveAremettre = '';
   const mise = d.ancienne_base
-    ? ` L'ancienne base est gardee sous ${echapper(d.ancienne_base)}.`
+    ? ` L'ancienne base est gardée sous ${echapper(d.ancienne_base)}.`
     : '';
   $('sauvegarde-etat').textContent =
-    `Atelier restaure depuis ${echapper(d.nom)}.${mise}`;
+    `Atelier restauré depuis ${echapper(d.nom)}.${mise}`;
   // Tout ce que la page affiche vient de la base qui vient d'etre remplacee.
   chargerProduits();
   chargerCommerce();
@@ -1404,7 +1410,7 @@ $('archive-fichier').addEventListener('change', async () => {
   // meme fichier apres une erreur ne declenche aucun evenement.
   $('archive-fichier').value = '';
   if (d.erreur) { dire(d.erreur); return; }
-  dire(`${echapper(d.archive.nom)} recue — ${d.archive.ko} Ko, schema ${
+  dire(`${echapper(d.archive.nom)} reçue — ${d.archive.ko} Ko, schéma ${
     d.fiche.schema}. Elle est dans la liste ci-dessous.`);
   afficherSauvegardes(d.sauvegardes);
 });
@@ -1416,7 +1422,7 @@ $('marche-lancer').addEventListener('click', async () => {
     /* Muet auparavant : le bouton ne faisait rien et ne disait
        rien. Un champ vide a cote d'un bouton mort se lit comme
        une panne, pas comme une consigne. */
-    $('veille-etat').textContent = 'donnez une niche a mesurer.';
+    $('veille-etat').textContent = 'donnez une niche à mesurer.';
     $('veille-niche').focus();
     return;
   }
@@ -1456,7 +1462,7 @@ function afficherMarche(r) {
   const lecture = r.lecture || {};
   $('marche-resultat').hidden = false;
   $('veille-etat').textContent = `${r.sources_disponibles.length} source(s) sur ${
-    r.sources_disponibles.length + r.sources_indisponibles.length} ont repondu.`;
+    r.sources_disponibles.length + r.sources_indisponibles.length} ont répondu.`;
   const bloc = (libelle, valeur) => `<div class="bloc">
       <div class="valeur">${echapper(valeur || 'inconnu')}</div>
       <div class="libelle">${libelle}</div></div>`;
@@ -1468,7 +1474,7 @@ function afficherMarche(r) {
   // Une source muette n'est pas un marche absent : ne pas le dire serait
   // laisser lire un verdict la ou il n'y a qu'une mesure manquante.
   $('marche-manques').textContent = r.sources_indisponibles.length
-    ? 'Sans reponse : ' + r.sources_indisponibles.join(', ')
+    ? 'Sans réponse : ' + r.sources_indisponibles.join(', ')
       + '. Ce silence ne mesure rien.'
     : '';
 }
@@ -1521,7 +1527,7 @@ function afficherAb(d) {
       ? `${Math.round(v.stats.probabilite_meilleure * 100)} % meilleure` : '';
     const rythme = v.rythme && v.rythme.periode
       ? `${v.rythme.ventes} vente(s) en ${v.rythme.jours} j`
-      : (v.debut ? '' : 'sans periode');
+      : (v.debut ? '' : 'sans période');
     return `<div class="variante${d.gagnante === v.id ? ' gagnante' : ''}">
       ${v.image ? `<a href="${echapper(v.image)}" target="_blank" rel="noopener"
          ><img src="${echapper(v.image)}" alt="Variante ${echapper(v.etiquette)}"/></a>` : ''}
@@ -1556,7 +1562,7 @@ function afficherAb(d) {
     </div>
     <div class="variantes${couverture ? ' avec-images' : ''}">${variantes}</div>
     ${d.sans_periode ? `<p class="aide">${d.sans_periode} variante(s) sans
-      periode : elles ne peuvent recevoir aucune vente importee.</p>` : ''}
+      période : elles ne peuvent recevoir aucune vente importée.</p>` : ''}
     ${d.rythme_probleme ? `<p class="aide">${echapper(d.rythme_probleme)}</p>` : ''}
     <div class="rangee">
       <button class="discret" data-fermer-ab="1">Fermer</button>
@@ -1586,7 +1592,7 @@ $('ab-detail').addEventListener('click', async (evenement) => {
                       vues: Number(vues || 0), actions: Number(actions || 0) });
   } else if (jeu.dater) {
     const du = document.querySelector(`[data-du="${jeu.dater}"]`).value;
-    if (!du) { $('ab-etat').textContent = 'une periode a besoin d\'un debut.'; return; }
+    if (!du) { $('ab-etat').textContent = 'une période a besoin d\'un début.'; return; }
     await envoyerAb({ action: 'periode', variante: Number(jeu.dater), du,
                       au: document.querySelector(`[data-au="${jeu.dater}"]`).value });
   } else if (jeu.gagnante) {
@@ -1608,12 +1614,12 @@ $('ab-creer').addEventListener('click', async () => {
   const produit = $('ab-produit').value;
   const titre = produit ? '' : $('sujet').value.trim();
   if (!produit && !titre) {
-    $('ab-etat').textContent = 'choisissez un produit, ou ecrivez un titre '
+    $('ab-etat').textContent = 'choisissez un produit, ou écrivez un titre '
       + 'dans le champ « Sujet » ci-dessus.';
     return;
   }
   $('ab-creer').disabled = true;
-  $('ab-etat').textContent = 'generation des variantes...';
+  $('ab-etat').textContent = 'génération des variantes...';
   const d = await envoyerAb({ action: 'creer', sur: $('ab-sur').value,
                               produit, titre });
   if (d.erreur) { $('ab-creer').disabled = false; return; }
@@ -1632,7 +1638,7 @@ async function suivreAb(identifiant) {
   if (travail.statut === 'echec') { $('ab-etat').textContent = travail.erreur; return; }
   const distinction = travail.resultat.distinction || {};
   $('ab-etat').textContent = distinction.testable === false
-    ? 'Attention : ' + distinction.message : (distinction.message || 'Test pret.');
+    ? 'Attention : ' + distinction.message : (distinction.message || 'Test prêt.');
   await chargerAb();
   ouvrirAb(travail.resultat.experience_id);
 }
@@ -1672,9 +1678,9 @@ async function chargerBilan() {
     + groupe('Par type de produit', b.par_type)
     + groupe('Par ton', b.par_ton)
     + groupe('Par volume', b.par_taille)
-    + groupe('Par niveau de qualite', b.par_qualite)
-    + `<p class="aide">Un reglage n'apparait qu'a partir de deux productions
-       notees : une seule ne mesure rien.</p>`;
+    + groupe('Par niveau de qualité', b.par_qualite)
+    + `<p class="aide">Un réglage n'apparaît qu'à partir de deux productions
+       notées : une seule ne mesure rien.</p>`;
 }
 
 /* --------------------------------------------- reglages -> interface */
@@ -1709,7 +1715,9 @@ function dessinerReglages(groupes, valeurs) {
 
 function champReglage(reglage, valeur) {
   const id = 'reglage-' + reglage.nom;
-  const etiquette = `<span class="nom-reglage">${echapper(reglage.nom)}</span>
+  /* L'etiquette humaine, pas l'identifiant : « signature_ia » en face d'une
+     case se lisait comme un fichier de configuration (capture du 26/09/2026). */
+  const etiquette = `<span class="nom-reglage">${echapper(reglage.etiquette || reglage.nom)}</span>
     <small>${echapper(reglage.description)}</small>`;
   if (reglage.genre === 'booleen') {
     return `<label class="case" for="${id}">
@@ -1753,7 +1761,7 @@ $('reglages-enregistrer').addEventListener('click', async () => {
     appliquerReglagesInterface(d.reglages || {});
     $('reglages-etat').textContent = 'enregistre.';
   } catch (e) {
-    $('reglages-etat').textContent = "l'usine n'a pas repondu.";
+    $('reglages-etat').textContent = "l'usine n'a pas répondu.";
   }
 });
 

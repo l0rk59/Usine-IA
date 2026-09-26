@@ -230,7 +230,7 @@ class UnAlbumNEstPasUnGuide(unittest.TestCase):
 
     def test_la_note_d_illustration_ne_se_lit_pas_comme_le_recit(self):
         contenu = flux_du_pdf(self.pdf)
-        self.assertIn("Illustration a dessiner", contenu)
+        self.assertIn("Illustration à dessiner", contenu)
 
     def test_le_recit_est_compose_plus_gros_que_le_corps_d_un_guide(self):
         # Un album se lit a voix haute, l'enfant regardant la page. Onze

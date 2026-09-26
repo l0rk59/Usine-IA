@@ -144,7 +144,7 @@ class LaChaineCompleteViaLeSimulateur(unittest.TestCase):
             encoding="utf-8")
         for ligne in texte.split("\n"):
             if ligne.startswith("## "):
-                self.assertTrue(ligne[3:].strip().startswith("Episode")
+                self.assertTrue(ligne[3:].strip().startswith(("Épisode", "Episode"))
                                 or ligne[3:].strip() in ("La saison",),
                                 ligne)
 

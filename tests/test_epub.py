@@ -260,7 +260,7 @@ class TestAppareilLiminaire(BaseEpub):
         page = self._page(self.livre, "droits.xhtml")
         self.assertIn("Zoe Martin", page)
         self.assertIn("&#169;", page)
-        self.assertIn("Tous droits reserves", page)
+        self.assertIn("Tous droits réservés", page)
         self.assertIn("urn:uuid:", page, "l'identifiant unique doit y figurer")
 
     def test_la_dedicace_n_existe_que_si_on_en_donne_une(self):
@@ -284,7 +284,7 @@ class TestAppareilLiminaire(BaseEpub):
     def test_l_editeur_n_est_cite_que_s_il_differe_de_l_auteur(self):
         seul = construire_epub(self.dossier / "seul.epub", "T", "Zoe", CHAPITRES,
                                editeur="Zoe")
-        self.assertNotIn("Edite par", self._page(seul, "droits.xhtml"))
+        self.assertNotIn("Édité par", self._page(seul, "droits.xhtml"))
         marque = construire_epub(self.dossier / "marque.epub", "T", "Zoe",
                                  CHAPITRES, editeur="Les Editions du Coin")
         self.assertIn("Les Editions du Coin", self._page(marque, "droits.xhtml"))

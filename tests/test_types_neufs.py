@@ -236,23 +236,23 @@ class LeQuiz(unittest.TestCase):
         resume = quiz.produire(ctx, nombre=5)
         self.assertIn("quiz.html", resume["fichiers"])
         page = (ctx.dossier / "quiz.html").read_text(encoding="utf-8")
-        self.assertIn("Corriger mes reponses", page)
+        self.assertIn("Corriger mes réponses", page)
 
     def test_le_bareme_compte_les_questions_retenues(self):
         """Un bareme sur vingt ne veut rien dire quand huit questions ont ete
         ecartees : il annoncerait des seuils qu'on ne peut pas atteindre."""
         francais = libelles.textes("fr")
-        self.assertIn("16 bonnes reponses", quiz._bareme(20, francais))
-        self.assertIn("10 bonnes reponses", quiz._bareme(12, francais))
+        self.assertIn("16 bonnes réponses", quiz._bareme(20, francais))
+        self.assertIn("10 bonnes réponses", quiz._bareme(12, francais))
 
     def test_sans_bareme_le_retire_vraiment(self):
         ctx = _contexte()
         quiz.produire(ctx, nombre=5, sans_bareme=True)
         page = (ctx.dossier / "lire.html").read_text(encoding="utf-8")
-        self.assertNotIn("Bareme", page)
+        self.assertNotIn("Barème", page)
         ctx2 = _contexte("un autre sujet de quiz")
         quiz.produire(ctx2, nombre=5, sans_bareme=False)
-        self.assertIn("Bareme",
+        self.assertIn("Barème",
                       (ctx2.dossier / "lire.html").read_text(encoding="utf-8"))
 
 
@@ -280,7 +280,7 @@ class UnBlocSansCorpsNeRendRien(unittest.TestCase):
         # « &#x27; », et une phrase qui en contient se cherche en vain.
         "prompts": "Chaque prompt est autonome",
         "emails": "Le calendrier ci-dessous",
-        "quiz": "Repondez a toutes les questions",
+        "quiz": "Répondez à toutes les questions",
     }
 
     def test_le_mode_d_emploi_arrive_jusqu_a_la_page_html(self):

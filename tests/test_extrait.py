@@ -160,7 +160,7 @@ class TestProduction(unittest.TestCase):
         reglages.ecrire({"site": "", "contact": ""})
         try:
             self._produire()
-            self.assertIn("Repondez a cet e-mail", self._texte_epub())
+            self.assertIn("Répondez à cet e-mail", self._texte_epub())
         finally:
             reglages.ecrire({"site": "https://exemple.fr/le-livre",
                              "contact": "zoe@exemple.fr"})

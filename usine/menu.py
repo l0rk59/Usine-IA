@@ -1094,8 +1094,8 @@ def menu_reglages() -> None:
                 print()
                 print("  " + c(ligne["titre_groupe"], "1;36"))
                 print("  " + c(ligne["aide_groupe"], "2"))
-            print("  {:>2}. {:<22} {}".format(
-                numero, ligne["nom"], c(ligne["valeur"][:24], "1")))
+            print("  {:>2}. {:<30} {}".format(
+                numero, ligne["etiquette"], c(ligne["valeur"][:24], "1")))
         print()
         print("  {}. Tout reinitialiser".format(c("99", "33")))
         print("  {}. Retour".format(c(" 0", "2")))
@@ -1114,7 +1114,7 @@ def menu_reglages() -> None:
         print()
         print("  " + c(ligne["description"], "2"))
         if isinstance(reglages.DEFAUTS[ligne["nom"]], bool):
-            nouvelle = demander_oui("Activer « {} »".format(ligne["nom"]),
+            nouvelle = demander_oui("Activer « {} »".format(ligne["etiquette"]),
                                     bool(actuelle))
         elif ligne["nom"] in _A_CHOISIR:
             nouvelle = _A_CHOISIR[ligne["nom"]](str(actuelle))

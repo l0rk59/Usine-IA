@@ -60,44 +60,83 @@ DEFAUTS: Dict[str, Any] = {
 }
 
 DESCRIPTIONS: Dict[str, str] = {
-    "auteur": "Nom affiche comme auteur sur vos produits",
+    "auteur": "Nom affiché comme auteur sur vos produits",
     "marque": "Nom de votre marque ou de votre boutique",
     "contact": "Adresse e-mail de support, inscrite dans la notice",
     "site": "Adresse de votre site ou de votre boutique",
-    "langue": "Langue de redaction",
-    "ton": "Ton par defaut : auto (l'usine lit le sujet), expert, amical, "
-           "pro, punchy, pedagogue, ou une description libre",
-    "taille": "Volume par defaut : auto, mini, court, standard, long",
-    "audience": "Audience par defaut : auto (deduite du sujet), ou une "
-                "description precise (metier, niveau, situation)",
-    "plateforme": "Plateforme de vente visee : gumroad, etsy, payhip, site",
-    "couverture": "Couverture : atelier (composee ici, gratuite) ou ia (generee)",
-    "marketing_auto": "Produire le kit de vente a chaque produit, sans le demander",
-    "archive_auto": "Ecrire l'archive ZIP livrable a chaque produit",
-    "relecture_ensemble": "Relire le produit ENTIER a la recherche des "
+    "langue": "Langue de rédaction",
+    "ton": "Ton par défaut : auto (l'usine lit le sujet), expert, amical, "
+           "pro, punchy, pédagogue, ou une description libre",
+    "taille": "Volume par défaut : auto, mini, court, standard, long",
+    "audience": "Audience par défaut : auto (déduite du sujet), ou une "
+                "description précise (métier, niveau, situation)",
+    "plateforme": "Plateforme de vente visée : gumroad, etsy, payhip, site",
+    "couverture": "Couverture : atelier (composée ici, gratuite) ou ia (générée)",
+    "marketing_auto": "Produire le kit de vente à chaque produit, sans le demander",
+    "archive_auto": "Écrire l'archive ZIP livrable à chaque produit",
+    "relecture_ensemble": "Relire le produit ENTIER à la recherche des "
                           "contradictions (un appel de plus par produit)",
-    "extrait_offert": "Chapitres offerts dans une edition gratuite (0 = aucune)",
-    "devise": "Devise des prix conseilles",
-    "images": "Generer les couvertures et visuels (oui/non)",
+    "extrait_offert": "Chapitres offerts dans une édition gratuite (0 = aucune)",
+    "devise": "Devise des prix conseillés",
+    "images": "Générer les couvertures et visuels (oui/non)",
     "qualite": "rapide (1 passe) | standard (relecture) | exigeant (2 relectures)",
-    "theme": "Theme du tableau de bord : nuit ou jour",
-    "effets_3d": "Animations 3D du tableau de bord (desactivez sur vieux telephone)",
-    "jeton_web": "Mot de passe du tableau de bord (vide = acces local libre)",
-    "signature_ia": "Mentionner l'assistance IA dans la licence livree",
-    "budget_appels_jour": "Appels IA maximum par jour en mode usine (0 = illimite)",
+    "theme": "Thème du tableau de bord : nuit ou jour",
+    "effets_3d": "Animations 3D du tableau de bord (désactivez sur vieux téléphone)",
+    "jeton_web": "Mot de passe du tableau de bord (vide = accès local libre)",
+    "signature_ia": "Mentionner l'assistance IA dans la licence livrée",
+    "budget_appels_jour": "Appels IA maximum par jour en mode usine (0 = illimité)",
     "budget_appels_produit": "Appels IA maximum pour un seul produit",
-    "budget_produits_jour": "Produits maximum fabriques par jour "
+    "budget_produits_jour": "Produits maximum fabriqués par jour "
                             "(produire n'est pas publier : voir docs/VENDRE.md)",
-    "budget_minutes_produit": "Duree maximum d'un produit, en minutes",
+    "budget_minutes_produit": "Durée maximum d'un produit, en minutes",
     "budget_jetons_jour": "Jetons IA maximum par jour, tous fournisseurs "
-                          "confondus (0 = illimite)",
+                          "confondus (0 = illimité)",
     "pause_entre_produits": "Pause entre deux produits, en secondes",
-    "notifications": "Notification Android quand un produit est pret "
+    "notifications": "Notification Android quand un produit est prêt "
                      "(demande termux-api)",
     "batterie_minimum": "Niveau de batterie sous lequel l'usine continue "
-                        "s'arrete, en % (0 = jamais)",
-    "verrou_veille": "Empecher Android d'endormir le telephone pendant une "
+                        "s'arrête, en % (0 = jamais)",
+    "verrou_veille": "Empêcher Android d'endormir le téléphone pendant une "
                      "fabrication",
+}
+
+# L'etiquette humaine de chaque reglage. La page et le menu affichaient le
+# NOM — « signature_ia », « budget_appels_jour » — c'est-a-dire l'identifiant
+# de code, tirets bas compris, en face de chaque champ. Capture du
+# 26/09/2026 : l'ecran des reglages entier se lisait comme un fichier de
+# configuration. Un test refuse tout tiret bas ici, et toute entree de
+# DEFAUTS restee sans etiquette.
+ETIQUETTES: Dict[str, str] = {
+    "auteur": "Auteur",
+    "marque": "Marque",
+    "contact": "Adresse de support",
+    "site": "Site ou boutique",
+    "langue": "Langue",
+    "ton": "Ton",
+    "taille": "Volume",
+    "audience": "Audience",
+    "plateforme": "Plateforme de vente",
+    "devise": "Devise",
+    "marketing_auto": "Kit de vente à chaque produit",
+    "archive_auto": "Archive ZIP à chaque produit",
+    "relecture_ensemble": "Relecture d'ensemble",
+    "extrait_offert": "Extrait offert",
+    "images": "Images et couvertures",
+    "couverture": "Style de couverture",
+    "qualite": "Qualité",
+    "theme": "Thème",
+    "effets_3d": "Effets 3D",
+    "jeton_web": "Mot de passe du tableau de bord",
+    "signature_ia": "Signature IA dans la licence",
+    "budget_appels_jour": "Appels IA par jour",
+    "budget_appels_produit": "Appels IA par produit",
+    "budget_produits_jour": "Produits par jour",
+    "budget_minutes_produit": "Minutes par produit",
+    "budget_jetons_jour": "Jetons IA par jour",
+    "pause_entre_produits": "Pause entre produits",
+    "notifications": "Notifications",
+    "batterie_minimum": "Batterie minimum",
+    "verrou_veille": "Verrou de veille",
 }
 
 # Les peaux du tableau de bord. Declarees ici, et nulle part ailleurs : la
@@ -111,13 +150,13 @@ DESCRIPTIONS: Dict[str, str] = {
 # differentes.
 THEMES: List[Dict[str, Any]] = [
     {"cle": "nuit", "nom": "Nuit",
-     "description": "Cyberpunk sombre : neon sur noir, grille en fuite.",
+     "description": "Cyberpunk sombre : néon sur noir, grille en fuite.",
      "anime": True, "police": "sans"},
     {"cle": "jour", "nom": "Jour",
-     "description": "Le meme, en clair. Lisible dehors.",
+     "description": "Le même, en clair. Lisible dehors.",
      "anime": True, "police": "sans"},
     {"cle": "papier", "nom": "Papier",
-     "description": "Atelier d'edition : serif sur creme, aucune animation, "
+     "description": "Atelier d'édition : sérif sur crème, aucune animation, "
                     "tout au calme. Pour travailler longtemps.",
      "anime": False, "police": "serif"},
     {"cle": "console", "nom": "Console",
@@ -125,7 +164,7 @@ THEMES: List[Dict[str, Any]] = [
                     "La meme peau que Termux.",
      "anime": False, "police": "mono"},
     {"cle": "ambre", "nom": "Ambre",
-     "description": "Ecran monochrome ambre, comme un terminal de 1981.",
+     "description": "Écran monochrome ambre, comme un terminal de 1981.",
      "anime": True, "police": "mono"},
     {"cle": "contraste", "nom": "Contraste",
      "description": "Noir et blanc francs, texte plus grand, aucune "
@@ -242,23 +281,23 @@ def relectures_pour(qualite: str) -> int:
 # laquelle le reglage repond, pas le module qui le lit.
 GROUPES: List[Dict[str, Any]] = [
     {"cle": "identite", "titre": "Qui vend",
-     "aide": "Ce qui apparait sur vos produits et dans la notice de l'acheteur.",
+     "aide": "Ce qui apparaît sur vos produits et dans la notice de l'acheteur.",
      "reglages": ["auteur", "marque", "contact", "site", "signature_ia"]},
-    {"cle": "fabrication", "titre": "Comment l'usine ecrit",
-     "aide": "« auto » laisse l'usine decider en lisant le sujet.",
+    {"cle": "fabrication", "titre": "Comment l'usine écrit",
+     "aide": "« auto » laisse l'usine décider en lisant le sujet.",
      "reglages": ["langue", "ton", "taille", "audience", "qualite",
                   "relecture_ensemble", "images", "couverture"]},
     {"cle": "vente", "titre": "Ce qui part avec le produit",
-     "aide": "Produit a chaque fabrication, sans avoir a le demander.",
+     "aide": "Produit à chaque fabrication, sans avoir à le demander.",
      "reglages": ["plateforme", "devise", "marketing_auto", "archive_auto",
                   "extrait_offert"]},
-    {"cle": "budget", "titre": "Ce que l'usine a le droit de depenser",
-     "aide": "Zero veut dire : pas de plafond. Ces limites arretent l'usine "
-             "continue, pas une fabrication lancee a la main.",
+    {"cle": "budget", "titre": "Ce que l'usine a le droit de dépenser",
+     "aide": "Zéro veut dire : pas de plafond. Ces limites arrêtent l'usine "
+             "continue, pas une fabrication lancée à la main.",
      "reglages": ["budget_appels_jour", "budget_appels_produit",
                   "budget_produits_jour", "budget_minutes_produit",
                   "budget_jetons_jour", "pause_entre_produits"]},
-    {"cle": "telephone", "titre": "Le telephone",
+    {"cle": "telephone", "titre": "Le téléphone",
      "aide": "Tout est facultatif et demande termux-api.",
      "reglages": ["notifications", "batterie_minimum", "verrou_veille"]},
     {"cle": "interface", "titre": "L'affichage",
@@ -297,6 +336,7 @@ def lignes_affichables() -> List[Dict[str, str]]:
         for nom in groupe["reglages"]:
             lignes.append({
                 "nom": nom,
+                "etiquette": ETIQUETTES.get(nom, nom),
                 "groupe": groupe["cle"],
                 "titre_groupe": groupe["titre"],
                 "aide_groupe": groupe["aide"],

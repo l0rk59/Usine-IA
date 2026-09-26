@@ -72,6 +72,31 @@ EQUIPE: Dict[str, Agent] = {
                        SCENARISTE, ROMANCIER, CONTEUR, LECTEUR_DE_FICTION)
 }
 
+# Le nom que l'on MONTRE. Le tableau de bord ecrivait l'identifiant de
+# chaque agent, tiret bas compris : « lecteur_de_fiction au travail »
+# (capture du 26/09/2026). L'identifiant reste la cle des evenements et des
+# fiches de prompts ; ceci ne sert qu'a l'ecran. Un test exige une entree
+# par agent de l'equipe.
+ETIQUETTES: Dict[str, str] = {
+    "architecte": "Architecte",
+    "redacteur": "Rédacteur",
+    "editeur": "Éditeur",
+    "reviseur": "Réviseur",
+    "styliste": "Styliste",
+    "marketeur": "Marketeur",
+    "controleur": "Contrôleur",
+    "formateur": "Formateur",
+    "animateur": "Animateur",
+    "bibliothecaire": "Bibliothécaire",
+    "outilleur": "Outilleur",
+    "prospecteur": "Prospecteur",
+    "lecteur": "Lecteur",
+    "scenariste": "Scénariste",
+    "romancier": "Romancier",
+    "conteur": "Conteur",
+    "lecteur_de_fiction": "Lecteur de fiction",
+}
+
 # Le texte de ces trois-la passe par « controler_et_corriger » : le redacteur
 # et le romancier l'ecrivent, le reviseur le corrige. C'est la que chaque tic
 # evite en amont epargne un appel de correction en aval.

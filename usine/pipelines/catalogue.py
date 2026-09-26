@@ -251,38 +251,38 @@ def champs_de_fiction(jeunesse: bool = False,
     champs = (
         Champ("genre", "--genre", "Genre", genre="choix",
               choix=("",) + tuple(sorted(familles)),
-              aide="Laissez vide : il se deduit du sous-genre."),
+              aide="Laissez vide : il se déduit du sous-genre."),
         Champ("sous_genre", "--sous-genre", "Sous-genre",
-              aide=("Il decide de la longueur attendue et du vocabulaire : "
+              aide=("Il décide de la longueur attendue et du vocabulaire : "
                     "un album pour tout-petits et un premier roman ne "
-                    "s'ecrivent pas pareil. Suggestions : "
+                    "s'écrivent pas pareil. Suggestions : "
                     if jeunesse else
-                    "C'est lui qui decide de tout le reste — longueur "
+                    "C'est lui qui décide de tout le reste — longueur "
                     "attendue, chaleur, fin admissible. « Romance » seul ne "
-                    "suffit pas a ecrire une romance. Suggestions : ")
+                    "suffit pas à écrire une romance. Suggestions : ")
                    + ", ".join(sous_genres[:8])
                    + ("." if jeunesse else "...")),
         Champ("tropes", "--tropes", "Tropes",
-              aide="Ce que le lecteur vient retrouver, separes par des "
-                   "virgules. C'est par la qu'il cherche un livre : il ne "
+              aide="Ce que le lecteur vient retrouver, séparés par des "
+                   "virgules. C'est par là qu'il cherche un livre : il ne "
                    "tape pas « romance contemporaine », il tape « ennemis "
                    "puis amants »."),
         Champ("ambiance", "--ambiance", "Ambiance", genre="choix",
               choix=("",) + fiction.AMBIANCES,
-              aide="Ce que le lecteur vient ressentir. Deux livres du meme "
-                   "sous-genre ne visent pas le meme lecteur si l'ambiance "
-                   "differe."),
+              aide="Ce que le lecteur vient ressentir. Deux livres du même "
+                   "sous-genre ne visent pas le même lecteur si l'ambiance "
+                   "diffère."),
         Champ("point_de_vue", "--point-de-vue", "Point de vue", genre="choix",
               choix=("",) + fiction.POINTS_DE_VUE,
-              aide="Convention de sous-genre, pas detail de style : se "
-                   "tromper se lit comme une maladresse des la premiere "
+              aide="Convention de sous-genre, pas détail de style : se "
+                   "tromper se lit comme une maladresse dès la première "
                    "page."),
-        Champ("temps", "--temps", "Temps du recit", genre="choix",
+        Champ("temps", "--temps", "Temps du récit", genre="choix",
               choix=("",) + fiction.TEMPS),
         Champ("chaleur", "--chaleur", "Niveau de chaleur", genre="choix",
               choix=("",) + fiction.CHALEUR,
-              aide="Une attente de lecteur, pas un curseur de gout : "
-                   "promettre l'un et livrer l'autre fache dans les DEUX "
+              aide="Une attente de lecteur, pas un curseur de goût : "
+                   "promettre l'un et livrer l'autre fâche dans les DEUX "
                    "sens."),
         Champ("fin", "--fin", "Fin attendue", genre="choix",
               choix=("",) + fiction.FINS,
@@ -293,9 +293,9 @@ def champs_de_fiction(jeunesse: bool = False,
               aide="« Beats de romance » suit l'arc de la RELATION : dans "
                    "une romance, c'est elle la charpente, et la traiter en "
                    "second plan se voit."),
-        Champ("serie", "--serie", "Serie", decide_par_l_usine=False,
-              aide="Laissez vide pour un recit isole. Un tome reprend le "
-                   "monde, la distribution et les faits des precedents."),
+        Champ("serie", "--serie", "Série", decide_par_l_usine=False,
+              aide="Laissez vide pour un récit isolé. Un tome reprend le "
+                   "monde, la distribution et les faits des précédents."),
     )
     retires = set(SANS_OBJET_EN_JEUNESSE) if jeunesse else set()
     if not serie:
@@ -470,7 +470,7 @@ def _chaines() -> Dict[str, Callable]:
 TYPES: List[TypeProduit] = [
     TypeProduit(
         cle="ebook", nom="Ebook complet",
-        resume="Un guide structure, du plan a la couverture",
+        resume="Un guide structuré, du plan à la couverture",
         detail="PDF + EPUB + HTML + Markdown + couverture",
         formats=("pdf", "epub", "html", "md", "txt"),
         minutes=(10, 25),
@@ -480,7 +480,7 @@ TYPES: List[TypeProduit] = [
     ),
     TypeProduit(
         cle="nouvelle", nom="Nouvelle (fiction)", famille="fiction",
-        resume="Une histoire courte, avec bible et continuite tenue",
+        resume="Une histoire courte, avec bible et continuité tenue",
         detail="PDF + EPUB + HTML + Markdown + couverture",
         formats=("pdf", "epub", "html", "md", "txt"),
         minutes=(12, 30),
@@ -494,13 +494,13 @@ TYPES: List[TypeProduit] = [
     ),
     TypeProduit(
         cle="roman", nom="Roman (fiction longue)", famille="fiction",
-        resume="Un roman : trente scenes en parties, continuite tenue",
+        resume="Un roman : trente scènes en parties, continuité tenue",
         detail="PDF + EPUB + HTML + Markdown + couverture",
         formats=("pdf", "epub", "html", "md", "txt"),
         # Trente scenes relues et controlees : c'est long, et le dire evite
         # qu'on croie l'usine bloquee au bout d'un quart d'heure.
         minutes=(60, 180),
-        quantite=("chapitres", "Combien de scenes", str(nouvelle_scenes())),
+        quantite=("chapitres", "Combien de scènes", str(nouvelle_scenes())),
         mots_cles=("roman", "fiction longue", "saga", "polar", "thriller",
                    "fantasy", "romance"),
         options={"serie": None},
@@ -512,9 +512,9 @@ TYPES: List[TypeProduit] = [
         champs=champs_de_fiction(),
     ),
     TypeProduit(
-        cle="interactive", nom="Livre dont le lecteur est le heros",
+        cle="interactive", nom="Livre dont le lecteur est le héros",
         famille="fiction",
-        resume="Un recit a embranchements, dont la carte est verifiee",
+        resume="Un récit à embranchements, dont la carte est vérifiée",
         detail="PDF + EPUB + HTML + Markdown + carte du livre",
         formats=("pdf", "epub", "html", "md", "txt"),
         # Une section par appel, plus la bible et la carte. Vingt-quatre
@@ -534,7 +534,7 @@ TYPES: List[TypeProduit] = [
     ),
     TypeProduit(
         cle="recueil", nom="Recueil de nouvelles", famille="fiction",
-        resume="Plusieurs recits lies par un fil, dont on mesure la variete",
+        resume="Plusieurs récits liés par un fil, dont on mesure la variété",
         detail="PDF + EPUB + HTML + Markdown + couverture",
         formats=("pdf", "epub", "html", "md", "txt"),
         # Sept recits de quatre scenes : c'est plus long qu'une nouvelle et
@@ -545,19 +545,19 @@ TYPES: List[TypeProduit] = [
         champs=champs_de_fiction(serie=False),
     ),
     TypeProduit(
-        cle="feuilleton", nom="Feuilleton (episodes)", famille="fiction",
-        resume="Des episodes qui se lisent seuls et appellent le suivant",
+        cle="feuilleton", nom="Feuilleton (épisodes)", famille="fiction",
+        resume="Des épisodes qui se lisent seuls et appellent le suivant",
         detail="PDF + EPUB + HTML + Markdown + couverture",
         formats=("pdf", "epub", "html", "md", "txt"),
         minutes=(40, 110),
-        quantite=("episodes", "Combien d'episodes",
+        quantite=("episodes", "Combien d'épisodes",
                   str(feuilleton_episodes())),
         mots_cles=("feuilleton", "episodes", "serie", "saison"),
         champs=champs_de_fiction(serie=False),
     ),
     TypeProduit(
-        cle="conte", nom="Conte jeunesse illustre", famille="fiction",
-        resume="Un album en doubles-pages, verifie contre sa tranche d'age",
+        cle="conte", nom="Conte jeunesse illustré", famille="fiction",
+        resume="Un album en doubles-pages, vérifié contre sa tranche d'âge",
         detail="PDF + EPUB + HTML + Markdown + illustrations",
         formats=("pdf", "epub", "html", "md", "txt"),
         minutes=(10, 30),
@@ -565,16 +565,16 @@ TYPES: List[TypeProduit] = [
         mots_cles=("conte", "album", "jeunesse", "enfants", "histoire du soir"),
         options={"tranche": None},
         champs=champs_de_fiction(jeunesse=True) + (
-            Champ("tranche", "--tranche", "Tranche d'age", genre="choix",
+            Champ("tranche", "--tranche", "Tranche d'âge", genre="choix",
                   choix=("",) + conte_tranches(), defaut="",
-                  aide="Elle decide de tout : nombre de pages, longueur des "
-                       "phrases, vocabulaire. Le controle verifie ensuite que "
+                  aide="Elle décide de tout : nombre de pages, longueur des "
+                       "phrases, vocabulaire. Le contrôle vérifie ensuite que "
                        "le texte s'y tient."),
         ),
     ),
     TypeProduit(
         cle="prompts", nom="Pack de prompts",
-        resume="Une bibliotheque de prompts classee par intention",
+        resume="Une bibliothèque de prompts classée par intention",
         detail="PDF + CSV importable dans Notion + JSON",
         formats=("pdf", "csv", "json", "html", "md"),
         minutes=(5, 12),
@@ -590,7 +590,7 @@ TYPES: List[TypeProduit] = [
     TypeProduit(
         cle="formation", nom="Mini-formation",
         resume="Des modules avec livrables et cahier d'exercices",
-        detail="Manuel PDF + cahier d'exercices + sequence e-mail",
+        detail="Manuel PDF + cahier d'exercices + séquence e-mail",
         formats=("pdf", "html", "md"),
         minutes=(12, 25),
         quantite=("modules", "Combien de modules", "6"),
@@ -608,8 +608,8 @@ TYPES: List[TypeProduit] = [
         ),
     ),
     TypeProduit(
-        cle="outils", nom="Boite a outils",
-        resume="Checklists, modeles et tableaux de suivi",
+        cle="outils", nom="Boîte à outils",
+        resume="Checklists, modèles et tableaux de suivi",
         detail="PDF imprimable + tableaux CSV + HTML",
         formats=("pdf", "csv", "html", "md"),
         minutes=(6, 14),
@@ -621,8 +621,8 @@ TYPES: List[TypeProduit] = [
         ),
     ),
     TypeProduit(
-        cle="modeles", nom="Modeles Notion / tableur",
-        resume="Des bases liees, prets a importer",
+        cle="modeles", nom="Modèles Notion / tableur",
+        resume="Des bases liées, prêtes à importer",
         detail="CSV par base + guide d'installation + PDF",
         formats=("csv", "pdf", "html", "md"),
         minutes=(5, 12),
@@ -636,7 +636,7 @@ TYPES: List[TypeProduit] = [
     ),
     TypeProduit(
         cle="impression", nom="Cahier imprimable",
-        resume="Des fiches a remplir a la main",
+        resume="Des fiches à remplir à la main",
         detail="PDF aux formats A4 et Lettre US",
         formats=("pdf", "html"),
         minutes=(5, 12),
@@ -661,8 +661,8 @@ TYPES: List[TypeProduit] = [
     ),
     TypeProduit(
         cle="social", nom="Pack de publications",
-        resume="Un calendrier editorial redige",
-        detail="Calendrier CSV + posts rediges + visuels optionnels",
+        resume="Un calendrier éditorial rédigé",
+        detail="Calendrier CSV + posts rédigés + visuels optionnels",
         formats=("csv", "pdf", "json", "html", "md"),
         minutes=(5, 15),
         quantite=("nombre", "Combien de publications", "30"),
@@ -685,8 +685,8 @@ TYPES: List[TypeProduit] = [
     ),
     TypeProduit(
         cle="logiciel", nom="Outil logiciel", extrait=False,
-        resume="Un outil qui demarre, verifie avant livraison",
-        detail="Code source + documentation + rapport de verification",
+        resume="Un outil qui démarre, vérifié avant livraison",
+        detail="Code source + documentation + rapport de vérification",
         formats=("py", "md", "pdf", "html"),
         minutes=(8, 20),
         options={"cible": "cli", "executer": None},
@@ -708,9 +708,9 @@ TYPES: List[TypeProduit] = [
         ),
     ),
     TypeProduit(
-        cle="emails", nom="Sequence e-mail",
-        resume="La serie de messages qui suit une inscription",
-        detail="PDF + HTML + Markdown + CSV pret a importer",
+        cle="emails", nom="Séquence e-mail",
+        resume="La série de messages qui suit une inscription",
+        detail="PDF + HTML + Markdown + CSV prêt à importer",
         formats=("pdf", "html", "md", "csv"),
         minutes=(6, 14),
         quantite=("nombre", "Combien de messages", "7"),
@@ -720,17 +720,17 @@ TYPES: List[TypeProduit] = [
         champs=(
             Champ("nombre", "-n/--nombre", "Nombre de messages",
                   genre="entier", defaut=7),
-            Champ("intention", "-o/--intention", "Ce que la sequence cherche",
+            Champ("intention", "-o/--intention", "Ce que la séquence cherche",
                   genre="choix", defaut="", choix=("",) + objectifs_email(),
-                  aide="Une sequence de bienvenue ne demande presque rien ; "
-                       "une sequence de vente construit vers un achat."),
+                  aide="Une séquence de bienvenue ne demande presque rien ; "
+                       "une séquence de vente construit vers un achat."),
             Champ("rythme", "--rythme", "Un message tous les", genre="entier",
                   defaut=2, unite="jours",
-                  aide="Sert a ecrire les rappels et a calculer le "
-                       "calendrier d'envoi livre avec la sequence."),
+                  aide="Sert à écrire les rappels et à calculer le "
+                       "calendrier d'envoi livré avec la séquence."),
         )),
     TypeProduit(
-        cle="memo", nom="Memo / antiseche",
+        cle="memo", nom="Mémo / antisèche",
         resume="L'essentiel d'un sujet, sur une page qu'on garde",
         detail="PDF + HTML + Markdown + CSV",
         formats=("pdf", "html", "md", "csv"),
@@ -750,12 +750,12 @@ TYPES: List[TypeProduit] = [
                   genre="entier", defaut=8),
             Champ("recto_verso", "--recto-verso", "Impression recto-verso",
                   genre="booleen", defaut=False,
-                  aide="Ajoute une marge de reliure. Inutile — et genante — "
+                  aide="Ajoute une marge de reliure. Inutile — et gênante — "
                        "pour une impression simple face."),
         )),
     TypeProduit(
-        cle="quiz", nom="Quiz avec corrige",
-        resume="Des questions, leurs reponses, et pourquoi",
+        cle="quiz", nom="Quiz avec corrigé",
+        resume="Des questions, leurs réponses, et pourquoi",
         detail="PDF + HTML + Markdown + CSV",
         formats=("pdf", "html", "md", "csv"),
         minutes=(7, 16),
@@ -770,22 +770,22 @@ TYPES: List[TypeProduit] = [
         champs=(
             Champ("nombre", "-n/--nombre", "Nombre de questions",
                   genre="entier", defaut=20),
-            Champ("niveau", "--niveau", "Niveau vise", genre="choix",
+            Champ("niveau", "--niveau", "Niveau visé", genre="choix",
                   defaut="", choix=("",) + niveaux_quiz(),
                   aide="Laissez vide : l'usine juge le niveau d'après le sujet."),
-            Champ("sans_bareme", "--sans-bareme", "Ne pas inclure de bareme",
+            Champ("sans_bareme", "--sans-bareme", "Ne pas inclure de barème",
                   genre="booleen", defaut=False,
-                  aide="Le bareme donne des seuils en nombre de bonnes "
-                       "reponses, calcules sur les questions reellement "
+                  aide="Le barème donne des seuils en nombre de bonnes "
+                       "réponses, calculés sur les questions réellement "
                        "retenues."),
         )),
     TypeProduit(
-        cle="idees", nom="Etude de niche",
-        resume="Des pistes chiffrees, appuyees sur des mesures de marche",
-        detail="Idees evaluees : prix, difficulte, concurrence",
+        cle="idees", nom="Étude de niche",
+        resume="Des pistes chiffrées, appuyées sur des mesures de marché",
+        detail="Idées évaluées : prix, difficulté, concurrence",
         formats=("csv", "json", "html", "md"),
         minutes=(2, 4),
-        quantite=("nombre", "Combien d'idees", "12"),
+        quantite=("nombre", "Combien d'idées", "12"),
         options={"avec_marche": None},
         vendable=False, file=False,
         champs=(

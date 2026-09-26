@@ -31,33 +31,33 @@ FR: Dict[str, Any] = {
     # --- l'archive : licence et LISEZ-MOI ---------------------------------
     "licence": """LICENCE D'UTILISATION — {titre}
 
-(c) {annee} {auteur}. Tous droits reserves.
+(c) {annee} {auteur}. Tous droits réservés.
 
 CE QUE VOUS POUVEZ FAIRE
 - Utiliser ce produit pour votre usage personnel ou professionnel.
-- Appliquer les methodes decrites a votre activite, sans limite.
-- Adapter les modeles fournis a vos propres besoins.
+- Appliquer les méthodes décrites à votre activité, sans limite.
+- Adapter les modèles fournis à vos propres besoins.
 
 CE QUE VOUS NE POUVEZ PAS FAIRE
-- Revendre, redistribuer ou partager les fichiers, meme gratuitement.
+- Revendre, redistribuer ou partager les fichiers, même gratuitement.
 - Publier le contenu, en tout ou partie, sous votre nom.
-- Inclure ce produit dans une offre groupee sans autorisation ecrite.
+- Inclure ce produit dans une offre groupée sans autorisation écrite.
 
 AVERTISSEMENT
-Ce produit est fourni a titre informatif. Il ne constitue ni un conseil
-juridique, ni un conseil fiscal, ni un conseil medical, ni un conseil en
-investissement. Aucun resultat n'est garanti : les resultats dependent de
-votre situation, de votre marche et de votre execution. L'auteur ne peut
-etre tenu responsable des decisions prises sur la base de ce document.
+Ce produit est fourni à titre informatif. Il ne constitue ni un conseil
+juridique, ni un conseil fiscal, ni un conseil médical, ni un conseil en
+investissement. Aucun résultat n'est garanti : les résultats dépendent de
+votre situation, de votre marché et de votre exécution. L'auteur ne peut
+être tenu responsable des décisions prises sur la base de ce document.
 {transparence}""",
     "transparence": """
 
 TRANSPARENCE
-Ce produit a ete elabore avec l'assistance d'outils d'intelligence
-artificielle, puis structure et mis en forme par Usine-IA. Relisez et
-adaptez le contenu a votre contexte avant toute diffusion commerciale.
+Ce produit a été élaboré avec l'assistance d'outils d'intelligence
+artificielle, puis structuré et mis en forme par Usine-IA. Relisez et
+adaptez le contenu à votre contexte avant toute diffusion commerciale.
 """,
-    "mention_ia_courte": ("Ouvrage elabore avec l'assistance d'outils "
+    "mention_ia_courte": ("Ouvrage élaboré avec l'assistance d'outils "
                           "d'intelligence artificielle."),
     "notice": """# {titre}
 
@@ -69,55 +69,55 @@ Merci pour votre achat.
 
 {fichiers}
 
-## Par ou commencer
+## Par où commencer
 
-1. Ouvrez le fichier PDF : c'est la version de reference, mise en page pour
+1. Ouvrez le fichier PDF : c'est la version de référence, mise en page pour
    la lecture et l'impression.
-2. Sur liseuse ou telephone, preferez le fichier EPUB s'il est present.
+2. Sur liseuse ou téléphone, préférez le fichier EPUB s'il est présent.
 3. Le fichier `lire.html` s'ouvre dans n'importe quel navigateur, y compris
    hors connexion, et s'imprime proprement.
-4. Les fichiers `.md`, `.csv` et `.json` sont la pour que vous puissiez
-   reutiliser le contenu dans vos propres outils.
+4. Les fichiers `.md`, `.csv` et `.json` sont là pour que vous puissiez
+   réutiliser le contenu dans vos propres outils.
 
-## Accessibilite
+## Accessibilité
 
-Le fichier EPUB est structure pour la lecture assistee : ordre de lecture
-logique, titres hierarchises, table des matieres navigable, texte
-redimensionnable sans perte d'information, contraste verifie a 4,5:1 au
-minimum. Aucun contenu clignotant ni sonore. Les metadonnees d'accessibilite
+Le fichier EPUB est structuré pour la lecture assistée : ordre de lecture
+logique, titres hiérarchisés, table des matières navigable, texte
+redimensionnable sans perte d'information, contraste vérifié à 4,5:1 au
+minimum. Aucun contenu clignotant ni sonore. Les métadonnées d'accessibilité
 sont incluses dans le fichier.
 {contact_accessibilite}{contact_question}
 ---
 {auteur} — {date}
 """,
     "contact_accessibilite": """
-Si un format vous convient mal, ecrivez a {contact} : une version adaptee
-vous sera envoyee.
+Si un format vous convient mal, écrivez à {contact} : une version adaptée
+vous sera envoyée.
 """,
     "contact_question": """
 ## Une question ?
 
-Ecrivez a {contact}.
+Écrivez à {contact}.
 """,
     "dossier_vide": "- (dossier vide)",
     "contenu_bonus": "- `{nom}/` — contenu bonus",
     "format_date": "%d/%m/%Y",
 
     # --- EPUB : page de copyright, sommaire, accessibilite ------------------
-    "droits_reserves": ("Tous droits reserves. Aucune partie de cet ouvrage ne "
-                        "peut etre reproduite ou diffusee sans l'autorisation "
-                        "ecrite de l'auteur."),
-    "edite_par": "Edite par {editeur}",
-    "premiere_edition": "Premiere edition : {date}",
+    "droits_reserves": ("Tous droits réservés. Aucune partie de cet ouvrage ne "
+                        "peut être reproduite ou diffusée sans l'autorisation "
+                        "écrite de l'auteur."),
+    "edite_par": "Édité par {editeur}",
+    "premiere_edition": "Première édition : {date}",
     "identifiant_publication": "Identifiant de la publication : {identifiant}",
-    "mois": ("janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet",
-             "aout", "septembre", "octobre", "novembre", "decembre"),
+    "mois": ("janvier", "février", "mars", "avril", "mai", "juin", "juillet",
+             "août", "septembre", "octobre", "novembre", "décembre"),
     "resume_accessibilite": (
-        "Publication textuelle. Ordre de lecture logique, titres hierarchises, "
-        "table des matieres navigable, texte redimensionnable sans perte "
-        "d'information. Contraste verifie a 4,5:1 au minimum sur l'ensemble de la "
+        "Publication textuelle. Ordre de lecture logique, titres hiérarchisés, "
+        "table des matières navigable, texte redimensionnable sans perte "
+        "d'information. Contraste vérifié à 4,5:1 au minimum sur l'ensemble de la "
         "feuille de style. Aucun contenu clignotant ni sonore. La couverture porte "
-        "un texte de remplacement ; elle est decorative et ne porte aucune "
+        "un texte de remplacement ; elle est décorative et ne porte aucune "
         "information absente du texte."),
     "sommaire": "Sommaire",
     "couverture": "Couverture",
@@ -129,17 +129,17 @@ Ecrivez a {contact}.
     "vente_pas_pour_qui": "Pour qui ce n'est pas fait",
     "vente_questions": "Vos questions",
     "vente_prix": "Prix",
-    "vente_acces": "<strong>{prix}</strong> — acces immediat apres paiement, "
-                   "telechargement direct.",
+    "vente_acces": "<strong>{prix}</strong> — accès immédiat après paiement, "
+                   "téléchargement direct.",
     "vente_obtenir": "Obtenir « {titre} »",
 
     # --- extrait offert ------------------------------------------------------
-    "extrait_lu": "Vous venez de lire le debut de « **{titre}** ».",
-    "extrait_reste": "La version complete contient {nombre} chapitre(s) de plus :",
+    "extrait_lu": "Vous venez de lire le début de « **{titre}** ».",
+    "extrait_reste": "La version complète contient {nombre} chapitre(s) de plus :",
     "extrait_site": "Le livre complet : {site}",
     "extrait_question": "Une question : {contact}",
-    "extrait_sans_site": ("Le livre complet est disponible a la vente. "
-                          "Repondez a cet e-mail pour le lien."),
+    "extrait_sans_site": ("Le livre complet est disponible à la vente. "
+                          "Répondez à cet e-mail pour le lien."),
     "extrait_suite": "La suite",
     "extrait_titre": "{titre} — extrait",
     "extrait_sous_titre": "Les {nombre} premiers chapitres",
@@ -150,21 +150,21 @@ Ecrivez a {contact}.
     # --- les types « livre » ------------------------------------------------
     "ebook_avant_propos": "Avant-propos : pourquoi ce livre",
     "ebook_conclusion": "Et maintenant : votre plan des 30 prochains jours",
-    "unite_scenes": "scenes",
+    "unite_scenes": "scènes",
     "unite_nouvelles": "nouvelle(s)",
     "unite_sections": "section(s)",
-    "unite_episodes": "episode(s)",
+    "unite_episodes": "épisode(s)",
     "unite_doubles_pages": "double(s)-page(s)",
     "unite_modules": "modules",
     "recueil_sous_titre": "{nombre} nouvelles",
     "recueil_fil": "Le fil",
-    "recueil_fil_defaut": "Sept textes, un meme fil.",
+    "recueil_fil_defaut": "Sept textes, un même fil.",
     "interactif_sous_titre": "{sections} sections, {fins} fins",
     "interactif_mode_emploi_titre": "Comment lire ce livre",
     "interactif_mode_emploi": (
-        "Ce livre ne se lit pas dans l'ordre. Commencez a la section **1**, "
-        "puis suivez le numero du choix que vous faites. Il y a {fins} fins : "
-        "celle que vous atteindrez depend de vous."),
+        "Ce livre ne se lit pas dans l'ordre. Commencez à la section **1**, "
+        "puis suivez le numéro du choix que vous faites. Il y a {fins} fins : "
+        "celle que vous atteindrez dépend de vous."),
     "interactif_le_livre": "Le livre",
     "interactif_fin": "*Fin.*",
     "interactif_choix": "Si vous voulez {action}, rendez-vous au **{vers}**.",
@@ -173,96 +173,96 @@ Ecrivez a {contact}.
     "interactif_pronoms": ("vous", "tu", "je", "j'", "il", "elle", "on", "nous",
                            "ils", "elles"),
     "feuilleton_saison": "La saison",
-    "feuilleton_saison_defaut": "Une saison en {nombre} episodes.",
-    "feuilleton_precedemment": "**Precedemment.** ",
-    "feuilleton_a_suivre": "*A suivre.*",
-    "feuilleton_episode": "Episode {rang} — {titre}",
-    "feuilleton_sous_titre": "{nombre} episodes",
+    "feuilleton_saison_defaut": "Une saison en {nombre} épisodes.",
+    "feuilleton_precedemment": "**Précédemment.** ",
+    "feuilleton_a_suivre": "*À suivre.*",
+    "feuilleton_episode": "Épisode {rang} — {titre}",
+    "feuilleton_sous_titre": "{nombre} épisodes",
     "conte_page": "Page {numero}",
     "conte_sous_titre": "{nombre} doubles-pages — {tranche}",
     "conte_tranche": "{debut}-{fin} ans",
     "conte_note_illustration": "> **Illustration** : {texte}",
-    "conte_illustration_a_dessiner": "Illustration a dessiner",
+    "conte_illustration_a_dessiner": "Illustration à dessiner",
 
     # --- pack de prompts -----------------------------------------------------
     "prompts_titre": "{nombre} prompts pour {sujet}",
-    "prompts_sous_titre": "Pret a copier-coller",
+    "prompts_sous_titre": "Prêt à copier-coller",
     "prompts_mode_emploi_titre": "Comment utiliser ce pack",
     "prompts_mode_emploi": (
         "Chaque prompt est autonome. Remplacez les variables entre crochets par "
         "vos informations, puis collez le texte dans l'IA de votre choix "
-        "(Claude, ChatGPT, Gemini, Mistral ou un modele local). Les prompts "
-        "sont classes par intention : commencez par la categorie qui "
-        "correspond a votre tache du jour."),
+        "(Claude, ChatGPT, Gemini, Mistral ou un modèle local). Les prompts "
+        "sont classés par intention : commencez par la catégorie qui "
+        "correspond à votre tâche du jour."),
     "prompts_conseil_titre": "Conseil",
     "prompts_conseil": (
-        "Gardez le contexte d'une conversation a l'autre : plus l'IA connait "
-        "votre activite, meilleurs sont les resultats. Collez d'abord un "
-        "descriptif de votre activite, puis enchainez les prompts du pack."),
-    "prompts_colonnes": ("Categorie", "Titre", "Quand l'utiliser", "Prompt",
+        "Gardez le contexte d'une conversation à l'autre : plus l'IA connaît "
+        "votre activité, meilleurs sont les résultats. Collez d'abord un "
+        "descriptif de votre activité, puis enchaînez les prompts du pack."),
+    "prompts_colonnes": ("Catégorie", "Titre", "Quand l'utiliser", "Prompt",
                          "Astuce"),
     "prompts_quand": "Quand l'utiliser",
     "prompts_astuce": "Astuce",
-    "prompts_categorie": "Categorie",
+    "prompts_categorie": "Catégorie",
     # « libelle : texte » — l'espace avant les deux-points est francais.
     "deux_points": "{libelle} : {texte}",
 
     # --- quiz auto-corrige ------------------------------------------------------
     "quiz_titre": "{titre} — quiz",
-    "quiz_sous_titre": "{nombre} question(s) pour verifier ce qui est acquis",
-    "quiz_intro": ("Repondez a toutes les questions, puis corrigez. Rien n'est "
-                   "envoye : la correction se fait dans votre navigateur, hors "
-                   "ligne. C'est une auto-evaluation — les reponses sont dans "
+    "quiz_sous_titre": "{nombre} question(s) pour vérifier ce qui est acquis",
+    "quiz_intro": ("Répondez à toutes les questions, puis corrigez. Rien n'est "
+                   "envoyé : la correction se fait dans votre navigateur, hors "
+                   "ligne. C'est une auto-évaluation — les réponses sont dans "
                    "la page."),
-    "quiz_corriger": "Corriger mes reponses",
+    "quiz_corriger": "Corriger mes réponses",
     # Les textes que le script de la page affiche en corrigeant.
     "quiz_script": {
-        "sans_reponse": "Sans reponse.",
+        "sans_reponse": "Sans réponse.",
         "juste": "Juste. ",
-        "faux_avant": "Faux : la bonne reponse etait « ",
+        "faux_avant": "Faux : la bonne réponse était « ",
         "faux_apres": " ». ",
-        "score_sur": " bonne(s) reponse(s) sur ",
-        "sans_reponse_nombre": " question(s) sans reponse.",
+        "score_sur": " bonne(s) réponse(s) sur ",
+        "sans_reponse_nombre": " question(s) sans réponse.",
     },
 
     # --- formation ---------------------------------------------------------------
     "module_titre": "Module {numero} — {titre}",
     "module_plan": "## Objectif\n\n{objectif}\n\n## Notions\n\n{notions}",
     "formation_avant": "Avant de commencer",
-    "formation_prerequis": "Prerequis",
+    "formation_prerequis": "Prérequis",
     "formation_methode": (
         "Traitez un module par session de travail. Ne passez au suivant "
-        "qu'apres avoir produit le livrable demande : c'est lui qui "
-        "transforme la lecture en resultat."),
+        "qu'après avoir produit le livrable demandé : c'est lui qui "
+        "transforme la lecture en résultat."),
     "cahier_titre": "Cahier d'exercices",
     "cahier_titre_courant": "{titre} — cahier d'exercices",
     "cahier_objectif": "Objectif",
     "cahier_livrable": "Livrable attendu",
     "cahier_consigne": "Consigne",
     "cahier_notes": "Vos notes",
-    "sequence_titre": "Sequence e-mail — {titre}",
+    "sequence_titre": "Séquence e-mail — {titre}",
     "sequence_jour": "Jour {jour} — {objet}",
-    "sequence_action": "Action demandee",
+    "sequence_action": "Action demandée",
 
     # --- boite a outils ------------------------------------------------------------
-    "outils_mode_emploi_titre": "Comment utiliser cette boite a outils",
+    "outils_mode_emploi_titre": "Comment utiliser cette boîte à outils",
     "outils_mode_emploi": (
-        "Ces documents sont faits pour etre imprimes ou remplis a l'ecran. "
-        "Choisissez l'outil correspondant a votre situation du moment : chacun "
-        "produit un resultat en une seule session de travail."),
+        "Ces documents sont faits pour être imprimés ou remplis à l'écran. "
+        "Choisissez l'outil correspondant à votre situation du moment : chacun "
+        "produit un résultat en une seule session de travail."),
     "outils_quand": "Quand l'utiliser",
     "outils_quand_court": "Quand",
-    "outils_a_verifier": "A verifier",
+    "outils_a_verifier": "À vérifier",
     "outils_colonnes": "Colonnes du tableau",
-    "outils_a_completer": "A completer",
+    "outils_a_completer": "À compléter",
 
     # --- systeme de modeles (Notion, tableur) -----------------------------------
     "modeles_mise_en_route": "Mise en route",
     "modeles_guide": "Guide d'installation",
     "modeles_structure": "Structure",
-    "modeles_colonnes": ("Colonne", "Type", "Role"),
-    "modeles_vues": "Vues a creer",
-    "modeles_vues_md": "**Vues a creer :**",
+    "modeles_colonnes": ("Colonne", "Type", "Rôle"),
+    "modeles_vues": "Vues à créer",
+    "modeles_vues_md": "**Vues à créer :**",
     "modeles_vue": "{nom} — filtre : {filtre} — tri : {tri}",
     "modeles_aucun": "aucun",
     # Les types de colonne sont des noms que l'invite impose au modele ; en
@@ -274,19 +274,19 @@ Ecrivez a {contact}.
     "impression_notes": "Notes",
     "impression_jours": ("Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi",
                          "Samedi", "Dimanche"),
-    "impression_priorites": "Priorites de la semaine",
+    "impression_priorites": "Priorités de la semaine",
     "impression_semaine": "Semaine",
-    "impression_suivi_colonnes": ("Date", "Action", "Resultat", "Suite"),
+    "impression_suivi_colonnes": ("Date", "Action", "Résultat", "Suite"),
     "impression_question": "Question",
     "impression_mode_emploi_titre": "Mode d'emploi",
     "impression_mode_emploi": (
         "Imprimez ce cahier en recto simple, sur papier ordinaire. Chaque fiche "
-        "tient sur une page et se remplit a la main. Vous pouvez aussi le "
-        "completer a l'ecran avec une application d'annotation PDF."),
-    "impression_a_la_demande_titre": "Impression a la demande",
+        "tient sur une page et se remplit à la main. Vous pouvez aussi le "
+        "compléter à l'écran avec une application d'annotation PDF."),
+    "impression_a_la_demande_titre": "Impression à la demande",
     "impression_a_la_demande": (
-        "Ce cahier est mis en page pour une reliure : le contenu est decale de "
-        "{mm} mm vers l'exterieur, alternativement a gauche et a droite, pour "
+        "Ce cahier est mis en page pour une reliure : le contenu est décalé de "
+        "{mm} mm vers l'extérieur, alternativement à gauche et à droite, pour "
         "que rien ne disparaisse dans la pliure. Imprimez-le en recto-verso."),
     "impression_apporte": "Ce que ce cahier vous apporte",
     "impression_disposition": "Disposition",
@@ -294,48 +294,48 @@ Ecrivez a {contact}.
 
     # --- pack de contenu pour les reseaux -------------------------------------------
     "social_titre": "{nombre} posts {reseau} — {sujet}",
-    "social_sous_titre": "Calendrier editorial pret a publier",
+    "social_sous_titre": "Calendrier éditorial prêt à publier",
     "social_pack": "Pack de contenu {reseau}",
     "social_jour": "Jour {jour}",
     "social_colonnes": ("Jour", "Angle", "Objectif", "Texte", "Hashtags",
-                        "Idee de visuel"),
+                        "Idée de visuel"),
     "social_mode_emploi_titre": "Mode d'emploi",
     "social_mode_emploi": (
-        "Publiez une piece de contenu par jour ouvre. Adaptez les chiffres et "
-        "les exemples a votre realite : un post credible vaut mieux qu'un post "
+        "Publiez une pièce de contenu par jour ouvré. Adaptez les chiffres et "
+        "les exemples à votre réalité : un post crédible vaut mieux qu'un post "
         "parfait. Le fichier calendrier.csv s'importe directement dans un "
         "tableur ou un outil de programmation."),
 
     # --- sequence e-mail -------------------------------------------------------------
     "emails_sous_titre": "{nombre} messages, un tous les {rythme} jour(s)",
-    "emails_mode_emploi_titre": "Comment envoyer cette sequence",
+    "emails_mode_emploi_titre": "Comment envoyer cette séquence",
     "emails_ordre": (
-        "Cette sequence s'envoie dans l'ordre, a partir du jour de "
-        "l'inscription. Le calendrier ci-dessous donne le decalage de chaque "
+        "Cette séquence s'envoie dans l'ordre, à partir du jour de "
+        "l'inscription. Le calendrier ci-dessous donne le décalage de chaque "
         "message ; la plupart des outils d'emailing le demandent sous cette "
         "forme."),
     "emails_csv": (
-        "Le fichier CSV livre avec ce document s'importe directement dans un "
-        "outil d'emailing : une ligne par message, avec l'objet, l'apercu et "
+        "Le fichier CSV livré avec ce document s'importe directement dans un "
+        "outil d'emailing : une ligne par message, avec l'objet, l'aperçu et "
         "le corps."),
     "emails_avant_titre": "Avant d'envoyer",
     "emails_avant": (
-        "Relisez chaque message en pensant a une personne precise de votre "
-        "liste. Remplacez les crochets par vos informations, et verifiez que le "
-        "lien de desinscription est present : il est obligatoire, et son "
-        "absence suffit a faire classer vos envois en indesirables."),
-    "emails_colonnes": ("Jour", "Objet", "Apercu", "Corps", "P.S.", "Action"),
+        "Relisez chaque message en pensant à une personne précise de votre "
+        "liste. Remplacez les crochets par vos informations, et vérifiez que le "
+        "lien de désinscription est présent : il est obligatoire, et son "
+        "absence suffit à faire classer vos envois en indésirables."),
+    "emails_colonnes": ("Jour", "Objet", "Aperçu", "Corps", "P.S.", "Action"),
     "emails_objet": "Objet",
-    "emails_apercu": "Apercu",
+    "emails_apercu": "Aperçu",
     "emails_demande": "Ce que ce message demande",
     # Vide : en francais, les objectifs s'affichent tels que « emails.OBJECTIFS »
     # les ecrit.
     "emails_objectifs": {},
 
     # --- memo ----------------------------------------------------------------------
-    "memo_titre": "Memo — {sujet}",
-    "memo_sous_titre": "{lignes} repere(s) en {blocs} bloc(s)",
-    "memo_promesse": "L'essentiel, a garder a cote de soi",
+    "memo_titre": "Mémo — {sujet}",
+    "memo_sous_titre": "{lignes} repère(s) en {blocs} bloc(s)",
+    "memo_promesse": "L'essentiel, à garder à côté de soi",
     "memo_colonnes": ("Bloc", "Genre", "Ligne"),
     # Les genres de bloc sont des noms internes ; en francais, tels quels.
     "memo_genres": {},
@@ -344,44 +344,44 @@ Ecrivez a {contact}.
     "unite_sections_simple": "sections",
     "logiciel_ce_que_fait": "Ce que fait cet outil",
     "logiciel_installation": "Installation et utilisation",
-    "logiciel_verification": "Verification du code",
+    "logiciel_verification": "Vérification du code",
     "logiciel_fonctions": "Fonctions",
     "logiciel_limites": "Ce que cet outil ne fait pas",
-    "logiciel_limites_pourquoi": ("Le dire evite les deceptions, et les "
+    "logiciel_limites_pourquoi": ("Le dire évite les déceptions, et les "
                                   "demandes de remboursement qui vont avec."),
     "logiciel_cli": (
-        "Aucune installation : le script n'utilise que la bibliotheque "
+        "Aucune installation : le script n'utilise que la bibliothèque "
         "standard de Python.\n\n"
         "```\npython3 source/outil.py --help\n```\n\n"
         "Utilisation type :\n\n```\n{utilisation}\n```\n\n"
         "Les tests se lancent avec :\n\n```\npython3 source/test_outil.py\n```"),
     "logiciel_web": (
         "Ouvrez `source/index.html` dans n'importe quel navigateur. Il n'y a "
-        "rien a installer et rien a configurer : tout le code est dans ce "
+        "rien à installer et rien à configurer : tout le code est dans ce "
         "fichier, il fonctionne hors connexion.\n\n"
-        "Pour le mettre en ligne, deposez ce seul fichier chez n'importe quel "
-        "hebergeur statique."),
+        "Pour le mettre en ligne, déposez ce seul fichier chez n'importe quel "
+        "hébergeur statique."),
     "logiciel_extension": (
         "1. Ouvrez `chrome://extensions` dans Chrome.\n"
-        "2. Activez le « mode developpeur » en haut a droite.\n"
-        "3. Cliquez sur « Charger l'extension non empaquetee ».\n"
+        "2. Activez le « mode développeur » en haut à droite.\n"
+        "3. Cliquez sur « Charger l'extension non empaquetée ».\n"
         "4. Choisissez le dossier `source/`.\n\n"
-        "Pour la publier, compressez le dossier `source/` et deposez l'archive "
+        "Pour la publier, compressez le dossier `source/` et déposez l'archive "
         "sur le Chrome Web Store."),
-    "logiciel_verifie": ("Ce code a ete verifie avant livraison. Voici "
-                         "exactement ce qui a ete controle.\n"),
-    "logiciel_colonnes": ("Fichier", "Verification", "Resultat"),
+    "logiciel_verifie": ("Ce code a été vérifié avant livraison. Voici "
+                         "exactement ce qui a été contrôlé.\n"),
+    "logiciel_colonnes": ("Fichier", "Vérification", "Résultat"),
     "logiciel_correct": "correct",
-    "logiciel_a_corriger": "**a corriger**",
-    "logiciel_non_execute": "non execute : {refus}",
-    "logiciel_demarre": "demarre correctement",
-    "logiciel_echec": "**echec**",
-    "logiciel_execution": "execution reelle",
-    "logiciel_remarques": ("{nombre} remarque(s) sans gravite ont ete relevees "
-                           "par la verification."),
+    "logiciel_a_corriger": "**à corriger**",
+    "logiciel_non_execute": "non exécuté : {refus}",
+    "logiciel_demarre": "démarre correctement",
+    "logiciel_echec": "**échec**",
+    "logiciel_execution": "exécution réelle",
+    "logiciel_remarques": ("{nombre} remarque(s) sans gravité ont été relevées "
+                           "par la vérification."),
     "logiciel_attention": (
-        "**Attention :** un ou plusieurs fichiers n'ont pas passe la "
-        "verification. Relisez-les avant toute mise en vente."),
+        "**Attention :** un ou plusieurs fichiers n'ont pas passé la "
+        "vérification. Relisez-les avant toute mise en vente."),
     # Ce que la verification a controle, et les causes d'un refus d'executer :
     # des libelles de « core/verification.py », en francais tels quels.
     "logiciel_verifie_par": {},
@@ -391,9 +391,9 @@ Ecrivez a {contact}.
     # seule source pour les deux, et la notice francaise ne change pas.
     "logiciel_soucis": {
         "syntaxe": "erreur de syntaxe : {valeur}",
-        "import": "importe « {valeur} » : acces systeme ou reseau",
+        "import": "importe « {valeur} » : accès système ou réseau",
         "appel": "appelle « {valeur}() »",
-        "ecriture": "ecrit hors du dossier de travail : {valeur}",
+        "ecriture": "écrit hors du dossier de travail : {valeur}",
     },
     "logiciel_tests_unitaires": "tests unitaires",
 
@@ -406,32 +406,32 @@ Ecrivez a {contact}.
     "quiz_promesse_page": ("Corrigez-vous sans rien envoyer : tout se passe "
                            "dans votre navigateur."),
     "quiz_consignes": "Consignes",
-    "quiz_consigne": ("Repondez a toutes les questions avant de consulter le "
-                      "corrige. Une seule proposition est juste par question."),
-    "quiz_bareme": "Bareme",
+    "quiz_consigne": ("Répondez à toutes les questions avant de consulter le "
+                      "corrigé. Une seule proposition est juste par question."),
+    "quiz_bareme": "Barème",
     "quiz_bareme_texte": (
-        "{acquis} bonnes reponses ou plus : c'est acquis.\n"
-        "{revoir} a {presque} : relisez les explications des questions "
-        "manquees.\n"
+        "{acquis} bonnes réponses ou plus : c'est acquis.\n"
+        "{revoir} à {presque} : relisez les explications des questions "
+        "manquées.\n"
         "Moins de {revoir} : reprenez le sujet avant de vous retester."),
     "quiz_questions": "Questions",
-    "quiz_corrige": "Corrige",
-    "quiz_reponse_pdf": "{numero}. Reponse {lettre} — {texte}",
+    "quiz_corrige": "Corrigé",
+    "quiz_reponse_pdf": "{numero}. Réponse {lettre} — {texte}",
     "quiz_colonnes": ("Module", "Question", "A", "B", "C", "D", "Bonne",
                       "Explication"),
 
     # --- la derniere page d'un tome de serie ------------------------------------
     "serie_page": "La suite",
-    "serie_tome_lu": ("Vous venez de lire le tome {rang} de la serie **{serie}**. "
-                      "Chaque tome se lit seul, mais ils se repondent."),
-    "serie_appartient": "Ce recit appartient a la serie **{serie}**.",
-    "serie_precede": "### Ce qui precede",
+    "serie_tome_lu": ("Vous venez de lire le tome {rang} de la série **{serie}**. "
+                      "Chaque tome se lit seul, mais ils se répondent."),
+    "serie_appartient": "Ce récit appartient à la série **{serie}**.",
+    "serie_precede": "### Ce qui précède",
     "serie_suite": "### La suite",
     "serie_tome": "**Tome {rang} — {titre}**",
     "serie_avis": (
         "Si cette histoire vous a plu, le meilleur service que vous puissiez "
-        "rendre a son auteur tient en deux lignes d'avis la ou vous l'avez "
-        "achetee. C'est ce qui decide si quelqu'un d'autre la trouvera."),
+        "rendre à son auteur tient en deux lignes d'avis là où vous l'avez "
+        "achetée. C'est ce qui décide si quelqu'un d'autre la trouvera."),
 
     # --- les noms de fichiers que l'acheteur ouvre en premier ---------------------
     "fichier_notice": "LISEZ-MOI.md",

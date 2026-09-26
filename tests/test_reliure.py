@@ -185,12 +185,12 @@ class TestChaineImpression(unittest.TestCase):
         """Le mode d'emploi ne doit pas expliquer une mise en page absente."""
         resume = self._cahier(0)
         pdf = next(Path(resume["dossier"]).glob("*-A4.pdf"))
-        self.assertNotIn("Impression a la demande", _texte_du_pdf(pdf))
+        self.assertNotIn("Impression à la demande", _texte_du_pdf(pdf))
 
     def test_avec_reliure_le_cahier_l_explique(self):
         resume = self._cahier(12)
         pdf = next(Path(resume["dossier"]).glob("*-A4.pdf"))
-        self.assertIn("Impression a la demande", _texte_du_pdf(pdf))
+        self.assertIn("Impression à la demande", _texte_du_pdf(pdf))
 
     def test_l_option_est_declaree_au_catalogue(self):
         from usine.pipelines import catalogue

@@ -1709,7 +1709,9 @@ def _etat() -> Dict[str, Any]:
         # retaper leur nom : une faute de frappe cree une seconde serie vide,
         # et le tome repartirait de zero sans rien dire.
         "series": [s["nom"] for s in module_serie.lister()],
-        "agents": [{"nom": a.nom, "emoji": a.emoji} for a in equipe.EQUIPE.values()],
+        "agents": [{"nom": a.nom, "emoji": a.emoji,
+                    "etiquette": equipe.ETIQUETTES.get(a.nom, a.nom)}
+                   for a in equipe.EQUIPE.values()],
         "tons": sorted(TONS),
         "tailles": sorted(TAILLES, key=lambda t: TAILLES[t][0]),
         "qualites": ["rapide", "standard", "exigeant"],
@@ -1731,7 +1733,9 @@ def _etat() -> Dict[str, Any]:
         "groupes_reglages": [
             {"cle": g["cle"], "titre": g["titre"], "aide": g["aide"],
              "reglages": [
-                 {"nom": nom, "description": reglages.DESCRIPTIONS.get(nom, ""),
+                 {"nom": nom,
+                  "etiquette": reglages.ETIQUETTES.get(nom, nom),
+                  "description": reglages.DESCRIPTIONS.get(nom, ""),
                   "genre": ("booleen" if isinstance(reglages.DEFAUTS[nom], bool)
                             else "entier"
                             if isinstance(reglages.DEFAUTS[nom], int)
