@@ -332,12 +332,15 @@ PROVIDERS: List[Provider] = [
         name="openrouter",
         base_url="https://openrouter.ai/api/v1",
         api_key_env="OPENROUTER_API_KEY",
-        # Releve sur « GET /api/v1/models » le 13/09/2026 : 19 modeles « :free »
-        # sur 445, et ni « llama-3.3-70b:free » ni « deepseek-chat-v3:free »
-        # n'en font plus partie. Les identifiants « :free » sont les plus
-        # volatils du depot — un modele y passe payant du jour au lendemain.
+        # Releve sur « GET /api/v1/models » le 26/09/2026 : 17 modeles « :free »
+        # sur 458 — ils etaient 19 le 13/09/2026, et « nex-agi/nex-n2.5-mini »
+        # est sorti du palier entre les deux. Les identifiants « :free » sont
+        # les plus volatils du depot — un modele y passe payant du jour au
+        # lendemain. « gemma-4-26b-a4b » le remplace pour « rapide » : quatre
+        # milliards de parametres actifs, generaliste — le selecteur
+        # automatique proposait un modele de code, piege par le mot « mini ».
         models={
-            "rapide": "nex-agi/nex-n2.5-mini:free",
+            "rapide": "google/gemma-4-26b-a4b-it:free",
             "standard": "google/gemma-4-31b-it:free",
             "costaud": "nvidia/nemotron-3-ultra-550b-a55b:free",
             "long": "nvidia/nemotron-3.5-lightning:free",
@@ -348,7 +351,7 @@ PROVIDERS: List[Provider] = [
         rpm=20,
         rpd=50,
         signup="https://openrouter.ai/keys",
-        notes="19 modeles « :free », 20 requetes/minute et 50 par jour "
+        notes="17 modeles « :free » (26/09/2026), 20 requetes/minute et 50 par jour "
               "(1000 apres un rechargement unique de 10 USD).",
         extra_headers={
             "HTTP-Referer": "https://github.com/l0rk59/usine-ia",

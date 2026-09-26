@@ -536,6 +536,8 @@ MODELES_RETIRES = {
     "nvidia": ("writer/palmyra-creative-122b",
                "mistralai/codestral-22b-instruct-v0.1",
                "nvidia/nemotron-nano-3-30b-a3b"),
+    # Sonde « GET /api/v1/models » du 26/09/2026 : sorti du palier « :free ».
+    "openrouter": ("nex-agi/nex-n2.5-mini:free",),
 }
 
 
