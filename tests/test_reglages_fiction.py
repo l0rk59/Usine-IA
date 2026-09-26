@@ -91,7 +91,7 @@ class UnAlbumNePorteAucunReglageDAdulte(unittest.TestCase):
         for adulte in ("dark romance", "romance contemporaine", "polar noir",
                        "horreur occulte"):
             self.assertNotIn(adulte, aide, adulte)
-        self.assertIn("album illustre", aide)
+        self.assertIn("album illustré", aide)
 
     def test_les_types_de_fiction_adulte_gardent_leurs_reglages(self):
         # La correction retire des champs a UN type. Les retirer a tous
@@ -158,6 +158,16 @@ class LesReglagesDeFictionSontEnFrancais(unittest.TestCase):
                          fiction.mots_attendus("contemporary romance"))
         self.assertNotEqual(fiction.mots_attendus("romance contemporaine"),
                             (0, 0))
+
+    def test_le_libelle_accentue_et_la_saisie_sans_accent_se_rejoignent(self):
+        """Le libelle s'affiche « fantasy épique » ; au clavier d'un
+        telephone on tape souvent « fantasy epique ». Les deux doivent
+        retrouver le releve, sinon le reglage est choisi et sans effet."""
+        self.assertEqual(fiction.libelle("epic fantasy"), "fantasy épique")
+        for saisie in ("fantasy épique", "fantasy epique", "Fantasy Épique"):
+            with self.subTest(saisie=saisie):
+                self.assertEqual(fiction.terme_source(saisie), "epic fantasy")
+        self.assertNotEqual(fiction.mots_attendus("fantasy epique"), (0, 0))
 
     def test_un_terme_inconnu_ressort_intact(self):
         # Ces listes proposent, elles n'interdisent pas : un sous-genre

@@ -571,7 +571,8 @@ class TestOptionsDuCatalogueAtteignables(unittest.TestCase):
             "social": (["2"], "reseau"),
             "logiciel": (["2"], "cible"),
             "idees": (["n"], "avec_marche"),
-            "nouvelle": (["Les rails"], "serie"),
+            # « n » : pas de reglage de fiction, puis le nom de la serie.
+            "nouvelle": (["n", "Les rails"], "serie"),
         }
         for cle, (reponses, option) in sorted(attendus.items()):
             with self.subTest(type=cle):

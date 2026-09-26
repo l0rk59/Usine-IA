@@ -51,6 +51,11 @@ def niveaux_quiz() -> Tuple[str, ...]:
     return tuple(NIVEAUX)
 
 
+NIVEAUX_LISIBLES = (("debutant", "Débutant"),
+                    ("intermediaire", "Intermédiaire"),
+                    ("avance", "Avancé"))
+
+
 def formes_ebook() -> Tuple[Tuple[str, str], ...]:
     """Les formes d'un guide et leur nom, lus la ou ils decident de l'invite."""
     from .ebook import FORMES
@@ -269,6 +274,7 @@ def champs_de_fiction(jeunesse: bool = False,
     champs = (
         Champ("genre", "--genre", "Genre", genre="choix",
               choix=("",) + tuple(sorted(familles)),
+              etiquettes=fiction.etiquettes(familles),
               aide="Laissez vide : il se déduit du sous-genre."),
         Champ("sous_genre", "--sous-genre", "Sous-genre",
               aide=("Il décide de la longueur attendue et du vocabulaire : "
@@ -287,27 +293,33 @@ def champs_de_fiction(jeunesse: bool = False,
                    "puis amants »."),
         Champ("ambiance", "--ambiance", "Ambiance", genre="choix",
               choix=("",) + fiction.AMBIANCES,
+              etiquettes=fiction.etiquettes(fiction.AMBIANCES),
               aide="Ce que le lecteur vient ressentir. Deux livres du même "
                    "sous-genre ne visent pas le même lecteur si l'ambiance "
                    "diffère."),
         Champ("point_de_vue", "--point-de-vue", "Point de vue", genre="choix",
               choix=("",) + fiction.POINTS_DE_VUE,
+              etiquettes=fiction.etiquettes(fiction.POINTS_DE_VUE),
               aide="Convention de sous-genre, pas détail de style : se "
                    "tromper se lit comme une maladresse dès la première "
                    "page."),
         Champ("temps", "--temps", "Temps du récit", genre="choix",
-              choix=("",) + fiction.TEMPS),
+              choix=("",) + fiction.TEMPS,
+              etiquettes=fiction.etiquettes(fiction.TEMPS)),
         Champ("chaleur", "--chaleur", "Niveau de chaleur", genre="choix",
               choix=("",) + fiction.CHALEUR,
+              etiquettes=fiction.etiquettes(fiction.CHALEUR),
               aide="Une attente de lecteur, pas un curseur de goût : "
                    "promettre l'un et livrer l'autre fâche dans les DEUX "
                    "sens."),
         Champ("fin", "--fin", "Fin attendue", genre="choix",
               choix=("",) + fiction.FINS,
+              etiquettes=fiction.etiquettes(fiction.FINS),
               aide="En romance, une fin malheureuse est un manquement au "
                    "contrat de genre. Ailleurs, elle est libre."),
         Champ("structure", "--structure", "Charpente", genre="choix",
               choix=("",) + fiction.STRUCTURES,
+              etiquettes=fiction.etiquettes(fiction.STRUCTURES),
               aide="« Beats de romance » suit l'arc de la RELATION : dans "
                    "une romance, c'est elle la charpente, et la traiter en "
                    "second plan se voit."),
@@ -509,9 +521,7 @@ TYPES: List[TypeProduit] = [
                        "l'usine choisit d'après le sujet."),
             Champ("niveau", "--niveau", "Niveau du lecteur", genre="choix",
                   choix=("",) + niveaux_ebook(),
-                  etiquettes=(("debutant", "Débutant"),
-                              ("intermediaire", "Intermédiaire"),
-                              ("avance", "Avancé")),
+                  etiquettes=NIVEAUX_LISIBLES,
                   aide="Ce qu'on explique et ce qu'on saute. L'audience le "
                        "suggère sans le dire : « des freelances » ne dit pas "
                        "s'ils débutent."),
@@ -722,7 +732,9 @@ TYPES: List[TypeProduit] = [
                   genre="entier", defaut=30),
             Champ("reseau", "-r/--reseau", "Réseau visé", genre="choix",
                   defaut="", choix=("",) + reseaux_sociaux(),
-                  aide="Laissez vide : l'usine choisit le réseau d'après le sujet."),
+                  etiquettes=(("linkedin", "LinkedIn"), ("instagram", "Instagram"),
+                              ("x", "X"), ("tiktok", "TikTok")),
+                  aide="Par défaut, l'usine choisit le réseau d'après le sujet."),
             Champ("visuels", "--visuels", "Visuels à générer",
                   genre="entier", defaut=0, argument="visuels",
                   decide_par_l_usine=False,
@@ -744,8 +756,11 @@ TYPES: List[TypeProduit] = [
         champs=(
             Champ("cible", "-c/--cible", "Ce que vous livrez", genre="choix",
                   defaut="", choix=("",) + cibles_logiciel(),
-                  aide="cli : outil en ligne de commande. web : page "
-                       "autonome. extension : Chrome Manifest V3."),
+                  etiquettes=(("cli", "Outil en ligne de commande"),
+                              ("web", "Page web autonome"),
+                              ("extension", "Extension Chrome")),
+                  aide="La page web s'ouvre dans n'importe quel navigateur ; "
+                       "l'extension suit le format Chrome Manifest V3."),
             Champ("sans_essai", "--sans-essai", "Ne pas exécuter le code",
                   genre="booleen", defaut=False,
                   argument="executer", inverse=True,
@@ -768,6 +783,10 @@ TYPES: List[TypeProduit] = [
                   genre="entier", defaut=7),
             Champ("intention", "-o/--intention", "Ce que la séquence cherche",
                   genre="choix", defaut="", choix=("",) + objectifs_email(),
+                  etiquettes=(("bienvenue", "Accueillir un nouvel inscrit"),
+                              ("vente", "Vendre une offre"),
+                              ("fidelisation", "Fidéliser un client"),
+                              ("relance", "Réveiller une liste silencieuse")),
                   aide="Une séquence de bienvenue ne demande presque rien ; "
                        "une séquence de vente construit vers un achat."),
             Champ("rythme", "--rythme", "Un message tous les", genre="entier",
@@ -818,7 +837,8 @@ TYPES: List[TypeProduit] = [
                   genre="entier", defaut=20),
             Champ("niveau", "--niveau", "Niveau visé", genre="choix",
                   defaut="", choix=("",) + niveaux_quiz(),
-                  aide="Laissez vide : l'usine juge le niveau d'après le sujet."),
+                  etiquettes=NIVEAUX_LISIBLES,
+                  aide="Par défaut, l'usine juge le niveau d'après le sujet."),
             Champ("sans_bareme", "--sans-bareme", "Ne pas inclure de barème",
                   genre="booleen", defaut=False,
                   aide="Le barème donne des seuils en nombre de bonnes "

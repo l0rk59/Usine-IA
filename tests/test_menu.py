@@ -20,7 +20,7 @@ import os
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import List
 from unittest import mock
@@ -33,6 +33,7 @@ from usine import cli  # noqa: E402
 from usine import menu  # noqa: E402
 from usine.core import experience, reglages, store, ventes  # noqa: E402
 from usine.core import file as file_prod  # noqa: E402
+from usine.pipelines import catalogue  # noqa: E402
 
 
 def setUpModule():
@@ -603,6 +604,79 @@ class TestReglageParListe(unittest.TestCase):
         """La liste fermee ne laisse aucun moyen d'ecrire n'importe quoi."""
         deroule(menu.menu_reglages, [str(self._rang_de("qualite")), "1"])
         self.assertEqual(reglages.lire("qualite"), "rapide")
+
+
+def _repondre_a_tout(invite=""):
+    """Une reponse par GENRE de question, lue sur l'invite affichee.
+
+    Oui a chaque question fermee, la deuxieme entree de chaque liste (la
+    premiere est « l'usine decide », qui ne fixe rien), une valeur a chaque
+    champ qu'on peut laisser a l'usine. C'est le parcours qui fixe le plus
+    de reglages possible — celui ou une traduction manquante se perd.
+    """
+    if "(o/N)" in invite or "(O/n)" in invite:
+        return "o"
+    if "Votre choix" in invite:
+        return "2"
+    if "l'usine decide)" in invite or "Marge" in invite:
+        return "3"
+    return ""
+
+
+class ChaqueReponseDuMenuArriveALaCommande(unittest.TestCase):
+    """Une reponse donnee dans le menu doit se retrouver dans la commande.
+
+    Mesure du 26/09/2026 : la tranche d'age d'un conte etait demandee,
+    rendue par « _options_du_type »... et absente de « _ARGUMENTS ». En
+    fabrication directe, « _arguments_du_type » la jetait sans rien dire :
+    l'album partait pour la tranche que l'usine choisissait, pas pour celle
+    qu'on venait de choisir. Seule la file de production la gardait.
+    """
+
+    def tearDown(self):
+        reglages.reinitialiser()
+
+    def test_chaque_reglage_repondu_a_sa_traduction_et_parse(self):
+        parseur = cli.construire_parseur()
+        vus = 0
+        for cle in catalogue.cles(fabricables=True):
+            with redirect_stdout(io.StringIO()), mock.patch(
+                    "builtins.input", _repondre_a_tout):
+                options = menu._options_du_type(cle)
+            champs = {c.nom for c in catalogue.obtenir(cle).champs}
+            for nom, valeur in options.items():
+                vus += 1
+                with self.subTest(type=cle, reglage=nom):
+                    self.assertIn(nom, menu._ARGUMENTS,
+                                  "reponse jetee avant la commande")
+                    arguments = menu._ARGUMENTS[nom](valeur)
+                    with redirect_stderr(io.StringIO()):
+                        espace = parseur.parse_args([cle] + arguments)
+                    if nom in champs:
+                        self.assertEqual(getattr(espace, nom), valeur)
+        self.assertGreater(vus, 30, "le parcours ne fixe presque rien")
+
+    def test_la_fiction_se_regle_depuis_le_telephone(self):
+        """Neuf reglages de fiction, aucun atteignable depuis le menu : choisir
+        « romance, fin heureuse » exigeait la ligne de commande."""
+        for cle in ("nouvelle", "roman", "interactive", "recueil",
+                    "feuilleton", "conte"):
+            with self.subTest(type=cle):
+                with redirect_stdout(io.StringIO()), mock.patch(
+                        "builtins.input", _repondre_a_tout):
+                    options = menu._options_du_type(cle)
+                attendus = ({c.nom for c in catalogue.obtenir(cle).champs}
+                            & set(menu.PROMESSE_DE_FICTION))
+                self.assertTrue(attendus)
+                self.assertLessEqual(attendus, set(options))
+
+    def test_l_etiquette_s_affiche_et_la_cle_part(self):
+        sortie = io.StringIO()
+        with redirect_stdout(sortie), mock.patch(
+                "builtins.input", _repondre_a_tout):
+            options = menu._options_du_type("roman")
+        self.assertIn("Mélancolique", sortie.getvalue())
+        self.assertEqual(options["ambiance"], "reconfortante")
 
 
 class ChaqueCommandeDuMenuParseDansLaCLI(unittest.TestCase):

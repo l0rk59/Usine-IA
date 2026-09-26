@@ -37,6 +37,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Sequence, Tuple
 
+from ..core.controle import _sans_accent
+
 # =========================================================================
 # LES DONNEES, ET D'OU ELLES VIENNENT
 # =========================================================================
@@ -199,6 +201,44 @@ STRUCTURES: Tuple[str, ...] = (
     "voyage du heros", "recit choral", "episodique",
 )
 
+# Ce qu'on LIT en face de chaque valeur. Les valeurs restent les cles des
+# invites et de la ligne de commande, sans accent ; le tableau de bord les
+# affichait telles quelles — « melancolique », « voyage du heros »,
+# « troisieme personne limitee » — dans les listes d'un produit vendu en
+# francais. Un test exige une etiquette pour chaque valeur proposee.
+AFFICHAGE: Dict[str, str] = {
+    "reconfortante": "Réconfortante", "tendue": "Tendue",
+    "melancolique": "Mélancolique", "lumineuse": "Lumineuse",
+    "sombre": "Sombre", "drole": "Drôle", "inquietante": "Inquiétante",
+    "epique": "Épique", "intime": "Intime", "amere": "Amère",
+    "premiere personne": "Première personne",
+    "troisieme personne limitee": "Troisième personne limitée",
+    "troisieme personne omnisciente": "Troisième personne omnisciente",
+    "points de vue alternes": "Points de vue alternés",
+    "passe": "Passé", "present": "Présent",
+    "sans romance": "Sans romance", "tendre": "Tendre",
+    "porte fermee": "Porte fermée", "sensuelle": "Sensuelle",
+    "explicite": "Explicite",
+    "heureuse": "Heureuse", "heureuse pour l'instant": "Heureuse pour l'instant",
+    "douce-amere": "Douce-amère", "ouverte": "Ouverte", "tragique": "Tragique",
+    "trois actes": "Trois actes", "beats de romance": "Beats de romance",
+    "save the cat": "Save the Cat", "enquete": "Enquête",
+    "voyage du heros": "Voyage du héros", "recit choral": "Récit choral",
+    "episodique": "Épisodique",
+    "horreur": "Horreur", "imaginaire": "Imaginaire", "jeunesse": "Jeunesse",
+    "litterature": "Littérature", "policier": "Policier", "romance": "Romance",
+}
+
+SOURCES["AFFICHAGE"] = ("SANS SOURCE. Les memes valeurs que les listes "
+                        "ci-dessus, accentuees pour l'ecran : une "
+                        "transcription, pas un releve.")
+
+
+def etiquettes(valeurs) -> Tuple[Tuple[str, str], ...]:
+    """Les paires (valeur, ce qu'on lit) d'une liste de reglage."""
+    return tuple((v, AFFICHAGE[v]) for v in valeurs if v in AFFICHAGE)
+
+
 # Longueurs attendues par le marche, EN MOTS. La mesure sert a SITUER un
 # manuscrit, pas a le recaler.
 MOTS_ATTENDUS: Dict[str, Tuple[int, int]] = {
@@ -261,19 +301,19 @@ EN_FRANCAIS: Dict[str, str] = {
     "fantasy romance": "romance fantasy",
     "sports romance": "romance sportive",
     "military romance": "romance militaire",
-    "clean & wholesome romance": "romance sans scene explicite",
+    "clean & wholesome romance": "romance sans scène explicite",
     "reverse harem": "reverse harem",
     "small town & rural romance": "romance en petite ville",
-    "regency romance": "romance Regence",
+    "regency romance": "romance Régence",
     # Policier
     "cozy mystery": "cosy mystery",
     "thriller": "thriller",
     "espionage": "espionnage",
     "suspense": "suspense",
-    "police procedural": "procedure policiere",
+    "police procedural": "procédure policière",
     "hard-boiled": "polar noir",
     # Imaginaire
-    "epic fantasy": "fantasy epique",
+    "epic fantasy": "fantasy épique",
     "urban fantasy": "fantasy urbaine",
     "science fiction": "science-fiction",
     "dystopian": "dystopie",
@@ -285,19 +325,19 @@ EN_FRANCAIS: Dict[str, str] = {
     "supernatural": "surnaturel",
     "occult horror": "horreur occulte",
     # Litterature
-    "literary fiction": "litterature generale",
+    "literary fiction": "littérature générale",
     "historical fiction": "roman historique",
     "family saga": "saga familiale",
-    "coming of age": "recit d'apprentissage",
+    "coming of age": "récit d'apprentissage",
     # Jeunesse
-    "picture books": "album illustre",
-    "early readers": "premieres lectures",
+    "picture books": "album illustré",
+    "early readers": "premières lectures",
     "chapter books": "premiers romans",
     "middle grade": "roman junior",
     "young adult": "young adult",
     # Tropes
     "enemies to lovers": "ennemis puis amants",
-    "forced proximity": "huis clos force",
+    "forced proximity": "huis clos forcé",
     "slow burn": "slow burn",
     "fake dating": "faux couple",
     "grumpy x sunshine": "grognon et rayon de soleil",
@@ -306,7 +346,10 @@ EN_FRANCAIS: Dict[str, str] = {
     "only one bed": "un seul lit",
 }
 
-_VERS_SOURCE = {fr.lower(): en for en, fr in EN_FRANCAIS.items()}
+# Les libelles portent leurs accents (« fantasy épique ») ; ce qu'on tape au
+# clavier d'un telephone, souvent pas. Les deux doivent retrouver le meme
+# terme source, sinon le reglage est choisi, affiche, et sans effet.
+_VERS_SOURCE = {_sans_accent(fr).lower(): en for en, fr in EN_FRANCAIS.items()}
 
 
 def libelle(terme: str) -> str:
@@ -328,7 +371,7 @@ def terme_source(terme: str) -> str:
     et sans effet.
     """
     nu = (terme or "").strip().lower()
-    return _VERS_SOURCE.get(nu, nu)
+    return _VERS_SOURCE.get(_sans_accent(nu), nu)
 
 
 def genre_du_sous_genre(sous_genre: str) -> str:

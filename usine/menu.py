@@ -314,9 +314,14 @@ def _options_du_type(cle: str) -> Dict[str, object]:
     au-dessus, une seule fois, et c'est la qu'une inversion comme
     « avec_marche » / « --sans-marche » se traite.
     """
-    if cle == "nouvelle":
+    if cle in ("nouvelle", "roman"):
+        choisies = _promesse_de_fiction(cle)
         nom_serie = _demander_serie()
-        return {"serie": nom_serie} if nom_serie else {}
+        if nom_serie:
+            choisies["serie"] = nom_serie
+        return choisies
+    if cle in ("interactive", "recueil", "feuilleton"):
+        return _promesse_de_fiction(cle)
     if cle == "conte":
         # La tranche d'age decide de TOUT pour un album : nombre de pages,
         # longueur des phrases, vocabulaire. La demander en dernier, ou pas
@@ -331,12 +336,14 @@ def _options_du_type(cle: str) -> Dict[str, object]:
             [(t, "{} pages, phrases de {} mots au maximum".format(
                 chaine_conte.TRANCHES[t]["pages"],
                 chaine_conte.TRANCHES[t]["mots_phrase"])) for t in tranches])
-        return {"tranche": tranches[index - 1]} if index else {}
+        choisies = {"tranche": tranches[index - 1]} if index else {}
+        choisies.update(_promesse_de_fiction(cle))
+        return choisies
     if cle == "ebook":
         # Lu sur le catalogue : la forme, le niveau et les exercices y sont
         # declares avec leur etiquette, et ce menu est la vraie porte
         # d'entree sur un telephone.
-        choisies = _choix_du_catalogue(cle, ("forme", "niveau", "exercices"))
+        choisies = _champs_du_catalogue(cle, ("forme", "niveau", "exercices"))
         if demander_oui("Relire le livre entier a la recherche des "
                         "contradictions entre chapitres ? (1 appel IA)", False):
             choisies["relecture_ensemble"] = True
@@ -407,26 +414,50 @@ def _options_du_type(cle: str) -> Dict[str, object]:
     return {}
 
 
-def _choix_du_catalogue(cle: str, noms: Tuple[str, ...]) -> Dict[str, object]:
-    """Les listes declarees au catalogue, proposees avec « l'usine decide ».
+def _champs_du_catalogue(cle: str, noms: Tuple[str, ...]) -> Dict[str, object]:
+    """Les champs declares au catalogue, proposes avec « l'usine decide ».
 
-    L'etiquette s'affiche, la cle part dans la commande : « Manuel de
-    référence » se lit, « --forme reference » se tape.
+    Une liste s'affiche avec ses etiquettes et part avec sa cle : « Manuel
+    de référence » se lit, « --forme reference » se tape. Un texte vide,
+    comme une liste laissee sur sa premiere entree, reste a l'usine.
     """
     from .pipelines import catalogue
 
     fiche = catalogue.obtenir(cle)
     choisies: Dict[str, object] = {}
     for champ in (fiche.champs if fiche else ()):
-        if champ.nom not in noms or champ.genre != "choix":
+        if champ.nom not in noms:
             continue
-        valeurs = [v for v in champ.choix if v]
-        etiquettes = dict(champ.etiquettes)
-        index = choisir_ou_laisser(
-            champ.libelle, [(etiquettes.get(v, v), "") for v in valeurs])
-        if index:
-            choisies[champ.nom] = valeurs[index - 1]
+        if champ.genre == "choix":
+            valeurs = [v for v in champ.choix if v]
+            etiquettes = dict(champ.etiquettes)
+            index = choisir_ou_laisser(
+                champ.libelle, [(etiquettes.get(v, v), "") for v in valeurs])
+            if index:
+                choisies[champ.nom] = valeurs[index - 1]
+        elif champ.genre == "texte":
+            valeur = demander(champ.libelle + LAISSER, "").strip()
+            if valeur:
+                choisies[champ.nom] = valeur
     return choisies
+
+
+# Ce qu'une fiction se voit proposer dans le menu, dans l'ordre ou l'on se
+# pose les questions : ou le livre se range, ce qu'on vient y chercher, puis
+# la facon de le raconter. Mesure du 26/09/2026 : depuis le telephone, aucun
+# de ces neuf reglages n'etait atteignable — seuls la serie de la nouvelle et
+# la tranche d'age du conte l'etaient. Choisir « romance, fin heureuse »
+# exigeait la ligne de commande.
+PROMESSE_DE_FICTION = ("genre", "sous_genre", "tropes", "ambiance", "fin",
+                       "chaleur", "point_de_vue", "temps", "structure")
+
+
+def _promesse_de_fiction(cle: str) -> Dict[str, object]:
+    """Les reglages de fiction, sur demande : sinon l'usine les decide."""
+    if not demander_oui("Choisir le genre, l'ambiance et la fin ? "
+                        "(sinon l'usine decide d'apres le sujet)", False):
+        return {}
+    return _champs_du_catalogue(cle, PROMESSE_DE_FICTION)
 
 
 # Comment chaque option du catalogue s'ecrit en ligne de commande. Deux
@@ -446,6 +477,16 @@ _ARGUMENTS = {
     "recto_verso": lambda v: ["--recto-verso"] if v else [],
     "niveau": lambda v: ["--niveau", str(v)],
     "forme": lambda v: ["--forme", str(v)],
+    "genre": lambda v: ["--genre", str(v)],
+    "sous_genre": lambda v: ["--sous-genre", str(v)],
+    "tropes": lambda v: ["--tropes", str(v)],
+    "ambiance": lambda v: ["--ambiance", str(v)],
+    "fin": lambda v: ["--fin", str(v)],
+    "chaleur": lambda v: ["--chaleur", str(v)],
+    "point_de_vue": lambda v: ["--point-de-vue", str(v)],
+    "temps": lambda v: ["--temps", str(v)],
+    "structure": lambda v: ["--structure", str(v)],
+    "tranche": lambda v: ["--tranche", str(v)],
     "exercices": lambda v: ["--exercices", str(v)],
     "sans_bareme": lambda v: ["--sans-bareme"] if v else [],
 }

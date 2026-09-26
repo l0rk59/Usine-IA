@@ -55,7 +55,9 @@ IMPOSSIBLES = frozenset("""
     verification controle numero generer genere elabore precedemment bareme
     prerequis priorites categorie apercu decembre fevrier acces immediat
     telechargement debut recit recits scenes reseau reseaux sequence
-    antiseche bibliotheque equipe premiere reserve reserves
+    antiseche bibliotheque equipe premiere reserve reserves heros
+    melancolique epique drole inquietante amere enquete episodique
+    litterature troisieme limitee alternes fermee reconfortante
 """.split())
 
 _MOT = re.compile(r"[A-Za-zÀ-ÿ]+")
@@ -91,6 +93,8 @@ def _textes_du_catalogue() -> Iterator[Tuple[str, str]]:
             yield type_produit.cle + ".quantite", type_produit.quantite[1]
         for champ in type_produit.champs:
             yield type_produit.cle + "." + champ.nom, champ.libelle + " " + champ.aide
+            for valeur, etiquette in champ.etiquettes:
+                yield type_produit.cle + "." + champ.nom + "=" + valeur, etiquette
 
 
 class LeDetecteurSaitVoir(unittest.TestCase):
@@ -154,6 +158,22 @@ class DesMotsPasDesIdentifiants(unittest.TestCase):
                 etiquette = reglages.ETIQUETTES.get(nom, "")
                 self.assertTrue(etiquette.strip())
                 self.assertNotIn("_", etiquette)
+
+    def test_chaque_valeur_de_liste_a_une_etiquette(self):
+        """« melancolique », « voyage du heros » s'affichaient tels quels dans
+        les listes. Seules les tranches d'age (« 3-5 ans ») se lisent deja."""
+        for type_produit in catalogue.TYPES:
+            for champ in type_produit.champs:
+                if champ.genre != "choix":
+                    continue
+                noms = dict(champ.etiquettes)
+                for valeur in champ.choix:
+                    if not valeur or valeur[0].isdigit():
+                        continue
+                    with self.subTest(type=type_produit.cle, champ=champ.nom,
+                                      valeur=valeur):
+                        self.assertIn(valeur, noms)
+                        self.assertNotIn("_", noms[valeur])
 
     def test_chaque_agent_a_une_etiquette(self):
         for nom in equipe.EQUIPE:

@@ -296,3 +296,35 @@ Compter les pages disait « parfait ». C'est la deuxième fois dans ce dépôt
 qu'une mesure numérique valide un produit qu'un coup d'œil condamne — la
 première était le conte, dont les quatorze illustrations n'arrivaient nulle
 part.
+
+## Ce que le téléphone ne pouvait pas régler
+
+*Mesuré le 26/09/2026, en faisant répondre le menu Termux à toutes ses
+questions.*
+
+Le menu est la vraie porte d'entrée de l'usine. Deux défauts s'y cachaient,
+sans qu'aucun test n'échoue :
+
+- **aucun des neuf réglages de fiction n'était atteignable.** Genre,
+  sous-genre, tropes, ambiance, fin, chaleur, point de vue, temps du récit,
+  charpente : la ligne de commande et le tableau de bord les proposaient, le
+  menu non. Choisir « romance, fin heureuse » depuis le téléphone était
+  impossible. Le menu propose désormais de les régler, sur demande — sinon
+  l'usine les décide d'après le sujet ;
+- **la tranche d'âge d'un conte était demandée, puis jetée.** Le menu la
+  rendait, mais la table qui traduit chaque réponse en option de commande ne
+  la connaissait pas : en fabrication directe, l'album partait pour la
+  tranche que l'usine choisissait, pas pour celle qu'on venait de choisir.
+  Seule la file de production la gardait.
+
+Le second défaut est celui qu'un garde-fou lisant la liste des traductions ne
+pouvait pas voir : il vérifiait que chaque traduction **existante** était
+acceptée par la commande, pas que chaque **réponse** en avait une.
+`tests/test_menu.py` fait maintenant répondre le menu à tout, pour les dix-huit
+types, et exige que chaque réponse arrive dans la commande avec sa valeur.
+
+Les listes affichent enfin des mots : « Mélancolique », « Voyage du héros »,
+« Troisième personne limitée », « Manuel de référence » — là où la page et le
+menu montraient les clés internes, sans accents. La clé reste ce qu'on tape en
+ligne de commande ; une saisie sans accent (« fantasy epique ») retrouve le
+même relevé qu'un libellé accentué.
