@@ -187,7 +187,7 @@ def requete_complete(
                          corps.decode("utf-8", "replace"),
                          entetes=dict(exc.headers.items()) if exc.headers else None)
     except (urllib.error.URLError, socket.timeout, ssl.SSLError, ConnectionError, OSError) as exc:
-        raise HttpErreur(0, "reseau indisponible : {}".format(exc))
+        raise HttpErreur(0, "réseau indisponible : {}".format(exc))
 
 
 def post_json(

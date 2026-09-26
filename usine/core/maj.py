@@ -142,8 +142,8 @@ def par_archive(branche: str = BRANCHE_DEFAUT,
         # perdu.
         return {"ok": False,
                 "erreur": "archive introuvable pour « {} » ({}). Deux causes "
-                          "possibles : la branche n'existe pas, ou le depot "
-                          "est prive — l'archive ne marche que sur un depot "
+                          "possibles : la branche n'existe pas, ou le dépôt "
+                          "est privé — l'archive ne marche que sur un dépôt "
                           "public. Dans ce cas, installez git (pkg install "
                           "git) et clonez : « usine maj » passera par lui."
                           .format(branche, exc)}
@@ -166,7 +166,7 @@ def par_archive(branche: str = BRANCHE_DEFAUT,
                 cible.relative_to(temporaire.resolve())
             except ValueError:
                 return {"ok": False,
-                        "erreur": "archive refusee : un fichier sortait du dossier"}
+                        "erreur": "archive refusée : un fichier sortait du dossier"}
         archive.extractall(temporaire)
         racines = [p for p in temporaire.iterdir() if p.is_dir()]
         if len(racines) != 1 or not (racines[0] / "usine").is_dir():
@@ -243,8 +243,8 @@ def completer_env(dossier: Optional[Path] = None) -> List[str]:
     fiches = {p.api_key_env: p for p in config.PROVIDERS}
     morceaux = ["", "",
                 "# --- Ajoute par « usine maj » : fournisseurs apparus depuis",
-                "#     votre installation. Vos cles existantes n'ont pas ete",
-                "#     touchees. -------------------------------------------"]
+                "#     votre installation. Vos clés existantes n'ont pas été",
+                "#     touchées. -------------------------------------------"]
     for variable in manquantes:
         fiche = fiches.get(variable)
         if fiche is not None and fiche.signup:

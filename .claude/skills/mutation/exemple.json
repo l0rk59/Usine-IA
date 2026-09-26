@@ -47,8 +47,8 @@
   {
     "titre": "un modele inconnu n'est plus nomme dans le message",
     "fichier": "usine/core/llm.py",
-    "avant": "if _modele_inconnu(exc):\n            return (\"le modele",
-    "apres": "if False:\n            return (\"le modele",
+    "avant": "if _modele_inconnu(exc):\n            return (\"le modèle",
+    "apres": "if False:\n            return (\"le modèle",
     "tests": [
       "tests.test_routeur"
     ]

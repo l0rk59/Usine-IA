@@ -86,7 +86,7 @@ def ecrire(message: str, categorie: str = "") -> None:
         # Une seule fois par session : repeter l'alerte a chaque ligne la
         # rendrait invisible, et c'est une alerte qu'il faut lire.
         _secret_signale = True
-        propre += ("  [!] une cle a ete masquee ici : elle a circule dans un "
+        propre += ("  [!] une clé a été masquée ici : elle a circulé dans un "
                    "message, renouvelez-la")
     ligne = "{} {}{}\n".format(time.strftime("%H:%M:%S"),
                                "[{}] ".format(categorie) if categorie else "",

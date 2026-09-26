@@ -363,13 +363,13 @@ def _correspondance(annonce: int, quota: Any) -> str:
     trancher, parce que c'est la seule chose qu'on sache honnetement.
     """
     if annonce == quota.rpm:
-        return "requetes par minute"
+        return REQUETES_MINUTE
     if annonce == quota.rpd:
-        return "requetes par jour"
+        return REQUETES_JOUR
     if annonce == quota.tpm:
-        return "jetons par minute"
+        return JETONS_MINUTE
     if annonce == quota.tpd:
-        return "jetons par jour"
+        return JETONS_JOUR
     return ""
 
 
@@ -409,6 +409,18 @@ def _message_lisible(corps: str) -> str:
     return corps
 
 
+# Les quatre fenetres, nommees une fois. Le libelle s'affiche ET choisit le
+# compteur a lire : « _compte_usine » testait « startswith("requetes") »
+# sur ce texte d'ecran. Le jour ou le libelle a pris son accent, le test a
+# cesse de correspondre, et le chiffre par minute du service s'est compare
+# au compteur de JETONS — un entier plausible, donc un ecart invente sans
+# que rien ne casse.
+REQUETES_MINUTE = "requêtes par minute"
+REQUETES_JOUR = "requêtes par jour"
+JETONS_MINUTE = "jetons par minute"
+JETONS_JOUR = "jetons par jour"
+
+
 def _compte_usine(fournisseur: Any, modele: str,
                   correspond: str) -> Optional[int]:
     """Ce que l'usine a compte pour cette fenetre, ou None si indecidable.
@@ -423,16 +435,17 @@ def _compte_usine(fournisseur: Any, modele: str,
     """
     if not correspond:
         return None
-    par_minute = correspond.endswith("par minute")
     try:
-        if correspond.startswith("requetes"):
-            return (store.compteur_minute(fournisseur.name, modele)
-                    if par_minute
-                    else store.compteur_jour(fournisseur.name, modele))
-        if par_minute:
+        if correspond == REQUETES_MINUTE:
+            return store.compteur_minute(fournisseur.name, modele)
+        if correspond == REQUETES_JOUR:
+            return store.compteur_jour(fournisseur.name, modele)
+        if correspond == JETONS_MINUTE:
             utilises, _ancien = store.jetons_minute(fournisseur.name, modele)
             return utilises
-        return store.jetons_jour(fournisseur.name, modele)
+        if correspond == JETONS_JOUR:
+            return store.jetons_jour(fournisseur.name, modele)
+        return None
     except Exception:
         # Une base illisible ne doit pas emporter l'audit : on rend « je ne
         # sais pas » plutot qu'un zero qui passerait pour une mesure.
@@ -706,9 +719,9 @@ def _nommer_le_refus(exc: Any) -> str:
         # marche, il lui faut seulement plus de place pour conclure.
         return "raisonnement seul"
     if statut in (401, 403):
-        return "cle refusee"
+        return "clé refusée"
     if statut == 402:
-        return "credit epuise"
+        return "crédit épuisé"
     if statut == 429:
         return "quota atteint"
     if statut >= 500:
@@ -796,11 +809,11 @@ def _verdict(etat: Dict[str, Any]) -> Dict[str, str]:
                 "remede": "usine sauvegarde --restaurer archive.zip --oui"}
     if etat["distants_prets"]:
         return {"etat": "pret", "remede": "",
-                "message": "{} fournisseur(s) distant(s) pret(s). "
+                "message": "{} fournisseur(s) distant(s) prêt(s). "
                            "L'usine peut produire.".format(etat["distants_prets"])}
     if etat["locaux"]:
         return {"etat": "local", "remede": "",
-                "message": "IA locale detectee : {}. Production hors ligne "
+                "message": "IA locale détectée : {}. Production hors ligne "
                            "possible, mais comptez plusieurs minutes par "
                            "chapitre.".format(", ".join(etat["locaux"]))}
     if etat.get("anonymes"):
@@ -808,10 +821,10 @@ def _verdict(etat: Dict[str, Any]) -> Dict[str, str]:
         # quota que personne ne publie. Les mots sont ceux de la fiche du
         # fournisseur (config.py), poses a son integration.
         return {"etat": "essai", "remede": "usine cles",
-                "message": "Aucune cle API : seul le palier anonyme de {} "
-                           "repond. Son quota n'est pas publie et il est "
-                           "partage par adresse IP : assez pour essayer "
+                "message": "Aucune clé API : seul le palier anonyme de {} "
+                           "répond. Son quota n'est pas publié et il est "
+                           "partagé par adresse IP : assez pour essayer "
                            "l'usine, pas pour produire en volume."
                            .format(", ".join(etat["anonymes"]))}
     return {"etat": "bloque", "remede": "usine cles",
-            "message": "Aucun fournisseur pret. Lancez « usine cles »."}
+            "message": "Aucun fournisseur prêt. Lancez « usine cles »."}

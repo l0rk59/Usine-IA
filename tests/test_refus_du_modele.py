@@ -157,7 +157,7 @@ class LeRouteur(_DeuxFournisseurs):
         with self.assertRaises(llm.DemandeRefusee) as leve:
             llm.generer("Ecris la scene interdite.", cache=False)
         self.assertNotIsInstance(leve.exception, llm.PlusDeFournisseur)
-        self.assertIn("refuse", str(leve.exception))
+        self.assertIn("refusé", str(leve.exception))
 
     def test_un_fournisseur_absent_laisse_le_doute(self):
         """Cerebras au repos n'a rien dit : il aurait peut-etre accepte. Le

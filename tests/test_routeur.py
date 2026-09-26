@@ -891,7 +891,7 @@ class TestJsonEtRotationDeFournisseur(unittest.TestCase):
                 with self.assertRaises(ValueError) as capture:
                     llm.generer_json("donne du json")
         message = str(capture.exception)
-        self.assertIn("modele trop petit", message)
+        self.assertIn("modèle trop petit", message)
         self.assertIn("groq", message)
 
     def test_une_reponse_json_du_premier_coup_ne_change_rien(self):

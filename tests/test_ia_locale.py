@@ -150,7 +150,7 @@ class TestConfiguration(unittest.TestCase):
                       llm._expliquer(ollama, HttpErreur(404, "model not found")))
         self.assertIn("Lancez-le",
                       llm._expliquer(ollama, OSError("Connection refused")))
-        self.assertIn("modele plus petit",
+        self.assertIn("modèle plus petit",
                       llm._expliquer(ollama, OSError("read operation timed out")))
         # Un fournisseur distant garde son message d'origine.
         self.assertNotIn("ollama pull", llm._expliquer(

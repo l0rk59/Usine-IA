@@ -125,12 +125,12 @@ def inspecter(archive: Path) -> Dict[str, Any]:
             entrees = zip_.infolist()
             if len(entrees) > ENTREES_MAX:
                 return {"valide": False,
-                        "probleme": "archive a {} entrees : ce n'est pas un "
+                        "probleme": "archive à {} entrées : ce n'est pas un "
                                     "atelier".format(len(entrees))}
             noms = {info.filename for info in entrees}
             if NOM_BASE not in noms:
                 return {"valide": False,
-                        "probleme": "archive sans base de donnees"}
+                        "probleme": "archive sans base de données"}
             octets = sum(info.file_size for info in entrees)
             octets_base = next(info.file_size for info in entrees
                                if info.filename == NOM_BASE)
@@ -161,11 +161,11 @@ def inspecter(archive: Path) -> Dict[str, Any]:
 def _demesuree(octets: int, octets_base: int) -> str:
     """Raison de refuser de decompresser, ou chaine vide."""
     if octets_base > BASE_MAX:
-        return ("la base annoncee fait {} Mo : au-dela de {} Mo, l'usine "
-                "refuse de la charger en memoire".format(
+        return ("la base annoncée fait {} Mo : au-delà de {} Mo, l'usine "
+                "refuse de la charger en mémoire".format(
                     octets_base // (1024 * 1024), BASE_MAX // (1024 * 1024)))
     if octets > TOTAL_MAX:
-        return ("archive de {} Mo une fois decompressee : au-dela de {} Mo, "
+        return ("archive de {} Mo une fois décompressée : au-delà de {} Mo, "
                 "ce n'est plus un atelier".format(
                     octets // (1024 * 1024), TOTAL_MAX // (1024 * 1024)))
     return ""
@@ -185,7 +185,7 @@ def occupe() -> str:
     pid = verrou_actif()
     if pid is None:
         return ""
-    return ("l'usine continue tourne (pid {}) : arretez-la avant de "
+    return ("l'usine continue tourne (pid {}) : arrêtez-la avant de "
             "restaurer".format(pid))
 
 
@@ -205,8 +205,8 @@ def restaurer(archive: Path, avec_produits: bool = True) -> Dict[str, Any]:
         return {"valide": False, "probleme": blocage}
     if int(fiche.get("schema") or 0) > store.VERSION_SCHEMA:
         return {"valide": False,
-                "probleme": "archive ecrite par une version plus recente "
-                            "de l'usine (schema {} contre {})".format(
+                "probleme": "archive écrite par une version plus récente "
+                            "de l'usine (schéma {} contre {})".format(
                                 fiche.get("schema"), store.VERSION_SCHEMA)}
 
     config.ensure_dirs()

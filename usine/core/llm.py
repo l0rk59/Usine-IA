@@ -172,13 +172,13 @@ def _expliquer(p: config.Provider, exc: Exception, modele: str = "") -> str:
             # « github_models_retirement_brownout ». Le message brut donnait a
             # chercher une cle ou un identifiant de modele, alors qu'il n'y
             # avait rien a corriger — le service ferme.
-            return ("{} ne sert plus : le service a ete retire par son "
-                    "editeur. Ce n'est ni votre cle ni votre configuration. "
+            return ("{} ne sert plus : le service a été retiré par son "
+                    "éditeur. Ce n'est ni votre clé ni votre configuration. "
                     "Retirez-le de usine/core/config.py, ou laissez l'usine "
                     "passer au suivant.".format(p.name))
         if _modele_inconnu(exc):
-            return ("le modele « {} » n'existe plus chez {}. Les fournisseurs "
-                    "retirent leurs modeles sans prevenir : verifiez avec "
+            return ("le modèle « {} » n'existe plus chez {}. Les fournisseurs "
+                    "retirent leurs modèles sans prévenir : vérifiez avec "
                     "« usine docteur --modeles », puis corrigez "
                     "usine/core/config.py.".format(modele or p.model_for("standard"),
                                                    p.name))
@@ -186,29 +186,29 @@ def _expliquer(p: config.Provider, exc: Exception, modele: str = "") -> str:
         # Unauthorized » ne disait pas : la cle, le debit, le credit.
         statut = getattr(exc, "statut", None)
         if statut == REFUS_DU_MODELE:
-            return "le modele a refuse la demande : « {} »".format(
+            return "le modèle a refusé la demande : « {} »".format(
                 (getattr(exc, "corps", "") or "")[:90].strip())
         if statut in (401, 403):
-            return "cle refusee (HTTP {}) : verifiez {} dans .env".format(
-                statut, p.api_key_env or "la cle")
+            return "clé refusée (HTTP {}) : vérifiez {} dans .env".format(
+                statut, p.api_key_env or "la clé")
         if statut == 429:
-            return "limite de debit atteinte (HTTP 429)"
+            return "limite de débit atteinte (HTTP 429)"
         if statut == 402:
-            return "credit epuise (HTTP 402)"
+            return "crédit épuisé (HTTP 402)"
         return texte
     minuscules = texte.lower()
     if isinstance(exc, HttpErreur) and exc.statut == 404:
-        return ("modele absent du serveur. Telechargez-le : {}"
+        return ("modèle absent du serveur. Téléchargez-le : {}"
                 .format("ollama pull " + p.model_for("standard")
                         if p.name == "ollama"
-                        else "verifiez le fichier .gguf passe a llama-server"))
+                        else "vérifiez le fichier .gguf passé à llama-server"))
     if any(mot in minuscules for mot in
            ("refused", "refusee", "unreachable", "timed out", "timeout",
             "connexion", "urlerror", "no route")):
         if "timed out" in minuscules or "timeout" in minuscules:
-            return ("pas de reponse en {} s. Un modele de cette taille est "
-                    "peut-etre trop lourd pour cet appareil : essayez un "
-                    "modele plus petit (OLLAMA_MODEL=qwen2.5:0.5b)."
+            return ("pas de réponse en {} s. Un modèle de cette taille est "
+                    "peut-être trop lourd pour cet appareil : essayez un "
+                    "modèle plus petit (OLLAMA_MODEL=qwen2.5:0.5b)."
                     .format(p.timeout))
         return ("serveur injoignable sur {}. Lancez-le : {}"
                 .format(p.base_url, p.signup))
@@ -313,13 +313,13 @@ class _Bilan:
                 fin = min(fins)
         if not fin:
             return ""
-        return "au repos jusqu'a {}{}".format(
+        return "au repos jusqu'à {}{}".format(
             _heure(fin), " ({})".format(raison) if raison else "")
 
     def message(self) -> str:
-        lignes = ["Aucun fournisseur n'a pu repondre."]
+        lignes = ["Aucun fournisseur n'a pu répondre."]
         if self.essayes:
-            lignes.append("  Essayes :")
+            lignes.append("  Essayés :")
             for nom, textes in self.essayes.items():
                 p = config.PROVIDERS_BY_NAME.get(nom)
                 vus: List[str] = []
@@ -334,7 +334,7 @@ class _Bilan:
                     ligne += " — " + repos
                 lignes.append(ligne)
         if self.ecartes:
-            lignes.append("  Pas essayes :")
+            lignes.append("  Pas essayés :")
             for nom, texte in self.ecartes.items():
                 p = config.PROVIDERS_BY_NAME.get(nom)
                 repos = self._repos(p) if p else ""
@@ -342,7 +342,7 @@ class _Bilan:
         sans_cle = [p.name for p in config.active_providers(include_unavailable=True)
                     if not p.available()]
         if sans_cle:
-            lignes.append("  Sans cle : " + ", ".join(sans_cle))
+            lignes.append("  Sans clé : " + ", ".join(sans_cle))
         retour = _premier_retour_connu()
         if retour:
             lignes.append("  Le premier devrait rouvrir vers {}.".format(
@@ -795,8 +795,8 @@ def generer(
         fournisseurs = [f for f in fournisseurs if f.local]
         if not fournisseurs:
             raise PlusDeFournisseur(
-                "Hors ligne, et aucun serveur d'IA locale n'est configure "
-                "(USINE_PROVIDERS les ecarte). Rien n'a ete envoye.")
+                "Hors ligne, et aucun serveur d'IA locale n'est configuré "
+                "(USINE_PROVIDERS les écarte). Rien n'a été envoyé.")
     # Les fournisseurs ecartes par « eviter » ne sont pas perdus : ils
     # servent si les autres n'ont rien donne. Mieux vaut une relecture par le
     # meme modele que pas de relecture du tout.
@@ -816,7 +816,7 @@ def generer(
             fournisseurs = restants
     if not fournisseurs:
         raise PlusDeFournisseur(
-            "Aucun fournisseur configure. Lancez 'usine cles' pour la marche a suivre."
+            "Aucun fournisseur configuré. Lancez « usine cles » pour la marche à suivre."
         )
 
     # Une limite PAR MINUTE n'est pas un quota epuise : elle se libere en
@@ -924,14 +924,14 @@ def generer(
                             # n'a pas a trancher a la place de l'editeur. Ce qu'elle
                             # peut trancher, c'est qu'un service qui se declare
                             # retire ne reviendra pas dans l'heure.
-                            _reposer(p.name, 86400, "service retire")
+                            _reposer(p.name, 86400, "service retiré")
                             break
                         if exc.statut in (401, 403):
                             # Cle refusee : on ecarte la cle, pas le fournisseur.
                             if cle:
-                                lot.mettre_au_repos(cle, 3600, "cle refusee")
+                                lot.mettre_au_repos(cle, 3600, "clé refusée")
                             else:
-                                _reposer(p.name, 3600, "cle refusee")
+                                _reposer(p.name, 3600, "clé refusée")
                             break
                         if exc.statut == 429:
                             # Le service dit lui-meme combien de temps attendre :
@@ -941,15 +941,15 @@ def generer(
                             demande = exc.patienter()
                             if cle:
                                 lot.mettre_au_repos(cle, demande or 120,
-                                                    "limite de debit")
+                                                    "limite de débit")
                             else:
-                                _reposer(p.name, demande or 90, "limite de debit")
+                                _reposer(p.name, demande or 90, "limite de débit")
                             break
                         if exc.statut == 402:
                             if cle:
-                                lot.mettre_au_repos(cle, 3600, "credit epuise")
+                                lot.mettre_au_repos(cle, 3600, "crédit épuisé")
                             else:
-                                _reposer(p.name, 1800, "credit epuise")
+                                _reposer(p.name, 1800, "crédit épuisé")
                             break
                         if _modele_inconnu(exc):
                             # Modele inconnu. Avant de mettre le fournisseur au
@@ -973,7 +973,7 @@ def generer(
                                     "substitution", fournisseur=p.name, role=role,
                                     avant=refuse, apres=remplacant)
                                 continue
-                            _reposer(p.name, 1800, "modele inconnu")
+                            _reposer(p.name, 1800, "modèle inconnu")
                             fournisseur_hors_jeu = True
                             break
                         if not exc.temporaire:
@@ -1037,8 +1037,8 @@ def generer(
 
     if bilan.tous_ont_refuse():
         raise DemandeRefusee(
-            "Tous les modeles essayes ont refuse cette demande : c'est son "
-            "contenu qu'ils declinent, pas une panne ni un quota.\n"
+            "Tous les modèles essayés ont refusé cette demande : c'est son "
+            "contenu qu'ils déclinent, pas une panne ni un quota.\n"
             + bilan.message())
     raise PlusDeFournisseur(bilan.message())
 
@@ -1172,10 +1172,10 @@ def generer_json(
     # Le message dit quoi faire, pas seulement ce qui a echoue : « JSON
     # introuvable » n'apprend rien a qui produit depuis un telephone.
     raise ValueError(
-        "Aucun modele n'a su repondre en JSON apres {} essais ({}). C'est "
-        "presque toujours un modele trop petit pour tenir un format : "
-        "essayez un autre fournisseur, ou un modele plus grand si vous etes "
-        "en IA locale. Detail : {}".format(
+        "Aucun modèle n'a su répondre en JSON après {} essais ({}). C'est "
+        "presque toujours un modèle trop petit pour tenir un format : "
+        "essayez un autre fournisseur, ou un modèle plus grand si vous êtes "
+        "en IA locale. Détail : {}".format(
             essais, ", ".join(tentes) or "aucun fournisseur", derniere))
 
 

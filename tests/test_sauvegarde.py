@@ -137,7 +137,7 @@ class TestArchive(unittest.TestCase):
             zip_.writestr("autre.txt", "x")
         fiche = sauvegarde.inspecter(vide)
         self.assertFalse(fiche["valide"])
-        self.assertIn("base de donnees", fiche["probleme"])
+        self.assertIn("base de données", fiche["probleme"])
 
 
 class TestRestauration(unittest.TestCase):
@@ -220,7 +220,7 @@ class TestRestauration(unittest.TestCase):
                 cible.writestr(nom, octets)
         resultat = sauvegarde.restaurer(futur)
         self.assertFalse(resultat["valide"])
-        self.assertIn("plus recente", resultat["probleme"])
+        self.assertIn("plus récente", resultat["probleme"])
 
     def test_les_produits_reviennent_quand_ils_sont_dans_l_archive(self):
         dossier = config.PRODUITS_DIR / "sauve-p1"
@@ -257,7 +257,7 @@ class TestArchiveDemesuree(unittest.TestCase):
                         "le temoin doit rester petit une fois compresse")
         fiche = sauvegarde.inspecter(archive)
         self.assertFalse(fiche["valide"])
-        self.assertIn("memoire", fiche["probleme"])
+        self.assertIn("mémoire", fiche["probleme"])
 
     def test_restaurer_refuse_la_meme_archive(self):
         """La borne doit tenir sur le chemin qui decompresse, pas seulement

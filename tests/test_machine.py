@@ -342,7 +342,7 @@ class MiseAJour(unittest.TestCase):
             resultat = maj.par_archive("main", dossier=config.WORKDIR)
         self.assertFalse(resultat["ok"])
         message = str(resultat["erreur"])
-        self.assertIn("prive", message)
+        self.assertIn("privé", message)
         self.assertIn("git", message)
 
     def test_les_modifications_locales_sont_signalees_avant_d_ecraser(self):

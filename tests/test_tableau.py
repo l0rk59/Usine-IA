@@ -258,7 +258,7 @@ class TestVeille(BaseServeur):
                                {"x": {"id": "x", "statut": "en_cours"}}):
             statut, corps = self.json("/api/veille", {"sujet": "autre chose"})
         self.assertEqual(statut, 429)
-        self.assertIn("deja en cours", corps["erreur"])
+        self.assertIn("déjà en cours", corps["erreur"])
 
 
 class TestEmpreintesManquantes(BaseServeur):
@@ -569,7 +569,7 @@ class TestTeleversement(BaseServeur):
         avant = self._archives()
         statut, refus = self._envoyer(octets, "bombe.zip")
         self.assertEqual(statut, 400)
-        self.assertIn("refuse de la charger en memoire", refus["erreur"])
+        self.assertIn("refuse de la charger en mémoire", refus["erreur"])
         self.assertEqual(self._archives(), avant)
 
     def test_un_corps_vide_est_refuse(self):

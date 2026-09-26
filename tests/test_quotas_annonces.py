@@ -57,9 +57,9 @@ class LaRemiseAZeroNEstPasLaFenetre(unittest.TestCase):
         groq = config.PROVIDERS_BY_NAME["groq"]
         quota = groq.quota("standard")
         self.assertEqual(diagnostic._correspondance(quota.rpd, quota),
-                         "requetes par jour")
+                         "requêtes par jour")
         self.assertEqual(diagnostic._correspondance(quota.rpm, quota),
-                         "requetes par minute")
+                         "requêtes par minute")
         self.assertEqual(diagnostic._correspondance(quota.tpm, quota),
                          "jetons par minute")
 
@@ -115,7 +115,7 @@ class LesTroisVerdicts(unittest.TestCase):
         })
         requetes = next(m for m in ligne["mesures"] if m["genre"] == "requetes")
         self.assertEqual(requetes["verdict"], "accorde")
-        self.assertEqual(requetes["correspond"], "requetes par jour")
+        self.assertEqual(requetes["correspond"], "requêtes par jour")
 
     def test_un_chiffre_inconnu_rend_la_mesure_sans_verdict(self):
         ligne = self._auditer({
@@ -262,8 +262,8 @@ class LeCompteurCompareDoitEtreCeluiDeLaBonneFenetre(unittest.TestCase):
                 config.PROVIDERS_BY_NAME["groq"], "m", correspond)
 
     def test_chaque_fenetre_lit_son_propre_compteur(self):
-        self.assertEqual(self._compteurs("requetes par minute"), 11)
-        self.assertEqual(self._compteurs("requetes par jour"), 22)
+        self.assertEqual(self._compteurs("requêtes par minute"), 11)
+        self.assertEqual(self._compteurs("requêtes par jour"), 22)
         self.assertEqual(self._compteurs("jetons par minute"), 33)
         self.assertEqual(self._compteurs("jetons par jour"), 44)
 
@@ -298,7 +298,7 @@ class LeCompteurCompareDoitEtreCeluiDeLaBonneFenetre(unittest.TestCase):
                                return_value=22):
             ligne = diagnostic.auditer_quotas()["lignes"][0]
         requetes = next(m for m in ligne["mesures"] if m["genre"] == "requetes")
-        self.assertEqual(requetes["correspond"], "requetes par minute")
+        self.assertEqual(requetes["correspond"], "requêtes par minute")
         self.assertEqual(requetes["compte_usine"], 11,
                          "le chiffre par minute a ete compare au compteur "
                          "du jour")

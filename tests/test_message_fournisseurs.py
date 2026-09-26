@@ -94,15 +94,15 @@ class ChaqueFournisseurUneFois(_Cas):
     def test_une_cle_refusee_dit_quelle_variable_verifier(self):
         message = self._message(["gemini"],
                                 {"gemini": http.HttpErreur(401, "Unauthorized")})
-        self.assertIn("cle refusee", message)
+        self.assertIn("clé refusée", message)
         self.assertIn("GEMINI_API_KEY", message)
 
     def test_un_repos_dit_jusqu_a_quand_et_pourquoi(self):
         llm._reposer("groq", 600, "limite de debit")
         message = self._message(["groq", "mistral"],
                                 {"mistral": http.HttpErreur(500, "erreur")})
-        self.assertIn("Pas essayes", message)
-        self.assertIn("groq : au repos jusqu'a {} (limite de debit)".format(
+        self.assertIn("Pas essayés", message)
+        self.assertIn("groq : au repos jusqu'à {} (limite de debit)".format(
             time.strftime("%H:%M", time.localtime(llm._REPOS["groq"]))), message)
 
     def test_un_quota_du_jour_dit_quand_il_repart(self):
@@ -117,7 +117,7 @@ class ChaqueFournisseurUneFois(_Cas):
         pool_cles.oublier()
         message = self._message(["groq", "mistral"],
                                 {"groq": http.HttpErreur(500, "erreur")})
-        self.assertIn("Sans cle : mistral", message)
+        self.assertIn("Sans clé : mistral", message)
         self.assertNotIn("- mistral :", message)
 
     def test_aucune_cle_n_apparait_dans_le_message(self):

@@ -158,7 +158,7 @@ def _types_offerts() -> List[Dict[str, Any]]:
     sait pas encore. Il ne porte aucun champ : les reglages d'un type ne
     peuvent pas etre demandes avant que le type soit connu.
     """
-    return [{"cle": AUTO, "nom": "L'usine decide",
+    return [{"cle": AUTO, "nom": "L'usine décide",
              "resume": "l'usine choisit le type qui se vend le mieux",
              "detail": "Elle lit le sujet, ou cherche une niche, puis choisit "
                        "parmi les {} types qu'elle sait fabriquer".format(
@@ -306,7 +306,7 @@ def _lancer(travail_id: str, type_produit: str, options: Dict[str, Any]) -> None
                     else "Aucune niche trouvee : donnez-en une.")
             return
         if choix.get("source") == "froid" and not choix.get("mesure", True):
-            journal("Aucune source de marche n'a repondu : cette niche est "
+            journal("Aucune source de marché n'a répondu : cette niche est "
                     "proposée, pas mesurée.")
         options["sujet"] = sujet
         # Les reglages qui voyagent avec une promesse de lecture. Sans cette
@@ -407,7 +407,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
     def _corps_json(self) -> Optional[Dict[str, Any]]:
         longueur = int(self.headers.get("Content-Length") or 0)
         if longueur > 64_000:
-            self._json({"erreur": "requete trop volumineuse"}, 413)
+            self._json({"erreur": "requête trop volumineuse"}, 413)
             return None
         brut = self.rfile.read(longueur).decode("utf-8", "replace")
         try:
@@ -460,19 +460,19 @@ class Gestionnaire(BaseHTTPRequestHandler):
         if not modifie:
             return True
         if (self.headers.get("Sec-Fetch-Site") or "").lower() == "cross-site":
-            self._json({"erreur": "requete venue d'un autre site"}, 403)
+            self._json({"erreur": "requête venue d'un autre site"}, 403)
             return False
         origine = (self.headers.get("Origin") or "").strip().lower()
         if origine and origine != "null":
             nom = urlparse(origine).netloc
             if nom not in admis:
-                self._json({"erreur": "origine refusee : {}".format(
+                self._json({"erreur": "origine refusée : {}".format(
                     origine[:60])}, 403)
                 return False
         elif origine == "null":
             # Une page ouverte depuis un fichier, un iframe isole : aucune
             # raison legitime de modifier l'atelier depuis la.
-            self._json({"erreur": "origine opaque refusee"}, 403)
+            self._json({"erreur": "origine opaque refusée"}, 403)
             return False
         return True
 
@@ -516,7 +516,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
             try:
                 identifiant = int(chemin.rsplit("/", 1)[-1])
             except ValueError:
-                self._json({"erreur": "numero de test invalide"}, 400)
+                self._json({"erreur": "numéro de test invalide"}, 400)
                 return
             detail = _detail_ab(identifiant)
             self._json(detail, 200 if "erreur" not in detail else 404)
@@ -653,7 +653,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
         with _VERROU:
             en_cours = [t for t in TRAVAUX.values() if t["statut"] == "en_cours"]
         if len(en_cours) >= 2:
-            self._json({"erreur": "deux fabrications sont deja en cours ; "
+            self._json({"erreur": "deux fabrications sont déjà en cours ; "
                                   "attendez qu'elles se terminent"}, 429)
             return
         try:
@@ -740,7 +740,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
         if action != "demarrer":
             return {"erreur": "action inconnue"}
         if verrou_actif() is not None:
-            return {"erreur": "une usine tourne deja (pid {})".format(verrou_actif())}
+            return {"erreur": "une usine tourne déjà (pid {})".format(verrou_actif())}
         if not file_prod.compter()["en_attente"] and not options.get("auto"):
             return {"erreur": "la file est vide"}
 
@@ -836,7 +836,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
             return ({"erreur": "sujet manquant"}, 400)
         periode = str(options.get("periode") or "year")
         if periode not in ("day", "week", "month", "year", "all"):
-            return ({"erreur": "periode inconnue"}, 400)
+            return ({"erreur": "période inconnue"}, 400)
         combien = min(4, max(1, _entier(options.get("communautes")) or 2))
 
         with _VERROU:
@@ -844,7 +844,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if en_cours:
                 # Deux consultations simultanees se prennent mutuellement
                 # le 429 : Reddit compte par adresse, pas par onglet.
-                return ({"erreur": "une veille est deja en cours"}, 429)
+                return ({"erreur": "une veille est déjà en cours"}, 429)
             veille_id = uuid.uuid4().hex[:12]
             VEILLES[veille_id] = {
                 "id": veille_id, "sujet": sujet[:300], "periode": periode,
@@ -861,7 +861,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
             return ({"erreur": "sujet manquant"}, 400)
         with _VERROU:
             if any(m["statut"] == "en_cours" for m in MARCHES.values()):
-                return ({"erreur": "un sondage est deja en cours"}, 429)
+                return ({"erreur": "un sondage est déjà en cours"}, 429)
             marche_id = uuid.uuid4().hex[:12]
             MARCHES[marche_id] = {"id": marche_id, "sujet": sujet[:300],
                                   "statut": "en_cours", "debut": time.time(),
@@ -903,7 +903,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 en_cours = [t for t in TRAVAUX.values()
                             if t["statut"] == "en_cours"]
                 if len(en_cours) >= 2:
-                    return ({"erreur": "deux travaux sont deja en cours"}, 429)
+                    return ({"erreur": "deux travaux sont déjà en cours"}, 429)
                 travail_id = uuid.uuid4().hex[:12]
                 _ranger_travaux()
                 TRAVAUX[travail_id] = {
@@ -998,7 +998,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
             with _VERROU:
                 if len([t for t in TRAVAUX.values()
                         if t["statut"] == "en_cours"]) >= 2:
-                    return ({"erreur": "deux travaux sont deja en cours"}, 429)
+                    return ({"erreur": "deux travaux sont déjà en cours"}, 429)
                 travail_id = uuid.uuid4().hex[:12]
                 _ranger_travaux()
                 TRAVAUX[travail_id] = {
@@ -1021,11 +1021,11 @@ class Gestionnaire(BaseHTTPRequestHandler):
             commande = carnet.commande(dossier)
             if not commande:
                 return ({"erreur": "ce produit n'a pas garde la commande qui "
-                                   "l'a fabrique ; relancez-la a la main"}, 409)
+                                   "l'a fabriqué ; relancez-la à la main"}, 409)
             with _VERROU:
                 if len([t for t in TRAVAUX.values()
                         if t["statut"] == "en_cours"]) >= 2:
-                    return ({"erreur": "deux travaux sont deja en cours"}, 429)
+                    return ({"erreur": "deux travaux sont déjà en cours"}, 429)
                 travail_id = uuid.uuid4().hex[:12]
                 _ranger_travaux()
                 TRAVAUX[travail_id] = {
@@ -1114,7 +1114,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
         if not resultat["valide"]:
             return {"erreur": resultat["probleme"]}
         evenements.publier("journal",
-                           message="atelier restaure depuis " + archive.name)
+                           message="atelier restauré depuis " + archive.name)
         return {"restaure": True, "nom": archive.name,
                 "fichiers_produits": resultat["fichiers_produits"],
                 "refuses": resultat["refuses"],
@@ -1801,7 +1801,7 @@ def demarrer(port: int = 8777, hote: str = "127.0.0.1") -> int:
         # et la commande de fabrication a tout l'appareil du voisinage.
         jeton = securite.nouveau_jeton()
         reglages.ecrire({"jeton_web": jeton})
-        print("\n  Acces reseau detecte : un jeton a ete genere automatiquement.")
+        print("\n  Accès réseau détecté : un jeton a été généré automatiquement.")
 
     serveur = ThreadingHTTPServer((hote, port), Gestionnaire)
     serveur.daemon_threads = True
@@ -1812,13 +1812,13 @@ def demarrer(port: int = 8777, hote: str = "127.0.0.1") -> int:
     print("\n  Usine-IA — tableau de bord")
     print("  Ouvrez : {}".format(adresse))
     if not local:
-        print("  Attention : accessible depuis tout le reseau local.")
+        print("  Attention : accessible depuis tout le réseau local.")
     print("  Sur Termux : termux-open-url '{}'".format(adresse))
-    print("  Arreter : Ctrl+C\n")
+    print("  Arrêter : Ctrl+C\n")
     try:
         serveur.serve_forever()
     except KeyboardInterrupt:
-        print("\n  Tableau de bord arrete.")
+        print("\n  Tableau de bord arrêté.")
     finally:
         serveur.server_close()
     return 0

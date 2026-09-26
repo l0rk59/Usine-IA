@@ -114,8 +114,8 @@ class UnServiceRetireSeNommeAinsi(unittest.TestCase):
         texte = llm._expliquer(distant, HttpErreur(
             410, "Gone",
             corps='{"error":{"code":"github_models_retirement_brownout"}}'))
-        self.assertIn("retire par son editeur", texte)
-        self.assertIn("ni votre cle", texte)
+        self.assertIn("retiré par son éditeur", texte)
+        self.assertIn("ni votre clé", texte)
 
     def test_un_410_sans_explication_suffit(self):
         """Tous les services retires ne le disent pas dans leur corps.

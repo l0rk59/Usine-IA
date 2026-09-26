@@ -170,7 +170,7 @@ def bilan() -> Dict[str, Any]:
     _assurer()
     lignes = historique(500)
     if not lignes:
-        return {"productions": 0, "message": "Aucune production enregistree."}
+        return {"productions": 0, "message": "Aucune production enregistrée."}
 
     reussies = [l for l in lignes if l["reussi"]]
     notes = [l["note"] for l in reussies if l["note"] is not None]
@@ -235,7 +235,7 @@ def conseils() -> List[Dict[str, str]]:
         })
 
     for critere, libelle in (("par_ton", "ton"), ("par_taille", "volume"),
-                             ("par_qualite", "niveau de qualite")):
+                             ("par_qualite", "niveau de qualité")):
         groupes = donnees[critere]
         if len(groupes) >= 2:
             meilleur, pire = groupes[0], groupes[-1]
@@ -258,7 +258,7 @@ def conseils() -> List[Dict[str, str]]:
             recommandations.append({
                 "sujet": "relecture",
                 "conseil": "La relecture ne fait gagner que {} point en moyenne. "
-                           "Passez en qualite « rapide » pour economiser vos "
+                           "Passez en qualité « rapide » pour économiser vos "
                            "quotas.".format(round(gain, 2)),
                 "appui": "{} productions relues".format(donnees["reussites"]),
             })
@@ -266,7 +266,7 @@ def conseils() -> List[Dict[str, str]]:
             recommandations.append({
                 "sujet": "relecture",
                 "conseil": "La relecture fait gagner {} points en moyenne : le "
-                           "niveau « exigeant » vaut son cout ici.".format(
+                           "niveau « exigeant » vaut son coût ici.".format(
                                round(gain, 2)),
                 "appui": "{} productions relues".format(donnees["reussites"]),
             })
@@ -275,8 +275,8 @@ def conseils() -> List[Dict[str, str]]:
         principal = donnees["defauts_frequents"][0]
         if principal["occurrences"] >= 3:
             recommandations.append({
-                "sujet": "defaut recurrent",
-                "conseil": "« {} » revient {} fois. Ajoutez une regle a l'agent "
+                "sujet": "défaut récurrent",
+                "conseil": "« {} » revient {} fois. Ajoutez une règle à l'agent "
                            "redacteur : usine prompts-systeme --exporter".format(
                                principal["defaut"], principal["occurrences"]),
                 "appui": "{} occurrences".format(principal["occurrences"]),
@@ -298,8 +298,8 @@ def conseils() -> List[Dict[str, str]]:
     if not recommandations:
         recommandations.append({
             "sujet": "stable",
-            "conseil": "Aucun ecart significatif entre vos reglages. Continuez, "
-                       "et variez un parametre a la fois pour pouvoir comparer.",
+            "conseil": "Aucun écart significatif entre vos réglages. Continuez, "
+                       "et variez un paramètre à la fois pour pouvoir comparer.",
             "appui": "{} productions".format(donnees["productions"]),
         })
     return recommandations

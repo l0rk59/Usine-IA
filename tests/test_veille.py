@@ -193,7 +193,7 @@ class TestResume(unittest.TestCase):
     def test_le_resume_annonce_sa_propre_limite(self):
         rapport = veille.Veille(niche="x", discussions=[
             veille.Discussion("Un titre", "")])
-        self.assertIn("non representative", veille.resume_pour_ia(rapport))
+        self.assertIn("non représentative", veille.resume_pour_ia(rapport))
 
 
 if __name__ == "__main__":

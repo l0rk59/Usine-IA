@@ -175,7 +175,7 @@ class TestAutresLangages(unittest.TestCase):
                          "manifest.json")
         inconnu = V.analyser_fichier("a.zzz", "n'importe quoi")
         self.assertTrue(inconnu.valide)
-        self.assertIn("aucune verification", inconnu.verifie_par)
+        self.assertIn("aucune vérification", inconnu.verifie_par)
 
 
 class TestChaineLogicielle(unittest.TestCase):

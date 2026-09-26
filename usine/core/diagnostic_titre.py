@@ -59,7 +59,7 @@ class Diagnostic:
             morceaux.append("+ " + " · ".join(self.atouts))
         if self.reserves:
             morceaux.append("- " + " · ".join(self.reserves))
-        return " | ".join(morceaux) or "rien a signaler"
+        return " | ".join(morceaux) or "rien à signaler"
 
 
 def diagnostiquer(titre: str) -> Diagnostic:
@@ -90,7 +90,7 @@ def diagnostiquer(titre: str) -> Diagnostic:
     if a_nombre:
         diagnostic.atouts.append("contient un chiffre")
     if a_delai:
-        diagnostic.atouts.append("annonce un delai")
+        diagnostic.atouts.append("annonce un délai")
     if audience:
         diagnostic.atouts.append("nomme son lecteur ({})".format(audience[0]))
     if 4 <= len(mots) <= 12:
@@ -100,7 +100,7 @@ def diagnostiquer(titre: str) -> Diagnostic:
         diagnostic.reserves.append(
             "{} caracteres : tronque sur la plupart des fiches".format(len(propre)))
     if len(mots) < 3:
-        diagnostic.reserves.append("tres court : peu de prise pour la recherche")
+        diagnostic.reserves.append("très court : peu de prise pour la recherche")
     if creux_trouves:
         diagnostic.reserves.append(
             "mot(s) creux : {}".format(", ".join(creux_trouves[:3])))

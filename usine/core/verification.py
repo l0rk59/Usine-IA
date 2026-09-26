@@ -100,7 +100,7 @@ class Rapport:
             return "{} : NE COMPILE PAS — {}".format(
                 self.fichier, self.casse[0].message)
         if self.dangers:
-            return "{} : syntaxe correcte, {} construction(s) a relire".format(
+            return "{} : syntaxe correcte, {} construction(s) à relire".format(
                 self.fichier, len(self.dangers))
         if self.soucis:
             return "{} : correct, {} remarque(s)".format(
@@ -209,8 +209,8 @@ _JS_DANGERS = [
     (r"\beval\s*\(", "appelle eval()"),
     (r"\bnew\s+Function\s*\(", "construit une fonction depuis du texte"),
     (r"require\s*\(\s*['\"]child_process", "lance des processus"),
-    (r"require\s*\(\s*['\"]fs['\"]", "acces au systeme de fichiers"),
-    (r"\bdocument\.write\s*\(", "document.write() : a eviter"),
+    (r"require\s*\(\s*['\"]fs['\"]", "accès au système de fichiers"),
+    (r"\bdocument\.write\s*\(", "document.write() : à éviter"),
     (r"\binnerHTML\s*=", "innerHTML : risque d'injection si la valeur vient "
                          "de l'utilisateur"),
 ]
@@ -240,13 +240,13 @@ def analyser_js(code: str, nom: str = "script.js") -> Rapport:
                     "casse", "syntaxe", _message_node(resultat.stderr or ""),
                     extrait=(resultat.stderr or "").strip()[:300]))
         except (subprocess.TimeoutExpired, OSError) as exc:
-            rapport.verifie_par = "controle structurel (node indisponible)"
+            rapport.verifie_par = "contrôle structurel (node indisponible)"
             _controle_structurel(code, rapport)
         finally:
             os.unlink(chemin)
     else:
         # Termux n'a pas node par defaut. On verifie ce qu'on peut, et on le dit.
-        rapport.verifie_par = "controle structurel (node absent)"
+        rapport.verifie_par = "contrôle structurel (node absent)"
         _controle_structurel(code, rapport)
 
     for motif, message in _JS_DANGERS:
@@ -269,7 +269,7 @@ def _message_node(stderr: str) -> str:
     for ligne in lignes:
         if not ligne.startswith("Node.js v") and not ligne.startswith("at "):
             return ligne
-    return "node a refuse le fichier"
+    return "node a refusé le fichier"
 
 
 def _controle_structurel(code: str, rapport: Rapport) -> None:
@@ -320,7 +320,7 @@ def analyser_json(texte: str, nom: str = "data.json",
             if cle not in donnees:
                 rapport.valide = False
                 rapport.soucis.append(Souci(
-                    "casse", "cle obligatoire absente : « {} »".format(cle)))
+                    "casse", "clé obligatoire absente : « {} »".format(cle)))
     return rapport
 
 
@@ -342,7 +342,7 @@ def analyser_manifeste(texte: str, nom: str = "manifest.json") -> Rapport:
     # modele produit de temps en temps.
     if not isinstance(donnees, dict):
         rapport.soucis.append(Souci(
-            "casse", "le manifeste doit etre un objet JSON, pas un {}".format(
+            "casse", "le manifeste doit être un objet JSON, pas un {}".format(
                 type(donnees).__name__)))
         rapport.valide = False
         rapport.executable = False
@@ -356,7 +356,7 @@ def analyser_manifeste(texte: str, nom: str = "manifest.json") -> Rapport:
 
     if not re.match(r"^\d+(\.\d+){0,3}$", str(donnees.get("version", ""))):
         rapport.soucis.append(Souci(
-            "casse", "« version » doit etre une suite de nombres, ex : 1.0.0"))
+            "casse", "« version » doit être une suite de nombres, ex : 1.0.0"))
         rapport.valide = False
 
     permissions = set(donnees.get("permissions") or []) | set(
@@ -424,7 +424,7 @@ def analyser_html(texte: str, nom: str = "index.html") -> Rapport:
                                   texte):
         rapport.soucis.append(Souci(
             "avertissement",
-            "depend de {} : le produit ne fonctionnera plus hors ligne".format(
+            "dépend de {} : le produit ne fonctionnera plus hors ligne".format(
                 occurrence.group(1)[:60]),
             ligne=texte[: occurrence.start()].count("\n") + 1))
 
@@ -520,7 +520,7 @@ def analyser_fichier(chemin: str, contenu: str) -> Rapport:
     analyseur = _ANALYSEURS.get(Path(chemin).suffix.lower())
     if analyseur is None:
         return Rapport(fichier=nom, langage="texte",
-                       verifie_par="aucune verification pour ce format")
+                       verifie_par="aucune vérification pour ce format")
     return analyseur(contenu, nom)
 
 
