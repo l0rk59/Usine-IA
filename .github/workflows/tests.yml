@@ -8,6 +8,11 @@ on:
   push:
     branches: ["**"]
   pull_request:
+  # Relancer a la main, sans commit. Le 26/09/2026, les cinq jobs d'une
+  # poussee sont morts en deux secondes, sans etape ni journal — les
+  # coureurs n'ont jamais demarre. Sans ce declencheur, la seule relance
+  # possible etait un commit vide, que ce depot s'interdit.
+  workflow_dispatch:
 
 jobs:
   suite:
