@@ -198,11 +198,22 @@ vous sera envoyée.
         "(Claude, ChatGPT, Gemini, Mistral ou un modèle local). Les prompts "
         "sont classés par intention : commencez par la catégorie qui "
         "correspond à votre tâche du jour."),
+    "prompts_mode_emploi_image": (
+        "Chaque prompt est autonome et rédigé en anglais, la langue que les "
+        "générateurs d'images comprennent le mieux. Remplacez les variables "
+        "entre crochets, puis collez le texte dans votre outil (Midjourney, "
+        "Stable Diffusion, DALL-E ou un modèle local). Le format d'image en "
+        "fin de prompt (« --ar 3:2 ») est propre à Midjourney : retirez-le "
+        "ailleurs, et réglez le format dans l'outil."),
     "prompts_conseil_titre": "Conseil",
     "prompts_conseil": (
         "Gardez le contexte d'une conversation à l'autre : plus l'IA connaît "
         "votre activité, meilleurs sont les résultats. Collez d'abord un "
         "descriptif de votre activité, puis enchaînez les prompts du pack."),
+    "prompts_conseil_image": (
+        "Générez quatre variantes, gardez la meilleure, puis ne changez "
+        "qu'un élément à la fois — la lumière, le cadrage ou la palette. "
+        "Changer tout d'un coup empêche de savoir ce qui a amélioré l'image."),
     "prompts_colonnes": ("Catégorie", "Titre", "Quand l'utiliser", "Prompt",
                          "Astuce"),
     "prompts_quand": "Quand l'utiliser",
@@ -607,12 +618,23 @@ Write to {contact}.
         "of your choice (Claude, ChatGPT, Gemini, Mistral or a local model). "
         "The prompts are grouped by intent: start with the category that "
         "matches today's task."),
+    "prompts_mode_emploi_image": (
+        "Each prompt stands alone and is written in English, the language "
+        "image generators understand best. Replace the bracketed variables, "
+        "then paste the text into your tool (Midjourney, Stable Diffusion, "
+        "DALL-E or a local model). The aspect ratio at the end of a prompt "
+        "(\"--ar 3:2\") is Midjourney syntax: remove it elsewhere and set the "
+        "format in the tool."),
     "prompts_conseil_titre": "Tip",
     "prompts_conseil": (
         "Keep the context from one conversation to the next: the more the AI "
         "knows about your work, the better the results. Paste a description "
         "of your work first, then run the prompts of the pack one after "
         "another."),
+    "prompts_conseil_image": (
+        "Generate four variations, keep the best one, then change one thing "
+        "at a time — the light, the framing or the palette. Changing "
+        "everything at once hides what actually improved the image."),
     "prompts_colonnes": ("Category", "Title", "When to use it", "Prompt", "Tip"),
     "prompts_quand": "When to use it",
     "prompts_astuce": "Tip",

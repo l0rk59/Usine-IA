@@ -69,6 +69,13 @@ def niveaux_ebook() -> Tuple[str, ...]:
     return tuple(NIVEAUX)
 
 
+def cibles_prompts() -> Dict[str, str]:
+    """Les outils qu'un pack de prompts sait viser, et leur nom."""
+    from .pack_prompts import CIBLES
+
+    return {cle: fiche["nom"] for cle, fiche in CIBLES.items()}
+
+
 def cibles_logiciel() -> Tuple[str, ...]:
     """Ce qu'un produit logiciel peut etre : outil, page web, extension."""
     from .logiciel import CIBLES
@@ -635,12 +642,21 @@ TYPES: List[TypeProduit] = [
         formats=("pdf", "csv", "json", "html", "md"),
         minutes=(5, 12),
         quantite=("nombre", "Combien de prompts", "50"),
-        mots_cles=("prompt", "ia", "chatgpt", "automatisation", "productivite"),
+        options={"cible": None},
+        mots_cles=("prompt", "ia", "chatgpt", "automatisation", "productivite",
+                   "midjourney"),
         # Une liste de prompts : pas de rythme, pas de continuite, et la repetition y est voulue.
         prose=False,
         champs=(
             Champ("nombre", "-n/--nombre", "Nombre de prompts",
                   genre="entier", defaut=50),
+            Champ("cible", "--cible", "Outil visé", genre="choix",
+                  choix=("",) + tuple(cibles_prompts()),
+                  etiquettes=tuple((c, n) for c, n in cibles_prompts().items()),
+                  aide="Un prompt d'image décrit un sujet, un style, une "
+                       "lumière et un cadrage ; un prompt de texte donne un "
+                       "rôle et un format de sortie. Par défaut, l'usine "
+                       "choisit d'après le sujet."),
         ),
     ),
     TypeProduit(

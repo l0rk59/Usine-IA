@@ -516,3 +516,22 @@ Deux détails qui ne se voient qu'à l'usage :
 
 `tests/test_ebook_formes.py` suit chaque réglage jusqu'à l'invite qui part au
 modèle ; quatorze mutations, toutes vues.
+
+# Le pack de prompts ne savait écrire que pour ChatGPT
+
+*Mesuré le 26/09/2026.*
+
+Chaque prompt était rédigé pour un assistant de texte — « assigner un rôle,
+préciser le format de sortie » — et le mode d'emploi disait de le coller
+« dans Claude ou ChatGPT ». Or les packs de prompts **d'image** (Midjourney,
+Stable Diffusion) forment un rayon à part des places de marche. Un prompt
+d'image n'a ni rôle ni format de sortie : il décrit un sujet, un style, une
+lumière, un cadrage, une palette. Écrit comme un prompt de texte, il ne
+produit rien d'utilisable — et l'acheteur ne le découvre qu'en l'essayant.
+
+`--cible texte|image` (« Outil visé » dans le menu et le tableau de bord)
+change le plan des catégories, la consigne de rédaction, le mode d'emploi et
+le conseil livrés, et le style de couverture. Les prompts d'image sont écrits
+en anglais, la langue que ces outils comprennent le mieux ; le mode d'emploi
+le dit, et précise que « --ar 3:2 » est propre à Midjourney. Laissée vide, la
+cible est décidée d'après le sujet.

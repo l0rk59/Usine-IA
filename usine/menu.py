@@ -348,6 +348,8 @@ def _options_du_type(cle: str) -> Dict[str, object]:
                         "contradictions entre chapitres ? (1 appel IA)", False):
             choisies["relecture_ensemble"] = True
         return choisies
+    if cle == "prompts":
+        return _champs_du_catalogue(cle, ("cible",))
     if cle == "formation":
         return {"narration": True} if demander_oui(
             "Produire le script de narration a lire a voix haute ? "
