@@ -76,6 +76,19 @@ def cibles_prompts() -> Dict[str, str]:
     return {cle: fiche["nom"] for cle, fiche in CIBLES.items()}
 
 
+def compositions_outils() -> Dict[str, str]:
+    """Ce qu'une boite a outils peut etre, et son nom."""
+    from .boite_outils import COMPOSITIONS
+
+    return {cle: fiche["nom"] for cle, fiche in COMPOSITIONS.items()}
+
+
+def outils_modeles() -> Tuple[str, ...]:
+    from .modeles import OUTILS
+
+    return tuple(OUTILS)
+
+
 def cibles_logiciel() -> Tuple[str, ...]:
     """Ce qu'un produit logiciel peut etre : outil, page web, extension."""
     from .logiciel import CIBLES
@@ -687,9 +700,18 @@ TYPES: List[TypeProduit] = [
         minutes=(6, 14),
         quantite=("nombre", "Combien d'outils", "10"),
         mots_cles=("checklist", "modele", "outil", "procedure", "methode"),
+        options={"composition": None},
         champs=(
             Champ("nombre", "-n/--nombre", "Nombre d'outils",
                   genre="entier", defaut=10),
+            Champ("composition", "--composition", "Composition",
+                  genre="choix",
+                  choix=("",) + tuple(compositions_outils()),
+                  etiquettes=tuple(compositions_outils().items()),
+                  aide="Un pack de checklists, un pack de modèles et un "
+                       "classeur de suivi sont trois produits distincts, "
+                       "cherchés avec des mots différents. Par défaut, "
+                       "l'usine choisit d'après le sujet."),
         ),
     ),
     TypeProduit(
@@ -701,9 +723,18 @@ TYPES: List[TypeProduit] = [
         quantite=("nombre", "Combien de bases", "4"),
         mots_cles=("notion", "tableur", "modele", "systeme", "organisation",
                    "suivi", "tableau"),
+        options={"outil": None},
         champs=(
             Champ("nombre", "-n/--nombre", "Nombre de bases",
                   genre="entier", defaut=4),
+            Champ("outil", "--outil", "Outil cible", genre="choix",
+                  choix=("",) + tuple(outils_modeles()),
+                  etiquettes=(("notion", "Notion"),
+                              ("tableur", "Tableur (Sheets, Excel)"),
+                              ("les-deux", "Les deux")),
+                  aide="Notion relie des bases et filtre des vues ; un "
+                       "tableur calcule avec des formules. Par défaut, "
+                       "l'usine choisit d'après le sujet."),
         ),
     ),
     TypeProduit(

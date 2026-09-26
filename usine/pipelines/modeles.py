@@ -21,14 +21,64 @@ from ..render.page import ecrire_page
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
 
 
-def _systeme(ctx: Contexte, nombre: int) -> Dict[str, Any]:
+# L'outil ou le systeme vivra. Mesure du 26/09/2026 : l'invite visait
+# « Notion ou un tableur » a la fois, et le guide expliquait les deux a
+# chaque acheteur. Or ils ne se construisent pas pareil : Notion relie des
+# bases et filtre des vues ; un tableur calcule avec des formules et limite
+# la saisie par des listes deroulantes. Un systeme pense pour les deux
+# n'exploite ni l'un ni l'autre.
+OUTILS: Dict[str, Dict[str, str]] = {
+    "notion": {
+        "nom": "Notion",
+        "conception": "Le systeme vit dans Notion : exploite les RELATIONS "
+                      "entre bases (colonne « relation »), les rollups et au "
+                      "moins trois vues filtrees ou triees par base.",
+        "guide": "## Installation dans Notion\n(import de chaque CSV, puis "
+                 "creation des relations et des vues)\n",
+    },
+    "tableur": {
+        "nom": "un tableur (Google Sheets, Excel, LibreOffice)",
+        "conception": "Le systeme vit dans un tableur : chaque base est un "
+                      "onglet. Pas de relation : relie les onglets par une "
+                      "colonne identifiant commune. Pour chaque colonne de type "
+                      "« formule », donne la formule exacte dans sa "
+                      "description (syntaxe Google Sheets). Les colonnes "
+                      "« selection » deviennent des listes deroulantes. Les "
+                      "« vues » sont des filtres ou des tris a enregistrer.",
+        "guide": "## Installation dans un tableur\n(import de chaque CSV dans "
+                 "un onglet, formules, listes deroulantes, mise en forme "
+                 "conditionnelle)\n",
+    },
+    "les-deux": {
+        "nom": "Notion ou un tableur, au choix de l'acheteur",
+        "conception": "Le systeme doit s'importer dans Notion ET dans un "
+                      "tableur. Prevois les relations entre bases (une colonne "
+                      "qui pointe vers une autre base) et au moins trois vues "
+                      "utiles par base.",
+        "guide": "## Installation dans Notion\n(import du CSV, creation des "
+                 "relations)\n## Installation dans un tableur\n",
+    },
+}
+OUTIL_PAR_DEFAUT = "les-deux"
+
+
+def _outil(ctx: Contexte, outil: str) -> Dict[str, str]:
+    """L'outil retenu, et le journal dit quand personne ne l'a choisi."""
+    if outil in OUTILS:
+        return OUTILS[outil]
+    ctx.journal("  outil cible : {} (personne ne l'a choisi)".format(
+        OUTILS[OUTIL_PAR_DEFAUT]["nom"]))
+    return OUTILS[OUTIL_PAR_DEFAUT]
+
+
+def _systeme(ctx: Contexte, nombre: int,
+             outil: Dict[str, str] = OUTILS[OUTIL_PAR_DEFAUT]) -> Dict[str, Any]:
     invite = (
-        "Concois un systeme de {n} bases liees, pret a importer dans Notion ou "
-        "dans un tableur, sur le theme : {sujet}\n"
+        "Concois un systeme de {n} bases liees, pret a importer dans {cible}, "
+        "sur le theme : {sujet}\n"
         "UTILISATEUR : {audience}\n\n"
         "Chaque base a des colonnes typees et un role precis dans le systeme. "
-        "Prevois les relations entre bases (une colonne qui pointe vers une autre "
-        "base) et au moins trois vues utiles par base.\n\n"
+        "{conception}\n\n"
         "Types de colonne autorises : texte, texte_long, nombre, selection, "
         "multi_selection, date, case_a_cocher, url, email, relation, formule.\n\n"
         "Schema JSON exact :\n"
@@ -39,7 +89,8 @@ def _systeme(ctx: Contexte, nombre: int) -> Dict[str, Any]:
         '"vues": [{{"nom": "...", "filtre": "...", "tri": "..."}}], '
         '"exemples": [["valeur1", "valeur2"]]}}], '
         '"mise_en_route": ["etape 1", "etape 2"]}}'
-    ).format(n=nombre, sujet=ctx.sujet, audience=ctx.audience)
+    ).format(n=nombre, sujet=ctx.sujet, audience=ctx.audience,
+             cible=outil["nom"], conception=outil["conception"])
     systeme = equipe.ARCHITECTE.travailler_json(ctx, invite, max_tokens=4096)
     if not isinstance(systeme, dict) or not systeme.get("bases"):
         raise ValueError("Systeme de modeles invalide")
@@ -72,9 +123,10 @@ def _systeme(ctx: Contexte, nombre: int) -> Dict[str, Any]:
     return systeme
 
 
-def produire(ctx: Contexte, nombre: int = 4) -> Dict[str, Any]:
+def produire(ctx: Contexte, nombre: int = 4, outil: str = "") -> Dict[str, Any]:
+    cible = _outil(ctx, outil)
     ctx.journal("Étape 1/3 — conception du système ({} bases)...".format(nombre))
-    systeme = _systeme(ctx, nombre)
+    systeme = _systeme(ctx, nombre, cible)
     titre = systeme["titre"]
     dossier = preparer(ctx, "modeles", titre)
     ctx.etape("systeme", "ok", "{} bases".format(len(systeme["bases"])))
@@ -86,13 +138,13 @@ def produire(ctx: Contexte, nombre: int = 4) -> Dict[str, Any]:
     perdu = ""
     try:
         guide = equipe.REDACTEUR.travailler(ctx, (
-            "Systeme : « {titre} »\nBASES : {bases}\n\n"
+            "Systeme : « {titre} »\nOUTIL : {cible}\nBASES : {bases}\n\n"
             "Redige le guide d'installation et d'utilisation (700 mots environ) :\n"
-            "## Installation dans Notion\n(import du CSV, creation des relations)\n"
-            "## Installation dans un tableur\n"
+            "{installation}"
             "## Le rituel hebdomadaire\n(comment s'en servir chaque semaine)\n"
             "## Personnalisation\n\nMarkdown, pas de titre de niveau 1."
-        ).format(titre=titre, bases=" ; ".join(b["nom"] for b in systeme["bases"])),
+        ).format(titre=titre, cible=cible["nom"], installation=cible["guide"],
+                 bases=" ; ".join(b["nom"] for b in systeme["bases"])),
             max_tokens=2200).texte
     except Exception as exc:
         perdu = str(exc)

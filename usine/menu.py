@@ -350,6 +350,10 @@ def _options_du_type(cle: str) -> Dict[str, object]:
         return choisies
     if cle == "prompts":
         return _champs_du_catalogue(cle, ("cible",))
+    if cle == "outils":
+        return _champs_du_catalogue(cle, ("composition",))
+    if cle == "modeles":
+        return _champs_du_catalogue(cle, ("outil",))
     if cle == "formation":
         return {"narration": True} if demander_oui(
             "Produire le script de narration à lire à voix haute ? "
@@ -479,6 +483,8 @@ _ARGUMENTS = {
     "recto_verso": lambda v: ["--recto-verso"] if v else [],
     "niveau": lambda v: ["--niveau", str(v)],
     "forme": lambda v: ["--forme", str(v)],
+    "composition": lambda v: ["--composition", str(v)],
+    "outil": lambda v: ["--outil", str(v)],
     "genre": lambda v: ["--genre", str(v)],
     "sous_genre": lambda v: ["--sous-genre", str(v)],
     "tropes": lambda v: ["--tropes", str(v)],

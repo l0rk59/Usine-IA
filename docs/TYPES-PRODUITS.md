@@ -535,3 +535,24 @@ le conseil livrés, et le style de couverture. Les prompts d'image sont écrits
 en anglais, la langue que ces outils comprennent le mieux ; le mode d'emploi
 le dit, et précise que « --ar 3:2 » est propre à Midjourney. Laissée vide, la
 cible est décidée d'après le sujet.
+
+# La boîte à outils et les modèles : une forme choisie pour tous
+
+*Mesuré le 26/09/2026.*
+
+**La boîte à outils** imposait toujours un mélange de checklists, de modèles à
+compléter et de tableaux de suivi. Or un pack de trente checklists, un pack de
+modèles et un classeur de suivi sont trois produits distincts, cherchés avec
+des mots différents (« checklist pack », « templates », « tracker »).
+`--composition melange|checklists|modeles|tableaux` fixe ce qu'on vend ; et
+quand la composition impose un genre, chaque outil le prend, même si le modèle
+a dérivé : ce qui a été choisi est ce qui est livré.
+
+**Les modèles** visaient « Notion ou un tableur » à la fois, et le guide livré
+expliquait les deux à chaque acheteur. `--outil notion|tableur|les-deux` change
+la conception (relations, rollups et vues pour Notion ; onglets reliés par un
+identifiant, formules exactes et listes déroulantes pour un tableur) et le
+guide d'installation.
+
+Les deux se décident d'après le sujet quand personne ne les choisit, et le
+journal dit quand l'usine a dû retomber sur le mélange ou sur « les deux ».

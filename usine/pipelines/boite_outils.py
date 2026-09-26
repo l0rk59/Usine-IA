@@ -19,20 +19,67 @@ from ..render.page import ecrire_page
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
 
 
-def _sommaire(ctx: Contexte, nombre: int) -> Dict[str, Any]:
+# Ce qu'on vend. Mesure du 26/09/2026 : l'invite imposait TOUJOURS un
+# melange des trois genres d'outil. Or un pack de trente checklists, un pack
+# de modeles a completer et un classeur de tableaux de suivi sont trois
+# produits distincts sur une place de marche, cherches avec des mots
+# differents (« checklist pack », « templates », « tracker »). Le melange
+# n'en etait qu'un, choisi pour tous.
+COMPOSITIONS: Dict[str, Dict[str, str]] = {
+    "melange": {
+        "nom": "Un mélange des trois",
+        "consigne": "Chaque outil est soit une checklist, soit un modele a "
+                    "completer, soit un tableau de suivi : choisis pour "
+                    "chacun le genre qui sert le mieux la situation.",
+    },
+    "checklists": {
+        "nom": "Un pack de checklists",
+        "consigne": "Tous les outils sont des checklists (type « checklist ») : "
+                    "une par moment ou par situation ou l'on risque d'oublier "
+                    "quelque chose.",
+    },
+    "modeles": {
+        "nom": "Un pack de modèles à compléter",
+        "consigne": "Tous les outils sont des modeles a completer (type "
+                    "« modele ») : les documents que l'utilisateur ecrirait "
+                    "sinon a partir d'une page blanche.",
+    },
+    "tableaux": {
+        "nom": "Un classeur de tableaux de suivi",
+        "consigne": "Tous les outils sont des tableaux de suivi (type "
+                    "« tableau ») : ce que l'utilisateur doit mesurer, dater ou "
+                    "comparer semaine apres semaine.",
+    },
+}
+COMPOSITION_PAR_DEFAUT = "melange"
+_GENRE_IMPOSE = {"checklists": "checklist", "modeles": "modele",
+                 "tableaux": "tableau"}
+
+
+def _composition(ctx: Contexte, composition: str) -> str:
+    """La composition retenue, et le journal dit quand personne ne l'a choisie."""
+    if composition in COMPOSITIONS:
+        return composition
+    ctx.journal("  composition : {} (personne ne l'a choisie)".format(
+        COMPOSITIONS[COMPOSITION_PAR_DEFAUT]["nom"]))
+    return COMPOSITION_PAR_DEFAUT
+
+
+def _sommaire(ctx: Contexte, nombre: int,
+              composition: str = COMPOSITION_PAR_DEFAUT) -> Dict[str, Any]:
     invite = (
         "Concois une boite a outils de {n} documents pratiques sur : {sujet}\n"
         "UTILISATEUR : {audience}\n\n"
-        "Chaque outil est soit une checklist, soit un modele a completer, soit un "
-        "tableau de suivi. Il doit s'utiliser en moins de 20 minutes et produire une "
-        "decision ou un document.\n\n"
+        "{composition} Chaque outil doit s'utiliser en moins de 20 minutes et "
+        "produire une decision ou un document.\n\n"
         "Schema JSON exact :\n"
         '{{"titre": "titre commercial de la boite a outils", '
         '"promesse": "...", '
         '"outils": [{{"nom": "...", "type": "checklist|modele|tableau", '
         '"quand": "dans quelle situation l\'utiliser", '
         '"resultat": "ce que l\'utilisateur obtient"}}]}}'
-    ).format(n=nombre, sujet=ctx.sujet, audience=ctx.audience)
+    ).format(n=nombre, sujet=ctx.sujet, audience=ctx.audience,
+             composition=COMPOSITIONS[composition]["consigne"])
     donnees = equipe.OUTILLEUR.travailler_json(
         ctx, invite, role_modele="costaud",
                                temperature=0.68, max_tokens=2600)
@@ -46,6 +93,9 @@ def _sommaire(ctx: Contexte, nombre: int) -> Dict[str, Any]:
         type_outil = str(outil.get("type") or "checklist").lower()
         if type_outil not in ("checklist", "modele", "tableau"):
             type_outil = "checklist"
+        # Un pack de checklists ne livre pas un tableau parce que le modele
+        # a derive : ce qui a ete choisi est ce qui est vendu.
+        type_outil = _GENRE_IMPOSE.get(composition, type_outil)
         outils.append(
             {
                 "nom": nettoyer_titre(str(outil.get("nom") or "Outil")),
@@ -95,9 +145,11 @@ def _remplir(ctx: Contexte, boite: Dict[str, Any], outil: Dict[str, Any]) -> Dic
     return contenu if isinstance(contenu, dict) else {"intro": "", "points": []}
 
 
-def produire(ctx: Contexte, nombre: int = 10) -> Dict[str, Any]:
+def produire(ctx: Contexte, nombre: int = 10,
+             composition: str = "") -> Dict[str, Any]:
+    retenue = _composition(ctx, composition)
     ctx.journal("Étape 1/3 — sommaire de la boîte à outils ({} outils)...".format(nombre))
-    boite = _sommaire(ctx, nombre)
+    boite = _sommaire(ctx, nombre, retenue)
     titre = boite["titre"]
     dossier = preparer(ctx, "boite-outils", titre)
     ctx.etape("sommaire", "ok", "{} outils".format(len(boite["outils"])))
