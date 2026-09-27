@@ -59,6 +59,8 @@ IMPOSSIBLES = frozenset("""
     melancolique epique drole inquietante amere enquete episodique
     litterature troisieme limitee alternes fermee reconfortante
     debutant debutants intermediaire reperes achete reveiller
+    cle cles livree livrees pret prets echec echecs exigee defaut etat etats
+    generee generees heros verifiee antiseche
 """.split())
 
 _MOT = re.compile(r"[A-Za-zÀ-ÿ]+")
@@ -323,6 +325,7 @@ class LeCatalogueEntierEnFrancais(unittest.TestCase):
         llm.definir_simulateur(simulateur_neutre())
         cls.lus = {}
         cls.trouves = {}
+        cls.formulaires = {}
         try:
             for rang, fiche in enumerate(catalogue.tous(fabricables=True)):
                 # « idees » ne livre rien a un acheteur : c'est une liste de
@@ -336,6 +339,13 @@ class LeCatalogueEntierEnFrancais(unittest.TestCase):
                     "{} : {}".format(nom, mot)
                     for nom, brut in lus
                     for mot in fautes(_texte_visible(nom, brut))})
+                # « 29 repère(s) en 6 bloc(s) » : la notation d'un formulaire
+                # sur la couverture d'un produit (voir « libelles.accorder »).
+                cls.formulaires[fiche.cle] = sorted({
+                    "{} : {}".format(nom, ligne.strip()[:70])
+                    for nom, brut in lus
+                    for ligne in _texte_visible(nom, brut).splitlines()
+                    if "(s)" in ligne})
         finally:
             llm.definir_simulateur(None)
 
@@ -350,6 +360,136 @@ class LeCatalogueEntierEnFrancais(unittest.TestCase):
         for cle, trouves in self.trouves.items():
             with self.subTest(type=cle):
                 self.assertEqual(trouves, [])
+
+    def test_aucun_pluriel_de_formulaire_chez_l_acheteur(self):
+        for cle, trouves in self.formulaires.items():
+            with self.subTest(type=cle):
+                self.assertEqual(trouves, [])
+
+
+class CeQueLaConsoleAffiche(unittest.TestCase):
+    """Ce que les commandes affichent VRAIMENT, relu ligne a ligne.
+
+    Le test des messages ci-dessus lit huit noms de fonctions dans le code.
+    Il ne voyait ni « print », ni l'aide des options, ni les lignes que le
+    docteur compose en morceaux. Une vraie fabrication du 27/09/2026 a donc
+    affiche « sans cle », « la notice livree », « 0 livre(s), 0 echec(s) »,
+    « Reseau : disponible », et l'aide entiere de la ligne de commande sans
+    un accent — alors que ce test-la passait.
+
+    Ce qu'on tape reste tel quel : les commandes (« usine cles »), les
+    options (« --qualite ») et les listes de valeurs (« {rapide,exigeant} »)
+    sont retirees de la ligne avant la lecture.
+    """
+
+    # L'aide d'argparse aligne le nom de chaque commande en tete de ligne
+    # (« cles    obtenir des clés ») ; les reglages montrent la cle a taper
+    # entre parentheses, et les exemples l'ecrivent « qualite=exigeant ».
+    TAPE = re.compile(r"«\s*usine[^»]*»|\busine(?:\s+[a-z][\w-]*)+|--?[a-z][\w-]*"
+                      r"|\{[^{}]*\}|https?://\S+|[\w./-]+\.(?:json|md|csv|py|txt|env)\b"
+                      r"|[A-Z][A-Z0-9_]{3,}|^\s{2,}[a-z][\w-]*(?=\s{2,})"
+                      r"|\([a-z_]+\)|\b\w+=\S*")
+
+    @classmethod
+    def setUpClass(cls):
+        from tests.simulateur import simulateur
+        from usine.core import llm
+
+        atelier.isoler("accents-console")
+        llm.definir_simulateur(simulateur)
+        cls.sorties = {}
+        parseur = cli.construire_parseur()
+        sous = [a for a in parseur._actions if getattr(a, "choices", None)][0]
+        commandes = [["memo", "le compost", "-n", "4", "--sans-image"],
+                     ["docteur"], ["cles"], ["liste"], ["reglages"],
+                     ["usine", "statut"], ["file"], ["bilan"], ["specs"],
+                     ["--help"]]
+        # L'aide de chaque commande : c'est la que l'on apprend les options.
+        commandes += [[nom, "--help"] for nom in sorted(sous.choices)]
+        from usine.core import diagnostic
+
+        vrai = diagnostic.etat_installation
+
+        def sans_reseau(**_options):
+            # Le docteur sonde Pollinations et les IA locales : dans un test,
+            # ces deux controles sortiraient sur le reseau.
+            return vrai(avec_reseau=False, avec_locaux=False)
+
+        try:
+            with mock.patch.object(diagnostic, "etat_installation", sans_reseau):
+                for argv in commandes:
+                    sortie = io.StringIO()
+                    with redirect_stdout(sortie), redirect_stderr(sortie):
+                        try:
+                            cli.principal(argv)
+                        except SystemExit:
+                            pass
+                    cls.sorties[" ".join(argv)] = sortie.getvalue()
+        finally:
+            llm.definir_simulateur(None)
+
+    def test_le_test_a_lu_quelque_chose(self):
+        self.assertGreater(len(self.sorties), 20)
+        self.assertIn("Fournisseurs", self.sorties["docteur"])
+
+    def test_pas_de_titre_de_section_sans_rien_dessous(self):
+        """« == Kit de vente » s'affichait des qu'on ne passait pas
+        « --sans-marketing », meme quand le reglage ne demandait aucun kit :
+        un titre, puis rien (vraie fabrication du 27/09/2026)."""
+        self.assertFalse(reglages.lire("marketing_auto", False))
+        self.assertNotIn("Kit de vente",
+                         self.sorties["memo le compost -n 4 --sans-image"])
+
+    def test_aucun_mot_sans_son_accent_a_l_ecran(self):
+        trouves = []
+        for commande, texte in self.sorties.items():
+            for ligne in texte.splitlines():
+                for mot in fautes(self.TAPE.sub(" ", ligne)):
+                    trouves.append("{} : {} — {}".format(commande, mot,
+                                                          ligne.strip()[:80]))
+        self.assertEqual(trouves, [], "\n".join(trouves[:60]))
+
+
+class LesPlurielsSAccordent(unittest.TestCase):
+    """« 29 repère(s) en 6 bloc(s) » : la notation d'un formulaire, sur la
+    couverture d'un produit. Voir « libelles.accorder »."""
+
+    def test_chaque_s_suit_le_nombre_qui_le_precede(self):
+        self.assertEqual(libelles.accorder("29 repère(s) en 1 bloc(s)"),
+                         "29 repères en 1 bloc")
+        self.assertEqual(libelles.accorder("1 double(s)-page(s)"), "1 double-page")
+        self.assertEqual(libelles.accorder("un message tous les 3 jour(s)"),
+                         "un message tous les 3 jours")
+
+    def test_zero_au_singulier_en_francais_au_pluriel_en_anglais(self):
+        self.assertEqual(libelles.accorder("0 question(s)", "fr"), "0 question")
+        self.assertEqual(libelles.accorder("0 question(s)", "en"), "0 questions")
+        self.assertEqual(libelles.accorder("1 question(s)", "en"), "1 question")
+
+    def test_sans_nombre_la_notation_reste(self):
+        """Mieux vaut la notation qu'un accord invente."""
+        self.assertEqual(libelles.accorder("section(s)"), "section(s)")
+
+    def test_la_page_du_quiz_accorde_son_score(self):
+        import shutil
+        import subprocess
+
+        from usine.render import quiz
+
+        if not shutil.which("node"):
+            self.skipTest("node absent : le script ne peut pas etre execute")
+        debut = quiz.SCRIPT.index("function accorder")
+        fin = quiz.SCRIPT.index("function corriger")
+        programme = (
+            "var textes = {zero_pluriel: false};\n" + quiz.SCRIPT[debut:fin]
+            + "console.log([accorder(' bonne(s) réponse(s) sur ', 1),"
+              " accorder(' bonne(s) réponse(s) sur ', 3),"
+              " accorder(' bonne(s) réponse(s) sur ', 0)].join('|'));")
+        sortie = subprocess.run(["node", "-e", programme], capture_output=True,
+                                text=True, timeout=30)
+        self.assertEqual(sortie.stdout.rstrip("\n"),
+                         " bonne réponse sur | bonnes réponses sur | bonne réponse sur ",
+                         sortie.stderr)
 
 
 if __name__ == "__main__":

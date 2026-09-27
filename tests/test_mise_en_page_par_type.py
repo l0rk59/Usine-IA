@@ -131,7 +131,7 @@ class UnMemoTientSurUneFeuille(unittest.TestCase):
                                 nombre=4)
         markdown = (dossier / "memo.md").read_text(encoding="utf-8")
         self.assertNotIn("sur une page", markdown)
-        self.assertIn("bloc(s)", markdown)
+        self.assertIn("4 blocs", markdown)
 
 
 class UneNoticeTechniqueNEstPasUnLivre(unittest.TestCase):

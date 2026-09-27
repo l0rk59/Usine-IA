@@ -26,7 +26,7 @@ travail ici et de le faire appeler par les deux.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from ..core import reglages, store
 from ..marketing import vente
@@ -59,9 +59,17 @@ def pas_encore_vendable(fiche: Dict[str, Any]) -> str:
     if (fiche or {}).get("statut") != "en_cours":
         return ""
     manquants = ((fiche.get("meta") or {}).get("manquants")) or []
-    return ("produit inacheve{} — finissez-le d'abord : usine reprendre {}"
-            .format(" ({} section(s) manquent)".format(len(manquants))
-                    if manquants else "", fiche.get("id", "")))
+    return ("produit inachevé{} — finissez-le d'abord : usine reprendre {}"
+            .format(_manquent(manquants), fiche.get("id", "")))
+
+
+def _manquent(manquants: List[str]) -> str:
+    """« (1 section manque) », « (3 sections manquent) » : le verbe aussi."""
+    if not manquants:
+        return ""
+    if len(manquants) == 1:
+        return " (1 section manque)"
+    return " ({} sections manquent)".format(len(manquants))
 
 
 def apres_production(
@@ -95,9 +103,7 @@ def apres_production(
             veut(kit, "marketing_auto") or veut(archive, "archive_auto")):
         manquants = (fiche.get("meta") or {}).get("manquants") or []
         dire("Kit de vente et archive : pas pour un produit inachevé{}. Ils "
-             "seront faits quand il sera fini.".format(
-                 " ({} section(s) manquent)".format(len(manquants))
-                 if manquants else ""))
+             "seront faits quand il sera fini.".format(_manquent(manquants)))
         return resume
 
     if veut(kit, "marketing_auto"):

@@ -363,7 +363,7 @@ class ReseauCoupe(unittest.TestCase):
         # le code seul ne le dit plus, un produit inacheve rend 3 comme une
         # fabrication morte en route (voir cli._resume_console).
         self.assertEqual(code, 3)
-        self.assertIn("Produit inacheve", texte, "la fabrication doit aller au bout")
+        self.assertIn("Produit inachevé", texte, "la fabrication doit aller au bout")
         # Le dossier reste : c'est voulu, il porte le travail deja paye. Ce
         # qui ne doit pas rester, c'est l'idee qu'il est fini.
         self.assertEqual([p["statut"] for p in produits], ["en_cours"])

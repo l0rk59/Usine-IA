@@ -85,7 +85,8 @@ def _page_de_suite(titre: str, restants: List[str], site: str,
         # double, que tout titre commencant par un determinant produirait.
         t["extrait_lu"].format(titre=titre),
         "",
-        t["extrait_reste"].format(nombre=len(restants)),
+        libelles.accorder(t["extrait_reste"].format(nombre=len(restants)),
+                          langue),
         "",
     ]
     lignes += ["- {}".format(chapitre) for chapitre in restants]

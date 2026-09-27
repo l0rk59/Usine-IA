@@ -179,7 +179,8 @@ def produire(ctx: Contexte, nombre: int = 7, intention: str = "bienvenue",
 def _exporter(ctx: Contexte, titre: str, plan: List[Dict[str, Any]],
               objectif: str, rythme: int) -> List[Path]:
     t = libelles.textes(ctx.langue_iso)
-    sous_titre = t["emails_sous_titre"].format(nombre=len(plan), rythme=rythme)
+    sous_titre = libelles.accorder(t["emails_sous_titre"].format(
+        nombre=len(plan), rythme=rythme), ctx.langue_iso)
 
     def mode_emploi(doc) -> None:
         doc.paragraphe(t["emails_ordre"], justifier=True)

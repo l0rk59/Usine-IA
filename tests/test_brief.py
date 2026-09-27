@@ -20,6 +20,7 @@ from __future__ import annotations
 import io
 import sys
 import unittest
+from unittest import mock
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
@@ -71,6 +72,33 @@ class CeQuiResteADecider(unittest.TestCase):
         """« --chapitres 4 » dit la longueur aussi clairement que « -T court »."""
         ctx = self._contexte(chapitres=4)
         self.assertNotIn("taille", brief.a_decider(ctx))
+
+    def test_le_volume_ne_se_decide_que_pour_une_chaine_qui_le_lit(self):
+        """Vraie fabrication du 27/09/2026 : « volume : 5 sections de ~400
+        mots » annonce pour un memo, qui compte des blocs."""
+        for cle in ("memo", "quiz", "cartes", "mots-meles", "prompts"):
+            with self.subTest(type=cle):
+                self.assertEqual(brief.a_decider(self._contexte(), cle),
+                                 ["audience", "ton"])
+        for cle in ("ebook", "roman", "conte", "formation"):
+            with self.subTest(type=cle):
+                self.assertIn("taille", brief.a_decider(self._contexte(), cle))
+
+    def test_l_aide_ne_nomme_que_ce_qui_a_ete_decide(self):
+        from usine.pipelines.base import Contexte
+
+        lignes = []
+        ctx = Contexte(sujet="le compost en appartement", ton=brief.AUTO,
+                       audience=brief.AUTO, taille=brief.AUTO,
+                       journal=lignes.append)
+        with mock.patch.object(brief, "demander", lambda *a, **k: {
+                "audience": "des citadins", "ton": "pedagogue", "sections": 5,
+                "mots_par_section": 400, "niche": "", "promesse": "",
+                "pourquoi": ""}):
+            brief.appliquer(ctx, "memo")
+        self.assertFalse(any("volume" in l for l in lignes), lignes)
+        self.assertIn("  (pour imposer les vôtres : les champs Ton et Audience, "
+                      "ou --ton, --audience)", lignes)
 
     def test_une_case_vide_vaut_auto(self):
         """Les deux veulent dire la meme chose, et c'est le point : ne pas
@@ -312,7 +340,7 @@ class LeRomanExiste(unittest.TestCase):
                              "--chapitres", "8"])
         # Inacheve, donc 3 ; exporte quand meme, donc le bandeau.
         self.assertEqual(code, 3)
-        self.assertIn("Produit inacheve", texte)
+        self.assertIn("Produit inachevé", texte)
         produit = store.lister_produits()[0]
         self.assertEqual(produit["statut"], "en_cours")
         self.assertTrue((produit.get("meta") or {}).get("manquants"))

@@ -70,7 +70,7 @@ class CoupureEtReprise(unittest.TestCase):
         code, texte = _muet(["ebook", "la facturation", "--chapitres", "6"])
         # Inacheve, donc 3 ; « au bout », donc le bandeau d'apres l'export.
         self.assertEqual(code, 3)
-        self.assertIn("Produit inacheve", texte, "la fabrication doit aller au bout")
+        self.assertIn("Produit inachevé", texte, "la fabrication doit aller au bout")
         produit = store.lister_produits()[0]
         dossier = Path(produit["dossier"])
         # Le carnet porte ce qui a ete ecrit avant la coupure. Sans lui, il ne

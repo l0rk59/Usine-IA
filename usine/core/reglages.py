@@ -17,7 +17,7 @@ DEFAUTS: Dict[str, Any] = {
     "marque": "",
     "contact": "",
     "site": "",
-    "langue": "francais",
+    "langue": "français",
     # « auto » : l'usine decide en lisant le sujet. Un reglage par defaut
     # n'est pas neutre, il est juste invisible — « pro / standard / un public
     # francophone motive » donnait la meme voix, la meme longueur et la meme

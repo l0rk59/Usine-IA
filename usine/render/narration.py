@@ -16,6 +16,8 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Tuple
 
+from .libelles import accorder
+
 # Debit de reference d'une narration pedagogique posee. La fourchette usuelle
 # d'un francais parle clairement va de 140 a 160 mots par minute ; on prend le
 # milieu, et on annonce une fourchette plutot qu'un chiffre unique.
@@ -110,6 +112,6 @@ def assembler(titre: str, scripts: List[Tuple[str, str]]) -> Tuple[str, Dict]:
     mesures.update({k: v for k, v in total.items() if k != "mots"})
     lignes.insert(1, "")
     lignes.insert(
-        2, "*{} module(s), {} mots au total — {} de narration.*".format(
-            len(scripts), mesures["mots"], minutes_lisibles(total)))
+        2, accorder("*{} module(s), {} mots au total — {} de narration.*".format(
+            len(scripts), mesures["mots"], minutes_lisibles(total))))
     return "\n".join(lignes).strip() + "\n", mesures

@@ -478,7 +478,7 @@ class LaLigneDeCommandeNeLeDitPasPret(unittest.TestCase):
         code, texte, notifications = self._fabriquer(3)
         self.assertEqual(store.lister_produits(1)[0]["statut"], "en_cours")
         self.assertEqual(code, 3)
-        self.assertIn("Produit inacheve", texte)
+        self.assertIn("Produit inachevé", texte)
         self.assertNotIn("Produit livré", texte)
         self.assertIn("usine reprendre", texte)
         self.assertNotIn("Produit prêt", notifications)

@@ -228,7 +228,7 @@ def _verifier_fournisseurs() -> bool:
         if avec_cle:
             details.append("API : " + ", ".join(avec_cle))
         if anonymes:
-            details.append("sans cle : " + ", ".join(anonymes))
+            details.append("sans clé : " + ", ".join(anonymes))
         if locaux:
             details.append("local, s'il tourne : " + ", ".join(locaux))
         ok("Fournisseurs — " + " | ".join(details))
@@ -236,7 +236,7 @@ def _verifier_fournisseurs() -> bool:
             ok("Hors ligne : aucune invite ne part vers une API.")
         elif not avec_cle:
             alerte("Aucune clé API : le palier anonyme de Pollinations ne "
-                   "publie pas son quota, et il est partage par adresse IP.")
+                   "publie pas son quota, et il est partagé par adresse IP.")
             alerte("Pour fabriquer un produit entier, ajoutez une clé gratuite : "
                    + _c("usine cles", "1"))
         return True
@@ -285,7 +285,7 @@ def _apres_production(args: argparse.Namespace, ctx: Contexte,
         # C'est ce que la reglementation europeenne d'accessibilite attend
         # d'etre tenu — et sans adresse, la promesse n'est pas ecrite. Le
         # vendeur doit le savoir : c'est lui qui decide, pas nous.
-        alerte("Aucune adresse de contact : la notice livree ne propose donc "
+        alerte("Aucune adresse de contact : la notice livrée ne propose donc "
                "pas de version adaptée aux lecteurs qui en auraient besoin.")
         print("      " + _c("usine reglages", "1")
               + "  ou  " + _c("--contact vous@exemple.fr", "1"))
@@ -295,7 +295,9 @@ def _apres_production(args: argparse.Namespace, ctx: Contexte,
     # n'avait pas a le voir.
     veut_kit = _tranche(args, "marketing")
     veut_zip = _tranche(args, "zip")
-    if veut_kit is not False:
+    # Le titre seulement si un kit va suivre : « is not False » l'affichait
+    # aussi quand le reglage n'en demandait aucun, et rien ne venait dessous.
+    if apres.veut(veut_kit, "marketing_auto"):
         titre_console("Kit de vente")
     return apres.apres_production(
         ctx, resume, description,
@@ -1309,10 +1311,23 @@ def cmd_file(args: argparse.Namespace) -> int:
     return 0
 
 
+# Le statut est une cle en base ; a l'ecran, c'est un mot. « memo | pret |
+# ... » s'affichait tel quel dans « usine liste ». « en_cours » a son propre
+# mot, « inachevé », plus bas.
+STATUTS_LISIBLES = {"pret": "prêt"}
+
+
 def _resume_file() -> str:
     compte = file_prod.compter()
-    return "{} en attente, {} en cours, {} livre(s), {} echec(s)".format(
-        compte["en_attente"], compte["en_cours"], compte["fait"], compte["echec"])
+    return "{} en attente, {} en cours, {}, {}".format(
+        compte["en_attente"], compte["en_cours"],
+        _accord(compte["fait"], "livré", "livrés"),
+        _accord(compte["echec"], "échec", "échecs"))
+
+
+def _accord(nombre: int, singulier: str, pluriel: str) -> str:
+    """« 0 livré », « 3 livrés » : « livre(s) » se lit comme un formulaire."""
+    return "{} {}".format(nombre, pluriel if nombre > 1 else singulier)
 
 
 def cmd_usine(args: argparse.Namespace) -> int:
@@ -2209,7 +2224,8 @@ def cmd_liste(args: argparse.Namespace) -> int:
         # « Produits fabriques » comme les autres.
         inacheve = produit["statut"] == "en_cours"
         inacheves += int(inacheve)
-        marque = _c("inachevé", "33") if inacheve else produit["statut"]
+        marque = _c("inachevé", "33") if inacheve else STATUTS_LISIBLES.get(
+            produit["statut"], produit["statut"])
         print("  {}  {}".format(
             _c(time.strftime("%d/%m %H:%M", time.localtime(produit["cree_le"])), "2"),
             _c(produit["titre"][:58], "1"),
@@ -2244,7 +2260,7 @@ def cmd_docteur(args: argparse.Namespace) -> int:
         (ok if espace["libre_mo"] > 200 else alerte)(
             "Espace libre : {} Mo".format(espace["libre_mo"]))
     (ok if etat["reseau"] else alerte)(
-        "Reseau : {}".format("disponible" if etat["reseau"] else
+        "Réseau : {}".format("disponible" if etat["reseau"] else
                              "indisponible — seule l'IA locale fonctionnera")
     )
 
@@ -2276,7 +2292,7 @@ def cmd_docteur(args: argparse.Namespace) -> int:
     lignes = etat["fournisseurs"]
     serveurs = {s["nom"]: s for s in etat.get("serveurs_locaux", [])}
     for ligne in lignes:
-        genre = "local" if ligne["local"] else ("sans cle" if ligne["sans_cle"] else "cle API")
+        genre = "local" if ligne["local"] else ("sans clé" if ligne["sans_cle"] else "clé API")
         if ligne["local"] and ligne["nom"] in serveurs:
             # Un fournisseur local est toujours « disponible » : c'est une
             # adresse, pas une preuve. La coche verte s'affichait pour un
@@ -2830,25 +2846,25 @@ def _options_communes(sous: argparse.ArgumentParser, avec_sujet: bool = True) ->
     # Les valeurs par defaut sont vides : elles sont reprises des reglages
     # (usine reglages), ce qui evite de retaper --auteur a chaque commande.
     sous.add_argument("-a", "--audience", default="",
-                      help="a qui s'adresse le produit")
+                      help="à qui s'adresse le produit")
     # Pas de « choices » : les cinq tons sont des raccourcis, pas une liste
     # fermee. Imposer cinq voix a tout un catalogue est precisement ce qui
     # fait que les produits se ressemblent.
     sous.add_argument("-t", "--ton", default="",
                       help="raccourci ({}) ou description libre, ex : "
-                           "-t \"comme un menuisier a son apprenti\""
+                           "-t \"comme un menuisier à son apprenti\""
                            .format("|".join(sorted(TONS))))
     sous.add_argument("-T", "--taille", default="",
                       help="raccourci ({}) ou nombre de sections, ex : -T 15"
                            .format("|".join(sorted(TAILLES))))
     sous.add_argument("--chapitres", type=int, default=0,
-                      help="nombre exact de sections ({} a {})".format(
+                      help="nombre exact de sections ({} à {})".format(
                           CHAPITRES_MIN, CHAPITRES_MAX))
     sous.add_argument("--mots", type=int, default=0,
-                      help="mots visés par section ({} a {})".format(
+                      help="mots visés par section ({} à {})".format(
                           MOTS_MIN, MOTS_MAX))
     sous.add_argument("--auteur", default="", help="nom affiche comme auteur")
-    sous.add_argument("--langue", default="", help="langue de redaction")
+    sous.add_argument("--langue", default="", help="langue de rédaction")
     sous.add_argument("--marque", default="", help="nom de votre marque")
     sous.add_argument("--prix", default="", help="prix affiche, ex: 29 EUR")
     sous.add_argument("--dedicace", default="",
@@ -2865,16 +2881,16 @@ def _options_communes(sous: argparse.ArgumentParser, avec_sujet: bool = True) ->
     # de « refuse », sans quoi le reglage ne pourrait jamais etre actif.
     sous.add_argument("--sans-marketing", dest="sans_marketing",
                       action="store_true",
-                      help="ne pas produire le kit de vente, meme si le "
-                           "reglage « marketing_auto » le demande")
+                      help="ne pas produire le kit de vente, même si le "
+                           "réglage « marketing_auto » le demande")
     sous.add_argument("--sans-zip", dest="sans_zip", action="store_true",
-                      help="ne pas ecrire l'archive, meme si le reglage "
+                      help="ne pas écrire l'archive, même si le réglage "
                            "« archive_auto » la demande")
     sous.add_argument("--marketing", action="store_true",
-                      help="generer aussi le kit de vente")
+                      help="générer aussi le kit de vente")
     sous.add_argument("--extrait", type=int, default=0, metavar="N",
                       help="chapitres de l'edition courte offerte "
-                           "(defaut : un quart du livre)")
+                           "(défaut : un quart du livre)")
     # Le defaut vient du REGLAGE, pas d'une constante. « gumroad » etait ecrit
     # en dur ici : le reglage « plateforme » etait affiche dans les trois
     # interfaces, enregistre sur disque, et lu par personne. Un reglage
@@ -2885,9 +2901,9 @@ def _options_communes(sous: argparse.ArgumentParser, avec_sujet: bool = True) ->
                       choices=sorted(vente.PLATEFORMES), help="plateforme de vente visee")
     sous.add_argument("--zip", action="store_true", help="produire l'archive livrable")
     sous.add_argument("--hors-ligne", dest="hors_ligne", action="store_true",
-                      help="aucune connexion hors de l'appareil (IA locale seulement, couverture generee sur place)")
+                      help="aucune connexion hors de l'appareil (IA locale seulement, couverture générée sur place)")
     sous.add_argument("--sans-image", dest="sans_image", action="store_true",
-                      help="ne pas generer d'images")
+                      help="ne pas générer d'images")
 
 
 def construire_parseur() -> argparse.ArgumentParser:
@@ -2904,7 +2920,7 @@ def construire_parseur() -> argparse.ArgumentParser:
     _options_communes(p)
     _options_du_type(p, "ebook")
     p.add_argument("--relecture-ensemble", action="store_true",
-                   help="une lecture du livre entier a la recherche des "
+                   help="une lecture du livre entier à la recherche des "
                         "contradictions entre chapitres (1 appel IA de plus)")
     p.set_defaults(fonction=cmd_ebook)
 
@@ -2919,26 +2935,26 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.set_defaults(fonction=cmd_nouvelle)
 
     p = sous_parseurs.add_parser(
-        "roman", help="un roman : fiction longue, en parties, continuite tenue")
+        "roman", help="un roman : fiction longue, en parties, continuité tenue")
     _options_communes(p)
     _options_du_type(p, "roman")
     p.set_defaults(fonction=cmd_roman)
 
     p = sous_parseurs.add_parser(
         "interactive",
-        help="un livre dont le lecteur est le heros (carte verifiee)")
+        help="un livre dont le lecteur est le héros (carte vérifiée)")
     _options_communes(p)
     _options_du_type(p, "interactive")
     p.set_defaults(fonction=cmd_interactive, _type="interactive")
 
     p = sous_parseurs.add_parser(
-        "recueil", help="un recueil de nouvelles liees par un fil")
+        "recueil", help="un recueil de nouvelles liées par un fil")
     _options_communes(p)
     _options_du_type(p, "recueil")
     p.set_defaults(fonction=cmd_recueil, _type="recueil")
 
     p = sous_parseurs.add_parser(
-        "feuilleton", help="un feuilleton : des episodes qui se lisent seuls")
+        "feuilleton", help="un feuilleton : des épisodes qui se lisent seuls")
     _options_communes(p)
     _options_du_type(p, "feuilleton")
     p.set_defaults(fonction=cmd_feuilleton, _type="feuilleton")
@@ -2952,17 +2968,17 @@ def construire_parseur() -> argparse.ArgumentParser:
     p = sous_parseurs.add_parser(
         "journal", help="ce que l'usine a fait pendant qu'on ne regardait pas")
     p.add_argument("jour", nargs="?", default="",
-                   help="jour au format AAAA-MM-JJ (defaut : le plus recent)")
+                   help="jour au format AAAA-MM-JJ (défaut : le plus récent)")
     p.add_argument("-n", "--lignes", type=int, default=40,
-                   help="nombre de lignes a afficher")
+                   help="nombre de lignes à afficher")
     p.set_defaults(fonction=cmd_journal)
 
     p = sous_parseurs.add_parser(
-        "series", help="lister les series et leurs tomes")
+        "series", help="lister les séries et leurs tomes")
     p.add_argument("nom", nargs="?", default="",
-                   help="detail d'une serie : sa distribution et ses faits")
+                   help="détail d'une série : sa distribution et ses faits")
     p.add_argument("--rafraichir", action="store_true",
-                   help="refaire la derniere page des tomes anterieurs pour "
+                   help="refaire la dernière page des tomes antérieurs pour "
                         "qu'elle annonce les tomes parus depuis")
     p.set_defaults(fonction=cmd_series)
 
@@ -2976,13 +2992,13 @@ def construire_parseur() -> argparse.ArgumentParser:
     _options_du_type(p, "formation")
     p.set_defaults(fonction=cmd_formation)
 
-    p = sous_parseurs.add_parser("outils", help="fabriquer une boite a outils")
+    p = sous_parseurs.add_parser("outils", help="fabriquer une boîte à outils")
     _options_communes(p)
     _options_du_type(p, "outils")
     p.set_defaults(fonction=cmd_outils)
 
     p = sous_parseurs.add_parser("modeles",
-                                 help="fabriquer des modeles Notion / tableur")
+                                 help="fabriquer des modèles Notion / tableur")
     _options_communes(p)
     _options_du_type(p, "modeles")
     p.set_defaults(fonction=cmd_modeles)
@@ -2999,19 +3015,19 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.set_defaults(fonction=cmd_social)
 
     p = sous_parseurs.add_parser(
-        "emails", help="fabriquer une sequence e-mail")
+        "emails", help="fabriquer une séquence e-mail")
     _options_communes(p)
     _options_du_type(p, "emails")
     p.set_defaults(fonction=cmd_emails, _type="emails")
 
     p = sous_parseurs.add_parser(
-        "memo", help="fabriquer un memo / une antiseche")
+        "memo", help="fabriquer un mémo / une antisèche")
     _options_communes(p)
     _options_du_type(p, "memo")
     p.set_defaults(fonction=cmd_memo, _type="memo")
 
     p = sous_parseurs.add_parser(
-        "quiz", help="fabriquer un quiz avec corrige")
+        "quiz", help="fabriquer un quiz avec corrigé")
     _options_communes(p)
     _options_du_type(p, "quiz")
     p.set_defaults(fonction=cmd_quiz, _type="quiz")
@@ -3023,22 +3039,22 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.set_defaults(fonction=cmd_cartes, _type="cartes")
 
     p = sous_parseurs.add_parser(
-        "mots-meles", help="fabriquer un cahier de mots meles (A4, Lettre US)")
+        "mots-meles", help="fabriquer un cahier de mots mêlés (A4, Lettre US)")
     _options_communes(p)
     _options_du_type(p, "mots-meles")
     p.set_defaults(fonction=cmd_mots_meles, _type="mots-meles")
 
     p = sous_parseurs.add_parser("logiciel",
-                                 help="fabriquer un outil logiciel verifie")
+                                 help="fabriquer un outil logiciel vérifié")
     _options_communes(p)
     _options_du_type(p, "logiciel")
     p.set_defaults(fonction=cmd_logiciel)
 
     p = sous_parseurs.add_parser("complet",
-                                 help="offre complete : ebook + bonus + kit de vente + zip")
+                                 help="offre complète : ebook + bonus + kit de vente + zip")
     _options_communes(p)
     p.add_argument("-r", "--reseau", default="", choices=[""] + sorted(social.RESEAUX),
-                   help="reseau du pack bonus (decide par l'usine si absent)")
+                   help="réseau du pack bonus (décidé par l'usine si absent)")
     p.set_defaults(fonction=cmd_complet)
 
     p = sous_parseurs.add_parser(
@@ -3063,12 +3079,12 @@ def construire_parseur() -> argparse.ArgumentParser:
                    help="chapitres de l'edition courte offerte")
     p.set_defaults(fonction=cmd_marketing)
 
-    p = sous_parseurs.add_parser("livrer", help="creer l'archive ZIP d'un produit")
+    p = sous_parseurs.add_parser("livrer", help="créer l'archive ZIP d'un produit")
     p.add_argument("produit_id", help="identifiant du produit")
     p.add_argument("--contact", default="", help="e-mail de support")
     p.set_defaults(fonction=cmd_livrer)
 
-    p = sous_parseurs.add_parser("liste", help="lister les produits fabriques")
+    p = sous_parseurs.add_parser("liste", help="lister les produits fabriqués")
     p.add_argument("-n", "--nombre", type=int, default=25)
     p.set_defaults(fonction=cmd_liste)
 
@@ -3092,9 +3108,9 @@ def construire_parseur() -> argparse.ArgumentParser:
                             "rythme", "verdict", "planche", "clore",
                             "supprimer"])
     p.add_argument("identifiant", nargs="?", type=int, default=0,
-                   help="numero du test, ou de la variante pour « observer »")
+                   help="numéro du test, ou de la variante pour « observer »")
     p.add_argument("--produit", default="", help="partir d'un produit existant")
-    p.add_argument("--titre", default="", help="titre actuel a ameliorer")
+    p.add_argument("--titre", default="", help="titre actuel à améliorer")
     p.add_argument("--sur", default="titre",
                    choices=["titre", "couverture", "accroche", "prix"],
                    help="ce que le test compare")
@@ -3105,9 +3121,9 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.add_argument("--actions", type=int,
                    help="clics ou ventes observes, pour « observer »")
     p.add_argument("--du", default="", metavar="AAAA-MM-JJ",
-                   help="debut de mise en ligne, pour « periode »")
+                   help="début de mise en ligne, pour « période »")
     p.add_argument("--au", default="", metavar="AAAA-MM-JJ",
-                   help="fin de mise en ligne (defaut : toujours en ligne)")
+                   help="fin de mise en ligne (défaut : toujours en ligne)")
     p.add_argument("--note", default="", help="commentaire libre")
     p.add_argument("--gagnante", type=int, default=0,
                    help="variante retenue, pour « clore »")
@@ -3117,7 +3133,7 @@ def construire_parseur() -> argparse.ArgumentParser:
 
     p = sous_parseurs.add_parser(
         "file",
-        help="gerer la file des niches a produire",
+        help="gérer la file des niches à produire",
         epilog="Types disponibles :\n" + "\n".join(
             "  {:<12} {} — {}".format(t.cle, t.resume, t.duree)
             for t in catalogue.tous(en_file=True)),
@@ -3135,9 +3151,9 @@ def construire_parseur() -> argparse.ArgumentParser:
                    help="chercher des PROMESSES DE LECTURE au lieu de niches : "
                         "sous-genre, tropes, ambiance, chaleur, fin. Un "
                         "lecteur de roman n'achète pas la solution d'un "
-                        "probleme (sans argument : l'usine choisit)")
+                        "problème (sans argument : l'usine choisit)")
     p.add_argument("--type", default="ebook", choices=catalogue.cles(en_file=True),
-                   help="type de produit a fabriquer")
+                   help="type de produit à fabriquer")
     p.add_argument("-n", "--nombre", type=int, default=0,
                    help="quantite (prompts, fiches, modules...)")
     p.add_argument("-a", "--audience", default="")
@@ -3149,9 +3165,9 @@ def construire_parseur() -> argparse.ArgumentParser:
                    choices=["", "en_attente", "en_cours", "fait", "echec", "annule"])
     p.add_argument("--retirer", nargs="+", type=int, metavar="ID")
     p.add_argument("--rejouer", nargs="?", type=int, const=0, metavar="ID",
-                   help="remettre en file les echecs (tous si aucun ID)")
+                   help="remettre en file les échecs (tous si aucun ID)")
     p.add_argument("--vider", action="store_true",
-                   help="supprimer les entrees livrees et annulees")
+                   help="supprimer les entrées livrées et annulées")
     p.add_argument("--tout-vider", dest="tout_vider", action="store_true")
     p.set_defaults(fonction=cmd_file)
 
@@ -3162,7 +3178,7 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.add_argument("--auto", action="store_true",
                    help="remplir la file automatiquement quand elle se vide")
     p.add_argument("--max", type=int, default=0,
-                   help="s'arreter apres N produits")
+                   help="s'arrêter après N produits")
     p.add_argument("--pause", type=int, default=None,
                    help="secondes entre deux produits")
     p.add_argument("--budget", nargs="+", metavar="NOM=VALEUR",
@@ -3171,7 +3187,7 @@ def construire_parseur() -> argparse.ArgumentParser:
 
     p = sous_parseurs.add_parser(
         "marche", help="mesurer un marche depuis des sources publiques")
-    p.add_argument("sujet", help="le sujet ou la niche a mesurer")
+    p.add_argument("sujet", help="le sujet ou la niche à mesurer")
     p.add_argument("--json", action="store_true", help="enregistrer le rapport complet")
     p.set_defaults(fonction=cmd_marche)
 
@@ -3183,56 +3199,56 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.set_defaults(fonction=cmd_menu)
 
     p = sous_parseurs.add_parser(
-        "ventes", help="enregistrer et lire les ventes reelles")
+        "ventes", help="enregistrer et lire les ventes réelles")
     p.add_argument("--importer", default="", metavar="FICHIER.csv",
                    help="importer un export de place de marche")
     p.add_argument("--sur", dest="plateforme_vente", default="gumroad",
                    help="plateforme d'origine (gumroad, etsy, payhip, site...)")
     p.add_argument("--ajouter", default="", metavar="PRODUIT_ID",
-                   help="saisir une vente a la main")
+                   help="saisir une vente à la main")
     p.add_argument("--brut", type=float, default=None, help="montant encaisse")
     p.add_argument("--net", type=float, default=None,
-                   help="ce qui reste apres commission, si vous le connaissez")
+                   help="ce qui reste après commission, si vous le connaissez")
     p.add_argument("--unites", type=int, default=1)
     # Meme defaut orphelin que « plateforme » : qui vend en francs suisses
     # reglait sa devise et voyait « EUR » a chaque import.
     p.add_argument("--devise", default=str(reglages.lire("devise", "EUR")))
-    p.add_argument("--date", default="", help="AAAA-MM-JJ (defaut : aujourd'hui)")
+    p.add_argument("--date", default="", help="AAAA-MM-JJ (défaut : aujourd'hui)")
     p.add_argument("--reference", default="",
                    help="nom du produit tel qu'il apparait sur la plateforme")
     p.add_argument("--remboursement", action="store_true")
     p.add_argument("--lier", nargs=2, metavar=("REFERENCE", "PRODUIT_ID"),
-                   help="rattacher une reference a un produit")
+                   help="rattacher une référence à un produit")
     p.add_argument("--rattacher", action="store_true",
-                   help="rattacher automatiquement ce qui peut l'etre")
+                   help="rattacher automatiquement ce qui peut l'être")
     p.add_argument("--depuis", default="", help="ne compter qu'a partir de AAAA-MM-JJ")
     p.add_argument("-n", "--nombre", type=int, default=15)
     p.set_defaults(fonction=cmd_ventes)
 
     p = sous_parseurs.add_parser(
         "veille", help="ce que les gens disent vraiment d'une niche")
-    p.add_argument("sujet", help="la niche a explorer, entre guillemets")
+    p.add_argument("sujet", help="la niche à explorer, entre guillemets")
     p.add_argument("-n", "--nombre", type=int, default=12,
                    help="discussions affichees")
     p.add_argument("-c", "--communautes", type=int, default=2,
                    help="communautes lues (chacune coute un appel)")
     p.add_argument("--periode", default="year",
                    choices=["day", "week", "month", "year", "all"],
-                   help="fenetre de temps")
+                   help="fenêtre de temps")
     p.set_defaults(fonction=cmd_veille)
 
     p = sous_parseurs.add_parser(
-        "sauvegarde", help="mettre l'atelier a l'abri, ou le remettre en place")
+        "sauvegarde", help="mettre l'atelier à l'abri, ou le remettre en place")
     p.add_argument("--vers", default="", metavar="FICHIER.zip",
-                   help="ou ecrire l'archive")
+                   help="où écrire l'archive")
     p.add_argument("--avec-produits", dest="avec_produits",
                    action="store_true",
                    help="inclure les fichiers des produits (volumineux)")
     p.add_argument("--restaurer", default="", metavar="FICHIER.zip",
-                   help="remettre l'atelier dans l'etat de cette archive")
+                   help="remettre l'atelier dans l'état de cette archive")
     p.add_argument("--sans-produits", dest="sans_produits",
                    action="store_true",
-                   help="a la restauration, ne pas reecrire les produits")
+                   help="à la restauration, ne pas réécrire les produits")
     p.add_argument("--inspecter", default="", metavar="FICHIER.zip",
                    help="voir ce que contient une archive, sans rien changer")
     p.add_argument("--oui", action="store_true",
@@ -3246,10 +3262,10 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.add_argument("-n", "--nombre", type=int, default=12,
                    help="nombre de paires affichees")
     p.add_argument("--reconstruire", action="store_true",
-                   help="calculer les empreintes des produits deja fabriques")
+                   help="calculer les empreintes des produits déjà fabriqués")
     p.set_defaults(fonction=cmd_doublons)
 
-    p = sous_parseurs.add_parser("reglages", help="consulter ou modifier vos reglages")
+    p = sous_parseurs.add_parser("reglages", help="consulter ou modifier vos réglages")
     p.add_argument("--definir", nargs="+", metavar="NOM=VALEUR",
                    help='ex : --definir auteur="Votre Nom" qualite=exigeant')
     p.add_argument("--reinitialiser", action="store_true")
@@ -3259,52 +3275,52 @@ def construire_parseur() -> argparse.ArgumentParser:
         "prompts-systeme",
         help="consulter ou personnaliser les prompts et les agents")
     p.add_argument("--exporter", action="store_true",
-                   help="ecrire les prompts par defaut dans atelier/prompts/")
+                   help="écrire les prompts par défaut dans atelier/prompts/")
     p.add_argument("--reinitialiser", action="store_true",
                    help="supprimer toutes les personnalisations")
     p.set_defaults(fonction=cmd_prompts_systeme)
 
     p = sous_parseurs.add_parser("docteur", help="diagnostiquer l'installation")
     p.add_argument("--modeles", action="store_true",
-                   help="verifier que les modeles configures existent encore "
-                        "chez leur fournisseur (une requete par fournisseur)")
+                   help="vérifier que les modèles configurés existent encore "
+                        "chez leur fournisseur (une requête par fournisseur)")
     p.add_argument("--essai", action="store_true",
-                   help="appeler vraiment chaque modele declare et dire "
-                        "lequel repond (un appel par modele, consomme du quota)")
+                   help="appeler vraiment chaque modèle déclaré et dire "
+                        "lequel répond (un appel par modèle, consomme du quota)")
     p.add_argument("--quotas", action="store_true",
-                   help="confronter les quotas ecrits a ceux que chaque "
+                   help="confronter les quotas écrits à ceux que chaque "
                         "service annonce dans ses en-tetes (un appel par "
                         "fournisseur)")
     p.add_argument("--reparer", action="store_true",
-                   help="remplacer chaque identifiant mort par un qui repond "
+                   help="remplacer chaque identifiant mort par un qui répond "
                         "chez VOTRE compte, et le retenir")
     p.set_defaults(fonction=cmd_docteur)
 
-    p = sous_parseurs.add_parser("cles", help="obtenir des cles API gratuites")
+    p = sous_parseurs.add_parser("cles", help="obtenir des clés API gratuites")
     p.set_defaults(fonction=cmd_cles)
 
     p = sous_parseurs.add_parser("cache", help="consulter ou vider le cache IA")
     p.add_argument("--vider", action="store_true",
-                   help="supprimer les reponses gardees (elles seront repayees)")
+                   help="supprimer les réponses gardées (elles seront repayées)")
     p.add_argument("--catalogues", action="store_true",
-                   help="oublier la liste des modeles servis par chaque "
-                        "fournisseur, sans toucher aux reponses")
+                   help="oublier la liste des modèles servis par chaque "
+                        "fournisseur, sans toucher aux réponses")
     p.set_defaults(fonction=cmd_cache)
 
     p = sous_parseurs.add_parser(
-        "specs", help="fiche technique de l'appareil, a pousser sur le depot")
+        "specs", help="fiche technique de l'appareil, à pousser sur le dépôt")
     p.add_argument("--vers", default="",
-                   help="ou ecrire la fiche (defaut : SPECS-APPAREIL.md a la "
+                   help="où écrire la fiche (défaut : SPECS-APPAREIL.md à la "
                         "racine de l'installation)")
     p.set_defaults(fonction=cmd_specs)
 
     p = sous_parseurs.add_parser(
-        "maj", help="mettre a jour l'usine depuis le depot")
+        "maj", help="mettre à jour l'usine depuis le dépôt")
     p.add_argument("--branche", default="",
-                   help="branche a suivre (defaut : celle du clone, ou « {} »)"
+                   help="branche à suivre (défaut : celle du clone, ou « {} »)"
                         .format("main"))
     p.add_argument("--archive", action="store_true",
-                   help="telecharger l'archive meme si git est disponible")
+                   help="télécharger l'archive même si git est disponible")
     p.add_argument("--oui", action="store_true",
                    help="accepter de perdre les modifications locales")
     p.set_defaults(fonction=cmd_maj)

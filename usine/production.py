@@ -289,7 +289,7 @@ def domaines_de_depart(
                 lecture.get("fiabilite", "")))
         else:
             dire("  garde « {} » — demande non mesurée ({}) : ces sources ne "
-                 "savent pas juger ce mot-cle".format(
+                 "savent pas juger ce mot-clé".format(
                      nom, lecture.get("fiabilite", "")))
         retenus.append({**piste, "demande": demande or "",
                         "fiabilite": lecture.get("fiabilite", "")})
@@ -855,11 +855,11 @@ class UsineContinue:
             # lever, pas a l'usine d'attendre qu'il disparaisse.
             self.motif_fin = "budget epuise pendant la fabrication"
             self.arret_demande = True
-            self.journal("  budget epuise ({}) : produit exporte en l'etat, "
-                         "l'usine s'arrete.".format(self.compteur.refus))
+            self.journal("  budget épuisé ({}) : produit exporté en l'état, "
+                         "l'usine s'arrête.".format(self.compteur.refus))
         elif resume.get("budget_epuise"):
             self.journal("  plus rien à demander pendant la fabrication : "
-                         "produit exporte en l'etat.")
+                         "produit exporté en l'état.")
         # Le signalement de doublon est pose par la chaine de fabrication
         # dans la fiche du produit : on le relit ici pour en tenir compte au
         # bilan de session, la ou la decision de publier se prend.

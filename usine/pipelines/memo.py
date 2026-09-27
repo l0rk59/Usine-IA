@@ -115,7 +115,8 @@ def _exporter(ctx: Contexte, titre: str, blocs: List[Dict[str, Any]],
     # tient pas, coute plus qu'elle ne rapporte : on annonce ce qu'il y a.
     t = libelles.textes(ctx.langue_iso)
     lignes = sum(len(b["lignes"]) for b in blocs)
-    sous_titre = t["memo_sous_titre"].format(lignes=lignes, blocs=len(blocs))
+    sous_titre = libelles.accorder(t["memo_sous_titre"].format(
+        lignes=lignes, blocs=len(blocs)), ctx.langue_iso)
     sections = [livraison.Bloc(
         titre=bloc["titre"],
         corps=_markdown_bloc(bloc),

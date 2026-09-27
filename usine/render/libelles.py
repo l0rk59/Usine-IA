@@ -23,6 +23,7 @@ cle par cle, et les memes champs a remplir de part et d'autre.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict
 
 LANGUES_TENUES = ("fr", "en")
@@ -238,6 +239,8 @@ vous sera envoyée.
         "faux_apres": " ». ",
         "score_sur": " bonne(s) réponse(s) sur ",
         "sans_reponse_nombre": " question(s) sans réponse.",
+        # Le score s'accorde dans la page, ou le nombre est connu.
+        "zero_pluriel": False,
     },
 
     # --- formation ---------------------------------------------------------------
@@ -735,6 +738,7 @@ Write to {contact}.
         "faux_apres": "”. ",
         "score_sur": " correct answer(s) out of ",
         "sans_reponse_nombre": " question(s) unanswered.",
+        "zero_pluriel": True,
     },
 
     "module_titre": "Module {numero} — {titre}",
@@ -1039,4 +1043,34 @@ def textes(code: str) -> Dict[str, Any]:
 def libelle(code: str, cle: str, **valeurs: Any) -> Any:
     """Un libelle, rempli s'il y a des valeurs."""
     gabarit = textes(code)[cle]
-    return gabarit.format(**valeurs) if valeurs else gabarit
+    return accorder(gabarit.format(**valeurs), code) if valeurs else gabarit
+
+
+_NOMBRE_OU_PLURIEL = re.compile(r"\d+|\(s\)")
+
+
+def accorder(texte: str, code: str = "fr") -> str:
+    """Chaque « (s) » s'accorde avec le nombre qui le precede dans la phrase.
+
+    « 29 repère(s) en 6 bloc(s) » sur la couverture d'un memo, « un message
+    tous les 3 jour(s) » sous le titre d'une sequence : la notation d'un
+    formulaire, la ou l'acheteur lit un titre (vraie fabrication du
+    27/09/2026). Le nombre le plus proche AVANT le « (s) » decide, ce qui
+    accorde chacun des deux nombres d'une meme phrase. Sans nombre avant
+    lui, le « (s) » reste tel quel : mieux vaut la notation qu'un accord
+    invente.
+
+    Le francais met 0 et 1 au singulier, l'anglais met 0 au pluriel.
+    """
+    zero_pluriel = mobilier(code or "fr") == "en"
+    morceaux, dernier, position = [], None, 0
+    for trouve in _NOMBRE_OU_PLURIEL.finditer(texte):
+        if trouve.group() != "(s)":
+            dernier = int(trouve.group())
+            continue
+        if dernier is None:
+            continue
+        pluriel = dernier > 1 or (dernier == 0 and zero_pluriel)
+        morceaux.append(texte[position:trouve.start()] + ("s" if pluriel else ""))
+        position = trouve.end()
+    return "".join(morceaux) + texte[position:]

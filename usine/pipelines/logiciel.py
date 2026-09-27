@@ -424,8 +424,9 @@ def _markdown_verification(synthese: Dict[str, Any],
     # Le fichier ou ces remarques sont detaillees reste a l'atelier : la
     # notice y renvoyait l'acheteur, qui ne l'a jamais recu.
     if synthese["avertissements"]:
-        lignes.append("\n" + t["logiciel_remarques"].format(
-            nombre=synthese["avertissements"]))
+        # Au moins une remarque ici : les deux langues accordent pareil.
+        lignes.append("\n" + libelles.accorder(t["logiciel_remarques"].format(
+            nombre=synthese["avertissements"])))
     if not synthese["tout_valide"]:
         lignes.append("\n" + t["logiciel_attention"])
     return "\n".join(lignes)

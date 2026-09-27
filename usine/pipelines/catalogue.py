@@ -409,6 +409,13 @@ class TypeProduit:
     # a qui l'on pose une question sans reponse en fabrique une. On obtenait
     # « ce thriller resout le probleme du manque de suspense dans votre vie ».
     famille: str = "pratique"
+    # La chaine se mesure-t-elle en SECTIONS de tant de mots ? C'est ce que
+    # le brief decide quand on ne dit rien (« volume : 5 sections de ~400
+    # mots »). Un memo compte des blocs, un quiz des questions, un cahier des
+    # grilles : leur annoncer un volume en sections, c'etait decider une
+    # chose que la chaine ne lit pas, et l'ecrire a l'ecran (vraie
+    # fabrication du 27/09/2026).
+    volume: bool = False
     mots_cles: Tuple[str, ...] = ()   # aide l'explorateur de niches a choisir
     options: Dict[str, Any] = field(default_factory=dict)
     # Les reglages que CE type comprend, et lui seul. Voir « Champ ».
@@ -534,7 +541,7 @@ def _chaines() -> Dict[str, Callable]:
 
 TYPES: List[TypeProduit] = [
     TypeProduit(
-        cle="ebook", nom="Ebook complet",
+        cle="ebook", volume=True, nom="Ebook complet",
         resume="Un guide structuré, du plan à la couverture",
         detail="PDF + EPUB + HTML + Markdown + couverture",
         formats=("pdf", "epub", "html", "md", "txt"),
@@ -570,7 +577,7 @@ TYPES: List[TypeProduit] = [
         ),
     ),
     TypeProduit(
-        cle="nouvelle", nom="Nouvelle (fiction)", famille="fiction",
+        cle="nouvelle", volume=True, nom="Nouvelle (fiction)", famille="fiction",
         resume="Une histoire courte, avec bible et continuité tenue",
         detail="PDF + EPUB + HTML + Markdown + couverture",
         formats=("pdf", "epub", "html", "md", "txt"),
@@ -584,7 +591,7 @@ TYPES: List[TypeProduit] = [
         champs=champs_de_fiction(),
     ),
     TypeProduit(
-        cle="roman", nom="Roman (fiction longue)", famille="fiction",
+        cle="roman", volume=True, nom="Roman (fiction longue)", famille="fiction",
         resume="Un roman : trente scènes en parties, continuité tenue",
         detail="PDF + EPUB + HTML + Markdown + couverture",
         formats=("pdf", "epub", "html", "md", "txt"),
@@ -603,7 +610,7 @@ TYPES: List[TypeProduit] = [
         champs=champs_de_fiction(),
     ),
     TypeProduit(
-        cle="interactive", nom="Livre dont le lecteur est le héros",
+        cle="interactive", volume=True, nom="Livre dont le lecteur est le héros",
         famille="fiction",
         resume="Un récit à embranchements, dont la carte est vérifiée",
         detail="PDF + EPUB + HTML + Markdown + carte du livre",
@@ -624,7 +631,7 @@ TYPES: List[TypeProduit] = [
         champs=champs_de_fiction(serie=False),
     ),
     TypeProduit(
-        cle="recueil", nom="Recueil de nouvelles", famille="fiction",
+        cle="recueil", volume=True, nom="Recueil de nouvelles", famille="fiction",
         resume="Plusieurs récits liés par un fil, dont on mesure la variété",
         detail="PDF + EPUB + HTML + Markdown + couverture",
         formats=("pdf", "epub", "html", "md", "txt"),
@@ -636,7 +643,7 @@ TYPES: List[TypeProduit] = [
         champs=champs_de_fiction(serie=False),
     ),
     TypeProduit(
-        cle="feuilleton", nom="Feuilleton (épisodes)", famille="fiction",
+        cle="feuilleton", volume=True, nom="Feuilleton (épisodes)", famille="fiction",
         resume="Des épisodes qui se lisent seuls et appellent le suivant",
         detail="PDF + EPUB + HTML + Markdown + couverture",
         formats=("pdf", "epub", "html", "md", "txt"),
@@ -647,7 +654,7 @@ TYPES: List[TypeProduit] = [
         champs=champs_de_fiction(serie=False),
     ),
     TypeProduit(
-        cle="conte", nom="Conte jeunesse illustré", famille="fiction",
+        cle="conte", volume=True, nom="Conte jeunesse illustré", famille="fiction",
         resume="Un album en doubles-pages, vérifié contre sa tranche d'âge",
         detail="PDF + EPUB + HTML + Markdown + illustrations",
         formats=("pdf", "epub", "html", "md", "txt"),
@@ -688,7 +695,7 @@ TYPES: List[TypeProduit] = [
         ),
     ),
     TypeProduit(
-        cle="formation", nom="Mini-formation",
+        cle="formation", volume=True, nom="Mini-formation",
         resume="Des modules avec livrables et cahier d'exercices",
         detail="Manuel PDF + cahier d'exercices + séquence e-mail",
         formats=("pdf", "html", "md"),

@@ -257,7 +257,7 @@ PROVIDERS: List[Provider] = [
             "gpt-oss-120b": Quota(rpm=5, rpd=200, tpm=30000, tpd=1000000),
             "qwen-3.8-27b": Quota(rpm=5, rpd=200, tpm=30000, tpd=1000000),
         },
-        signup="https://cloud.cerebras.ai/ (carte bancaire exigee)",
+        signup="https://cloud.cerebras.ai/ (carte bancaire exigée)",
         # Le palier gratuit SANS CARTE a pris fin : Cerebras l'a remplace par un
         # essai de 5 dollars qui exige une carte bancaire, et une cle sans
         # credit repond 402. Releve du 11/09/2026 (klymentiev.com/blog/free-llm-

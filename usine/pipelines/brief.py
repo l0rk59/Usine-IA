@@ -276,20 +276,27 @@ def decider_les_reglages(ctx: Any, type_produit: Any,
     return decides
 
 
-def a_decider(ctx: Any) -> List[str]:
+def a_decider(ctx: Any, type_produit: str = "") -> List[str]:
     """Les champs que l'utilisateur a laisses a l'usine.
 
     Un champ vaut « auto » soit parce qu'il a ete demande ainsi, soit parce
     que le reglage par defaut le dit. Les deux veulent dire la meme chose, et
     c'est bien le point : ne pas choisir est un choix, et il se voit.
+
+    Le volume n'est a decider que pour une chaine qui le lit (« volume » au
+    catalogue). Un type inconnu du catalogue le garde : mieux vaut decider
+    une chose inutile que laisser « auto » a une chaine qui la lit.
     """
+    from . import catalogue
+
     manquants = []
     if not (ctx.audience or "").strip() or (ctx.audience or "").strip() == AUTO:
         manquants.append("audience")
     if not (ctx.ton or "").strip() or (ctx.ton or "").strip() == AUTO:
         manquants.append("ton")
+    fiche = catalogue.obtenir(type_produit) if type_produit else None
     if (not (ctx.taille or "").strip() or (ctx.taille or "").strip() == AUTO) \
-            and not ctx.chapitres:
+            and not ctx.chapitres and (fiche is None or fiche.volume):
         manquants.append("taille")
     return manquants
 
@@ -301,7 +308,7 @@ def appliquer(ctx: Any, genre: str = "produit") -> Dict[str, Any]:
     la chaine puisse le ranger dans la fiche du produit : une decision qu'on
     ne retrouve plus six mois apres n'aide pas a comprendre le resultat.
     """
-    manquants = a_decider(ctx)
+    manquants = a_decider(ctx, genre)
     if not manquants:
         return {}
     ctx.journal("Brief automatique : {} à décider...".format(
@@ -344,9 +351,21 @@ def appliquer(ctx: Any, genre: str = "produit") -> Dict[str, Any]:
         ctx.journal("  pourquoi : {}".format(applique["pourquoi"]))
     # Les deux portes lisent ce journal. « --ton, --audience » s'affichait
     # aussi dans le tableau de bord, ou il n'existe aucune option a taper.
-    ctx.journal("  (pour imposer les vôtres : les champs Ton, Audience et "
-                "Volume, ou --ton, --audience, --chapitres)")
+    # Seuls les champs decides ici sont nommes : « Volume » ne veut rien dire
+    # pour un quiz.
+    decides = [(nom, option) for cle, nom, option in (
+        ("ton", "Ton", "--ton"), ("audience", "Audience", "--audience"),
+        ("taille", "Volume", "--chapitres")) if cle in manquants]
+    ctx.journal("  (pour imposer les vôtres : {} {}, ou {})".format(
+        "le champ" if len(decides) == 1 else "les champs",
+        _et([nom for nom, _ in decides]),
+        ", ".join(option for _, option in decides)))
     return applique
+
+
+def _et(mots: List[str]) -> str:
+    """« Ton, Audience et Volume »."""
+    return mots[0] if len(mots) == 1 else ", ".join(mots[:-1]) + " et " + mots[-1]
 
 
 def _laisser_au_redacteur(ctx: Any, manquants: List[str],

@@ -71,6 +71,13 @@ SCRIPT = """
   var textes = JSON.parse(document.getElementById('textes-quiz').textContent);
   var formulaire = document.getElementById('quiz');
 
+  // « 3 bonne(s) réponse(s) » : le nombre n'est connu qu'ici, dans la page,
+  // et c'est donc ici qu'il s'accorde — comme « libelles.accorder ».
+  function accorder(texte, nombre) {
+    var pluriel = nombre > 1 || (nombre === 0 && textes.zero_pluriel);
+    return texte.replace(/\\(s\\)/g, pluriel ? 's' : '');
+  }
+
   function corriger(evenement) {
     evenement.preventDefault();
     var justes = 0;
@@ -92,8 +99,9 @@ SCRIPT = """
         + question.explication;
     });
     var score = document.getElementById('score');
-    score.textContent = justes + textes.score_sur + donnees.length
-      + (sansReponse ? ' — ' + sansReponse + textes.sans_reponse_nombre : '.');
+    score.textContent = justes + accorder(textes.score_sur, justes)
+      + donnees.length + (sansReponse ? ' — ' + sansReponse
+      + accorder(textes.sans_reponse_nombre, sansReponse) : '.');
   }
 
   formulaire.addEventListener('submit', corriger);

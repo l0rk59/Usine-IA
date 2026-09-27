@@ -87,8 +87,8 @@ def _refuser(requete, *args, **kwargs):
     if _est_local(url):
         return _urlopen_reel(requete, *args, **kwargs)
     raise SortieReseauInterdite(
-        "Aucun test ne sort sur le reseau, et celui-ci a tente « {} ».\n"
-        "Injectez la reponse : « tests/simulateur.py » pour le routeur, ou "
+        "Aucun test ne sort sur le réseau, et celui-ci a tenté « {} ».\n"
+        "Injectez la réponse : « tests/simulateur.py » pour le routeur, ou "
         "remplacez « marche.sonder », « http.requete » ou "
         "« images.image_pollinations » selon le cas.".format(url[:120]))
 

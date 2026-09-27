@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from ..core import images
 from . import tableur
 from . import document as D
+from . import libelles
 from .epub import construire_epub
 from .epub_conformite import verifier_epub
 from .page import ecrire_page
@@ -273,8 +274,9 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
         chemin = dossier / "lire.html"
         ecrire_page(chemin, produit.titre, "\n".join(corps),
                     sous_titre=produit.sous_titre, langue=langue,
-                    meta="{} — {} {}".format(ctx.auteur, len(blocs_texte),
-                                             produit.libelle_sections),
+                    meta=libelles.accorder("{} — {} {}".format(
+                        ctx.auteur, len(blocs_texte), produit.libelle_sections),
+                        langue),
                     couverture=couverture.name if couverture else None)
         fichiers.append(chemin)
 
@@ -346,8 +348,6 @@ def composer_pdf(produit: Produit, ctx: Any,
     # avec son filet bleu et rien dessous. Personne ne l'avait vu parce
     # qu'aucun produit n'avait, jusqu'au conte, de blocs sans titre PDF.
     if doc.sommaire and produit.sommaire:
-        from . import libelles
-
         langue = produit.langue or getattr(ctx, "langue_iso", "fr")
         doc.inserer_sommaire(libelles.libelle(langue, "sommaire"), apres=1)
     return doc

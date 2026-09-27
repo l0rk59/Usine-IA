@@ -102,7 +102,7 @@ class TestAssemblage(unittest.TestCase):
     def test_le_total_est_la_somme_des_modules(self):
         self.assertEqual(self.mesures["mots"],
                          sum(m["mots"] for m in self.mesures["modules"]))
-        self.assertIn("2 module(s)", self.document)
+        self.assertIn("2 modules", self.document)
 
     def test_le_document_ne_contient_plus_de_balisage_a_dire(self):
         """Les seuls titres restants sont ceux de la mise en page du script."""
