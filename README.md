@@ -111,6 +111,7 @@ du mieux placé. Le détail : [docs/NICHE.md](docs/NICHE.md).
 | `usine emails` | Séquence e-mail | Les messages qui suivent une inscription, + CSV à importer | 6–14 min |
 | `usine memo` | Mémo / antisèche | L'essentiel sur une page qu'on garde à côté de soi | 4–9 min |
 | `usine quiz` | Quiz avec corrigé | Questions, corrigé expliqué, et une page qui se corrige seule | 7–16 min |
+| `usine cartes` | Cartes de révision | Planches recto-verso à découper, fichier Anki, page qui retourne les cartes | 4–12 min |
 | `usine idees` | Étude de niche | Pistes chiffrées, appuyées sur des mesures | 2–4 min |
 
 Et quand vous ne savez pas encore quoi fabriquer :
@@ -120,7 +121,7 @@ Et quand vous ne savez pas encore quoi fabriquer :
 | `usine auto` | L'usine choisit la niche **et** le type de produit |
 | `usine auto "votre sujet"` | Vous donnez le sujet, elle choisit le type qui se vend le mieux dessus |
 
-Les quinze commandes ci-dessus demandent le type d'abord. Or le choisir suppose
+Les commandes du premier tableau demandent le type d'abord. Or le choisir suppose
 de savoir ce qui se vend dans une niche qu'on n'a pas encore cherchée : c'est
 l'ordre inverse de celui dans lequel la question se pose. Le tableau de bord
 propose le même choix, en tête de la liste des types.
@@ -172,6 +173,7 @@ usine ebook "la fiscalité du freelance" \
 | `--forme` (ebook) | `methode`, `reference`, `programme`, `cas`, `questions` : la charpente du livre |
 | `--niveau` (ebook) | `debutant`, `intermediaire`, `avance` |
 | `--exercices` (ebook) | `avec` : un exercice encadré par chapitre |
+| `--niveau` (quiz, cartes) | `debutant`, `intermediaire`, `avance` : ce qu'une question suppose déjà su |
 | `--marketing` | ajoute le kit de vente |
 | `--zip` | emballe l'archive à livrer |
 | `--hors-ligne` | aucune connexion ne sort du téléphone : IA locale seulement, couverture dessinée sur place |

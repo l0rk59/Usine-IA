@@ -435,6 +435,36 @@ vous sera envoyée.
     "quiz_colonnes": ("Module", "Question", "A", "B", "C", "D", "Bonne",
                       "Explication"),
 
+    # --- cartes de revision -----------------------------------------------
+    "cartes_titre": "{nombre} cartes de révision — {sujet}",
+    "cartes_sous_titre": "À imprimer, à découper, ou à importer dans Anki",
+    "cartes_promesse": "Réviser un peu chaque jour, et retenir",
+    "cartes_mode_emploi_titre": "Comment utiliser ces cartes",
+    "cartes_impression": (
+        "Imprimez le fichier des planches en recto-verso, retournement sur le "
+        "bord long : chaque réponse tombe au dos de sa question. Découpez le "
+        "long des traits. Sans imprimante recto-verso, imprimez d'abord les "
+        "pages impaires, remettez la pile dans le bac, puis imprimez les "
+        "paires."),
+    "cartes_anki": (
+        "Le fichier {fichier} s'importe dans Anki (Fichier, puis Importer) : "
+        "une carte par ligne, et le thème devient une étiquette."),
+    "cartes_methode": (
+        "Révisez un petit paquet par jour. Une carte réussie passe au paquet "
+        "suivant et reviendra plus tard ; une carte ratée revient demain. "
+        "C'est la répétition espacée : on revoit ce qu'on oublie, pas ce "
+        "qu'on sait déjà."),
+    "cartes_liste_titre": "Les cartes",
+    "cartes_colonnes": ("Recto", "Verso", "Thème"),
+    "cartes_intro_page": "Touchez la carte pour la retourner.",
+    "cartes_script": {
+        "precedente": "Précédente",
+        "retourner": "Retourner",
+        "suivante": "Suivante",
+        "melanger": "Mélanger",
+        "compteur": "Carte {n} sur {total}",
+    },
+
     # --- la derniere page d'un tome de serie ------------------------------------
     "serie_page": "La suite",
     "serie_tome_lu": ("Vous venez de lire le tome {rang} de la série **{serie}**. "
@@ -452,6 +482,9 @@ vous sera envoyée.
     "fichier_notice": "LISEZ-MOI.md",
     "fichier_licence": "LICENCE.txt",
     "fichier_cahier": "cahier-exercices",
+    "fichier_planches": "planches-a-decouper",
+    "fichier_anki": "cartes-anki.txt",
+    "fichier_page_cartes": "cartes.html",
     "fichier_manuel": "-manuel",
     "fichier_extrait": "{nom}-extrait",
     "fichier_tableau": "tableau-{rang:02d}-{nom}.csv",
@@ -851,6 +884,35 @@ Write to {contact}.
     "quiz_colonnes": ("Module", "Question", "A", "B", "C", "D", "Correct",
                       "Explanation"),
 
+    # --- flashcards ---------------------------------------------------------
+    "cartes_titre": "{nombre} flashcards — {sujet}",
+    "cartes_sous_titre": "Print them, cut them out, or import them into Anki",
+    "cartes_promesse": "A little review every day, and it sticks",
+    "cartes_mode_emploi_titre": "How to use these cards",
+    "cartes_impression": (
+        "Print the sheets file double-sided, flipping on the long edge: each "
+        "answer lands on the back of its question. Cut along the lines. "
+        "Without a duplex printer, print the odd pages first, put the stack "
+        "back in the tray, then print the even pages."),
+    "cartes_anki": (
+        "The file {fichier} imports into Anki (File, then Import): one card "
+        "per line, and the topic becomes a tag."),
+    "cartes_methode": (
+        "Review a small pile every day. A card you get right moves to the "
+        "next pile and comes back later; a card you miss comes back "
+        "tomorrow. That is spaced repetition: you review what you forget, "
+        "not what you already know."),
+    "cartes_liste_titre": "The cards",
+    "cartes_colonnes": ("Front", "Back", "Topic"),
+    "cartes_intro_page": "Tap the card to flip it.",
+    "cartes_script": {
+        "precedente": "Previous",
+        "retourner": "Flip",
+        "suivante": "Next",
+        "melanger": "Shuffle",
+        "compteur": "Card {n} of {total}",
+    },
+
     # --- the last page of a volume in a series ----------------------------------
     "serie_page": "What comes next",
     "serie_tome_lu": ("You have just read volume {rang} of the **{serie}** "
@@ -869,6 +931,9 @@ Write to {contact}.
     "fichier_notice": "README.md",
     "fichier_licence": "LICENSE.txt",
     "fichier_cahier": "workbook",
+    "fichier_planches": "cut-out-sheets",
+    "fichier_anki": "flashcards-anki.txt",
+    "fichier_page_cartes": "flashcards.html",
     "fichier_manuel": "-manual",
     "fichier_extrait": "{nom}-excerpt",
     "fichier_tableau": "table-{rang:02d}-{nom}.csv",

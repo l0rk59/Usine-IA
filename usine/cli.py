@@ -628,6 +628,18 @@ def cmd_quiz(args: argparse.Namespace) -> int:
         "Quiz de {} questions, corrige explique.".format(resume["questions"])))
 
 
+def cmd_cartes(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication de cartes de révision")
+    resume = _par_le_catalogue(args, "cartes", ctx)
+    return _resume_console(_apres_production(
+        args, ctx, resume,
+        "{} cartes de révision, à imprimer ou à importer dans Anki.".format(
+            resume["cartes"])))
+
+
 def cmd_interactive(args: argparse.Namespace) -> int:
     if not _verifier_fournisseurs():
         return 2
@@ -2991,6 +3003,12 @@ def construire_parseur() -> argparse.ArgumentParser:
     _options_communes(p)
     _options_du_type(p, "quiz")
     p.set_defaults(fonction=cmd_quiz, _type="quiz")
+
+    p = sous_parseurs.add_parser(
+        "cartes", help="fabriquer des cartes de revision (planches, Anki)")
+    _options_communes(p)
+    _options_du_type(p, "cartes")
+    p.set_defaults(fonction=cmd_cartes, _type="cartes")
 
     p = sous_parseurs.add_parser("logiciel",
                                  help="fabriquer un outil logiciel verifie")

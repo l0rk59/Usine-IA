@@ -80,6 +80,10 @@ SCENARIOS = [
               "--recto-verso", "--sans-image"]),
     ("quiz", ["quiz", "les bases de la comptabilite", "-n", "8",
               "--niveau", "avance", "--sans-image"]),
+    # Vingt cartes : deux lots, donc le second recoit les rectos du premier,
+    # et trois planches dont la derniere est incomplete.
+    ("cartes", ["cartes", "le vocabulaire de la cuisine", "-n", "20",
+                "--niveau", "debutant", "--sans-image"]),
     ("complet", ["complet", "la meditation au bureau", "-T", "mini", "--sans-image"]),
     ("logiciel-cli", ["logiciel", "le nettoyage de fichiers en double", "-c", "cli",
                       "--sans-image"]),
@@ -157,6 +161,10 @@ ATTENDUS = {
     # « quiz.html » est la page qui se corrige seule, hors ligne : sans elle,
     # l'acheteur a un corrige a lire, pas un quiz a passer.
     "quiz": [".pdf", "quiz.md", "questions.csv", "quiz.html"],
+    # Les planches sont ce qu'on imprime, le fichier Anki ce qu'on importe :
+    # sans eux, le paquet n'est qu'une liste de questions.
+    "cartes": ["-planches-a-decouper.pdf", "cartes-anki.txt", "cartes.html",
+               "cartes.csv"],
     "qualite": ["rapport-qualite.json", ".pdf", ".epub"],
     "sur-mesure": [".pdf", ".epub", "livre.md"],
     "couverture-ebook": ["couverture.png", "couverture.svg", ".pdf", ".epub"],

@@ -352,6 +352,8 @@ def _options_du_type(cle: str) -> Dict[str, object]:
         return _champs_du_catalogue(cle, ("cible",))
     if cle == "outils":
         return _champs_du_catalogue(cle, ("composition",))
+    if cle == "cartes":
+        return _champs_du_catalogue(cle, ("niveau",))
     if cle == "modeles":
         return _champs_du_catalogue(cle, ("outil",))
     if cle == "formation":

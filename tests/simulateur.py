@@ -45,6 +45,7 @@ def _combien(invite: str, defaut: int) -> int:
                   r"sequence de\s+(\d+)\s+e-mails",
                   r"en\s+(\d+)\s+blocs courts",
                   r"Ecris\s+(\d+)\s+questions",
+                  r"Ecris\s+(\d+)\s+cartes de revision",
                   # Sans ces deux-la, le simulateur rendait toujours sa
                   # valeur par defaut : sept recits quand le test en demandait
                   # trois, et une carte de douze sections quand on en voulait
@@ -206,6 +207,21 @@ def simulateur(messages, role):
             "personnages_confondus": ["Camille et Lucie"],
             "promesses_non_payees": ["la lettre fermee n'est jamais ouverte"],
         }, ensure_ascii=False)
+
+    # --- cartes de revision : un lot, sans repeter les rectos deja ecrits -
+    #
+    # Les rectos sont numerotes a partir de ce que l'invite dit deja ecrit :
+    # un simulateur qui rendrait toujours les memes cartes ferait ecarter
+    # tout le deuxieme lot comme doublon, et le test n'exercerait que ca.
+    if '"recto"' in invite and '"verso"' in invite:
+        combien = _combien(invite, 12)
+        deja = invite.count(" | ") + (1 if "DEJA ECRITES" in invite else 0)
+        return json.dumps({"cartes": [
+            {"recto": "Que veut dire la notion numero {} ?".format(deja + n),
+             "verso": "La notion {} designe ce qu'on applique quand le cas "
+                      "se presente, avec un exemple court.".format(deja + n),
+             "theme": "Bases" if n % 2 else "Pratique"}
+            for n in range(1, combien + 1)]}, ensure_ascii=False)
 
     # --- feuilleton : le « Precedemment », ecrit POUR LE LECTEUR ---------
     #

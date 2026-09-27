@@ -490,7 +490,7 @@ class TypeProduit:
 
 def _chaines() -> Dict[str, Callable]:
     """Import tardif : le catalogue est lu par des modules que les chaines importent."""
-    from . import (boite_outils, conte, ebook, emails, feuilleton,
+    from . import (boite_outils, cartes, conte, ebook, emails, feuilleton,
                    formation, idees, impression, interactive, logiciel,
                    memo, modeles, nouvelle, pack_prompts, quiz,
                    recueil, social)
@@ -513,6 +513,7 @@ def _chaines() -> Dict[str, Callable]:
         "emails": emails.produire,
         "memo": memo.produire,
         "quiz": quiz.produire,
+        "cartes": cartes.produire,
         "idees": idees.produire,
     }
 
@@ -892,6 +893,31 @@ TYPES: List[TypeProduit] = [
                        "réponses, calculés sur les questions réellement "
                        "retenues."),
         )),
+    TypeProduit(
+        cle="cartes", nom="Cartes de révision",
+        resume="Recto, verso : à imprimer, à découper ou à charger dans Anki",
+        detail="Planches PDF recto-verso + fichier Anki + page qui retourne "
+               "les cartes",
+        formats=("pdf", "html", "md", "csv", "txt"),
+        minutes=(4, 12),
+        quantite=("nombre", "Combien de cartes", "40"),
+        options={"niveau": None},
+        # Etroits, comme pour la fiction : « revision » seul designerait aussi
+        # la relecture d'un texte.
+        mots_cles=("flashcards", "cartes de revision", "memoriser", "anki",
+                   "fiches de revision"),
+        # Deux lignes par carte : ni rythme de phrase ni continuite a mesurer.
+        prose=False,
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre de cartes",
+                  genre="entier", defaut=40),
+            Champ("niveau", "--niveau", "Niveau visé", genre="choix",
+                  defaut="", choix=("",) + niveaux_quiz(),
+                  etiquettes=NIVEAUX_LISIBLES,
+                  aide="Ce qu'une carte suppose déjà su. Par défaut, l'usine "
+                       "en juge d'après le sujet."),
+        ),
+    ),
     TypeProduit(
         cle="idees", nom="Étude de niche",
         resume="Des pistes chiffrées, appuyées sur des mesures de marché",

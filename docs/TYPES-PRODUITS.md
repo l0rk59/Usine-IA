@@ -556,3 +556,43 @@ guide d'installation.
 
 Les deux se décident d'après le sujet quand personne ne les choisit, et le
 journal dit quand l'usine a dû retomber sur le mélange ou sur « les deux ».
+
+# Cartes de révision — `usine cartes`
+
+*Ajoutées le 27/09/2026.*
+
+Ni le quiz ni le mémo. Le quiz mesure, avec des propositions et une
+explication ; le mémo se consulte. Une carte sert à **se tester seul**, cent
+fois, en espaçant les passages. Ce que l'acheteur paie, c'est de pouvoir la
+réviser comme il en a l'habitude, sans rien retaper — d'où trois livrables
+que les autres chaînes ne savent pas faire (`usine/render/cartes.py`) :
+
+| Livrable | Ce qui le fait rater en silence |
+|---|---|
+| **Planches à découper** (PDF, huit cartes par feuille) | Imprimée en recto-verso, la feuille se retourne sur son bord long et inverse la gauche et la droite. Sans versos **en miroir**, la réponse de la carte 1 tombe au dos de la carte 2 — et le PDF paraît parfait à l'écran. |
+| **Fichier Anki** (texte à tabulations) | Une tabulation ou un retour à la ligne dans un champ décale toutes les colonnes suivantes. Les en-têtes `#separator`, `#columns`, `#tags column` sont ceux que lit Anki depuis sa version 2.1.54 (manuel d'Anki, vérifié le 27/09/2026) ; le thème devient une étiquette, donc ses espaces deviennent des tirets bas. |
+| **Page qui retourne les cartes** (HTML, hors ligne) | Même principe que le quiz auto-corrigé : un script écrit à la main, jamais par un modèle, et la liste complète des cartes sous le paquet pour qui n'a pas de script. |
+
+Le réglage `--niveau` (« Niveau visé ») est celui du quiz. Laissé vide, l'usine
+en juge d'après le sujet.
+
+**Les lots.** Les cartes s'écrivent par douze. Chaque lot va au carnet dès
+qu'il est écrit : une coupure au deuxième lot ne perd pas le premier, et
+`usine reprendre` ne repaie que les lots manquants. Chaque lot reçoit les
+rectos déjà écrits pour ne pas les redemander ; ceux qui reviennent quand
+même sont écartés, et le paquet plus mince **le dit** — titre recompté,
+journal, étape en anomalie. Un paquet de trente-deux cartes vendu pour
+quarante est un paquet troué.
+
+**Une face trop longue.** Elle est d'abord composée plus petite, jusqu'à un
+plancher lisible (9 points au recto, 8 au verso). Au-delà, elle est coupée
+avec « … » et **comptée** : l'étape « planches » passe en anomalie. Le produit
+reste entier — la page et Anki ont le texte complet — mais c'est au vendeur de
+le savoir avant de vendre.
+
+`tests/test_cartes.py` : vingt-deux tests, et vingt et une mutations toutes
+vues, du miroir des versos au lot relu du carnet. Le test de reprise ne
+compte pas les appels pour prouver la relecture — le simulateur est
+déterministe, et un lot refait retomberait sur le cache sans se voir au
+compteur. Il **marque** le lot gardé au carnet, et cherche la marque dans le
+fichier Anki final.
