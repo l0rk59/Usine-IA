@@ -60,6 +60,18 @@ _LIGNE_TABLEAU = re.compile(r"^\s*\|(.+)\|\s*$")
 _SEPARATEUR_TABLEAU = re.compile(r"^\s*\|[\s:|-]+\|\s*$")
 
 
+# Le navigateur et la liseuse coupent a toute espace ordinaire : le « » »
+# d'une citation tombait seul en tete de ligne, comme dans le PDF (voir
+# « _mots_insecables » dans render/pdf.py). L'espace insecable le colle a
+# son mot. Le code en ligne n'y passe pas : une espace insecable copiee
+# dans un terminal n'est plus une espace.
+_AVANT_INSECABLE = re.compile(r"(?<=«)[ \t]+|[ \t]+(?=[»:;!?])")
+
+
+def insecables(texte: str) -> str:
+    return _AVANT_INSECABLE.sub("\u00a0", texte)
+
+
 def _cellules(ligne: str) -> List[str]:
     corps = _LIGNE_TABLEAU.match(ligne)
     return [c.strip() for c in corps.group(1).split("|")] if corps else []
@@ -85,13 +97,13 @@ def inline_html(texte: str) -> str:
 
     texte = _LIEN.sub(
         lambda m: reserver('<a href="{}">{}</a>'.format(
-            html.escape(m.group(2), quote=True), html.escape(m.group(1)))),
+            html.escape(m.group(2), quote=True), html.escape(insecables(m.group(1))))),
         texte,
     )
-    texte = _GRAS.sub(lambda m: reserver("<strong>{}</strong>".format(html.escape(m.group(1)))), texte)
-    texte = _ITALIQUE.sub(lambda m: reserver("<em>{}</em>".format(html.escape(m.group(1)))), texte)
+    texte = _GRAS.sub(lambda m: reserver("<strong>{}</strong>".format(html.escape(insecables(m.group(1))))), texte)
+    texte = _ITALIQUE.sub(lambda m: reserver("<em>{}</em>".format(html.escape(insecables(m.group(1))))), texte)
     texte = _CODE_INLINE.sub(lambda m: reserver("<code>{}</code>".format(html.escape(m.group(1)))), texte)
-    texte = html.escape(texte)
+    texte = html.escape(insecables(texte))
     for cle, rendu in jetons.items():
         texte = texte.replace(html.escape(cle), rendu).replace(cle, rendu)
     return texte

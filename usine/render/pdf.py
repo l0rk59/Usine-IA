@@ -156,6 +156,26 @@ def dimensions_jpeg(brut: bytes) -> Optional[Tuple[int, int, int]]:
     return None
 
 
+
+# La typographie francaise separe « », :, ; ! et ? du mot par une espace,
+# que le modele ecrit ordinaire. Coupee comme les autres, elle laissait un
+# « » » ou un « : » seul en tete de ligne, et un « « » seul en fin : 1,5 %
+# des retours a la ligne sur les notes de docs/ (mesure du 27/09/2026),
+# environ une fois toutes les deux pages de livre. Ces signes restent donc
+# colles a leur mot ; l'anglais, qui ne met pas d'espace, n'est pas touche.
+_COLLES_AU_PRECEDENT = (":", ";", "!", "?", "!?", "?!")
+
+
+def _mots_insecables(bloc: str) -> List[str]:
+    mots: List[str] = []
+    for mot in bloc.split():
+        if mots and (mot.startswith("»") or mot in _COLLES_AU_PRECEDENT
+                     or mots[-1].endswith("«")):
+            mots[-1] += " " + mot
+        else:
+            mots.append(mot)
+    return mots
+
 class DocumentPDF:
     """Construction sequentielle d'un PDF, page apres page."""
 
@@ -302,6 +322,17 @@ class DocumentPDF:
             )
         )
 
+    def texte_a(self, contenu: str, x: float, y: float, police: str,
+                taille: float,
+                couleur: Tuple[float, float, float] = (0, 0, 0)) -> None:
+        """Une ligne de texte posee a un endroit precis de la page.
+
+        Pour les mises en page qui ne s'ecoulent pas de haut en bas — les
+        planches de cartes a decouper, ou chaque texte est centre dans son
+        rectangle. Le curseur de la page n'avance pas.
+        """
+        self._texte(contenu, x, y, police, taille, couleur)
+
     def rectangle(
         self,
         x: float,
@@ -332,7 +363,7 @@ class DocumentPDF:
         lignes: List[str] = []
         for bloc in texte.split("\n"):
             courante = ""
-            for mot in bloc.split():
+            for mot in _mots_insecables(bloc):
                 essai = mot if not courante else courante + " " + mot
                 if largeur_texte(essai, police, taille) <= largeur:
                     courante = essai

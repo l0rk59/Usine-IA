@@ -96,3 +96,29 @@ message sur un fichier inexistant — le genre d'avertissement qui apprend à
 ignorer les avertissements.
 
 Les huit mutations de la campagne sont vues.
+
+## Ce que le PDF écrivait bien, mais coupait mal
+
+*Mesuré le 27/09/2026.*
+
+Le français sépare « », :, ; ! et ? du mot par une espace, et le modèle
+l'écrit ordinaire. Le moteur PDF coupait les lignes à toute espace : un « » »
+ou un « : » ouvrait la ligne suivante, un « « » fermait la précédente. Sur le
+texte des notes de `docs/`, composé à 330 points de large, **1,5 % des
+retours à la ligne** tombaient ainsi — environ une fois toutes les deux pages
+de livre. Rien n'échouait : le texte était juste, seule sa mise en page ne
+l'était pas. Le défaut est apparu en regardant une planche de cartes de
+révision, où une ligne commençait par « » : ».
+
+- **PDF** : `couper` colle ces signes à leur mot avant de couper
+  (`_mots_insecables` dans `usine/render/pdf.py`). Mesure après correction :
+  0 % sur le même texte. L'anglais, qui ne met pas d'espace avant les
+  deux-points, n'est pas touché.
+- **HTML et EPUB** : le navigateur et la liseuse font la même coupure.
+  L'espace devient insécable (U+00A0) dans le texte courant, le gras,
+  l'italique et le texte des liens — **pas dans le code en ligne** : une
+  espace insécable copiée dans un terminal n'est plus une espace, et la
+  commande ne marche plus.
+
+`tests/test_typographie.py` compose la même phrase à toutes les largeurs de
+90 à 400 points ; sept mutations, toutes vues.
