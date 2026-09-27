@@ -354,6 +354,8 @@ def _options_du_type(cle: str) -> Dict[str, object]:
         return _champs_du_catalogue(cle, ("composition",))
     if cle == "cartes":
         return _champs_du_catalogue(cle, ("niveau",))
+    if cle == "mots-meles":
+        return _champs_du_catalogue(cle, ("difficulte", "caracteres"))
     if cle == "modeles":
         return _champs_du_catalogue(cle, ("outil",))
     if cle == "formation":
@@ -499,6 +501,8 @@ _ARGUMENTS = {
     "tranche": lambda v: ["--tranche", str(v)],
     "exercices": lambda v: ["--exercices", str(v)],
     "sans_bareme": lambda v: ["--sans-bareme"] if v else [],
+    "difficulte": lambda v: ["--difficulte", str(v)],
+    "caracteres": lambda v: ["--caracteres", str(v)],
 }
 
 

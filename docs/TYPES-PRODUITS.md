@@ -596,3 +596,48 @@ compte pas les appels pour prouver la relecture — le simulateur est
 déterministe, et un lot refait retomberait sur le cache sans se voir au
 compteur. Il **marque** le lot gardé au carnet, et cherche la marque dans le
 fichier Anki final.
+
+# Cahier de mots mêlés — `usine mots-meles`
+
+*Ajouté le 27/09/2026.*
+
+Un rayon entier de l'impression à la demande, et le seul produit de l'usine
+où le modèle n'écrit presque rien : une liste de mots par sous-thème. Placer,
+remplir, vérifier, dessiner, résoudre : tout le reste est du calcul, donc
+déterministe, instantané (moins d'une seconde pour dix grilles difficiles) et
+gratuit. Une grille « écrite » par un modèle contiendrait des mots
+introuvables, et l'acheteur le découvrirait en jouant.
+
+Trois défauts qu'un cahier de jeux ne pardonne pas, et que le code empêche au
+lieu de les espérer absents :
+
+| Défaut | Ce qui l'empêche |
+|---|---|
+| un mot de la liste absent de la grille | un mot n'est listé **que s'il a été placé** ; celui que la grille refuse sort de la liste, et c'est compté |
+| un mot présent deux fois | le remplissage au hasard recrée parfois un mot court ailleurs. Chaque grille est relue après remplissage, dans les huit directions, et refaite tant qu'un mot s'y lit deux fois |
+| un mot contenu dans un autre (« rat », « râteau ») | le plus court est écarté avant de placer quoi que ce soit : sinon le défaut précédent est inévitable |
+
+Les cases vides se remplissent avec les lettres des mots eux-mêmes : une
+lettre rare au milieu d'un bruit uniforme se repère d'un coup d'œil. Les
+accents, espaces et tirets disparaissent dans la grille (« crème brûlée »
+s'y écrit CREMEBRULEE) mais restent dans la liste, et la règle du cahier le
+dit.
+
+| Réglage | Valeurs | Ce qu'il change |
+|---|---|---|
+| `--difficulte` | `facile`, `moyen`, `difficile` | grille de 12, 15 ou 18 ; directions : à l'endroit seulement, puis les diagonales, puis les huit directions, à l'envers compris |
+| `--caracteres` | `standard`, `gros` | les gros caractères sont un rayon à part : grille plus petite, lettres plus grandes, liste sur deux colonnes |
+
+Laissés vides, ils sont décidés d'après le sujet et le public.
+
+Le cahier sort en **A4 et en Lettre US**, composés par le même code : la
+composition du PDF a été extraite de la livraison commune (`composer_pdf`),
+pour qu'un second format de page ne soit pas une copie qui divergerait. Les
+solutions, quatre par page, sont surlignées en couleurs pâles — lisibles
+imprimées en niveaux de gris — et les lettres qui ne servent à aucun mot
+passent en gris clair.
+
+Les listes s'écrivent par lots de huit grilles, au carnet : une coupure ne
+perd pas les lots écrits, et un sous-thème répété ou une liste trop pauvre est
+écarté, compté, et fait passer l'étape « grilles » en anomalie.
+`tests/test_mots_meles.py` relit chaque grille comme un joueur.

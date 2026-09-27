@@ -330,6 +330,23 @@ class DocumentPDF:
         """
         self._texte(contenu, x, y, police, taille, couleur)
 
+    def trait(self, x1: float, y1: float, x2: float, y2: float,
+              couleur: Tuple[float, float, float], epaisseur: float = 1.0,
+              arrondi: bool = False) -> None:
+        """Un segment. « arrondi » termine le trait en demi-cercle : c'est le
+        surligneur des solutions d'une grille, dont les mots partent dans
+        toutes les directions et qu'un rectangle ne suivrait pas en diagonale.
+
+        Entre « q » et « Q » : l'epaisseur et la terminaison ne fuient pas
+        sur ce que la page dessine ensuite.
+        """
+        self._ouvrir_page()
+        r, v, b = couleur
+        self._flux.append(
+            "q {:.3f} {:.3f} {:.3f} RG {:.2f} w {} J {:.2f} {:.2f} m "
+            "{:.2f} {:.2f} l S Q".format(r, v, b, epaisseur, 1 if arrondi else 0,
+                                         x1, y1, x2, y2))
+
     def rectangle(
         self,
         x: float,

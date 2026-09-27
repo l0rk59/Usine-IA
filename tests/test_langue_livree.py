@@ -128,6 +128,7 @@ MOTS_FRANCAIS = frozenset("""
     debutant intermediaire avance texte nombre selection cocher formule suivi
     matrice bienvenue vente fidelisation relance liste tableau reperes arbre
     syntaxique controle structurel indisponible lancement manuel extrait
+    lettre
 """.split())
 _ACCENTS = re.compile(r"[éèêëàâùûüçôîïœÉÈÊÀÇ]")
 

@@ -36,6 +36,14 @@ def _premiere_critique(invite: str) -> bool:
     return compte == 0
 
 
+# Aucun n'est contenu dans un autre : la chaine ecarterait le plus court.
+_FRUITS = ("pomme", "poire", "cerise", "fraise", "banane", "citron", "orange",
+           "mangue", "abricot", "prune", "figue", "melon", "kiwi", "raisin",
+           "myrtille", "framboise", "groseille", "noisette", "amande", "pêche",
+           "crème brûlée", "châtaigne", "clémentine", "pastèque", "ananas",
+           "grenade", "papaye", "goyave", "litchi", "datte")
+
+
 def _combien(invite: str, defaut: int) -> int:
     for motif in (r"LONGUEUR\s*:\s*(\d+)",
                   r"de\s+(\d+)\s+(?:prompts|publications|outils|idees|fiches|bases)",
@@ -46,6 +54,7 @@ def _combien(invite: str, defaut: int) -> int:
                   r"en\s+(\d+)\s+blocs courts",
                   r"Ecris\s+(\d+)\s+questions",
                   r"Ecris\s+(\d+)\s+cartes de revision",
+                  r"Prepare\s+(\d+)\s+grilles de mots meles",
                   # Sans ces deux-la, le simulateur rendait toujours sa
                   # valeur par defaut : sept recits quand le test en demandait
                   # trois, et une carte de douze sections quand on en voulait
@@ -221,6 +230,23 @@ def simulateur(messages, role):
              "verso": "La notion {} designe ce qu'on applique quand le cas "
                       "se presente, avec un exemple court.".format(deja + n),
              "theme": "Bases" if n % 2 else "Pratique"}
+            for n in range(1, combien + 1)]}, ensure_ascii=False)
+
+    # --- mots meles : des listes par sous-theme ------------------------------
+    #
+    # De vrais mots, accentues et composes (« crème brûlée ») : la chaine doit
+    # les ramener a des lettres. Les sous-themes sont numerotes a partir de
+    # ceux que l'invite dit deja pris, comme les cartes, sans quoi le second
+    # lot serait ecarte entier comme doublon.
+    if '"grilles"' in invite and '"mots"' in invite:
+        combien = _combien(invite, 8)
+        trouve = re.search(r"'mots' : (\d+) mots", invite)
+        par_grille = int(trouve.group(1)) if trouve else 12
+        deja = invite.count(" | ") + (1 if "DEJA PRIS" in invite else 0)
+        return json.dumps({"grilles": [
+            {"theme": "Sous-thème {}".format(deja + n),
+             "mots": [_FRUITS[(7 * (deja + n) + k) % len(_FRUITS)]
+                      for k in range(par_grille)]}
             for n in range(1, combien + 1)]}, ensure_ascii=False)
 
     # --- feuilleton : le « Precedemment », ecrit POUR LE LECTEUR ---------

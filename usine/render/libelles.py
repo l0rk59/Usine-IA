@@ -487,6 +487,31 @@ vous sera envoyée.
         "compteur": "Carte {n} sur {total}",
     },
 
+    # --- mots meles ---------------------------------------------------------------
+    "meles_titre": "{nombre} grilles de mots mêlés — {sujet}",
+    "meles_sous_titre": "Niveau {niveau}, solutions à la fin",
+    "meles_sous_titre_gros": "Gros caractères — niveau {niveau}, solutions à la fin",
+    "meles_promesse": "Un thème par grille, des heures de jeu",
+    "meles_niveaux": {"facile": "facile", "moyen": "moyen",
+                      "difficile": "difficile"},
+    "meles_regle_titre": "Comment jouer",
+    "meles_regle": (
+        "Chaque grille cache les mots de sa liste. Ils se lisent en ligne "
+        "droite, sans jamais tourner : {directions}. Une même lettre peut "
+        "servir à plusieurs mots.\n\n"
+        "Dans la grille, les accents, les espaces et les tirets disparaissent : "
+        "« crème brûlée » s'y écrit CREMEBRULEE. Cochez chaque mot trouvé ; "
+        "les solutions sont à la fin du cahier."),
+    "meles_directions": {
+        "facile": "de gauche à droite, ou de haut en bas",
+        "moyen": "de gauche à droite, de haut en bas, ou en diagonale",
+        "difficile": "dans les huit directions, à l'envers compris",
+    },
+    "meles_grille": "Grille {numero} — {theme}",
+    "meles_a_trouver": "Mots à trouver",
+    "meles_solutions": "Solutions",
+    "meles_solution": "Grille {numero}",
+
     # --- la derniere page d'un tome de serie ------------------------------------
     "serie_page": "La suite",
     "serie_tome_lu": ("Vous venez de lire le tome {rang} de la série **{serie}**. "
@@ -507,6 +532,7 @@ vous sera envoyée.
     "fichier_planches": "planches-a-decouper",
     "fichier_anki": "cartes-anki.txt",
     "fichier_page_cartes": "cartes.html",
+    "fichier_lettre_us": "Lettre-US",
     "fichier_manuel": "-manuel",
     "fichier_extrait": "{nom}-extrait",
     "fichier_tableau": "tableau-{rang:02d}-{nom}.csv",
@@ -946,6 +972,30 @@ Write to {contact}.
         "compteur": "Card {n} of {total}",
     },
 
+    "meles_titre": "{nombre} word search puzzles — {sujet}",
+    "meles_sous_titre": "{niveau} level, solutions at the back",
+    "meles_sous_titre_gros": "Large print — {niveau} level, solutions at the back",
+    "meles_promesse": "One theme per puzzle, hours of play",
+    "meles_niveaux": {"facile": "Easy", "moyen": "Medium",
+                      "difficile": "Hard"},
+    "meles_regle_titre": "How to play",
+    "meles_regle": (
+        "Each grid hides the words in its list. They run in a straight line, "
+        "never turning: {directions}. A letter can belong to more than one "
+        "word.\n\n"
+        "In the grid, accents, spaces and hyphens disappear: “ice cream” is "
+        "written ICECREAM. Tick each word you find; the solutions are at the "
+        "back of the book."),
+    "meles_directions": {
+        "facile": "left to right, or top to bottom",
+        "moyen": "left to right, top to bottom, or diagonally",
+        "difficile": "in all eight directions, backwards included",
+    },
+    "meles_grille": "Puzzle {numero} — {theme}",
+    "meles_a_trouver": "Words to find",
+    "meles_solutions": "Solutions",
+    "meles_solution": "Puzzle {numero}",
+
     # --- the last page of a volume in a series ----------------------------------
     "serie_page": "What comes next",
     "serie_tome_lu": ("You have just read volume {rang} of the **{serie}** "
@@ -967,6 +1017,7 @@ Write to {contact}.
     "fichier_planches": "cut-out-sheets",
     "fichier_anki": "flashcards-anki.txt",
     "fichier_page_cartes": "flashcards.html",
+    "fichier_lettre_us": "US-Letter",
     "fichier_manuel": "-manual",
     "fichier_extrait": "{nom}-excerpt",
     "fichier_tableau": "table-{rang:02d}-{nom}.csv",

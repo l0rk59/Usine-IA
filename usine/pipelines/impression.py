@@ -143,7 +143,7 @@ def produire(ctx: Contexte, pages: int = 12,
     t = libelles.textes(ctx.langue_iso)
     if couverture:
         fichiers.append(couverture)
-    for nom_format, format_page in (("A4", A4), ("Lettre-US", LETTRE)):
+    for nom_format, format_page in (("A4", A4), (t["fichier_lettre_us"], LETTRE)):
         doc = livraison.document(ctx, titre, cahier.get("sous_titre", ""),
                                  couverture, format_page=format_page,
                                  marge=54, police_corps="Helvetica",

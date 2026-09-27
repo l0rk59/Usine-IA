@@ -44,6 +44,19 @@ def objectifs_email() -> Tuple[str, ...]:
     return tuple(OBJECTIFS)
 
 
+def difficultes_meles() -> Tuple[str, ...]:
+    """Les trois difficultes d'un cahier de mots meles."""
+    from .mots_meles import DIFFICULTES
+
+    return tuple(DIFFICULTES)
+
+
+def caracteres_meles() -> Tuple[str, ...]:
+    from .mots_meles import CARACTERES
+
+    return CARACTERES
+
+
 def niveaux_quiz() -> Tuple[str, ...]:
     """Les trois niveaux qu'un quiz sait viser."""
     from .quiz import NIVEAUX
@@ -492,8 +505,8 @@ def _chaines() -> Dict[str, Callable]:
     """Import tardif : le catalogue est lu par des modules que les chaines importent."""
     from . import (boite_outils, cartes, conte, ebook, emails, feuilleton,
                    formation, idees, impression, interactive, logiciel,
-                   memo, modeles, nouvelle, pack_prompts, quiz,
-                   recueil, social)
+                   memo, modeles, mots_meles, nouvelle, pack_prompts,
+                   quiz, recueil, social)
 
     return {
         "ebook": ebook.produire,
@@ -514,6 +527,7 @@ def _chaines() -> Dict[str, Callable]:
         "memo": memo.produire,
         "quiz": quiz.produire,
         "cartes": cartes.produire,
+        "mots-meles": mots_meles.produire,
         "idees": idees.produire,
     }
 
@@ -916,6 +930,45 @@ TYPES: List[TypeProduit] = [
                   etiquettes=NIVEAUX_LISIBLES,
                   aide="Ce qu'une carte suppose déjà su. Par défaut, l'usine "
                        "en juge d'après le sujet."),
+        ),
+    ),
+    TypeProduit(
+        cle="mots-meles", nom="Cahier de mots mêlés",
+        resume="Des grilles à thème, prêtes à imprimer, solutions à la fin",
+        detail="PDF A4 et Lettre US, grilles vérifiées, solutions surlignées",
+        formats=("pdf", "html", "md"),
+        minutes=(3, 10),
+        quantite=("nombre", "Combien de grilles", "30"),
+        options={"difficulte": None, "caracteres": None},
+        # Etroits : « jeu » seul enverrait ici un guide sur les jeux video.
+        mots_cles=("mots meles", "mots caches", "word search", "grilles de jeux",
+                   "cahier de jeux"),
+        # Des listes de mots : ni phrase, ni rythme a mesurer.
+        prose=False,
+        # « Les deux premiers chapitres » d'un cahier de jeux, ce sont les
+        # deux premieres grilles sans leurs solutions : un extrait qui ne se
+        # verifie pas vaut moins que pas d'extrait.
+        extrait=False,
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre de grilles",
+                  genre="entier", defaut=30),
+            Champ("difficulte", "--difficulte", "Difficulté", genre="choix",
+                  defaut="", choix=("",) + difficultes_meles(),
+                  etiquettes=(
+                      ("facile", "Facile — grille de 12, à l'endroit, sans "
+                                 "diagonale"),
+                      ("moyen", "Moyen — grille de 15, diagonales en plus"),
+                      ("difficile", "Difficile — grille de 18, huit "
+                                    "directions, à l'envers compris"))),
+            Champ("caracteres", "--caracteres", "Taille des lettres",
+                  genre="choix", defaut="", choix=("",) + caracteres_meles(),
+                  etiquettes=(
+                      ("standard", "Standard"),
+                      ("gros", "Gros caractères — grilles plus petites, "
+                               "lettres plus grandes")),
+                  aide="Les cahiers en gros caractères sont un rayon à part, "
+                       "pour une lecture confortable. Par défaut, l'usine en "
+                       "juge d'après le sujet et le public."),
         ),
     ),
     TypeProduit(

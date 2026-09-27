@@ -84,6 +84,9 @@ SCENARIOS = [
     # et trois planches dont la derniere est incomplete.
     ("cartes", ["cartes", "le vocabulaire de la cuisine", "-n", "20",
                 "--niveau", "debutant", "--sans-image"]),
+    # Neuf grilles : deux lots, et une page de solutions incomplete.
+    ("mots-meles", ["mots-meles", "les fruits du verger", "-n", "9",
+                    "--difficulte", "difficile", "--sans-image"]),
     ("complet", ["complet", "la meditation au bureau", "-T", "mini", "--sans-image"]),
     ("logiciel-cli", ["logiciel", "le nettoyage de fichiers en double", "-c", "cli",
                       "--sans-image"]),
@@ -165,6 +168,8 @@ ATTENDUS = {
     # sans eux, le paquet n'est qu'une liste de questions.
     "cartes": ["-planches-a-decouper.pdf", "cartes-anki.txt", "cartes.html",
                "cartes.csv"],
+    # Deux formats de page : le marche anglophone imprime en Lettre US.
+    "mots-meles": ["-A4.pdf", "-Lettre-US.pdf", "grilles.json", "lire.html"],
     "qualite": ["rapport-qualite.json", ".pdf", ".epub"],
     "sur-mesure": [".pdf", ".epub", "livre.md"],
     "couverture-ebook": ["couverture.png", "couverture.svg", ".pdf", ".epub"],

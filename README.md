@@ -112,6 +112,7 @@ du mieux placé. Le détail : [docs/NICHE.md](docs/NICHE.md).
 | `usine memo` | Mémo / antisèche | L'essentiel sur une page qu'on garde à côté de soi | 4–9 min |
 | `usine quiz` | Quiz avec corrigé | Questions, corrigé expliqué, et une page qui se corrige seule | 7–16 min |
 | `usine cartes` | Cartes de révision | Planches recto-verso à découper, fichier Anki, page qui retourne les cartes | 4–12 min |
+| `usine mots-meles` | Cahier de mots mêlés | Grilles à thème vérifiées, solutions surlignées, A4 et Lettre US | 3–10 min |
 | `usine idees` | Étude de niche | Pistes chiffrées, appuyées sur des mesures | 2–4 min |
 
 Et quand vous ne savez pas encore quoi fabriquer :
@@ -174,6 +175,7 @@ usine ebook "la fiscalité du freelance" \
 | `--niveau` (ebook) | `debutant`, `intermediaire`, `avance` |
 | `--exercices` (ebook) | `avec` : un exercice encadré par chapitre |
 | `--niveau` (quiz, cartes) | `debutant`, `intermediaire`, `avance` : ce qu'une question suppose déjà su |
+| `--difficulte`, `--caracteres` (mots mêlés) | `facile`, `moyen`, `difficile` ; `standard` ou `gros` |
 | `--marketing` | ajoute le kit de vente |
 | `--zip` | emballe l'archive à livrer |
 | `--hors-ligne` | aucune connexion ne sort du téléphone : IA locale seulement, couverture dessinée sur place |

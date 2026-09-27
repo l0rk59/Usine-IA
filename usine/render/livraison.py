@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import csv
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -225,30 +225,7 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
 
     # --- PDF --------------------------------------------------------------
     if "pdf" in formats:
-        doc = _document(produit, ctx, page_couverture)
-        for rang, (bloc, blocs_analysees) in enumerate(blocs_analyses):
-            if bloc.titre_pdf:
-                if produit.sections_enchainees:
-                    # La premiere ouvre une page — sinon le texte se dessine
-                    # par-dessus la couverture. Le memo l'a appris : le PDF
-                    # tombait a une page, le compte semblait parfait, et le
-                    # contenu etait imprime sur la couverture.
-                    if rang == 0:
-                        doc.nouvelle_page()
-                    doc.titre(bloc.titre, 2, sommaire=bloc.sommaire)
-                else:
-                    doc.titre(bloc.titre, 1, sommaire=bloc.sommaire)
-            if bloc.rendu_pdf is not None:
-                bloc.rendu_pdf(doc)
-            elif blocs_analysees:
-                D.vers_pdf(blocs_analysees, doc, sauter_h1=True)
-        # Un sommaire vide ne s'omettait pas : il sortait une page « Sommaire »
-        # avec son filet bleu et rien dessous. Personne ne l'avait vu parce
-        # qu'aucun produit n'avait, jusqu'au conte, de blocs sans titre PDF.
-        if doc.sommaire and produit.sommaire:
-            from . import libelles
-
-            doc.inserer_sommaire(libelles.libelle(langue, "sommaire"), apres=1)
+        doc = composer_pdf(produit, ctx, page_couverture, blocs_analyses)
         chemin = dossier / "{}{}.pdf".format(base, produit.suffixe_pdf)
         doc.enregistrer(chemin)
         fichiers.append(chemin)
@@ -333,6 +310,52 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
         fichiers.append(chemin)
 
     return fichiers
+
+
+def composer_pdf(produit: Produit, ctx: Any,
+                 page_couverture: Optional[Tuple[str, Any]],
+                 blocs_analyses: Optional[List[Tuple[Bloc, List[Any]]]] = None
+                 ) -> DocumentPDF:
+    """Le PDF d'un produit : couverture, blocs, sommaire s'il en faut un.
+
+    Une fonction et non un morceau de « livrer » : un produit livre sur deux
+    formats de page (A4 et Lettre US) compose le second par ce meme code. Une
+    copie de la boucle aurait diverge a la premiere correction de l'une.
+    """
+    if blocs_analyses is None:
+        blocs_analyses = [(b, D.analyser(b.corps) if b.corps else [])
+                          for b in produit.blocs]
+    doc = _document(produit, ctx, page_couverture)
+    for rang, (bloc, blocs_analysees) in enumerate(blocs_analyses):
+        if bloc.titre_pdf:
+            if produit.sections_enchainees:
+                # La premiere ouvre une page — sinon le texte se dessine
+                # par-dessus la couverture. Le memo l'a appris : le PDF
+                # tombait a une page, le compte semblait parfait, et le
+                # contenu etait imprime sur la couverture.
+                if rang == 0:
+                    doc.nouvelle_page()
+                doc.titre(bloc.titre, 2, sommaire=bloc.sommaire)
+            else:
+                doc.titre(bloc.titre, 1, sommaire=bloc.sommaire)
+        if bloc.rendu_pdf is not None:
+            bloc.rendu_pdf(doc)
+        elif blocs_analysees:
+            D.vers_pdf(blocs_analysees, doc, sauter_h1=True)
+    # Un sommaire vide ne s'omettait pas : il sortait une page « Sommaire »
+    # avec son filet bleu et rien dessous. Personne ne l'avait vu parce
+    # qu'aucun produit n'avait, jusqu'au conte, de blocs sans titre PDF.
+    if doc.sommaire and produit.sommaire:
+        from . import libelles
+
+        langue = produit.langue or getattr(ctx, "langue_iso", "fr")
+        doc.inserer_sommaire(libelles.libelle(langue, "sommaire"), apres=1)
+    return doc
+
+
+def au_format(produit: Produit, format_page: Tuple[float, float]) -> Produit:
+    """Le meme produit sur un autre format de page, pour « composer_pdf »."""
+    return replace(produit, format_page=format_page)
 
 
 def _document(produit: Produit, ctx: Any,

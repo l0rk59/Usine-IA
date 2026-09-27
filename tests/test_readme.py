@@ -60,7 +60,7 @@ class ChaqueCommandeCiteeExiste(unittest.TestCase):
         _connues, parseur = _commandes_connues()
         aides = []
         for commande in ("ebook", "nouvelle", "usine", "sauvegarde",
-                         "reglages", "maj", "specs", "ventes"):
+                         "reglages", "maj", "specs", "ventes", "mots-meles"):
             sortie = io.StringIO()
             with contextlib.suppress(SystemExit), \
                     contextlib.redirect_stdout(sortie):
