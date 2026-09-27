@@ -472,5 +472,159 @@ class UnServeurLocalEteintNeCoutePasOnzeSecondes(unittest.TestCase):
         self.assertGreater(attente, 0.0)
 
 
+PALIERS = (30.0, 60.0, 90.0, 120.0)
+
+
+def _router_patient(panne, fournisseur="groq"):
+    """(reponse ou exception, attentes de panne, evenements d'attente)."""
+    import os
+    from unittest import mock
+
+    from usine.core import cles as pool_cles
+    from usine.core import evenements
+
+    # Une cle neuve a chaque appel : une cle refusee au cas precedent reste
+    # au repos une heure, et le cas suivant ne l'essaierait meme pas.
+    _router_patient.rang = getattr(_router_patient, "rang", 0) + 1
+    os.environ["GROQ_API_KEY"] = "gsk_" + str(_router_patient.rang).zfill(32)
+    pool_cles.oublier()
+    vrai_appel, vrai_ordre = llm._appel, config.provider_order
+    llm._appel = panne
+    config.provider_order = lambda: [fournisseur]
+    llm._REPOS.clear()
+    attentes = []
+    depart = evenements.historique()[-1]["id"] if evenements.historique() else 0
+    try:
+        with mock.patch.object(llm, "ATTENTES_DE_PANNE", PALIERS), \
+                mock.patch.object(llm, "_patienter", attentes.append), \
+                mock.patch.object(llm, "_laisser_passer", lambda *a, **k: True):
+            try:
+                resultat = llm.generer([{"role": "user", "content": "test"}],
+                                       cache=False)
+            except Exception as exc:  # noqa: BLE001 — c'est ce qu'on mesure
+                resultat = exc
+    finally:
+        llm._appel, config.provider_order = vrai_appel, vrai_ordre
+        os.environ.pop("GROQ_API_KEY", None)
+        pool_cles.oublier()
+        llm._REPOS.clear()
+    annonces = [e for e in evenements.historique(depart)
+                if e["type"] == "attente" and "panne" in str(e.get("message"))]
+    return resultat, [a for a in attentes if a in PALIERS], annonces
+
+
+class UnePannePassagereSAttend(unittest.TestCase):
+    """Vraie fabrication du 27/09/2026, sans cle : Pollinations a rendu
+    « 502, reponse vide » pendant au moins sept minutes, et trois produits
+    sur quatre se sont arretes au premier appel de redaction — deux essais a
+    trois secondes d'intervalle, puis l'abandon. Le meme appel passait dix
+    minutes plus tard."""
+
+    def test_le_routeur_attend_puis_reussit(self):
+        # Deux essais par tour : le premier tour echoue en entier, le second
+        # reussit apres la premiere attente.
+        panne = Panne(http.HttpErreur(502, "reponse vide"), fois=2,
+                      valeur=llm.Reponse("enfin", "groq", "m"))
+        resultat, attentes, annonces = _router_patient(panne)
+        self.assertIsInstance(resultat, llm.Reponse, resultat)
+        self.assertEqual(resultat.texte, "enfin")
+        self.assertEqual(attentes, [30.0])
+        self.assertEqual(len(annonces), 1)
+        self.assertIn("groq", annonces[0]["message"])
+
+    def test_l_attente_est_bornee(self):
+        """Cinq minutes au plus : au-dela, le carnet garde ce qui est ecrit
+        pour « usine reprendre »."""
+        panne = Panne(http.HttpErreur(503, "indisponible"))
+        resultat, attentes, _annonces = _router_patient(panne)
+        self.assertIsInstance(resultat, llm.PlusDeFournisseur)
+        self.assertEqual(attentes, list(PALIERS))
+        self.assertLessEqual(sum(attentes), 300.0)
+        self.assertEqual(panne.appels, 2 * (len(PALIERS) + 1))
+
+    def test_une_reponse_illisible_s_attend_aussi(self):
+        panne = Panne(ValueError("json tronque"), fois=2,
+                      valeur=llm.Reponse("lisible", "groq", "m"))
+        resultat, attentes, _annonces = _router_patient(panne)
+        self.assertEqual(getattr(resultat, "texte", resultat), "lisible")
+        self.assertEqual(attentes, [30.0])
+
+    def test_le_tour_suivant_repart_des_fournisseurs_d_origine(self):
+        """Une relecture croisee ecarte l'auteur, garde en repli. Apres
+        l'attente, le tour doit reprendre par le relecteur, pas par le repli
+        seul — sinon la panne passee, c'est l'auteur qui se relit."""
+        import os
+        from unittest import mock
+
+        from usine.core import cles as pool_cles
+
+        appels = []
+
+        def appel(fournisseur, *args, **kwargs):
+            appels.append(fournisseur.name)
+            if len(appels) <= 4:
+                raise http.HttpErreur(502, "reponse vide")
+            return llm.Reponse("relu", fournisseur.name, "m")
+
+        os.environ["GROQ_API_KEY"] = "gsk_" + "9" * 32
+        os.environ["MISTRAL_API_KEY"] = "m" * 32
+        pool_cles.oublier()
+        vrai_appel, vrai_ordre = llm._appel, config.provider_order
+        llm._appel = appel
+        config.provider_order = lambda: ["groq", "mistral"]
+        llm._REPOS.clear()
+        try:
+            with mock.patch.object(llm, "ATTENTES_DE_PANNE", PALIERS), \
+                    mock.patch.object(llm, "_patienter", lambda s: None), \
+                    mock.patch.object(llm, "_laisser_passer", lambda *a, **k: True):
+                reponse = llm.generer([{"role": "user", "content": "relis"}],
+                                      cache=False, eviter=["mistral"])
+        finally:
+            llm._appel, config.provider_order = vrai_appel, vrai_ordre
+            os.environ.pop("GROQ_API_KEY", None)
+            os.environ.pop("MISTRAL_API_KEY", None)
+            pool_cles.oublier()
+            llm._REPOS.clear()
+        self.assertEqual(appels[:4], ["groq", "groq", "mistral", "mistral"])
+        self.assertEqual(reponse.fournisseur, "groq")
+
+    def test_un_refus_definitif_ne_s_attend_pas(self):
+        """Une cle refusee ne changera pas d'avis dans trente secondes."""
+        for statut in (401, 402, 429):
+            with self.subTest(statut=statut):
+                resultat, attentes, _ = _router_patient(
+                    Panne(http.HttpErreur(statut, "non")))
+                self.assertIsInstance(resultat, llm.PlusDeFournisseur)
+                self.assertEqual(attentes, [])
+
+    def test_un_serveur_local_ne_s_attend_pas(self):
+        """Il depend de l'utilisateur : il ne se reparera pas seul."""
+        resultat, attentes, _ = _router_patient(Panne(ValueError("vide")),
+                                                fournisseur="ollama")
+        self.assertIsInstance(resultat, llm.PlusDeFournisseur)
+        self.assertEqual(attentes, [])
+
+
+class LaConsoleDitLAttente(unittest.TestCase):
+
+    def test_l_attente_s_affiche_pendant_la_commande_seulement(self):
+        import io
+        from contextlib import redirect_stdout
+
+        from usine import cli
+        from usine.core import evenements
+
+        sortie = io.StringIO()
+        with redirect_stdout(sortie):
+            cli._dire_l_attente({"type": "attente",
+                                 "message": "groq ne répond pas (panne passagère)"})
+            cli._dire_l_attente({"type": "journal", "message": "autre chose"})
+        self.assertIn("groq ne répond pas", sortie.getvalue())
+        self.assertNotIn("autre chose", sortie.getvalue())
+        with redirect_stdout(io.StringIO()):
+            cli.principal(["liste"])
+        self.assertNotIn(cli._dire_l_attente, evenements._ecouteurs)
+
+
 if __name__ == "__main__":
     unittest.main()

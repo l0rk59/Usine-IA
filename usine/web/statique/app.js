@@ -853,11 +853,14 @@ function traiter(evenement) {
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
       `domaine sensible : ${echapper(evenement.domaine)}`, 'souci');
   } else if (evenement.type === 'attente') {
-    /* Le routeur attend qu'une limite par minute se leve. Sans cette ligne,
-       la page restait muette jusqu'a une minute : on la croyait plantee. */
+    /* Le routeur attend qu'une limite par minute se leve, ou qu'une panne
+       passagere passe (il le dit alors lui-meme, dans « message »). Sans
+       cette ligne, la page restait muette jusqu'a deux minutes : on la
+       croyait plantee. */
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
-      `${echapper(evenement.fournisseur)} : limite par minute atteinte, ` +
-      `reprise dans ${Number(evenement.secondes) || 0} s`);
+      (evenement.message ? echapper(evenement.message) :
+        `${echapper(evenement.fournisseur)} : limite par minute atteinte, ` +
+        `reprise dans ${Number(evenement.secondes) || 0} s`));
   } else if (evenement.type === 'journal') {
     ajouterLigne(`<span class="heure">${heure(evenement.ts)}</span> ` +
       echapper(evenement.message));

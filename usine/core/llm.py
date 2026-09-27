@@ -275,11 +275,21 @@ class _Bilan:
         # Pour chaque fournisseur essaye : son dernier echec etait-il un refus
         # du modele ?
         self.refus: Dict[str, bool] = {}
+        # ... ou une panne passagere : 5xx, reseau, reponse illisible.
+        self.passager: Dict[str, bool] = {}
 
     def essai(self, nom: str, texte: str, refus: bool = False) -> None:
         self.essayes.setdefault(nom, []).append(texte)
         self.ecartes.pop(nom, None)
         self.refus[nom] = refus
+        self.passager[nom] = False
+
+    def panne_passagere(self, nom: str) -> None:
+        self.passager[nom] = True
+
+    def en_panne_passagere(self) -> bool:
+        """Au moins un fournisseur a echoue d'une facon qui passe seule."""
+        return any(self.passager.values())
 
     def tous_ont_refuse(self) -> bool:
         """Chaque fournisseur a ete essaye, et chacun a refuse la demande.
@@ -613,6 +623,31 @@ def _attente(p: config.Provider, role: str, cout: int,
 # meme cle (un autre fil, un autre appareil), et attendre ne suffit plus.
 ATTENTE_PAR_MINUTE_MAX = 125.0
 
+# Une panne PASSAGERE — 5xx, reseau coupe, reponse illisible — n'est ni un
+# quota ni un refus : elle passe seule. Le routeur faisait deux essais a
+# trois secondes d'intervalle, puis abandonnait. Vraie fabrication du
+# 27/09/2026, sans cle : Pollinations a rendu « 502, reponse vide » de
+# 14 h 45 a au moins 14 h 52, et trois produits sur quatre se sont arretes
+# au premier appel de redaction — le meme appel passait dix minutes plus
+# tard. Sur un telephone ou Pollinations est le seul fournisseur, c'est le
+# premier contact avec l'usine.
+#
+# On attend donc, puis on refait un tour complet : quatre paliers, cinq
+# minutes au plus en tout, chacun annonce et interruptible. Au-dela, la
+# panne n'est plus passagere a l'echelle d'un produit, et le carnet garde
+# ce qui est ecrit pour « usine reprendre ».
+ATTENTES_DE_PANNE = (30.0, 60.0, 90.0, 120.0)
+
+
+def _annoncer_panne(bilan: "_Bilan", secondes: float, tour: int) -> None:
+    """Qui est en panne, combien de temps on attend, et combien de fois."""
+    en_panne = ", ".join(nom for nom, oui in bilan.passager.items() if oui)
+    evenements.publier(
+        "attente", fournisseur=en_panne, secondes=int(round(secondes)),
+        message="{} ne répond pas (panne passagère) : nouvel essai dans "
+                "{:.0f} s ({}/{})".format(en_panne, secondes, tour,
+                                          len(ATTENTES_DE_PANNE)))
+
 
 def _annoncer_attente(fournisseur: str, secondes: float) -> None:
     """Une attente de plus de quelques secondes se dit.
@@ -828,6 +863,8 @@ def generer(
     # qu'elle se rouvre, et on refait un tour — seulement quand un
     # fournisseur n'attend que cela, et jamais plus de deux fenetres.
     attendu_par_minute = 0.0
+    premiers, repli_initial = list(fournisseurs), list(repli)
+    tours_de_panne = 0
     bilan = _Bilan()
     while True:
         libre_dans: Optional[float] = None
@@ -996,6 +1033,8 @@ def generer(
                         # qui permet de reprendre ollama a la seconde ou on le lance.
                         if p.local and _connexion_refusee(exc):
                             break
+                        if not p.local:
+                            bilan.panne_passagere(p.name)
                         _patienter(min(8.0, 1.5 * (essai + 1)) + random.random())
                     except Exception as exc:
                         _journaliser(p.name,
@@ -1016,6 +1055,10 @@ def generer(
                         # essai et zero seconde, et le fournisseur etait abandonne.
                         # Les deux pannes se ressemblent pourtant du point de vue
                         # de l'usine : le service n'a rien donne d'exploitable.
+                        # Un serveur local depend de l'utilisateur : attendre
+                        # qu'il se repare seul serait attendre pour rien.
+                        if not p.local:
+                            bilan.panne_passagere(p.name)
                         if essai == tentatives_par_fournisseur - 1:
                             break
                         _patienter(min(8.0, 1.5 * (essai + 1)) + random.random())
@@ -1032,6 +1075,14 @@ def generer(
             # Le bilan, lui, continue : le message final doit nommer aussi
             # ceux qui ont ete essayes avant le repli.
             fournisseurs, repli = repli, []
+            continue
+        if bilan.en_panne_passagere() and tours_de_panne < len(ATTENTES_DE_PANNE):
+            pause = ATTENTES_DE_PANNE[tours_de_panne]
+            tours_de_panne += 1
+            _annoncer_panne(bilan, pause, tours_de_panne)
+            _patienter(pause)
+            fournisseurs, repli = list(premiers), list(repli_initial)
+            bilan = _Bilan()
             continue
         break
 

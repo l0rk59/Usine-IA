@@ -91,3 +91,33 @@ reste autorisée : les tests du tableau de bord parlent à leur propre serveur,
 et les refuser ferait crier le garde-fou sur quarante tests légitimes.
 
 La suite est passée de 108 à 80 secondes.
+
+## Une panne passagère ne doit pas arrêter un produit
+
+*Mesuré le 27/09/2026, première fabrication avec un vrai modèle, sans clé.*
+
+Pollinations a répondu « 502, réponse vide » pendant au moins sept minutes
+(de 14 h 45 à 14 h 52). Le routeur faisait deux essais à trois secondes
+d'intervalle, puis abandonnait : trois produits sur quatre (quiz, cartes, mots
+mêlés) se sont arrêtés au premier appel de rédaction. Le même appel passait
+dix minutes plus tard. Sans clé, Pollinations est le seul fournisseur : c'est
+le premier contact d'un utilisateur avec l'usine sur son téléphone.
+
+Quand au moins un fournisseur **distant** a échoué d'une façon qui passe seule
+(5xx, réseau coupé, réponse illisible) et que personne n'a répondu, le routeur
+attend puis refait un tour complet, en repartant des fournisseurs d'origine —
+pas du seul repli d'une relecture croisée. Quatre paliers, 30, 60, 90 et
+120 secondes, cinq minutes au plus ; au-delà, le carnet garde ce qui est écrit
+pour `usine reprendre`. Chaque attente se dit : dans le journal du tableau de
+bord, et désormais aussi dans le terminal, qui restait muet pendant les
+attentes du routeur — jusqu'à deux minutes, sur un téléphone où l'on tue un
+processus muet.
+
+Ce qui n'attend pas : un refus définitif (clé refusée, crédit épuisé, limite de
+débit, qui a son propre repos) et un serveur **local**, qui dépend de
+l'utilisateur et ne se réparera pas seul.
+
+Dans les tests, l'isolation coupe ces paliers comme elle coupe le réseau :
+treize tests simulent une panne, et la suite passait de deux minutes à douze.
+Ceux de la patience les remettent eux-mêmes (`tests/test_reessais.py`, neuf
+mutations vues).

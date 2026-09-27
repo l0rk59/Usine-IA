@@ -173,6 +173,14 @@ def isoler(nom: str) -> Path:
     # Ces caches gardent le contenu de fichiers qui vivent DANS l'atelier.
     reglages._cache = {}
     prompts._cache_agents = None
+
+    # Une panne simulee ne doit pas faire dormir la suite : le routeur
+    # attend jusqu'a cinq minutes qu'une panne passagere passe, et treize
+    # tests en simulent une. Sans cette ligne, la suite passait de deux
+    # minutes a douze. Les tests de cette patience la remettent eux-memes.
+    from usine.core import llm
+
+    llm.ATTENTES_DE_PANNE = ()
     prompts._cache_modeles = None
 
     # Le simulateur compte les relectures deja rendues pour savoir si la

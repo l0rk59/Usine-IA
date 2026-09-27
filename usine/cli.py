@@ -21,7 +21,7 @@ from .core import llm, marche
 from .core.http import hors_ligne as http_hors_ligne
 from .core.http import hors_ligne_actif as http_hors_ligne_actif
 from .core import prompts as registre_prompts
-from .core import empreinte, reglages, securite, store, telephone, ventes
+from .core import empreinte, evenements, reglages, securite, store, telephone, ventes
 from .core import verification
 from .marketing import vente
 from .packaging import livraison
@@ -50,6 +50,15 @@ def _compte(valeur: Optional[int]) -> str:
 def _milliers(nombre: int) -> str:
     """Nombre lisible a l'oeil : 200000 devient « 200 000 »."""
     return "{:,}".format(int(nombre)).replace(",", "\u202f")
+
+
+def _dire_l_attente(evenement: Dict[str, Any]) -> None:
+    """Une attente du routeur, dite dans le terminal pendant qu'elle dure."""
+    if evenement.get("type") != "attente":
+        return
+    alerte(str(evenement.get("message") or "{} : limite par minute atteinte, "
+               "reprise dans {} s".format(evenement.get("fournisseur", ""),
+                                          evenement.get("secondes", 0))))
 
 
 def titre_console(texte: str) -> None:
@@ -3480,6 +3489,9 @@ def principal(argv: Optional[List[str]] = None) -> int:
         parseur.print_help()
         return 0
     debut = time.time()
+    # Branche pour la duree de la commande seulement : reste branche, il
+    # parlerait aussi pendant ce qui suit dans le meme processus.
+    evenements.ecouter(_dire_l_attente)
     try:
         # Android suspend Termux quelques minutes apres l'extinction de
         # l'ecran. Une fabrication de 15 minutes n'y survit pas : le verrou
@@ -3567,6 +3579,7 @@ def principal(argv: Optional[List[str]] = None) -> int:
         print("  Détails complets : USINE_DEBUG=1 usine ...")
         return 1
     finally:
+        evenements.ne_plus_ecouter(_dire_l_attente)
         store.close()
 
 
