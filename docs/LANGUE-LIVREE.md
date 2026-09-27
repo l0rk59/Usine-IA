@@ -159,10 +159,11 @@ trouvent rien — ils ratent, ils n'accusent pas.
   remplir (`{titre}`…), mêmes longueurs pour les listes. Une clé absente d'un
   côté lève une `KeyError` à la livraison — dans la langue que personne ne
   teste ;
-- **les tables d'affichage couvrent leurs valeurs** : chaque niveau de quiz,
-  disposition d'imprimable, objectif d'e-mails, genre de mémo a son libellé
-  anglais. Une valeur ajoutée sans libellé s'afficherait en français sans rien
-  casser ;
+- **les tables d'affichage couvrent leurs valeurs, dans les deux langues** :
+  chaque niveau de quiz, disposition d'imprimable, objectif d'e-mails, genre
+  de mémo, type de colonne d'un modèle a son libellé anglais **et** français.
+  Une valeur ajoutée sans libellé s'afficherait en français dans un produit
+  anglais sans rien casser ;
 - **le catalogue entier en anglais** : tiré de `catalogue.tous`, pas d'une
   liste recopiée — une chaîne ajoutée demain est lue sans qu'on y pense. Le
   test lit tout ce que l'acheteur ouvre : markdown, texte, HTML, CSV, PDF,
@@ -186,3 +187,30 @@ Les contrôles sont gardés à côté de ceux qu'ils corrigent : `tests/test_tex
 Le test ne vaut que si on l'a vu échouer : 33 mutations, chacune remettant un
 morceau de mobilier en français ou défaisant une des corrections ci-dessus —
 toutes détectées.
+
+## L'autre sens : le français sans ses accents
+
+*Mesuré le 27/09/2026.*
+
+Les tables d'affichage étaient vides en français, par décision : la valeur
+s'affichait telle quelle. Or ces valeurs sont des clés tapées en ligne de
+commande, donc sans accent. L'acheteur français lisait « niveau debutant »
+sur la couverture d'un quiz, « etapes » et « reperes » dans le tableur d'un
+mémo, « case_a_cocher » dans le guide d'un modèle — et la promesse d'une
+séquence de fidélisation, « faire revenir un client qui a deja achete ».
+Les tables sont désormais remplies dans les deux langues.
+
+Le même chantier a cassé l'autre sens sans que rien ne le voie : en
+accentuant `core/verification.py` (« contrôle structurel »), les clés de la
+table anglaise, restées sans accent, ne se trouvaient plus — la notice
+anglaise d'un logiciel vérifié sans node affichait la ligne en français.
+Deux valeurs n'y avaient d'ailleurs jamais figuré. Un test relit désormais
+chaque valeur dans l'arbre syntaxique de `verification.py`.
+
+Le garde-fou qui manquait est dans `tests/test_accents.py` : le catalogue
+entier fabriqué **en français** par le simulateur neutre, et chaque fichier
+livré relu à la recherche de la liste fermée des mots qui n'existent pas
+sans leur accent. Les tests d'accents précédents lisaient le code ; celui-ci
+lit ce que l'acheteur ouvre. Neuf mutations, toutes vues — dont une que seul
+ce balayage attrape.
+

@@ -335,7 +335,7 @@ def analyser_manifeste(texte: str, nom: str = "manifest.json") -> Rapport:
     if not rapport.valide:
         return rapport
     donnees = json.loads(texte)
-    rapport.verifie_par = "json.loads + schema Chrome MV3"
+    rapport.verifie_par = "json.loads + schéma Chrome MV3"
     # analyser_json valide la syntaxe ; « [1, 2, 3] » est du JSON correct.
     # Un manifeste qui n'est pas un objet faisait tomber toute la chaine sur
     # un AttributeError, la ou c'est justement le genre de sortie qu'un
@@ -374,7 +374,7 @@ def analyser_html(texte: str, nom: str = "index.html") -> Rapport:
     import html.parser
 
     rapport = Rapport(fichier=nom, langage="html",
-                      verifie_par="analyseur HTML + dependances")
+                      verifie_par="analyseur HTML + dépendances")
 
     class Verificateur(html.parser.HTMLParser):
         vides = {"br", "img", "hr", "meta", "link", "input", "source", "area",

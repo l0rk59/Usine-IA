@@ -282,7 +282,12 @@ vous sera envoyée.
     "modeles_aucun": "aucun",
     # Les types de colonne sont des noms que l'invite impose au modele ; en
     # francais, ils s'affichent tels quels.
-    "modeles_types": {},
+    "modeles_types": {"texte": "texte", "texte_long": "texte long",
+                      "nombre": "nombre", "selection": "sélection",
+                      "multi_selection": "sélection multiple", "date": "date",
+                      "case_a_cocher": "case à cocher", "url": "lien",
+                      "email": "e-mail", "relation": "relation",
+                      "formule": "formule"},
 
     # --- imprimables -----------------------------------------------------------------
     "impression_comment_remplir": "Comment remplir cette fiche",
@@ -305,7 +310,13 @@ vous sera envoyée.
         "que rien ne disparaisse dans la pliure. Imprimez-le en recto-verso."),
     "impression_apporte": "Ce que ce cahier vous apporte",
     "impression_disposition": "Disposition",
-    "impression_dispositions": {},
+    # Les valeurs sont des cles sans accent, tapees en ligne de commande. Une
+    # table vide affichait la cle telle quelle : « niveau debutant » sur la
+    # couverture d'un quiz, « etapes » et « reperes » dans le tableur d'un
+    # memo, « un client qui a deja achete » en promesse d'une sequence.
+    "impression_dispositions": {"checklist": "checklist", "planning": "planning",
+                                "suivi": "suivi", "questions": "questions",
+                                "notes": "notes", "matrice": "matrice"},
 
     # --- pack de contenu pour les reseaux -------------------------------------------
     "social_titre": "{nombre} posts {reseau} — {sujet}",
@@ -345,7 +356,12 @@ vous sera envoyée.
     "emails_demande": "Ce que ce message demande",
     # Vide : en francais, les objectifs s'affichent tels que « emails.OBJECTIFS »
     # les ecrit.
-    "emails_objectifs": {},
+    "emails_objectifs": {
+        "bienvenue": "accueillir un nouvel inscrit et installer la confiance",
+        "vente": "amener à un premier achat, sans forcer",
+        "fidelisation": "faire revenir un client qui a déjà acheté",
+        "relance": "réveiller une liste devenue silencieuse",
+    },
 
     # --- memo ----------------------------------------------------------------------
     "memo_titre": "Mémo — {sujet}",
@@ -353,7 +369,8 @@ vous sera envoyée.
     "memo_promesse": "L'essentiel, à garder à côté de soi",
     "memo_colonnes": ("Bloc", "Genre", "Ligne"),
     # Les genres de bloc sont des noms internes ; en francais, tels quels.
-    "memo_genres": {},
+    "memo_genres": {"liste": "liste", "etapes": "étapes", "tableau": "tableau",
+                    "reperes": "repères"},
 
     # --- logiciel -------------------------------------------------------------------
     "unite_sections_simple": "sections",
@@ -399,7 +416,11 @@ vous sera envoyée.
         "vérification. Relisez-les avant toute mise en vente."),
     # Ce que la verification a controle, et les causes d'un refus d'executer :
     # des libelles de « core/verification.py », en francais tels quels.
+    # Vide en francais : « core/verification.py » ecrit deja ces valeurs en
+    # francais, et c'est elles que la table anglaise traduit, cle pour cle.
     "logiciel_verifie_par": {},
+    # Vide aussi : un en-tete absent rend le motif tel que la verification
+    # l'a compose, a partir de « logiciel_soucis » ci-dessous.
     "logiciel_refus": {},
     # Les motifs pour lesquels l'analyse statique refuse de lancer un script.
     # « core/verification.py » compose ses messages a partir d'ICI : une
@@ -416,7 +437,8 @@ vous sera envoyée.
     "quiz_produit_sous_titre": "{nombre} questions — niveau {niveau}",
     # Les niveaux s'affichaient tels qu'ils sont stockes : le francais les
     # garde a l'identique.
-    "quiz_niveaux": {},
+    "quiz_niveaux": {"debutant": "débutant", "intermediaire": "intermédiaire",
+                     "avance": "avancé"},
     "quiz_promesse": "Se tester, et comprendre ses erreurs",
     "quiz_promesse_page": ("Corrigez-vous sans rien envoyer : tout se passe "
                            "dans votre navigateur."),
@@ -728,8 +750,10 @@ Write to {contact}.
     "modeles_aucun": "none",
     "modeles_types": {"texte": "text", "texte_long": "long text",
                       "nombre": "number", "selection": "select",
-                      "multi_selection": "multi-select",
-                      "case_a_cocher": "checkbox", "formule": "formula"},
+                      "multi_selection": "multi-select", "date": "date",
+                      "case_a_cocher": "checkbox", "url": "URL",
+                      "email": "email", "relation": "relation",
+                      "formule": "formula"},
 
     "impression_comment_remplir": "How to fill in this sheet",
     "impression_notes": "Notes",
@@ -844,10 +868,19 @@ Write to {contact}.
     "logiciel_attention": (
         "**Warning:** one or more files did not pass the check. Review them "
         "before any sale."),
+    # Les cles sont les valeurs EXACTES qu'ecrit « core/verification.py ».
+    # Accentuees la-bas et pas ici, elles ne se trouvaient plus : la notice
+    # anglaise d'un logiciel affichait « contrôle structurel » en francais.
+    # Un test relit chaque valeur dans l'arbre syntaxique de ce module.
     "logiciel_verifie_par": {
         "syntaxe + arbre syntaxique": "syntax + syntax tree",
-        "controle structurel (node indisponible)": "structural check (node unavailable)",
-        "controle structurel (node absent)": "structural check (node missing)",
+        "node --check": "node --check",
+        "contrôle structurel (node indisponible)": "structural check (node unavailable)",
+        "contrôle structurel (node absent)": "structural check (node missing)",
+        "json.loads": "json.loads",
+        "json.loads + schéma Chrome MV3": "json.loads + Chrome MV3 schema",
+        "analyseur HTML + dépendances": "HTML parser + dependencies",
+        "aucune vérification pour ce format": "no check for this format",
     },
     # Le debut d'un motif de refus ; le detail technique qui suit reste tel
     # que la verification l'a ecrit.

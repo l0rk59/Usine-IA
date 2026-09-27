@@ -43,7 +43,7 @@ from usine.core import llm, reglages, store  # noqa: E402
 from usine.core import serie as module_serie  # noqa: E402
 from usine.core import verification  # noqa: E402
 from usine.pipelines import (catalogue, emails, impression,  # noqa: E402
-                             logiciel, nouvelle, porte, quiz)
+                             logiciel, modeles, nouvelle, porte, quiz)
 from usine.pipelines.base import Contexte  # noqa: E402
 from usine.packaging import livraison as empaquetage  # noqa: E402
 from usine.render import libelles  # noqa: E402
@@ -255,9 +255,10 @@ class LesDeuxLanguesDisentLaMemeChose(unittest.TestCase):
                 elif isinstance(francais, tuple):
                     self.assertEqual(len(francais), len(anglais))
                 elif isinstance(francais, dict) and francais:
-                    # Un dictionnaire rempli des deux cotes est une table de
-                    # textes (le script du quiz) : memes cles. Vide en
-                    # francais, c'est une table d'affichage — l'identite.
+                    # Un dictionnaire rempli des deux cotes : memes cles.
+                    # Vide en francais, la valeur s'affiche telle quelle —
+                    # il ne l'est plus que la ou elle est deja du francais
+                    # correct (voir la table des verifications, plus bas).
                     self.assertEqual(sorted(francais), sorted(anglais))
 
     def test_les_tables_d_affichage_couvrent_leurs_valeurs(self):
@@ -268,12 +269,46 @@ class LesDeuxLanguesDisentLaMemeChose(unittest.TestCase):
             "impression_dispositions": impression.DISPOSITIONS,
             "emails_objectifs": emails.OBJECTIFS,
             "memo_genres": ("liste", "etapes", "tableau", "reperes"),
+            "modeles_types": modeles.TYPES_DE_COLONNE,
         }
+        from tests.test_accents import fautes
+
         for cle, valeurs in enumerations.items():
             with self.subTest(cle=cle):
-                self.assertEqual(libelles.FR[cle], {},
-                                 "le francais affiche la valeur telle quelle")
+                # Les deux langues. Vide en francais, la table affichait la
+                # cle telle quelle : « niveau debutant » sur un quiz,
+                # « etapes » et « reperes » dans le tableur d'un memo.
+                self.assertEqual(sorted(libelles.FR[cle]), sorted(valeurs))
                 self.assertEqual(sorted(libelles.EN[cle]), sorted(valeurs))
+                self.assertEqual([f for texte in libelles.FR[cle].values()
+                                  for f in fautes(texte)], [])
+
+    def test_chaque_verification_d_un_logiciel_se_traduit(self):
+        """Les cles de la table sont les valeurs qu'ecrit la verification.
+
+        Accentuees dans « core/verification.py » et pas dans la table,
+        elles ne se trouvaient plus : une notice anglaise affichait
+        « contrôle structurel (node absent) ». Deux autres n'y avaient
+        jamais ete. Les valeurs sont relues dans l'arbre syntaxique — toute
+        chaine affectee a « verifie_par », ou passee sous ce nom."""
+        import ast
+
+        arbre = ast.parse(Path(verification.__file__).read_text(encoding="utf-8"))
+        valeurs = set()
+        for noeud in ast.walk(arbre):
+            if isinstance(noeud, ast.keyword) and noeud.arg == "verifie_par":
+                cible = noeud.value
+            elif (isinstance(noeud, ast.Assign) and len(noeud.targets) == 1
+                  and isinstance(noeud.targets[0], ast.Attribute)
+                  and noeud.targets[0].attr == "verifie_par"):
+                cible = noeud.value
+            else:
+                continue
+            if isinstance(cible, ast.Constant) and isinstance(cible.value, str):
+                valeurs.add(cible.value)
+        self.assertGreaterEqual(len(valeurs), 6, "le test doit trouver les valeurs")
+        self.assertEqual(sorted(valeurs - set(libelles.EN["logiciel_verifie_par"])),
+                         [])
 
     def test_chaque_libelle_est_lu(self):
         """Un libelle que rien ne lit est du texte mort, qu'on traduira et

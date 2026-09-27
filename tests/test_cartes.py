@@ -35,7 +35,7 @@ from tests import atelier  # noqa: E402
 from tests import simulateur as sim  # noqa: E402
 from usine import cli  # noqa: E402
 from usine.core import llm, store  # noqa: E402
-from usine.pipelines import carnet, catalogue  # noqa: E402
+from usine.pipelines import carnet, catalogue, quiz  # noqa: E402
 from usine.pipelines import cartes as chaine  # noqa: E402
 from usine.pipelines.base import Contexte  # noqa: E402
 from usine.render import cartes as rendu  # noqa: E402
@@ -253,7 +253,7 @@ class LaChaine(unittest.TestCase):
                            {"nombre": 8, "niveau": "avance"})
         lots = [i for i in INVITES if "cartes de revision" in i]
         self.assertTrue(lots)
-        self.assertIn("NIVEAU : avance", lots[0])
+        self.assertIn("NIVEAU : " + quiz.EXIGENCES["avance"], lots[0])
 
     def test_le_niveau_par_defaut_se_dit(self):
         lignes: List[str] = []

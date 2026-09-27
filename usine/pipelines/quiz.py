@@ -26,13 +26,28 @@ from ..render import libelles, livraison
 from ..render import quiz as rendu_quiz
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
 
-NIVEAUX = ("debutant", "intermediaire", "avance")
+# Ce que la question suppose deja su. Le modele recevait le mot seul,
+# « NIVEAU : avance » — qui, sans son accent, se lit « une avance » ; et
+# meme lu juste, un mot ne dit pas ce qu'on peut supposer connu. L'ebook
+# donnait deja une consigne ; le quiz et les cartes, un mot.
+EXIGENCES: Dict[str, str] = {
+    "debutant": "niveau debutant. On decouvre le sujet : notions de base et "
+                "vocabulaire du domaine. Un terme technique est explique "
+                "dans l'enonce, ou n'est pas employe.",
+    "intermediaire": "niveau intermediaire. Les bases et les mots du domaine "
+                     "sont acquis : ne les redefinis pas. Porte sur "
+                     "l'application a des situations concretes.",
+    "avance": "niveau avance. On pratique deja : cas limites, arbitrages, "
+              "erreurs que commettent des gens experimentes. Aucune simple "
+              "definition.",
+}
+NIVEAUX = tuple(EXIGENCES)
 
 
 def _questions(ctx: Contexte, nombre: int, niveau: str) -> List[Dict[str, Any]]:
     invite = (
         "Ecris {n} questions a choix multiple sur : {sujet}\n"
-        "CANDIDAT : {audience}\nNIVEAU : {niveau}\n\n"
+        "CANDIDAT : {audience}\nNIVEAU : {exigence}\n\n"
         "Chaque question a exactement quatre propositions. Les trois "
         "mauvaises doivent etre PLAUSIBLES : une erreur que quelqu'un "
         "commet vraiment, pas une absurdite qu'on ecarte d'un coup d'oeil. "
@@ -48,7 +63,8 @@ def _questions(ctx: Contexte, nombre: int, niveau: str) -> List[Dict[str, Any]]:
         '{{"questions": [{{"question": "...", "propositions": ["a","b","c","d"], '
         '"reponse": 0, "explication": "...", "module": "..."}}]}}\n'
         "Ce quiz est autonome : il ne suit aucune formation."
-    ).format(n=nombre, sujet=ctx.sujet, audience=ctx.audience, niveau=niveau)
+    ).format(n=nombre, sujet=ctx.sujet, audience=ctx.audience,
+             exigence=EXIGENCES.get(niveau, niveau))
     donnees = equipe.FORMATEUR.travailler_json(
         ctx, invite, role_modele="costaud", temperature=0.6, max_tokens=4000)
     brutes = donnees.get("questions") if isinstance(donnees, dict) else donnees

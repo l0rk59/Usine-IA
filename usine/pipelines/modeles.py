@@ -62,6 +62,14 @@ OUTILS: Dict[str, Dict[str, str]] = {
 OUTIL_PAR_DEFAUT = "les-deux"
 
 
+# Une seule liste : l'invite la donne au modele, et chaque langue doit avoir
+# un nom lisible pour chacun (« case_a_cocher » s'affichait tel quel dans le
+# guide francais).
+TYPES_DE_COLONNE = ("texte", "texte_long", "nombre", "selection",
+                    "multi_selection", "date", "case_a_cocher", "url", "email",
+                    "relation", "formule")
+
+
 def _outil(ctx: Contexte, outil: str) -> Dict[str, str]:
     """L'outil retenu, et le journal dit quand personne ne l'a choisi."""
     if outil in OUTILS:
@@ -79,8 +87,7 @@ def _systeme(ctx: Contexte, nombre: int,
         "UTILISATEUR : {audience}\n\n"
         "Chaque base a des colonnes typees et un role precis dans le systeme. "
         "{conception}\n\n"
-        "Types de colonne autorises : texte, texte_long, nombre, selection, "
-        "multi_selection, date, case_a_cocher, url, email, relation, formule.\n\n"
+        "Types de colonne autorises : " + ", ".join(TYPES_DE_COLONNE) + ".\n\n"
         "Schema JSON exact :\n"
         '{{"titre": "nom commercial du systeme", "promesse": "...", '
         '"bases": [{{"nom": "...", "role": "a quoi elle sert", '

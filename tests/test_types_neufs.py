@@ -231,6 +231,29 @@ class LeQuiz(unittest.TestCase):
         html = rendu.corps([question])
         self.assertIn("type=\"radio\"", html)
 
+    def test_le_niveau_part_au_modele_en_consigne_et_non_en_mot(self):
+        """« NIVEAU : avance », sans accent, se lit « une avance » — et un
+        mot ne dit pas ce qu'une question peut supposer connu."""
+        invites = []
+
+        def espion(messages, role):
+            invites.append(messages[-1]["content"])
+            return sim.simulateur(messages, role)
+
+        llm.definir_simulateur(espion)
+        try:
+            ctx = Contexte(sujet="la paie des salaries", sans_image=True,
+                           audience="des gestionnaires de paie avances",
+                           journal=lambda _m: None)
+            quiz.produire(ctx, nombre=5, niveau="avance")
+        finally:
+            llm.definir_simulateur(sim.simulateur)
+        redaction = next(i for i in invites if "choix multiple" in i)
+        self.assertIn("NIVEAU : " + quiz.EXIGENCES["avance"], redaction)
+        # Et l'acheteur francais lit « avancé », pas la cle.
+        livre = (ctx.dossier / "quiz.md").read_text(encoding="utf-8")
+        self.assertIn("niveau avancé", livre)
+
     def test_la_page_qui_se_corrige_seule_est_livree(self):
         ctx = _contexte()
         resume = quiz.produire(ctx, nombre=5)

@@ -27,7 +27,7 @@ from ..render import libelles, livraison
 from ..render.page import ecrire_page
 from ..render.pdf import DocumentPDF
 from .base import Contexte, Redaction, preparer, renommer, slug, terminer
-from .quiz import NIVEAUX
+from .quiz import EXIGENCES, NIVEAUX
 
 LOT = 12
 NOMBRE_MIN, NOMBRE_MAX = 8, 120
@@ -38,7 +38,7 @@ def _rediger_lot(ctx: Contexte, combien: int, niveau: str,
                  deja: List[str]) -> List[Dict[str, str]]:
     invite = (
         "Ecris {n} cartes de revision sur : {sujet}\n"
-        "PUBLIC : {audience}\nNIVEAU : {niveau}\n{deja}\n"
+        "PUBLIC : {audience}\nNIVEAU : {exigence}\n{deja}\n"
         "Une carte = UNE chose a retenir.\n"
         "- 'recto' : une question precise, ou un terme a definir. 15 mots au "
         "plus. Jamais une question qui se repond par oui ou par non.\n"
@@ -49,7 +49,8 @@ def _rediger_lot(ctx: Contexte, combien: int, niveau: str,
         "Deux cartes ne portent jamais sur la meme chose.\n\n"
         "Schema JSON exact :\n"
         '{{"cartes": [{{"recto": "...", "verso": "...", "theme": "..."}}]}}'
-    ).format(n=combien, sujet=ctx.sujet, audience=ctx.audience, niveau=niveau,
+    ).format(n=combien, sujet=ctx.sujet, audience=ctx.audience,
+             exigence=EXIGENCES.get(niveau, niveau),
              deja=("DEJA ECRITES, ne les reprends pas : " + " | ".join(deja[-40:])
                    if deja else ""))
     donnees = equipe.FORMATEUR.travailler_json(

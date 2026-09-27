@@ -58,6 +58,7 @@ IMPOSSIBLES = frozenset("""
     antiseche bibliotheque equipe premiere reserve reserves heros
     melancolique epique drole inquietante amere enquete episodique
     litterature troisieme limitee alternes fermee reconfortante
+    debutant debutants intermediaire reperes achete reveiller
 """.split())
 
 _MOT = re.compile(r"[A-Za-zÀ-ÿ]+")
@@ -292,6 +293,63 @@ class DesMotsPasDesIdentifiants(unittest.TestCase):
         ecran = sortie.getvalue()
         self.assertIn("Signature IA dans la licence", ecran)
         self.assertIn("(signature_ia)", ecran)
+
+
+class LeCatalogueEntierEnFrancais(unittest.TestCase):
+    """Ce que l'acheteur francais ouvre, fichier par fichier.
+
+    Les tests ci-dessus lisent le CODE : les libelles, les messages. Ils
+    ne voyaient pas les valeurs que les chaines affichent a travers une
+    table vide en francais — mesure du 27/09/2026 : « niveau debutant » sur
+    la couverture d'un quiz, « etapes » et « reperes » dans le tableur d'un
+    memo. Ici, tout le catalogue est fabrique en francais par un modele qui
+    n'ecrit que « zz… », et chaque fichier livre est relu : ce qui reste de
+    francais vient de l'usine.
+
+    Meme liste fermee que plus haut, donc memes limites : un mot absent de
+    la liste passe, et c'est voulu.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from tests.test_langue_livree import (_fabriquer, _texte_visible,
+                                              fichiers_livres, simulateur_neutre)
+        from usine.core import llm
+
+        atelier.isoler("accents-catalogue")
+        reglages.ecrire(dict(images=False, qualite="rapide", langue="francais",
+                             auteur="Zz", archive_auto=True,
+                             marketing_auto=True))
+        llm.definir_simulateur(simulateur_neutre())
+        cls.lus = {}
+        cls.trouves = {}
+        try:
+            for rang, fiche in enumerate(catalogue.tous(fabricables=True)):
+                # « idees » ne livre rien a un acheteur : c'est une liste de
+                # niches pour le vendeur, sans dossier de produit.
+                if fiche.cle == "idees":
+                    continue
+                ctx, _dits = _fabriquer(fiche.cle, "zz zz {}".format(rang))
+                lus = list(fichiers_livres(ctx.dossier))
+                cls.lus[fiche.cle] = len(lus)
+                cls.trouves[fiche.cle] = sorted({
+                    "{} : {}".format(nom, mot)
+                    for nom, brut in lus
+                    for mot in fautes(_texte_visible(nom, brut))})
+        finally:
+            llm.definir_simulateur(None)
+
+    def test_chaque_type_a_ete_lu(self):
+        for cle in catalogue.cles(fabricables=True):
+            if cle == "idees":
+                continue
+            with self.subTest(type=cle):
+                self.assertGreaterEqual(self.lus.get(cle, 0), 3)
+
+    def test_aucun_mot_sans_son_accent_chez_l_acheteur(self):
+        for cle, trouves in self.trouves.items():
+            with self.subTest(type=cle):
+                self.assertEqual(trouves, [])
 
 
 if __name__ == "__main__":
