@@ -122,3 +122,36 @@ révision, où une ligne commençait par « » : ».
 
 `tests/test_typographie.py` compose la même phrase à toutes les largeurs de
 90 à 400 points ; sept mutations, toutes vues.
+
+## Ce que le PDF savait écrire, et remplaçait quand même
+
+*Mesuré le 27/09/2026, contre les fichiers AFM d'Adobe (la copie livrée avec
+matplotlib).*
+
+Trois défauts du même moteur, trouvés en regardant la page d'une grille de
+mots mêlés dont le titre s'imprimait « Grille 1 - Les épices » :
+
+- **des signes dégradés pour rien.** La table de remplacement disait « ce
+  que WinAnsi ne sait pas écrire », mais WinAnsi a le tiret cadratin, le
+  demi-cadratin, les apostrophes et guillemets courbes, les points de
+  suspension, la puce, ×, ÷, ± et ™. Ils sortaient en « - », « ... », « ' » —
+  et les tirets de dialogue d'un roman en traits d'union. La table ne garde
+  plus que ce qui manque vraiment (flèches, ≥, ≠…), et elle a gagné ce que les
+  modèles écrivent en français : l'**espace fine insécable** (U+202F, avant
+  « ; ! ? » et dans les guillemets) sortait en « ? », et le **signe moins**
+  (U+2212) disparaissait — « −5 °C » s'imprimait « 5 °C » ;
+- **des largeurs empruntées.** Hors ASCII, chaque signe prenait la largeur
+  d'un autre : « « » celle de « " », « œ » celle de « o ». Un guillemet
+  français était compté 36 % trop étroit en Helvetica, « œ » 41 %, et une
+  ligne justifiée qui en contenait dépassait la marge de droite d'autant.
+  Les 123 signes supérieurs de WinAnsi ont désormais leur largeur AFM, dans
+  les cinq polices ; les tables ASCII, vérifiées au passage, concordaient à
+  l'unité près. La table de remplacement vit à côté des largeurs, pour que
+  la mesure compte ce qui sera dessiné (« → » s'imprime « -> ») ;
+- **le titre du fichier.** Les métadonnées étaient encodées en latin-1, qui
+  n'a pas « — » : tout titre qui en porte un s'affichait « Quiz ? la paie »
+  dans la barre de la visionneuse et dans la bibliothèque de la liseuse. Hors
+  ASCII, elles partent maintenant en UTF-16, comme la norme le prévoit.
+
+Aucun de ces défauts ne faisait échouer quoi que ce soit : le fichier restait
+valide, et le texte, lisible. `tests/test_pdf_caracteres.py` garde les trois.

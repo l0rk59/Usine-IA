@@ -67,13 +67,88 @@ class LeFrancaisPasseEntier(unittest.TestCase):
                 self.assertIn(morceau, rendu)
         self.assertNotIn("?", rendu)
 
-    def test_les_signes_typographiques_gardent_un_equivalent(self):
-        """Le tiret cadratin et les points de suspension ne sont pas perdus :
-        ils ont un equivalent que la police porte."""
-        rendu = pdf._echapper("un tiret — et des points…").decode("cp1252")
-        self.assertIn("-", rendu)
-        self.assertIn("...", rendu)
-        self.assertNotIn("?", rendu)
+    def test_les_signes_que_winansi_porte_sont_dessines_tels_quels(self):
+        """Tiret cadratin, points de suspension, apostrophe et guillemets
+        courbes, puce, signe de multiplication : WinAnsi les a tous. Ils
+        etaient remplaces par « - », « ... », « ' » pour rien — les tirets
+        de dialogue d'un roman s'imprimaient en traits d'union."""
+        texte = "— Tu viens ? dit-elle… l’été, “ok” • 3×4 ± 1"
+        self.assertEqual(pdf._echapper(texte).decode("cp1252"), texte)
+
+    def test_ce_que_winansi_n_a_pas_garde_un_equivalent(self):
+        """Ce que les modeles ecrivent en francais : l'espace fine insecable
+        sortait en « ? », le signe moins disparaissait — « −5 °C » devenait
+        « 5 °C »."""
+        rendu = pdf._echapper(
+            "\u22125 °C, 20\u202f€, a\u2009b, x\u2011y, a → b").decode("cp1252")
+        self.assertEqual(rendu, "-5 °C, 20 €, a b, x-y, a -> b")
+
+
+class LaMesureCompteCeQuiEstDessine(unittest.TestCase):
+    """Une ligne se coupe sur la largeur MESUREE ; elle s'imprime a la
+    largeur DESSINEE. Tout ecart deborde sur la marge de droite.
+
+    Avant, « « », « — » ou « œ » empruntaient la largeur d'un autre signe :
+    un guillemet francais etait compte 36 % trop etroit en Helvetica, « œ »
+    41 %. Les valeurs de reference sont celles des fichiers AFM d'Adobe."""
+
+    def test_les_largeurs_des_fichiers_afm(self):
+        from usine.render.metriques import largeur_texte
+
+        for texte, police, attendu in (("«", "Helvetica", 556),
+                                       ("»", "Times-Roman", 500),
+                                       ("—", "Times-Roman", 1000),
+                                       ("—", "Times-Italic", 889),
+                                       ("œ", "Helvetica", 944),
+                                       ("’", "Times-Roman", 333),
+                                       ("…", "Helvetica-Bold", 1000)):
+            with self.subTest(texte=texte, police=police):
+                self.assertEqual(largeur_texte(texte, police, 1000), attendu)
+
+    def test_chaque_signe_de_winansi_a_sa_largeur(self):
+        from usine.render.metriques import POLICES
+
+        signes = []
+        for octet in range(0x80, 0x100):
+            try:
+                signes.append(bytes([octet]).decode("cp1252"))
+            except UnicodeDecodeError:
+                continue
+        for police, table in POLICES.items():
+            with self.subTest(police=police):
+                self.assertEqual([s for s in signes if s not in table], [])
+
+    def test_un_signe_remplace_se_mesure_comme_son_remplacant(self):
+        from usine.render.metriques import largeur_texte
+
+        for source, dessine in (("→", "->"), ("\u2212", "-"), ("\u202f", " ")):
+            with self.subTest(source=source):
+                self.assertEqual(largeur_texte(source, "Helvetica", 10),
+                                 largeur_texte(dessine, "Helvetica", 10))
+
+
+class LeTitreDuFichier(unittest.TestCase):
+    """Le titre que la visionneuse affiche dans sa barre, et la liseuse
+    dans sa bibliotheque."""
+
+    def _titre(self, titre: str) -> bytes:
+        doc = pdf.DocumentPDF(titre_document=titre, auteur="a")
+        doc.paragraphe("x")
+        with tempfile.TemporaryDirectory() as dossier:
+            chemin = Path(dossier) / "t.pdf"
+            doc.enregistrer(chemin)
+            brut = chemin.read_bytes()
+        return brut.split(b"/Title ", 1)[1].split(b" /", 1)[0]
+
+    def test_un_tiret_cadratin_ne_devient_plus_un_point_d_interrogation(self):
+        """Encode en latin-1, qui n'a pas « — » : « Quiz ? la paie »."""
+        brut = self._titre("Quiz — la paie (été)")
+        self.assertTrue(brut.startswith(b"<FEFF"), brut)
+        self.assertEqual(bytes.fromhex(brut[5:-1].decode()).decode("utf-16-be"),
+                         "Quiz — la paie (été)")
+
+    def test_un_titre_ascii_reste_litteral_et_echappe(self):
+        self.assertEqual(self._titre("Guide (2026)"), rb"(Guide \(2026\))")
 
 
 class UnSymboleSEffaceUneLettreSeSignale(unittest.TestCase):

@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from .document import nettoyer_inline
-from .metriques import largeur_texte
+from .metriques import REMPLACEMENTS, largeur_texte
 
 A4 = (595.28, 841.89)
 LETTRE = (612.0, 792.0)
@@ -31,14 +31,23 @@ POLICES_PDF = {
 
 
 def _chaine_pdf(texte: str) -> str:
-    """Chaine litterale PDF : parentheses et antislashs echappes.
+    """Chaine de texte PDF, pour les metadonnees et la langue du document.
 
-    Encodee en PDFDocEncoding via latin-1, qui couvre les accents francais.
-    Un titre non echappe contenant une parenthese cassait la structure du
-    fichier sans qu'aucun lecteur ne dise pourquoi.
+    En ASCII : litterale, parentheses et antislashs echappes. Un titre non
+    echappe contenant une parenthese cassait la structure du fichier sans
+    qu'aucun lecteur ne dise pourquoi.
+
+    Au-dela : UTF-16BE precede de sa marque, comme la norme le prevoit pour
+    les chaines de texte. L'encodage latin-1 d'avant n'a pas « — » : tout
+    titre qui en porte un (quiz, memo, cartes, mots meles...) s'affichait
+    « Quiz ? la paie » dans la barre de la visionneuse et dans la
+    bibliotheque de la liseuse — la ou l'acheteur voit le fichier.
     """
-    propre = (texte or "").replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)")
-    return "({})".format(propre.encode("latin-1", "replace").decode("latin-1"))
+    texte = texte or ""
+    if texte.isascii():
+        propre = texte.replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)")
+        return "({})".format(propre)
+    return "<FEFF{}>".format(texte.encode("utf-16-be").hex().upper())
 
 
 def _dictionnaire_info(titre: str, auteur: str, sujet: str) -> bytes:
@@ -55,18 +64,6 @@ def _dictionnaire_info(titre: str, auteur: str, sujet: str) -> bytes:
     corps = " ".join("{} {}".format(nom, valeur) for nom, valeur in champs
                      if valeur not in ("()", ""))
     return ("<< {} >>".format(corps)).encode("latin-1", "replace")
-
-
-# Ce que WinAnsi ne sait pas ecrire, et qu'on remplace par son equivalent
-# lisible plutot que par un point d'interrogation.
-_REMPLACEMENTS = {
-    "’": "'", "‘": "'", "“": '"', "”": '"',
-    "–": "-", "—": "-", "…": "...", " ": " ",
-    "•": "-", "→": "->", "←": "<-", "≥": ">=",
-    "≤": "<=", "≠": "!=", "×": "x", "÷": "/",
-    "±": "+/-", "∞": "infini", "™": "(TM)", "≈": "~",
-    "⇒": "=>", "№": "no",
-}
 
 
 def _sans_symbole(texte: str) -> str:
@@ -114,7 +111,7 @@ def caracteres_absents(texte: str) -> List[str]:
     """
     perdus = []
     for caractere in dict.fromkeys(texte):
-        if ord(caractere) < 128 or caractere in _REMPLACEMENTS:
+        if ord(caractere) < 128 or caractere in REMPLACEMENTS:
             continue
         if unicodedata.category(caractere)[0] not in ("L", "N"):
             continue
@@ -125,7 +122,7 @@ def caracteres_absents(texte: str) -> List[str]:
 
 def _echapper(texte: str) -> bytes:
     """Encode en WinAnsi et protege les caracteres speciaux PDF."""
-    for source, cible in _REMPLACEMENTS.items():
+    for source, cible in REMPLACEMENTS.items():
         texte = texte.replace(source, cible)
     brut = _sans_symbole(texte).encode("cp1252", "replace")
     return brut.replace(b"\\", b"\\\\").replace(b"(", b"\\(").replace(b")", b"\\)")
