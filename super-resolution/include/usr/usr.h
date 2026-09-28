@@ -189,4 +189,117 @@ void GetJitterOffset(uint32_t frameIndex, uint32_t phaseCount, float* x,
 void GetDepthParams(float nearZ, float farZ, bool reversedZ,
                     bool infiniteFar, float* p0, float* p1);
 
+// ===========================================================================
+// USR Universel : sans profondeur ni vecteurs de mouvement
+// ===========================================================================
+//
+// Pour les images dont on ne connait que les pixels : emulateur (Xenia),
+// capture, lecteur video. USR estime lui-meme le mouvement (flot optique
+// sur GPU), puis accumule par retro-projection du residu : sans information
+// nouvelle l'image reste celle d'un bon agrandissement spatial, et chaque
+// mouvement (ou jitter) apporte du detail. Voir docs/XENIA.md.
+//
+//   usr::UniversalCreateDesc cd = {};
+//   cd.device = device;
+//   cd.renderWidth = 1280; cd.renderHeight = 720;      // image du jeu
+//   cd.displayWidth = 3840; cd.displayHeight = 2160;   // sortie
+//   cd.jitterPeriod = 0;   // niveau 1 : l'emulateur ne decale rien
+//   usr::UniversalContext* u = nullptr;
+//   usr::CreateUniversalContext(cd, &u);
+//   // a chaque nouvelle image du jeu :
+//   usr::UniversalDispatchDesc d = {};
+//   d.commandList = cl; d.color = image; d.output = sortie;
+//   usr::DispatchUniversal(u, d);
+//
+// Niveau 2 (l'emulateur decale le rendu 3D d'un jitter connu) : prendre
+// cd.jitterPeriod = GetUniversalJitterPeriod(...) et, a chaque image,
+// d.jitterX/Y = GetUniversalJitter(...), le meme que celui injecte.
+
+enum class UniversalPass : uint32_t {
+    Luma = 0,     // usr_u_luma
+    Down,         // usr_u_down
+    Gradient,     // usr_u_grad
+    Flow,         // usr_u_flow
+    Median,       // usr_u_median
+    Finalize,     // usr_u_finalize
+    Residual,     // usr_u_residual
+    Accumulate,   // usr_u_accumulate
+    Output,       // usr_u_output
+    Count
+};
+
+struct UniversalCreateDesc {
+    ID3D12Device* device = nullptr;
+    uint32_t renderWidth = 0;    // taille de l'image recue (fixe)
+    uint32_t renderHeight = 0;
+    uint32_t displayWidth = 0;   // taille de sortie
+    uint32_t displayHeight = 0;
+    uint32_t maxFramesInFlight = 3;
+    uint32_t flags = kCreateNone;   // kCreateDisableNetwork
+    // Periode de la suite de jitter injectee (0 : pas de jitter). Sert au
+    // test exact « meme phase » qui fige les zones immobiles.
+    uint32_t jitterPeriod = 0;
+    // Poids du reseau universel (484 floats). nullptr : poids integres.
+    const float* weights = nullptr;
+    uint32_t weightCount = 0;
+    // Bytecode des passes (vide : integre a la compilation).
+    ShaderBytecode shaders[static_cast<uint32_t>(UniversalPass::Count)];
+};
+
+// Etats attendus a l'appel (et laisses tels quels) :
+//   color  : D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+//   output : D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+struct UniversalDispatchDesc {
+    ID3D12GraphicsCommandList* commandList = nullptr;
+    // Image du jeu telle qu'elle serait affichee (valeurs [0, 1], deja
+    // compressees pour l'ecran). Format lu tel quel : utiliser une vue
+    // UNORM, pas sRGB, pour garder les valeurs de l'ecran.
+    ID3D12Resource* color = nullptr;
+    ID3D12Resource* output = nullptr;   // resolution d'affichage, UAV
+    DXGI_FORMAT colorFormat = DXGI_FORMAT_UNKNOWN;
+    DXGI_FORMAT outputFormat = DXGI_FORMAT_UNKNOWN;
+
+    // Jitter injecte par l'emulateur pour CETTE image (pixels de rendu,
+    // [-0.5, 0.5]), 0 au niveau 1.
+    float jitterX = 0.0f;
+    float jitterY = 0.0f;
+    bool reset = false;          // coupure, chargement : oublie tout
+
+    // --- Reglages (modifiables a chaque image) ---------------------------
+    float sharpness = 0.0f;      // accentuation RCAS, 0..1
+    float networkStrength = 1.0f;  // 0 = regles de base seules .. 4
+    float historyLength = 10.0f;   // images accumulees au plus, 1..64
+    // Anti-fantomes : sortie de boite qui rend un pixel totalement
+    // reactif (0.05..4). Petit = oublie vite (moins de trainees, moins de
+    // detail), grand = garde l'historique.
+    float antiGhosting = 0.3f;
+
+    // Optionnel (UNORDERED_ACCESS, resolution d'affichage) : par pixel
+    // (reactivite, gain, confiance / max, confiance du flot).
+    ID3D12Resource* debugOutput = nullptr;
+    DXGI_FORMAT debugFormat = DXGI_FORMAT_UNKNOWN;
+};
+
+class UniversalContext;
+
+Result CreateUniversalContext(const UniversalCreateDesc& desc,
+                              UniversalContext** outContext);
+void DestroyUniversalContext(UniversalContext* context);
+// Enregistre les passes dans desc.commandList. Comme Dispatch, lie son
+// propre tas de descripteurs : re-lier le sien apres.
+Result DispatchUniversal(UniversalContext* context,
+                         const UniversalDispatchDesc& desc);
+Result SetUniversalWeights(UniversalContext* context, const float* weights,
+                           uint32_t count);
+
+// Jitter du niveau 2 : grille ordonnee (2x2, 3x3) quand le rapport est
+// entier -- chaque pixel d'affichage recoit un echantillon exactement en
+// son centre toutes les n*n images -- sinon Halton (2, 3).
+uint32_t GetUniversalJitterPeriod(uint32_t renderWidth, uint32_t renderHeight,
+                                  uint32_t displayWidth,
+                                  uint32_t displayHeight);
+void GetUniversalJitter(uint32_t frameIndex, uint32_t renderWidth,
+                        uint32_t renderHeight, uint32_t displayWidth,
+                        uint32_t displayHeight, float* x, float* y);
+
 } // namespace usr

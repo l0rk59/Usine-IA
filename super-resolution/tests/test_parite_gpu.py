@@ -96,3 +96,54 @@ class PariteGpu(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(_vulkan_ok(), "slangpy ou Vulkan indisponible")
+class PariteGpuUniversel(unittest.TestCase):
+    """Les 9 passes de USR Universel (flot optique compris) contre
+    universel.UniversalUpscaler : mouvement identique au bit pres, image
+    au-dela de 55 dB."""
+
+    RS = (96, 54)
+    DS = (192, 108)
+
+    def _compare(self, network, jitter_kind, frames=8, sharpness=0.5,
+                 hud_jitter=True, reset_at=None):
+        from usr_ref import emul, universel
+        from usr_ref.scene_realiste import RealisticScene
+        game = emul.EmulatedGame(RealisticScene(seed=11))
+        jit, period = universel.jitter_plan(self.RS, self.DS, jitter_kind)
+        g = gpu.GpuUniversal(self.RS, self.DS, network=network,
+                             period=period, sharpness=sharpness,
+                             device=_device())
+        r = universel.UniversalUpscaler(self.RS, self.DS, network=network,
+                                        period=period, sharpness=sharpness)
+        for f in range(frames):
+            j = jit(f)
+            img, _, _ = game.frame(float(f), self.RS, j,
+                                   hud_jitter=hud_jitter)
+            reset = reset_at is not None and f == reset_at
+            out_ref, info = r.dispatch(img, j, reset=reset,
+                                       return_internals=True)
+            out_gpu = g.dispatch(img, j, reset=reset)
+            self.assertTrue(np.array_equal(g.read("motion")[..., :2],
+                                           info["flow"]["motion"]),
+                            "mouvement, image %d" % f)
+            aux = g.read("aux")
+            np.testing.assert_array_equal(aux[..., 1] / 255.0,
+                                          info["flow"]["jflag"])
+            np.testing.assert_array_equal(aux[..., 2] / 255.0,
+                                          info["flow"]["static"])
+            self.assertGreater(emul.psnr_display(out_gpu, out_ref), 55.0,
+                               "image %d" % f)
+
+    def test_niveau1_heuristique(self):
+        self._compare(None, "aucun")
+
+    def test_niveau2_reseau_aleatoire(self):
+        rng = np.random.default_rng(7)
+        net = Network(rng.normal(0, 0.3, (16, 10)), rng.normal(0, 0.1, 16),
+                      rng.normal(0, 0.3, (16, 16)), rng.normal(0, 0.1, 16),
+                      rng.normal(0, 0.3, (2, 16)), rng.normal(0, 0.1, 2))
+        self._compare(net, "grille", frames=10, hud_jitter=False,
+                      reset_at=6)

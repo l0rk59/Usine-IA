@@ -274,3 +274,218 @@ class GpuUpscaler:
         return (self.dilated_mv.to_numpy().astype(np.float32),
                 self.invz[(self.frame - 1) % 2].to_numpy().astype(np.float32),
                 self.disocc.to_numpy().astype(np.float32))
+
+
+# --------------------------------------------------------------------------
+# USR Universel (sans vecteurs) : meme interface que
+# universel.UniversalUpscaler, calcule par les shaders usr_u_*.hlsl.
+# Sert aussi de modele au code hote C++ (meme enchainement de passes).
+# --------------------------------------------------------------------------
+
+U_FLAG_RESET = 1
+U_FLAG_NETWORK = 2
+U_FLAG_DEBUG = 4
+U_FLAG_TOP = 8
+U_FLAG_PERIOD = 16
+U_FLAG_PREV = 32
+
+U_KERNELS = ("usr_u_luma", "usr_u_down", "usr_u_grad", "usr_u_flow",
+             "usr_u_median", "usr_u_finalize", "usr_u_residual",
+             "usr_u_accumulate", "usr_u_output")
+
+
+class GpuUniversal:
+    def __init__(self, render_size, display_size, network=None, period=0,
+                 net_strength=1.0, max_count=10.0, box_t1=0.3,
+                 sharpness=0.0, device=None):
+        from . import flow
+        import slangpy as spy
+        self.spy = spy
+        self.dev = device or shared_device()
+        self.render_size = tuple(render_size)
+        self.display_size = tuple(display_size)
+        self.network = network
+        self.period = int(period) if 1 < int(period) <= flow.MAX_PERIOD \
+            else 0
+        self.net_strength = net_strength
+        self.max_count = max_count
+        self.box_t1 = box_t1
+        self.sharpness = sharpness
+        self.kernels = {n: self._kernel(n) for n in U_KERNELS}
+        rw, rh = render_size
+        dw, dh = display_size
+        self.levels = flow.level_count(rw, rh)
+        self.sizes = [(rw, rh)]
+        for _ in range(self.levels - 1):
+            w, h = self.sizes[-1]
+            self.sizes.append(((w + 1) // 2, (h + 1) // 2))
+        F = spy.Format
+        tex = self._tex
+        self.luma = [[tex(F.r32_float, w, h) for (w, h) in self.sizes]
+                     for _ in range(2)]
+        self.grad = [[tex(F.rg32_float, w, h) for (w, h) in self.sizes]
+                     for _ in range(2)]
+        self.ring_size = max(self.period, 1) + 1
+        self.ring = [tex(F.r16_uint, rw, rh) for _ in range(self.ring_size)]
+        self.motion_raw = [tex(F.rg32_float, w, h) for (w, h) in self.sizes]
+        self.motion_med = [tex(F.rg32_float, w, h) for (w, h) in self.sizes]
+        self.final = [tex(F.rg32_float, rw, rh) for _ in range(2)]
+        self.aux = tex(F.rgba8_unorm, rw, rh)
+        self.residual = tex(F.rgba16_float, rw, rh)
+        self.history = [tex(F.rgba16_float, dw, dh) for _ in range(2)]
+        self.output = tex(F.rgba32_float, dw, dh)
+        self.debug = tex(F.rgba32_float, dw, dh)
+        self.frame = 0          # images depuis la derniere remise a zero
+        self.total = 0          # images depuis la creation (ping-pong)
+        self.prev_jitter = (0.0, 0.0)
+        self.net_values = (network.flat().reshape(-1, 4) if network else
+                           np.zeros((121, 4), np.float32))
+
+    def _kernel(self, name):
+        src = flatten_source(name + ".hlsl")
+        path = os.path.join(SHADER_DIR, name + ".hlsl")
+        mod = self.dev.load_module_from_source(name, src, path)
+        prog = self.dev.link_program([mod], [mod.entry_point("main")])
+        return self.dev.create_compute_kernel(prog)
+
+    def _tex(self, fmt, w, h, data=None):
+        spy = self.spy
+        usage = (spy.TextureUsage.shader_resource
+                 | spy.TextureUsage.unordered_access)
+        kw = {"data": np.ascontiguousarray(data)} if data is not None else {}
+        return self.dev.create_texture(format=fmt, width=w, height=h,
+                                       usage=usage, mip_count=1, **kw)
+
+    def _constants(self, jitter, djitter, flags, level=0):
+        spy = self.spy
+        rw, rh = self.render_size
+        dw, dh = self.display_size
+        lw, lh = self.sizes[level]
+        pw, ph = self.sizes[min(level + 1, self.levels - 1)]
+        return {
+            "g_RenderSize": spy.uint2(rw, rh),
+            "g_DisplaySize": spy.uint2(dw, dh),
+            "g_LevelSize": spy.uint2(lw, lh),
+            "g_ParentSize": spy.uint2(pw, ph),
+            "g_Jitter": spy.float2(float(np.float32(jitter[0])),
+                                   float(np.float32(jitter[1]))),
+            "g_JitterDelta": spy.float2(float(djitter[0]),
+                                        float(djitter[1])),
+            "g_Level": int(level),
+            "g_Flags": int(flags),
+            "g_NetStrength": float(self.net_strength),
+            "g_MaxCount": float(self.max_count),
+            "g_BoxT1": float(self.box_t1),
+            "g_Sharpness": float(self.sharpness),
+            "g_Reserved0": 0, "g_Reserved1": 0,
+        }
+
+    def _run(self, name, threads, consts, resources, net=False):
+        spy = self.spy
+        enc = self.dev.create_command_encoder()
+        with enc.begin_compute_pass() as cp:
+            cur = spy.ShaderCursor(cp.bind_pipeline(
+                self.kernels[name].pipeline))
+            cb = cur["USRUConstants"]
+            for k, v in consts.items():
+                cb[k] = v
+            if net:
+                arr = cur["USRNetwork"]["g_Net"]
+                for i, row in enumerate(self.net_values):
+                    arr[i] = spy.float4(*[float(x) for x in row])
+            for k, v in resources.items():
+                cur[k] = v
+            cp.dispatch([threads[0], threads[1], 1])
+        self.dev.submit_command_buffer(enc.finish())
+
+    def reset(self):
+        self.frame = 0
+
+    def dispatch(self, image, jitter=(0.0, 0.0), reset=False):
+        F = self.spy.Format
+        rw, rh = self.render_size
+        dw, dh = self.display_size
+        if reset:
+            self.frame = 0
+        n = self.frame
+        cur, prev = self.total % 2, (self.total + 1) % 2
+        K = self.ring_size
+        has_prev = n >= 1
+        djit = (np.float32(jitter[0] - self.prev_jitter[0]),
+                np.float32(jitter[1] - self.prev_jitter[1])) if has_prev \
+            else (np.float32(0.0), np.float32(0.0))
+        rgba = np.concatenate([np.asarray(image, np.float32),
+                               np.ones(image.shape[:2] + (1,), np.float32)],
+                              axis=-1)
+        color = self._tex(F.rgba32_float, rw, rh, rgba)
+        base = 0
+
+        def c(flags, level=0):
+            return self._constants(jitter, djit, flags, level)
+
+        ring_cur = self.ring[n % K]
+        ring_prev = self.ring[(n - 1) % K]
+        ring_phase = self.ring[(n - self.period) % K] if self.period else \
+            ring_prev
+        self._run("usr_u_luma", (rw, rh), c(base), {
+            "t_Color": color, "u_Luma": self.luma[cur][0],
+            "u_Luma16": ring_cur})
+        for k in range(self.levels - 1):
+            w, h = self.sizes[k + 1]
+            self._run("usr_u_down", (w, h), c(base, k), {
+                "t_Level": self.luma[cur][k], "u_Down": self.luma[cur][k + 1]})
+        for k in range(self.levels):
+            w, h = self.sizes[k]
+            self._run("usr_u_grad", (w, h), c(base, k), {
+                "t_Level": self.luma[cur][k], "u_Grad": self.grad[cur][k]})
+        if has_prev:
+            for lvl in range(self.levels - 1, -1, -1):
+                w, h = self.sizes[lvl]
+                top = lvl == self.levels - 1
+                parent = self.motion_med[lvl + 1] if not top else \
+                    self.motion_med[lvl]
+                self._run("usr_u_flow", (w, h),
+                          c(U_FLAG_TOP if top else 0, lvl), {
+                              "t_Cur": self.luma[cur][lvl],
+                              "t_Prev": self.luma[prev][lvl],
+                              "t_PrevGrad": self.grad[prev][lvl],
+                              "t_Parent": parent,
+                              "t_Temporal": self.final[prev],
+                              "u_Motion": self.motion_raw[lvl]})
+                self._run("usr_u_median", (w, h), c(0, lvl), {
+                    "t_Motion": self.motion_raw[lvl],
+                    "u_Median": self.motion_med[lvl]})
+        fl = (U_FLAG_PREV if has_prev else 0) | (
+            U_FLAG_PERIOD if self.period and n >= self.period else 0)
+        self._run("usr_u_finalize", (rw, rh), c(fl), {
+            "t_Cur": self.luma[cur][0], "t_Prev": self.luma[prev][0],
+            "t_Motion": self.motion_med[0], "t_Cur16": ring_cur,
+            "t_Prev16": ring_prev, "t_Phase16": ring_phase,
+            "u_Final": self.final[cur], "u_Aux": self.aux})
+        first = n == 0
+        fa = (U_FLAG_RESET if first else 0) | U_FLAG_DEBUG | (
+            U_FLAG_NETWORK if self.network is not None else 0)
+        self._run("usr_u_residual", (rw, rh), c(fa), {
+            "t_Color": color, "t_Motion": self.final[cur], "t_Aux": self.aux,
+            "t_History": self.history[prev], "u_Residual": self.residual})
+        self._run("usr_u_accumulate", (dw, dh), c(fa), {
+            "t_Color": color, "t_Motion": self.final[cur], "t_Aux": self.aux,
+            "t_History": self.history[prev], "t_Residual": self.residual,
+            "u_HistoryOut": self.history[cur], "u_Debug": self.debug},
+            net=True)
+        self._run("usr_u_output", (dw, dh), c(fa), {
+            "t_History": self.history[cur], "u_Output": self.output})
+        self.dev.wait()
+        self.prev_jitter = (float(jitter[0]), float(jitter[1]))
+        self.frame += 1
+        self.total += 1
+        return self.output.to_numpy()[..., :3].astype(np.float32)
+
+    def read(self, what):
+        """Intermediaires pour les tests : 'motion', 'aux', 'residual',
+        'history', 'debug'."""
+        cur = (self.total - 1) % 2
+        tex = {"motion": self.final[cur], "aux": self.aux,
+               "residual": self.residual, "history": self.history[cur],
+               "debug": self.debug}[what]
+        return tex.to_numpy().astype(np.float32)

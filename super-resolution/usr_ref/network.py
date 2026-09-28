@@ -105,19 +105,20 @@ class Network:
         return cls(doc["w1"], doc["b1"], doc["w2"], doc["b2"], doc["w3"],
                    doc["b3"])
 
-    def to_c_header(self, path, meta=""):
+    def to_c_header(self, path, meta="", symbol="kDefaultWeights",
+                    title="Poids par defaut du reseau USR"):
         v = self.flat()
         lines = [
             "// Genere par `python -m usr_ref exporter` -- ne pas editer.",
-            "// Poids par defaut du reseau USR (%d parametres). %s" % (
-                N_PARAMS, meta),
+            "// %s (%d parametres). %s" % (title, N_PARAMS, meta),
             "#pragma once",
             "",
             "namespace usr { namespace detail {",
             "",
-            "static const unsigned kDefaultWeightCount = %d;" % N_PADDED,
-            "alignas(16) static const float kDefaultWeights[%d] = {" %
-            N_PADDED,
+            "static const unsigned %sCount = %d;" % (
+                symbol.replace("Weights", "Weight"), N_PADDED),
+            "alignas(16) static const float %s[%d] = {" % (symbol,
+                                                            N_PADDED),
         ]
         for i in range(0, N_PADDED, 4):
             lines.append("    " + ", ".join(

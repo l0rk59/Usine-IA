@@ -125,6 +125,16 @@ def cmd_labo_actifs(args):
     labo.generate_all()
 
 
+def cmd_universel_entree(args):
+    from . import universel
+    images, jitters, period = universel.banc_sequence(args.images)
+    universel.write_banc_input(args.fichier, images, jitters, (192, 108),
+                               (384, 216), period,
+                               no_network=args.sans_reseau)
+    print("Ecrit : %s (%d images, periode de jitter %d)" % (
+        args.fichier, len(images), period))
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="python -m usr_ref",
                                 description="Reference USR v" + __version__)
@@ -175,6 +185,14 @@ def main(argv=None):
                         help="regenere police, scene, modeles et icones "
                              "du Labo (necessite Pillow)")
     la.set_defaults(func=cmd_labo_actifs)
+
+    ue = sub.add_parser("universel-entree",
+                        help="sequence d'entree du banc de bout en bout "
+                             "(tests/wine/universel_wine.sh)")
+    ue.add_argument("fichier")
+    ue.add_argument("--images", type=int, default=16)
+    ue.add_argument("--sans-reseau", action="store_true")
+    ue.set_defaults(func=cmd_universel_entree)
 
     args = p.parse_args(argv)
     return args.func(args) or 0

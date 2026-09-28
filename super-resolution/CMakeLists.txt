@@ -73,11 +73,20 @@ if(USR_BUILD_LIBRARY OR USR_BUILD_LABO)
     usr_compile_shaders(USR_SHADER_HEADERS usr_shaders.h
         "${CMAKE_CURRENT_SOURCE_DIR}/shaders"
         usr_prepare usr_accumulate usr_sharpen)
+    # Mode Universel (sans vecteurs : emulateurs, captures)
+    usr_compile_shaders(USR_U_SHADER_HEADERS usr_universal_shaders.h
+        "${CMAKE_CURRENT_SOURCE_DIR}/shaders"
+        usr_u_luma usr_u_down usr_u_grad usr_u_flow usr_u_median
+        usr_u_finalize usr_u_residual usr_u_accumulate usr_u_output)
     add_library(usr STATIC
         src/usr_dx12.cpp
+        src/usr_universal_dx12.cpp
+        src/usr_d3d12_util.h
         src/usr_default_weights.h
+        src/usr_universal_weights.h
         include/usr/usr.h
-        ${USR_SHADER_HEADERS})
+        ${USR_SHADER_HEADERS}
+        ${USR_U_SHADER_HEADERS})
     target_compile_features(usr PUBLIC cxx_std_17)
     target_compile_definitions(usr PUBLIC NOMINMAX)
     target_include_directories(usr
