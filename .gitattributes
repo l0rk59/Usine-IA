@@ -1,0 +1,4 @@
+# Correctifs de Xenia : appliques octet pour octet par « git am --keep-cr »
+# (certains fichiers de Xenia sont en CRLF) ; aucune conversion de fin de
+# ligne au checkout, sous Windows notamment.
+super-resolution/xenia/patches/*.patch -text

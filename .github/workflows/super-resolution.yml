@@ -54,16 +54,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download -R microsoft/DirectXShaderCompiler \
-            --pattern 'linux_dxc_*.x86_64.tar.gz' -D /tmp/dxc
-          mkdir -p /tmp/dxc/x
-          tar -xzf /tmp/dxc/linux_dxc_*.tar.gz -C /tmp/dxc/x
-          DXC=$(find /tmp/dxc/x -type f -name dxc | head -n 1)
-          LIB=$(dirname "$(find /tmp/dxc/x -name 'libdxcompiler.so*' | head -n 1)")
-          chmod +x "$DXC"
-          echo "USR_DXC=$DXC" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$LIB" >> "$GITHUB_ENV"
-          LD_LIBRARY_PATH=$LIB "$DXC" --version
+          tests/ci/installer_dxc.sh /tmp/dxc
 
       - name: Tests (reference, reseau, coherence, shaders, C++, Labo, parite GPU)
         env:
@@ -107,14 +98,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download -R microsoft/DirectXShaderCompiler \
-            --pattern 'linux_dxc_*.x86_64.tar.gz' -D /tmp/dxc
-          mkdir -p /tmp/dxc/x
-          tar -xzf /tmp/dxc/linux_dxc_*.tar.gz -C /tmp/dxc/x
-          DXC=$(find /tmp/dxc/x -type f -name dxc | head -n 1)
-          chmod +x "$DXC"
-          echo "DXC=$DXC" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$(dirname "$(find /tmp/dxc/x -name 'libdxcompiler.so*' | head -n 1)")" >> "$GITHUB_ENV"
+          tests/ci/installer_dxc.sh /tmp/dxc
 
       - name: vkd3d-proton (Direct3D 12 -> Vulkan) pour Windows 64 bits
         run: |
@@ -180,9 +164,13 @@ jobs:
 
       - name: USR Labo UWP (Xbox mode Developpeur)
         run: |
-          cmake -B build-uwp -A x64 -DCMAKE_SYSTEM_NAME=WindowsStore `
-                -DCMAKE_SYSTEM_VERSION=10.0.22621.0 -DUSR_DXC="$env:USR_DXC"
+          # arguments entre guillemets : PowerShell couperait 10.0.22621.0 au
+          # premier point (CMake recevrait « 10 »)
+          cmake -B build-uwp -A x64 "-DCMAKE_SYSTEM_NAME=WindowsStore" `
+                "-DCMAKE_SYSTEM_VERSION=10.0.22621.0" "-DUSR_DXC=$env:USR_DXC"
+          if ($LASTEXITCODE -ne 0) { throw "echec de la configuration UWP" }
           cmake --build build-uwp --config Release -- /p:AppxPackageSigningEnabled=false
+          if ($LASTEXITCODE -ne 0) { throw "echec de la compilation UWP" }
 
   # Xenia + USR, sans Windows : les correctifs s'appliquent sur un clone neuf,
   # le menu de reglages passe ses tests, la cible third_party/usr se construit.
@@ -203,14 +191,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download -R microsoft/DirectXShaderCompiler \
-            --pattern 'linux_dxc_*.x86_64.tar.gz' -D /tmp/dxc
-          mkdir -p /tmp/dxc/x
-          tar -xzf /tmp/dxc/linux_dxc_*.tar.gz -C /tmp/dxc/x
-          DXC=$(find /tmp/dxc/x -type f -name dxc | head -n 1)
-          chmod +x "$DXC"
-          echo "DXC=$DXC" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$(dirname "$(find /tmp/dxc/x -name 'libdxcompiler.so*' | head -n 1)")" >> "$GITHUB_ENV"
+          tests/ci/installer_dxc.sh /tmp/dxc
 
       - name: Correctifs, menu, bibliotheque
         env:
