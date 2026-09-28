@@ -5,6 +5,7 @@
     python -m usr_ref entrainer     # re-entraine le reseau (quelques minutes)
     python -m usr_ref exporter      # regenere src/usr_default_weights.h
     python -m usr_ref parite        # shaders GPU vs reference (slangpy)
+    python -m usr_ref labo-actifs   # ressources de l'appli USR Labo
 """
 
 import argparse
@@ -119,6 +120,11 @@ def cmd_parite(args):
     return 0 if ok else 1
 
 
+def cmd_labo_actifs(args):
+    from . import labo
+    labo.generate_all()
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="python -m usr_ref",
                                 description="Reference USR v" + __version__)
@@ -164,6 +170,11 @@ def main(argv=None):
     g.add_argument("--hauteur", type=int, default=72)
     g.add_argument("--poids")
     g.set_defaults(func=cmd_parite)
+
+    la = sub.add_parser("labo-actifs",
+                        help="regenere police, scene, modeles et icones "
+                             "du Labo (necessite Pillow)")
+    la.set_defaults(func=cmd_labo_actifs)
 
     args = p.parse_args(argv)
     return args.func(args) or 0

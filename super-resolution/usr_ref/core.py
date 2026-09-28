@@ -32,6 +32,7 @@ DEFAULT_CLIP_GAMMA = 1.25
 
 FLAG_RESET = 1
 FLAG_NETWORK = 2
+FLAG_DEBUG = 4
 
 N_FEATURES = 10
 
@@ -108,14 +109,17 @@ def prepare(invz, motion, prev_invz, jitter, reset):
             best = np.where(closer, z, best)
             best_mv = np.where(closer[..., None], motion[qy, qx], best_mv)
 
-    u = (xs + 0.5 + jitter[0]) / w
-    v = (ys + 0.5 + jitter[1]) / h
+    # Coordonnees en float32, comme sur le GPU : a egale distance de deux
+    # echantillons, la double precision ne trancherait pas pareil.
+    jx, jy = np.float32(jitter[0]), np.float32(jitter[1])
+    u = (xs.astype(np.float32) + np.float32(0.5) + jx) / np.float32(w)
+    v = (ys.astype(np.float32) + np.float32(0.5) + jy) / np.float32(h)
     pu = u - best_mv[..., 0]
     pv = v - best_mv[..., 1]
     inside = (pu >= 0.0) & (pu <= 1.0) & (pv >= 0.0) & (pv <= 1.0)
 
-    x0 = np.floor(pu * w - 0.5).astype(np.int64)
-    y0 = np.floor(pv * h - 0.5).astype(np.int64)
+    x0 = np.floor(pu * np.float32(w) - np.float32(0.5)).astype(np.int64)
+    y0 = np.floor(pv * np.float32(h) - np.float32(0.5)).astype(np.int64)
     z_cur = 1.0 / np.maximum(best, 1e-8)
     closest = np.full(invz.shape, np.inf, np.float32)
     for oy in (0, 1):
@@ -194,21 +198,29 @@ def clip_to_box(h, bmin, bmax):
     return np.where(ratio > 1.0, center + offset / np.maximum(ratio, 1.0), h)
 
 
+def sigma_sharp(render_w, display_w, kernel_width=1.0):
+    """Noyau d'accumulation en pixels de rendu (g_SigmaSharp du shader)."""
+    return SIGMA_SHARP_DISPLAY * kernel_width * render_w / display_w
+
+
 def accumulate(color, dilated_mv, disocc, history, jitter, display_size,
                reset=False, exposure=1.0, max_count=DEFAULT_MAX_COUNT,
                clip_gamma=DEFAULT_CLIP_GAMMA, network=None,
-               return_internals=False):
+               net_strength=1.0, kernel_width=1.0, return_internals=False):
     """Produit la nouvelle image d'historique (RGB compresse + confiance).
 
     ``history`` est le tableau (H, W, 4) de l'image precedente, ou ``None``.
+    ``net_strength`` dose l'influence du reseau (0 = heuristique seule).
     """
     rh, rw = color.shape[:2]
     dw, dh = display_size
     oy, ox = np.mgrid[0:dh, 0:dw]
-    u = (ox + 0.5) / dw
-    v = (oy + 0.5) / dh
-    rpx = u * rw
-    rpy = v * rh
+    f32 = np.float32
+    jitter = (f32(jitter[0]), f32(jitter[1]))
+    u = (ox.astype(f32) + f32(0.5)) / f32(dw)
+    v = (oy.astype(f32) + f32(0.5)) / f32(dh)
+    rpx = u * f32(rw)
+    rpy = v * f32(rh)
     rix = np.clip(np.floor(rpx).astype(np.int64), 0, rw - 1)
     riy = np.clip(np.floor(rpy).astype(np.int64), 0, rh - 1)
     mv = dilated_mv[riy, rix]
@@ -226,11 +238,11 @@ def accumulate(color, dilated_mv, disocc, history, jitter, display_size,
         count = np.zeros((dh, dw), np.float32)
     count_prev = np.where(valid, count * (1.0 - dis), 0.0)
 
-    sigma_sharp = SIGMA_SHARP_DISPLAY * rw / dw
-    sigma = SIGMA_FRESH + (sigma_sharp - SIGMA_FRESH) * _sat(
+    s_sharp = np.float32(sigma_sharp(rw, dw, kernel_width))
+    sigma = SIGMA_FRESH + (s_sharp - SIGMA_FRESH) * _sat(
         count_prev / KERNEL_COUNT)
     inv2s2 = 1.0 / (2.0 * sigma * sigma)
-    inv2s2_sharp = 1.0 / (2.0 * sigma_sharp * sigma_sharp)
+    inv2s2_sharp = 1.0 / (2.0 * s_sharp * s_sharp)
 
     nsx = np.floor(rpx - jitter[0]).astype(np.int64)
     nsy = np.floor(rpy - jitter[1]).astype(np.int64)
@@ -246,8 +258,8 @@ def accumulate(color, dilated_mv, disocc, history, jitter, display_size,
         for dx in (-1, 0, 1):
             qx = np.clip(nsx + dx, 0, rw - 1)
             c = rgb_to_ycocg(tonemap(color[qy, qx] * exposure))
-            ddx = qx + 0.5 + jitter[0] - rpx
-            ddy = qy + 0.5 + jitter[1] - rpy
+            ddx = qx.astype(f32) + f32(0.5) + jitter[0] - rpx
+            ddy = qy.astype(f32) + f32(0.5) + jitter[1] - rpy
             d2 = ddx * ddx + ddy * ddy
             wgt = np.exp(-d2 * inv2s2)
             cw += np.exp(-d2 * inv2s2_sharp)
@@ -271,15 +283,16 @@ def accumulate(color, dilated_mv, disocc, history, jitter, display_size,
 
     alpha_heur = np.where(valid, cw / (count_prev + cw), 1.0)
     feats = None
-    if network is not None:
+    if network is not None and net_strength > 0.0:
         feats = features(alpha_heur, hy, h_clip, mean, std, cur, dis, mv,
                          cw, count_prev, pu, pv, (dw, dh), max_count)
         out = network.forward(feats.reshape(-1, N_FEATURES)).reshape(
             dh, dw, 2)
         a = np.clip(alpha_heur, 1e-4, 1.0 - 1e-4)
-        alpha = _sigmoid(np.log(a / (1.0 - a)) + out[..., 0])
-        beta = _sigmoid(out[..., 1])
+        alpha = _sigmoid(np.log(a / (1.0 - a)) + net_strength * out[..., 0])
+        beta = _sat(_sigmoid(out[..., 1]) * net_strength)
         alpha = np.where(valid, alpha, 1.0)
+        beta = np.where(valid, beta, 0.0)
         hist = h_clip + (hy - h_clip) * beta[..., None]
     else:
         alpha = alpha_heur
@@ -301,10 +314,12 @@ def accumulate(color, dilated_mv, disocc, history, jitter, display_size,
     if feats is None:
         feats = features(alpha_heur, hy, h_clip, mean, std, cur, dis, mv,
                          cw, count_prev, pu, pv, (dw, dh), max_count)
+    debug = np.stack([alpha, beta, new_count / max_count, dis], axis=-1)
     return history_new, {
         "valid": valid, "cur": ycocg_to_rgb(cur), "h_raw": h_raw,
         "h_clip": ycocg_to_rgb(h_clip), "alpha_heur": alpha_heur,
         "alpha": alpha, "beta": beta, "features": feats, "puv": (pu, pv),
+        "debug": debug.astype(np.float32),
     }
 
 
@@ -396,15 +411,23 @@ def jitter_offset(frame, phase_count):
 
 
 class Upscaler:
-    """Etat persistant d'une instance, comme usr::Context en C++."""
+    """Etat persistant d'une instance, comme usr::Context en C++.
+
+    Les reglages (``max_count``, ``clip_gamma``, ``net_strength``,
+    ``kernel_width``) sont des attributs modifiables entre deux images,
+    comme les champs correspondants de usr::DispatchDesc.
+    """
 
     def __init__(self, render_size, display_size, network=None,
-                 max_count=DEFAULT_MAX_COUNT, clip_gamma=DEFAULT_CLIP_GAMMA):
+                 max_count=DEFAULT_MAX_COUNT, clip_gamma=DEFAULT_CLIP_GAMMA,
+                 net_strength=1.0, kernel_width=1.0):
         self.render_size = render_size
         self.display_size = display_size
         self.network = network
         self.max_count = max_count
         self.clip_gamma = clip_gamma
+        self.net_strength = net_strength
+        self.kernel_width = kernel_width
         self.history = None
         self.prev_invz = None
 
@@ -418,6 +441,8 @@ class Upscaler:
                             exposure=exposure, max_count=self.max_count,
                             clip_gamma=self.clip_gamma,
                             network=self.network,
+                            net_strength=self.net_strength,
+                            kernel_width=self.kernel_width,
                             return_internals=return_internals)
         if return_internals:
             self.history, internals = result

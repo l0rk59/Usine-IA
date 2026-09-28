@@ -1,9 +1,10 @@
 # USR (dossier super-resolution/) : un projet independant de l'usine, avec
 # ses propres dependances (NumPy, slangpy). Cette integration continue
 # verifie la reference Python, la compilation des shaders par DXC, leur
-# parite sur un GPU logiciel (Mesa llvmpipe via Vulkan), et la
-# compilation de la bibliotheque C++ sous Linux (en-tetes DirectX
-# ouverts) et sous Windows (SDK Windows + MSVC).
+# parite sur un GPU logiciel (Mesa llvmpipe via Vulkan), la bibliotheque
+# C++ et l'application USR Labo : sous Linux (en-tetes DirectX ouverts,
+# puis l'application Windows executee sous Wine + vkd3d-proton) et sous
+# Windows (MSVC, version PC et version UWP pour la Xbox).
 name: super-resolution
 
 on:
@@ -16,6 +17,9 @@ on:
     paths:
       - "super-resolution/**"
       - ".github/workflows/super-resolution.yml"
+
+env:
+  VKD3D_PROTON_COMMIT: 472989a
 
 jobs:
   linux:
@@ -57,7 +61,7 @@ jobs:
           echo "LD_LIBRARY_PATH=$LIB" >> "$GITHUB_ENV"
           LD_LIBRARY_PATH=$LIB "$DXC" --version
 
-      - name: Tests (reference, reseau, coherence, shaders, C++, parite GPU)
+      - name: Tests (reference, reseau, coherence, shaders, C++, Labo, parite GPU)
         env:
           USR_DIRECTX_HEADERS: ${{ github.workspace }}/DirectX-Headers
         run: python -m unittest discover -s tests -v
@@ -72,6 +76,69 @@ jobs:
         with:
           name: usr-comparaison
           path: super-resolution/resultats/
+
+  # L'application Windows elle-meme, executee sans Windows ni GPU.
+  bout-en-bout:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: super-resolution
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Outils (MinGW, Wine, Vulkan logiciel, meson)
+        run: |
+          sudo dpkg --add-architecture i386 || true
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends \
+            g++-mingw-w64-x86-64 mingw-w64-tools wine64 xvfb \
+            mesa-vulkan-drivers libvulkan1 meson ninja-build glslang-tools
+          pip install numpy
+
+      - name: DXC
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download -R microsoft/DirectXShaderCompiler \
+            --pattern 'linux_dxc_*.x86_64.tar.gz' -D /tmp/dxc
+          mkdir -p /tmp/dxc/x
+          tar -xzf /tmp/dxc/linux_dxc_*.tar.gz -C /tmp/dxc/x
+          DXC=$(find /tmp/dxc/x -type f -name dxc | head -n 1)
+          chmod +x "$DXC"
+          echo "DXC=$DXC" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$(dirname "$(find /tmp/dxc/x -name 'libdxcompiler.so*' | head -n 1)")" >> "$GITHUB_ENV"
+
+      - name: vkd3d-proton (Direct3D 12 -> Vulkan) pour Windows 64 bits
+        run: |
+          git clone --recurse-submodules https://github.com/HansKristian-Work/vkd3d-proton /tmp/vkd3d-src
+          git -C /tmp/vkd3d-src checkout "$VKD3D_PROTON_COMMIT"
+          git -C /tmp/vkd3d-src submodule update --init --recursive
+          # les en-tetes MinGW d'Ubuntu 24.04 n'ont pas PATHCCH_NONE
+          meson setup --cross-file /tmp/vkd3d-src/build-win64.txt \
+            --buildtype release -Denable_tests=false \
+            -Dc_args=-DPATHCCH_NONE=0 -Dcpp_args=-DPATHCCH_NONE=0 \
+            /tmp/vkd3d-build /tmp/vkd3d-src
+          ninja -C /tmp/vkd3d-build
+          echo "VKD3D_PROTON=/tmp/vkd3d-build" >> "$GITHUB_ENV"
+
+      - name: Compiler usr_labo.exe et l'executer (Wine + vkd3d-proton)
+        run: |
+          export PATH=/usr/lib/wine:$PATH
+          labo/tests/capture_wine.sh "$PWD/captures-wine" 24
+
+      - name: Meme image que la reference Python
+        env:
+          USR_LABO_CAPTURES: ${{ github.workspace }}/super-resolution/captures-wine
+        run: python -m unittest tests.test_labo_bout_en_bout -v
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: usr-labo-capture
+          path: super-resolution/captures-wine/capture.png
 
   windows:
     runs-on: windows-latest
@@ -89,8 +156,14 @@ jobs:
           if (-not $dxc) { throw "dxc.exe introuvable dans le SDK Windows" }
           "USR_DXC=$($dxc.FullName)" >> $env:GITHUB_ENV
 
-      - name: Configurer (CMake)
-        run: cmake -B build -A x64 -DUSR_DXC="$env:USR_DXC"
+      - name: Bibliotheque + USR Labo PC (MSVC)
+        run: |
+          cmake -B build -A x64 -DUSR_DXC="$env:USR_DXC" -DUSR_BUILD_TESTS=ON
+          cmake --build build --config Release
+          ctest --test-dir build -C Release --output-on-failure
 
-      - name: Compiler la bibliotheque et les shaders
-        run: cmake --build build --config Release
+      - name: USR Labo UWP (Xbox mode Developpeur)
+        run: |
+          cmake -B build-uwp -A x64 -DCMAKE_SYSTEM_NAME=WindowsStore `
+                -DCMAKE_SYSTEM_VERSION=10.0.22621.0 -DUSR_DXC="$env:USR_DXC"
+          cmake --build build-uwp --config Release -- /p:AppxPackageSigningEnabled=false

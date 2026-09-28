@@ -21,10 +21,10 @@ namespace usr {
 namespace {
 
 constexpr float kSigmaSharpDisplay = 0.47f;  // = SIGMA_SHARP_DISPLAY
-constexpr float kMaxCount = 10.0f;           // = DEFAULT_MAX_COUNT
-constexpr float kClipGamma = 1.25f;          // = DEFAULT_CLIP_GAMMA
 constexpr uint32_t kFlagReset = 1u;
 constexpr uint32_t kFlagNetwork = 2u;
+constexpr uint32_t kFlagDebug = 4u;
+constexpr uint32_t kRootConstantCount = 20;
 
 constexpr uint32_t kSrvCount = 4;  // t0..t3
 constexpr uint32_t kUavCount = 3;  // u0..u2
@@ -54,8 +54,16 @@ struct Constants {
     float sigmaSharp;
     float maxCount;
     float clipGamma;
+    float netStrength;
+    uint32_t reserved[3];
 };
-static_assert(sizeof(Constants) == 16 * 4, "16 constantes racine");
+static_assert(sizeof(Constants) == kRootConstantCount * 4,
+              "doit suivre le cbuffer USRConstants");
+
+float Clamp(float v, float lo, float hi)
+{
+    return v < lo ? lo : (v > hi ? hi : v);
+}
 
 template <typename T>
 void SafeRelease(T*& p)
@@ -392,13 +400,15 @@ Result Context::Dispatch(const DispatchDesc& d)
     c.depthP0 = d.depthP0;
     c.depthP1 = d.depthP1;
     c.exposure = d.exposure > 0.0f ? d.exposure : 1.0f;
-    c.sharpness = d.sharpness < 0.0f ? 0.0f : (d.sharpness > 1.0f ? 1.0f
-                                                                   : d.sharpness);
-    c.flags = (reset ? kFlagReset : 0u) | (useNetwork_ ? kFlagNetwork : 0u);
-    c.sigmaSharp = kSigmaSharpDisplay * static_cast<float>(rw) /
-                   static_cast<float>(dw);
-    c.maxCount = kMaxCount;
-    c.clipGamma = kClipGamma;
+    c.sharpness = Clamp(d.sharpness, 0.0f, 1.0f);
+    c.flags = (reset ? kFlagReset : 0u) | (useNetwork_ ? kFlagNetwork : 0u) |
+              (d.debugOutput ? kFlagDebug : 0u);
+    // Meme calcul que core.sigma_sharp() cote reference.
+    c.sigmaSharp = kSigmaSharpDisplay * Clamp(d.kernelWidth, 0.25f, 4.0f) *
+                   static_cast<float>(rw) / static_cast<float>(dw);
+    c.maxCount = Clamp(d.historyLength, 1.0f, 64.0f);
+    c.clipGamma = Clamp(d.antiGhosting, 0.25f, 8.0f);
+    c.netStrength = Clamp(d.networkStrength, 0.0f, 4.0f);
 
     // Tranche de descripteurs de cette image : 3 passes x (4 SRV + 3 UAV).
     const uint32_t base = static_cast<uint32_t>(
@@ -427,7 +437,11 @@ Result Context::Dispatch(const DispatchDesc& d)
              DXGI_FORMAT_R16G16B16A16_FLOAT);
     WriteUav(uav(1, 0), history_[cur].resource,
              DXGI_FORMAT_R16G16B16A16_FLOAT);
-    WriteNullUav(uav(1, 1));
+    if (d.debugOutput)
+        WriteUav(uav(1, 1), d.debugOutput,
+                 ViewFormat(d.debugOutput, d.debugFormat));
+    else
+        WriteNullUav(uav(1, 1));
     WriteNullUav(uav(1, 2));
     // Passe 3
     WriteSrv(srv(2, 0), history_[cur].resource,
@@ -442,7 +456,8 @@ Result Context::Dispatch(const DispatchDesc& d)
     ID3D12DescriptorHeap* heaps[] = {heap_};
     cl->SetDescriptorHeaps(1, heaps);
     cl->SetComputeRootSignature(rootSignature_);
-    cl->SetComputeRoot32BitConstants(kRootConstants, 16, &c, 0);
+    cl->SetComputeRoot32BitConstants(kRootConstants, kRootConstantCount, &c,
+                                     0);
     cl->SetComputeRootConstantBufferView(kRootNetwork,
                                          weights_->GetGPUVirtualAddress());
 
@@ -478,10 +493,12 @@ Result Context::Dispatch(const DispatchDesc& d)
     cl->Dispatch((dw + 7) / 8, (dh + 7) / 8, 1);
 
     // L'appelant lit la sortie ensuite : on attend la fin des ecritures.
-    D3D12_RESOURCE_BARRIER b = {};
-    b.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-    b.UAV.pResource = d.output;
-    cl->ResourceBarrier(1, &b);
+    D3D12_RESOURCE_BARRIER b[2] = {};
+    b[0].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    b[0].UAV.pResource = d.output;
+    b[1].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    b[1].UAV.pResource = d.debugOutput;
+    cl->ResourceBarrier(d.debugOutput ? 2 : 1, b);
 
     ++frame_;
     return Result::Ok;

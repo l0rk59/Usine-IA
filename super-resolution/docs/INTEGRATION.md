@@ -108,6 +108,20 @@ commandList->SetDescriptorHeaps(1, &myHeap);
 usr::DestroyContext(ctx);
 ```
 
+## Réglages avancés
+
+Tous se changent d'une image à l'autre, sans recréer le contexte. Les
+valeurs par défaut sont celles avec lesquelles le réseau a été entraîné.
+
+| Champ de `DispatchDesc` | Défaut | Effet |
+|---|---|---|
+| `networkStrength` | 1.0 | 0 = heuristique seule, 1 = réseau tel qu'entraîné, jusqu'à 4 = décisions amplifiées |
+| `historyLength` | 10 | images accumulées au maximum : plus = plus fin à l'arrêt, plus lent à oublier |
+| `antiGhosting` | 1.25 | boîte anti-fantômes en écarts-types : petit = moins de traînées, plus de scintillement |
+| `kernelWidth` | 1.0 | noyau d'accumulation : < 1 plus net mais plus bruité, > 1 plus doux |
+| `sharpness` | 0 | accentuation finale, 0 à 1 |
+| `debugOutput` | aucun | texture RGBA qui reçoit par pixel alpha, beta, confiance, désocclusion |
+
 ## Points d'attention
 
 * **Tas de descripteurs** : `Dispatch` appelle `SetDescriptorHeaps` avec le

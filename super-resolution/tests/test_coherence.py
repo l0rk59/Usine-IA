@@ -51,21 +51,29 @@ class Constantes(unittest.TestCase):
         self.assertIn("#define USR_FLAG_RESET   %du" % core.FLAG_RESET, text)
         self.assertIn("#define USR_FLAG_NETWORK %du" % core.FLAG_NETWORK,
                       text)
+        self.assertIn("#define USR_FLAG_DEBUG   %du" % core.FLAG_DEBUG, text)
 
     def test_cpp_egal_numpy(self):
         text = _read("src", "usr_dx12.cpp")
+        header = _read("include", "usr", "usr.h")
 
-        def cst(name):
+        def cst(name, src=text):
             return float(re.search(r"%s = ([\d.]+)[fu]?;" % name,
-                                   text).group(1))
+                                   src).group(1))
 
         self.assertAlmostEqual(cst("kSigmaSharpDisplay"),
                                core.SIGMA_SHARP_DISPLAY)
-        self.assertAlmostEqual(cst("kMaxCount"), core.DEFAULT_MAX_COUNT)
-        self.assertAlmostEqual(cst("kClipGamma"), core.DEFAULT_CLIP_GAMMA)
         self.assertEqual(int(cst("kFlagReset")), core.FLAG_RESET)
         self.assertEqual(int(cst("kFlagNetwork")), core.FLAG_NETWORK)
+        self.assertEqual(int(cst("kFlagDebug")), core.FLAG_DEBUG)
         self.assertEqual(int(cst("kWeightFloats")), network.N_PADDED)
+        # valeurs par defaut de DispatchDesc = celles de l'entrainement
+        self.assertAlmostEqual(cst("historyLength", header),
+                               core.DEFAULT_MAX_COUNT)
+        self.assertAlmostEqual(cst("antiGhosting", header),
+                               core.DEFAULT_CLIP_GAMMA)
+        self.assertAlmostEqual(cst("networkStrength", header), 1.0)
+        self.assertAlmostEqual(cst("kernelWidth", header), 1.0)
 
     def test_disposition_des_poids(self):
         text = _read("shaders", "usr_network.hlsli")
@@ -83,15 +91,17 @@ class Constantes(unittest.TestCase):
         self.assertEqual(define("USR_NET_B3"), h * i + 2 * h + h * h + o * h)
         self.assertIn("float4 g_Net[%d]" % (network.N_PADDED // 4), text)
 
-    def test_16_constantes_racine(self):
+    def test_20_constantes_racine(self):
         text = _read("shaders", "usr_common.hlsli")
         block = re.search(r"cbuffer USRConstants[^{]*\{(.*?)\};", text,
                           re.S).group(1)
         sizes = {"uint2": 2, "float2": 2, "float": 1, "uint": 1}
         total = sum(sizes[t] for t in re.findall(r"^\s*(\w+)\s+g_", block,
                                                   re.M))
-        self.assertEqual(total, 16)
-        self.assertIn("num32BitConstants=16", text)
+        self.assertEqual(total, 20)
+        self.assertIn("num32BitConstants=20", text)
+        cpp = _read("src", "usr_dx12.cpp")
+        self.assertIn("kRootConstantCount = 20", cpp)
 
     def test_poids_livres_coherents(self):
         path = network.default_weights_path()

@@ -138,6 +138,33 @@ class Accumulation(unittest.TestCase):
                                        atol=2e-3)
 
     @unittest.skipIf(load_default() is None, "poids absents")
+    def test_puissance_de_l_ia(self):
+        rsize = core.render_size(self.SIZE, "performance")
+        scene = Scene(seed=5)
+        heur = core.Upscaler(rsize, self.SIZE)
+        zero = core.Upscaler(rsize, self.SIZE, network=self.net,
+                             net_strength=0.0)
+        full = core.Upscaler(rsize, self.SIZE, network=self.net)
+        double = core.Upscaler(rsize, self.SIZE, network=self.net,
+                               net_strength=2.0)
+        for f in range(5):
+            j = core.jitter_offset(f, 32)
+            args = scene.render(f, rsize, j) + (j,)
+            # puissance 0 : exactement l'heuristique
+            np.testing.assert_allclose(zero.dispatch(*args),
+                                       heur.dispatch(*args), atol=1e-6)
+            _, i1 = full.dispatch(*args, return_internals=True)
+            _, i2 = double.dispatch(*args, return_internals=True)
+        # doubler la puissance eloigne davantage alpha de l'heuristique
+        valid = i1["valid"]
+        dev1 = np.abs(i1["alpha"] - i1["alpha_heur"])[valid].mean()
+        dev2 = np.abs(i2["alpha"] - i2["alpha_heur"])[valid].mean()
+        self.assertGreater(dev2, dev1)
+        dbg = i2["debug"]
+        self.assertEqual(dbg.shape, self.SIZE[::-1] + (4,))
+        self.assertTrue(np.all((dbg >= 0.0) & (dbg <= 1.0 + 1e-6)))
+
+    @unittest.skipIf(load_default() is None, "poids absents")
     def test_le_reseau_ameliore_l_image(self):
         for static in (True, False):
             scene = Scene(seed=303, static=static, cache_gt=True)

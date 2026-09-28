@@ -18,11 +18,13 @@ sur mesure pour Microsoft : 52 unités de calcul à 1,825 GHz, 12 TFLOPS,
 DirectX 12 Ultimate — la même famille que les Radeon RX 6000. Détails dans
 [docs/XBOX-SERIES-X.md](docs/XBOX-SERIES-X.md).
 
-**2. DLSS ne peut pas y tourner.** DLSS (toutes versions, 2 à 5) appartient
-à NVIDIA : code fermé, réservé aux GeForce RTX et à leurs *Tensor Cores*,
-que le GPU AMD de la Xbox n'a pas. D'où ce projet : **même principe, code
-ouvert, écrit pour RDNA 2**. (Et un autre nom, « DLSS » étant une marque
-de NVIDIA.)
+**2. DLSS ne peut pas y tourner.** DLSS appartient à NVIDIA : code fermé,
+réservé aux GeForce RTX et à leurs *Tensor Cores*, que le GPU AMD de la
+Xbox n'a pas. DLSS 5 (septembre 2026) va encore plus loin : un modèle
+génératif qui repeint éclairage et matières, intégré jeu par jeu par les
+studios, sur RTX 50. D'où ce projet : **le principe de DLSS 2 à 4
+(super-résolution par IA), en code ouvert, écrit pour RDNA 2**. (Et un
+autre nom, « DLSS » étant une marque de NVIDIA.)
 
 **3. On ne peut pas l'ajouter aux jeux du commerce.** La Xbox est une
 plateforme fermée : les jeux sont signés et chiffrés, rien ne peut s'y
@@ -31,7 +33,7 @@ applications** DirectX 12 :
 
 | Où | Pour qui | Comment |
 |---|---|---|
-| Xbox en **mode Développeur** | tout le monde (~20 € une fois) | application UWP DirectX 12 |
+| Xbox en **mode Développeur** | tout le monde (compte gratuit) | application UWP DirectX 12 — voir **USR Labo** |
 | Xbox via le **GDK** | studios inscrits (ID@Xbox) | jeu publié, shaders compilés par le dxc du GDK |
 | **PC** Direct3D 12 | tout le monde | n'importe quel GPU AMD, NVIDIA, Intel |
 
@@ -65,6 +67,21 @@ fixe parce qu'il ne fait rien : pas de jitter, pas d'anticrénelage.)
 À lire honnêtement : c'est une scène **synthétique** à petite résolution,
 pas un vrai jeu, et rien n'a encore été mesuré sur une console. Voir
 « Ce qui est vérifié » plus bas.
+
+---
+
+## USR Labo : l'essayer sur ta Xbox, avec tous les réglages
+
+**USR Labo** est une application UWP pour la Xbox en mode Développeur (et
+pour PC). Elle fait tourner USR en direct sur le GPU de la console, sur
+une scène de test, et tout se règle à la manette : résolution, **puissance
+de l'IA (0 à 300 %)**, modèle (Stable / Équilibré / Détail), mémoire,
+anti-fantômes, netteté, jitter… avec écran partagé, loupe, vues de ce que
+décide l'IA, et temps GPU de chaque étape.
+
+![USR Labo : menu IA, à gauche USR + IA, à droite USR sans IA](docs/labo-menu.png)
+
+Installation pas à pas et liste des réglages : [docs/LABO.md](docs/LABO.md).
 
 ---
 
@@ -143,13 +160,19 @@ Vérifié automatiquement (voir `tests/` et `.github/workflows/super-resolution.
   un GPU logiciel (Mesa llvmpipe, Vulkan), écart > 55 dB de PSNR, aux
   arrondis FP16 près ;
 - la bibliothèque C++ se construit avec CMake en `-Wall -Wextra -Werror`
-  (g++ et clang, avec les en-têtes DirectX ouverts de Microsoft).
+  (g++ et clang, avec les en-têtes DirectX ouverts de Microsoft) ;
+- **l'application USR Labo pour Windows tourne vraiment** : compilée pour
+  Windows (MinGW), exécutée sur Direct3D 12 via Wine + vkd3d-proton sans
+  carte graphique, sa sortie est identique à la référence Python sur 60
+  images (écart > 60 dB) — tout le code C++ Direct3D 12 de la
+  bibliothèque est donc exercé.
 
 **Pas encore vérifié** — il faut une machine Windows ou une Xbox :
 
-- la compilation sous Windows avec MSVC (prévue dans l'intégration
-  continue, job `windows`, pas encore exécutée) ;
-- l'exécution de la bibliothèque C++ sur un vrai runtime Direct3D 12 ;
+- la compilation sous Windows avec MSVC, et celle de la version **UWP**
+  du Labo (prévues dans l'intégration continue, pas encore exécutées) ;
+- l'exécution sur le vrai Direct3D 12 de Windows (seule la traduction
+  vkd3d-proton a été utilisée) ;
 - la compilation avec le GDK console et le fonctionnement sur Xbox ;
 - les performances réelles (estimation : 1 à 2,5 ms en 4K sur Series X) ;
 - la qualité sur un vrai jeu (le réseau n'a vu que la scène synthétique).
@@ -161,14 +184,17 @@ super-resolution/
 ├── shaders/          les 3 passes HLSL (le code qui tourne sur la Xbox)
 ├── include/usr/      API C++ publique
 ├── src/              implémentation Direct3D 12 + poids par défaut
+├── labo/             USR Labo : appli UWP (Xbox) et Win32 (PC), shaders
+│                     de la scène de test, menu, police, icônes
 ├── usr_ref/          référence Python : algorithme, scène, entraînement
-├── weights/          poids du réseau (.json lisible, .bin pour le GPU)
-├── tests/            tests unitaires, cohérence, parité GPU
-└── docs/             Xbox Series X, intégration, algorithme
+├── weights/          poids des 3 modèles (.json lisible, .bin pour le GPU)
+├── tests/            tests unitaires, cohérence, parité GPU, bout en bout
+└── docs/             Xbox Series X, Labo, intégration, algorithme
 ```
 
 ## Feuille de route
 
+- [x] Application de démonstration réglable à la manette (USR Labo)
 - [ ] Mesures sur Xbox Series X (mode Développeur) et sur PC
 - [ ] Ré-entraînement sur de vraies captures de jeu
 - [ ] Résolution dynamique

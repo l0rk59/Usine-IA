@@ -18,16 +18,8 @@ from usr_ref import core, evaluate, gpu  # noqa: E402
 from usr_ref.network import Network, load_default  # noqa: E402
 from usr_ref.scene import Scene  # noqa: E402
 
-_DEVICE = None
-
-
 def _device():
-    global _DEVICE
-    if _DEVICE is None:
-        import slangpy as spy
-        _DEVICE = spy.Device(type=spy.DeviceType.vulkan,
-                             enable_hot_reload=False)
-    return _DEVICE
+    return gpu.shared_device()
 
 
 def _vulkan_ok():
@@ -44,20 +36,26 @@ def _vulkan_ok():
 class PariteGpu(unittest.TestCase):
     SIZE = (96, 54)
 
-    def _compare(self, network, mode, frames=6, sharpness=0.5, min_db=55.0):
+    def _compare(self, network, mode, frames=6, sharpness=0.5, min_db=55.0,
+                 **settings):
         rsize = core.render_size(self.SIZE, mode)
         phases = core.jitter_phase_count(rsize[0], self.SIZE[0])
         scene = Scene(seed=3)
         g = gpu.GpuUpscaler(rsize, self.SIZE, network=network,
-                            device=_device())
-        r = core.Upscaler(rsize, self.SIZE, network=network)
+                            device=_device(), **settings)
+        r = core.Upscaler(rsize, self.SIZE, network=network, **settings)
         for f in range(frames):
             j = core.jitter_offset(f, phases)
             color, invz, motion = scene.render(f, rsize, j)
             out_gpu = g.dispatch(color, invz, motion, j, sharpness=sharpness)
-            out_ref = r.dispatch(color, invz, motion, j, sharpness=sharpness)
+            out_ref, info = r.dispatch(color, invz, motion, j,
+                                       sharpness=sharpness,
+                                       return_internals=True)
             self.assertGreater(evaluate.psnr(out_gpu, out_ref), min_db,
                                "image %d" % f)
+            # sortie de diagnostic (alpha, beta, confiance, desocclusion)
+            self.assertLess(float(np.mean(np.abs(g.read_debug()
+                                                 - info["debug"]))), 0.01)
             if f == 0:
                 # passe 1 : exacte (aucun arrondi en jeu hors stockage)
                 mv, invz_gpu, dis = g.read_intermediates()
@@ -87,6 +85,13 @@ class PariteGpu(unittest.TestCase):
     @unittest.skipIf(load_default() is None, "poids absents")
     def test_reseau_livre(self):
         self._compare(load_default(), "performance", frames=8)
+
+    @unittest.skipIf(load_default() is None, "poids absents")
+    def test_reglages_extremes(self):
+        self._compare(load_default(), "ultra", net_strength=2.5,
+                      max_count=32.0, clip_gamma=4.0, kernel_width=0.5)
+        self._compare(load_default(), "natif", net_strength=0.3,
+                      max_count=2.0, clip_gamma=0.5, kernel_width=2.0)
 
 
 if __name__ == "__main__":

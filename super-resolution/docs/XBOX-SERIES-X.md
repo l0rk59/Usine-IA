@@ -52,20 +52,32 @@ et que l'on intègre dans **ses propres jeux et applications**.
 
 Toute Xbox Series X|S de commerce peut passer en *mode Développeur* :
 
-1. créer un compte développeur sur Microsoft Partner Center (paiement
-   unique, de l'ordre de 20 € pour un particulier) ;
+1. créer un compte développeur individuel sur Microsoft Partner Center
+   (**gratuit** pour les particuliers depuis 2025) ;
 2. installer l'application **Xbox Dev Mode** depuis le Microsoft Store de
    la console et suivre l'activation ;
 3. redémarrer en mode Développeur, puis déployer une application **UWP
    DirectX 12** depuis Visual Studio (ou le *Device Portal*).
 
 USR s'intègre dans une telle application sans modification : bytecode
-DXIL standard, Shader Model 6.0, compute uniquement. En mode Développeur,
-les applications UWP disposent de moins de mémoire et de temps GPU qu'un
-jeu publié : consultez la page Microsoft « System resources for UWP apps
-and games on Xbox » pour les chiffres à jour.
+DXIL standard, Shader Model 6.0, compute uniquement. Ce que Microsoft
+accorde aux applications UWP sur Series X|S :
 
-Les jeux du commerce ne sont pas accessibles depuis ce mode.
+| | Type « App » (défaut) | Type « Game » |
+|---|---|---|
+| GPU | part de ~45 %, partagée | accès complet |
+| Mémoire | 1 Go | 5 Go |
+| Direct3D 12 | niveau 11.0, Shader Model 5.1 à 6.4 | idem |
+
+Le type se change dans **Dev Home** : surligner l'application dans la
+liste *Games & apps*, appuyer sur le bouton **Affichage** (View, les deux
+petits carrés) de la manette, choisir *View details*, puis *App type* :
+**Game**. Indispensable pour un upscaler. Pas de HDR ni de ray tracing
+en UWP.
+
+**Important** : en mode Développeur, la console **ne lance pas** les jeux
+du commerce ; il faut quitter ce mode (bouton *Leave developer mode* de
+Dev Home) pour rejouer. Les deux ne tournent jamais en même temps.
 
 ### 2. Sur la console, avec le GDK (studios, programme ID@Xbox)
 

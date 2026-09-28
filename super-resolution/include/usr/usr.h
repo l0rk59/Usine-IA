@@ -134,6 +134,26 @@ struct DispatchDesc {
     float exposure = 1.0f;   // multiplie la couleur avant accumulation
     float sharpness = 0.0f;  // 0..1
     bool reset = false;      // coupure de camera, chargement : oublie tout
+
+    // --- Reglages avances (par defaut : ceux de l'entrainement) ----------
+    // Influence du reseau : 0 = heuristique seule, 1 = tel qu'entraine,
+    // jusqu'a 4 = decisions amplifiees (pour experimenter).
+    float networkStrength = 1.0f;
+    // Nombre maximal d'images accumulees (1..64) : plus = plus lisse et
+    // plus fin a l'arret, mais plus lent a oublier.
+    float historyLength = 10.0f;
+    // Largeur de la boite anti-fantomes, en ecarts-types (0.25..8) :
+    // petit = rejette vite l'historique (moins de trainees, plus de
+    // scintillement), grand = le garde (plus de detail, plus de trainees).
+    float antiGhosting = 1.25f;
+    // Largeur du noyau d'accumulation (0.25..4) : < 1 plus net mais plus
+    // bruite, > 1 plus doux.
+    float kernelWidth = 1.0f;
+
+    // Optionnel : texture de diagnostic en resolution d'affichage, etat
+    // UNORDERED_ACCESS. Recoit par pixel (alpha, beta, confiance, desocclusion).
+    ID3D12Resource* debugOutput = nullptr;
+    DXGI_FORMAT debugFormat = DXGI_FORMAT_UNKNOWN;
 };
 
 class Context;

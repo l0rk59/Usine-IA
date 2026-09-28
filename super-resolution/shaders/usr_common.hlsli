@@ -11,13 +11,14 @@
 // Signature racine commune aux trois passes, embarquee dans le bytecode :
 // le code C++ la recupere avec CreateRootSignature(bytecode du shader).
 #define USR_ROOT_SIGNATURE                              \
-    "RootConstants(num32BitConstants=16, b0), "         \
+    "RootConstants(num32BitConstants=20, b0), "         \
     "CBV(b1), "                                         \
     "DescriptorTable(SRV(t0, numDescriptors=4)), "      \
     "DescriptorTable(UAV(u0, numDescriptors=3))"
 
 #define USR_FLAG_RESET   1u
 #define USR_FLAG_NETWORK 2u
+#define USR_FLAG_DEBUG   4u
 
 static const float USR_SIGMA_FRESH  = 0.60;  // noyau spatial sans historique
 static const float USR_KERNEL_COUNT = 3.0;   // confiance -> noyau etroit
@@ -27,7 +28,7 @@ static const float USR_SHARPEN_PEAK = 0.2;
 static const float USR_EPS_SIGMA    = 0.004;
 static const float USR_FLT_MAX      = 3.402823466e+38;
 
-// 16 valeurs 32 bits : passees en constantes racine (root constants).
+// 20 valeurs 32 bits : passees en constantes racine (root constants).
 cbuffer USRConstants : register(b0)
 {
     uint2  g_RenderSize;
@@ -42,6 +43,10 @@ cbuffer USRConstants : register(b0)
     float  g_SigmaSharp;    // noyau d'accumulation, en pixels de rendu
     float  g_MaxCount;      // confiance maximale de l'historique
     float  g_ClipGamma;     // largeur de la boite de recadrage (en sigma)
+    float  g_NetStrength;   // 0 = heuristique seule, 1 = reseau entraine
+    uint   g_Reserved0;
+    uint   g_Reserved1;
+    uint   g_Reserved2;
 };
 
 // Compression reversible : l'accumulation se fait dans [0, 1[ meme en HDR,

@@ -101,7 +101,8 @@ class Serialisation(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "w.h")
             net.to_c_header(path)
-            text = open(path).read()
+            with open(path) as f:
+                text = f.read()
             values = re.findall(r"(-?\d\.\d+e[+-]\d+)f", text)
             self.assertEqual(len(values), N_PADDED)
             np.testing.assert_allclose(np.array(values, np.float32),

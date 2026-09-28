@@ -18,6 +18,7 @@ Texture2D<float>    t_Disocclusion  : register(t2);
 Texture2D<float4>   t_History       : register(t3); // historique precedent
 
 RWTexture2D<float4> u_HistoryOut    : register(u0);
+RWTexture2D<float4> u_Debug         : register(u1); // si USR_FLAG_DEBUG
 
 void CatmullRomWeights(float f, out float w[4])
 {
@@ -147,8 +148,9 @@ void main(uint3 id : SV_DispatchThreadID)
     // --- 4. decision : heuristique, corrigee par le reseau --------------------
     const float alphaHeur = valid ? cw / (countPrev + cw) : 1.0;
     float alpha = alphaHeur;
+    float beta = 0.0;
     float3 hist = hClip;
-    if (valid && (g_Flags & USR_FLAG_NETWORK) != 0)
+    if (valid && (g_Flags & USR_FLAG_NETWORK) != 0 && g_NetStrength > 0.0)
     {
         const float sY = stdv.x + USR_EPS_SIGMA;
         const float sLen = length(stdv) + USR_EPS_SIGMA;
@@ -168,10 +170,13 @@ void main(uint3 id : SV_DispatchThreadID)
         x[8] = min(abs(cur.x - mean.x) / sY, 8.0);
         x[9] = 4.0 * fr.x * (1.0 - fr.x) + 4.0 * fr.y * (1.0 - fr.y);
 
+        // g_NetStrength dose l'influence du reseau : 0 = heuristique,
+        // 1 = tel qu'entraine, au-dela = decisions amplifiees.
         const float2 net = UsrNetwork(x);
         const float a = clamp(alphaHeur, 1e-4, 1.0 - 1e-4);
-        alpha = UsrSigmoid(log(a / (1.0 - a)) + net.x);
-        hist = hClip + (hy - hClip) * UsrSigmoid(net.y);
+        alpha = UsrSigmoid(log(a / (1.0 - a)) + g_NetStrength * net.x);
+        beta = saturate(UsrSigmoid(net.y) * g_NetStrength);
+        hist = hClip + (hy - hClip) * beta;
     }
 
     // --- 5. melange ------------------------------------------------------------
@@ -180,4 +185,6 @@ void main(uint3 id : SV_DispatchThreadID)
         ? min(min(countPrev + cw, cw / max(alpha, 1e-4)), g_MaxCount)
         : min(cw, g_MaxCount);
     u_HistoryOut[o] = float4(max(UsrYCoCgToRgb(res), 0.0), newCount);
+    if ((g_Flags & USR_FLAG_DEBUG) != 0)
+        u_Debug[o] = float4(alpha, beta, newCount / g_MaxCount, dis);
 }

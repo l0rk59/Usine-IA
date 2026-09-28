@@ -3,3 +3,6 @@ resultats/
 
 # Compilation CMake
 build*/
+
+# Captures de labo/tests/capture_wine.sh
+captures-wine/
