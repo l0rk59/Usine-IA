@@ -142,6 +142,9 @@ if(USR_BUILD_LABO)
         target_compile_options(USRLabo PRIVATE /EHsc /bigobj /utf-8)
         target_include_directories(USRLabo PRIVATE ${LABO_DIR}/src
                                    "${USR_GEN_DIR}")
+        # C++/WinRT en C++17 passe par les coroutines experimentales (/await),
+        # refusees par les compilateurs recents : C++20 et <coroutine>.
+        set_property(TARGET USRLabo PROPERTY CXX_STANDARD 20)
         target_link_libraries(USRLabo PRIVATE usr d3d12 dxgi)
     elseif(WIN32)
         # Application PC (Win32) : fenetre, clavier / manette, --capture.

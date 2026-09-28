@@ -263,6 +263,9 @@ jobs:
         run: |
           cmake --preset vs
           if ($LASTEXITCODE -ne 0) { throw "echec de la configuration" }
+          # version.h : genere par « xb » d'habitude, pas par CMake seul
+          python -c "import importlib.util as u; s = u.spec_from_file_location('xb', 'xenia-build.py'); m = u.module_from_spec(s); s.loader.exec_module(m); m.generate_version_h('build')"
+          if (-not (Test-Path build\version.h)) { throw "version.h absent" }
           # les dependances declarees du projet UWP (dont usr)
           $txt = Get-Content -Raw xenia-canary-uwp\CMakeLists.txt
           $deps = [regex]::Match($txt, 'add_dependencies\(xenia-canary-uwp([^)]*)\)').Groups[1].Value -split '\s+' | Where-Object { $_ }

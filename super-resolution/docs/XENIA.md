@@ -121,9 +121,12 @@ Ensuite, dans une *Developer PowerShell for VS 2022* :
 ```powershell
 cd C:\xenia-usr
 cmake --preset vs
+python -c "import importlib.util as u; s = u.spec_from_file_location('xb', 'xenia-build.py'); m = u.module_from_spec(s); s.loader.exec_module(m); m.generate_version_h('build')"
 ```
 
-Le préréglage `vs` génère `build\xenia.sln`. Le projet UWP va chercher les
+La seconde commande crée `build\version.h` (numéro de version de Xenia),
+que le script `xb` de Xenia fabrique d'habitude et que CMake seul ne crée
+pas. Le préréglage `vs` génère `build\xenia.sln`. Le projet UWP va chercher les
 bibliothèques dans `build\obj\Windows\Release` : garde bien ce dossier
 `build`.
 
