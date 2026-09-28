@@ -143,11 +143,12 @@ Vérifié automatiquement (voir `tests/` et `.github/workflows/super-resolution.
   un GPU logiciel (Mesa llvmpipe, Vulkan), écart > 55 dB de PSNR, aux
   arrondis FP16 près ;
 - la bibliothèque C++ se construit avec CMake en `-Wall -Wextra -Werror`
-  (g++ et clang, avec les en-têtes DirectX ouverts de Microsoft) ; un job
-  de l'intégration continue la compile aussi avec MSVC sous Windows.
+  (g++ et clang, avec les en-têtes DirectX ouverts de Microsoft).
 
 **Pas encore vérifié** — il faut une machine Windows ou une Xbox :
 
+- la compilation sous Windows avec MSVC (prévue dans l'intégration
+  continue, job `windows`, pas encore exécutée) ;
 - l'exécution de la bibliothèque C++ sur un vrai runtime Direct3D 12 ;
 - la compilation avec le GDK console et le fonctionnement sur Xbox ;
 - les performances réelles (estimation : 1 à 2,5 ms en 4K sur Series X) ;
