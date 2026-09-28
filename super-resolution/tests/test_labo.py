@@ -205,6 +205,26 @@ class ShadersLabo(unittest.TestCase):
         np.testing.assert_array_equal(
             dst.to_numpy(), np.repeat(np.repeat(src_np, 3, 0), 3, 1))
 
+    def test_encodage_pour_l_emulateur(self):
+        """Image donnee a USR Universel : l'image affichee, sur 8 bits
+        (meme compression que l'ecran du Labo)."""
+        import slangpy as spy
+        run = _runner()
+        rng = np.random.default_rng(3)
+        src_np = rng.uniform(0, 4, (18, 32, 4)).astype(np.float32)
+        src_np[0, :4, :3] = [[0, 0, 0], [6, 5, 3.5], [0.2, 0.9, 0.1],
+                             [1e-3, 0, 2]]
+        src = run.texture("rgba32_float", 32, 18, src_np)
+        dst = run.texture("rgba8_unorm", 32, 18)
+        run.run("labo_encode", (32, 18),
+                {"LaboEncodePass": {"g_Size": spy.uint2(32, 18)}},
+                {"t_Source": src, "u_Dest": dst})
+        got = dst.to_numpy().astype(np.int32)
+        ref = labo.encode_display8(src_np[..., :3]).astype(np.int32)
+        self.assertLessEqual(int(np.abs(got[..., :3] - ref).max()), 1)
+        self.assertLess(float(np.mean(got[..., :3] != ref)), 0.01)
+        self.assertTrue(np.all(got[..., 3] == 255))
+
     def test_composition(self):
         import slangpy as spy
         run = _runner()
@@ -227,7 +247,8 @@ class ShadersLabo(unittest.TestCase):
         t_motion = run.texture("rg32_float", 40, 24, motion)
         out = run.texture("rgba8_unorm", w, h)
         for lv, rv, zoom in ((0, 0, 3.0), (1, 5, 0.0), (2, 3, 2.0),
-                             (4, 0, 0.0)):
+                             (4, 0, 0.0), (6, 7, 0.0), (9, 10, 2.0),
+                             (8, 6, 0.0)):
             c = {"OutSize": (w, h), "TextGrid": (cols, rows),
                  "CellSize": (12, 24), "GlyphSize": (12, 24),
                  "MotionSize": (40, 24), "ZoomCenter": (70.0, 30.0),
@@ -242,8 +263,8 @@ class ShadersLabo(unittest.TestCase):
                 "t_Motion": t_motion, "t_Font": run.buffer(font),
                 "t_Text": run.buffer(text), "u_Out": out})
             got = out.to_numpy()[..., :3].astype(np.float32)
-            ref = labo.compose_reference(c, left[..., :3], right[..., :3],
-                                         debug, motion, font, text)
+            ref = labo.compose_reference(c, left, right, debug, motion, font,
+                                         text)
             ref8 = np.round(np.clip(ref, 0, 1) * 255.0)
             diff = np.abs(got - ref8)
             self.assertLessEqual(float(np.percentile(diff, 99.5)), 1.0,

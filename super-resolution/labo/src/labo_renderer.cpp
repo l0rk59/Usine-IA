@@ -18,9 +18,9 @@ namespace {
 constexpr uint32_t kSrvCount = 6;             // t0..t5
 constexpr uint32_t kUavCount = 3;             // u0..u2
 constexpr uint32_t kDescPerPass = kSrvCount + kUavCount;
-constexpr uint32_t kMaxPassesPerFrame = 8;
+constexpr uint32_t kMaxPassesPerFrame = 12;
 constexpr uint32_t kDescPerSlot = kDescPerPass * kMaxPassesPerFrame;
-constexpr uint32_t kTimestamps = 7;           // T0..T6
+constexpr uint32_t kTimestamps = 8;           // T0..T7
 constexpr uint32_t kSceneCbSize = 512;        // >= sizeof(SceneConstants)
 constexpr uint32_t kMaxTextCells = 256 * 128;
 
@@ -40,6 +40,9 @@ struct UpscaleConsts {
     uint32_t src[2];
     uint32_t dst[2];
     uint32_t mode;
+};
+struct EncodeConsts {
+    uint32_t size[2];
 };
 struct ComposeConsts {
     uint32_t outSize[2];
@@ -128,6 +131,7 @@ struct Renderer::Impl {
     ID3D12PipelineState* psoTruth = nullptr;
     ID3D12PipelineState* psoUpscale = nullptr;
     ID3D12PipelineState* psoCompose = nullptr;
+    ID3D12PipelineState* psoEncode = nullptr;
     ID3D12DescriptorHeap* heap = nullptr;
     UINT descSize = 0;
 
@@ -145,7 +149,8 @@ struct Renderer::Impl {
     double timestampFrequency = 1.0;
 
     // Resolution d'affichage
-    Tex usrIA, usrSansIA, usrDebug, truth, bilinear, raw, composed;
+    Tex usrIA, usrSansIA, usrDebug, usrUniversel, usrUDebug, truth, bilinear,
+        raw, composed;
     // Resolution de rendu
     uint32_t renderW = 0, renderH = 0;
     Tex color, depth, motion, plainColor, plainDepth, plainMotion;
@@ -155,6 +160,18 @@ struct Renderer::Impl {
     uint32_t model = ~0u;
     bool ctxIAFresh = true;
     bool ctxSansIAFresh = true;
+
+    // USR Universel : le jeu tel qu'un emulateur le voit. Scene rendue avec
+    // le jitter du niveau choisi (uColor...), puis image affichee sur 8 bits
+    // (uImage) : c'est tout ce que recoit le contexte universel.
+    Tex uColor, uDepth, uMotion, uImage;
+    usr::UniversalContext* ctxU = nullptr;
+    uint32_t ctxULevel = 0;
+    uint32_t uPeriod = 0;
+    bool ctxUFresh = true;
+    bool uRan = false;          // le contexte a tourne pour cette image
+    bool uReset = false;
+    float uJitter[2] = {0, 0};
 
     uint32_t frame = 0;
     uint32_t passIndex = 0;
@@ -170,7 +187,9 @@ struct Renderer::Impl {
         uint32_t bytesPerPixel = 0;
     };
     Readback rbComposed, rbUsr, rbColor, rbDepth, rbMotion;
+    Readback rbUImage, rbUOut;
     float captureJitter[2] = {0, 0};
+    bool captureU = false;
 
     // -------------------------------------------------------------------
     bool CreatePso(const void* code, size_t size, ID3D12PipelineState** out)
@@ -227,15 +246,65 @@ struct Renderer::Impl {
         return r;
     }
 
+    void ReleaseUniversal()
+    {
+        usr::DestroyUniversalContext(ctxU);
+        ctxU = nullptr;
+        ctxULevel = 0;
+        for (Tex* t : {&uColor, &uDepth, &uMotion, &uImage})
+            SafeRelease(t->res);
+    }
+
     void ReleaseRenderSize()
     {
         usr::DestroyContext(ctxIA);
         usr::DestroyContext(ctxSansIA);
         ctxIA = ctxSansIA = nullptr;
+        ReleaseUniversal();
         for (Tex* t : {&color, &depth, &motion, &plainColor, &plainDepth,
                        &plainMotion})
             SafeRelease(t->res);
         renderW = renderH = 0;
+    }
+
+    // Contexte universel, cree a la premiere image qui le montre, et recree
+    // si le niveau change (la periode du jitter fait partie du contexte).
+    bool EnsureUniversal(uint32_t level)
+    {
+        if (ctxU && level == ctxULevel)
+            return true;
+        if (ctxU) {
+            if (desc.waitForGpu)
+                desc.waitForGpu();
+            usr::DestroyUniversalContext(ctxU);
+            ctxU = nullptr;
+        }
+        const uint32_t dw = desc.displayWidth, dh = desc.displayHeight;
+        if (!uImage.res &&
+            !(CreateTex(renderW, renderH, DXGI_FORMAT_R16G16B16A16_FLOAT,
+                        &uColor) &&
+              CreateTex(renderW, renderH, DXGI_FORMAT_R32_FLOAT, &uDepth) &&
+              CreateTex(renderW, renderH, DXGI_FORMAT_R16G16_FLOAT, &uMotion) &&
+              CreateTex(renderW, renderH, DXGI_FORMAT_R8G8B8A8_UNORM, &uImage)))
+            return false;
+        usr::UniversalCreateDesc cd = {};
+        cd.device = device;
+        cd.renderWidth = renderW;
+        cd.renderHeight = renderH;
+        cd.displayWidth = dw;
+        cd.displayHeight = dh;
+        cd.maxFramesInFlight = desc.framesInFlight;
+        uPeriod = level >= 2
+                      ? usr::GetUniversalJitterPeriod(renderW, renderH, dw, dh)
+                      : 0;
+        cd.jitterPeriod = uPeriod;
+        if (usr::CreateUniversalContext(cd, &ctxU) != usr::Result::Ok) {
+            ctxU = nullptr;
+            return false;
+        }
+        ctxULevel = level;
+        ctxUFresh = true;
+        return true;
     }
 
     bool CreateContexts(uint32_t rw, uint32_t rh, uint32_t wantModel)
@@ -390,16 +459,17 @@ struct Renderer::Impl {
                        : 0.0;
         };
         const double sample[kPassCount] = {
-            ms(0, 1),  // scene
+            ms(0, 1),  // scene (et image vue par l'emulateur)
             ms(3, 4),  // USR + IA
             ms(4, 5),  // USR sans IA
+            ms(5, 6),  // USR Universel
             ms(2, 3),  // verite
             ms(1, 2),  // comparaisons
-            ms(5, 6),  // composition
+            ms(6, 7),  // composition
         };
         for (uint32_t p = 0; p < kPassCount; ++p)
             stats.gpuMs[p] = stats.gpuMs[p] * 0.9 + sample[p] * 0.1;
-        stats.gpuTotalMs = stats.gpuTotalMs * 0.9 + ms(0, 6) * 0.1;
+        stats.gpuTotalMs = stats.gpuTotalMs * 0.9 + ms(0, 7) * 0.1;
     }
 
     Tex* ColorTexFor(View v)
@@ -407,6 +477,10 @@ struct Renderer::Impl {
         switch (v) {
         case View::UsrIA: return &usrIA;
         case View::UsrSansIA: return &usrSansIA;
+        case View::UsrUniversel: return &usrUniversel;
+        case View::UnivReactivite:
+        case View::UnivMemoire:
+        case View::UnivFlot: return &usrUDebug;  // canal choisi a la composition
         case View::Bilineaire: return &bilinear;
         case View::Verite: return &truth;
         case View::EntreeBrute: return &raw;
@@ -534,7 +608,8 @@ bool Renderer::Init(const RendererDesc& desc, std::string* error)
     if (!m.CreatePso(g_labo_scene, sizeof(g_labo_scene), &m.psoScene) ||
         !m.CreatePso(g_labo_truth, sizeof(g_labo_truth), &m.psoTruth) ||
         !m.CreatePso(g_labo_upscale, sizeof(g_labo_upscale), &m.psoUpscale) ||
-        !m.CreatePso(g_labo_compose, sizeof(g_labo_compose), &m.psoCompose))
+        !m.CreatePso(g_labo_compose, sizeof(g_labo_compose), &m.psoCompose) ||
+        !m.CreatePso(g_labo_encode, sizeof(g_labo_encode), &m.psoEncode))
         return fail("creation des pipelines du Labo");
 
     D3D12_DESCRIPTOR_HEAP_DESC hd = {};
@@ -592,6 +667,8 @@ bool Renderer::Init(const RendererDesc& desc, std::string* error)
         m.CreateTex(dw, dh, DXGI_FORMAT_R16G16B16A16_FLOAT, &m.usrIA) &&
         m.CreateTex(dw, dh, DXGI_FORMAT_R16G16B16A16_FLOAT, &m.usrSansIA) &&
         m.CreateTex(dw, dh, DXGI_FORMAT_R8G8B8A8_UNORM, &m.usrDebug) &&
+        m.CreateTex(dw, dh, DXGI_FORMAT_R16G16B16A16_FLOAT, &m.usrUniversel) &&
+        m.CreateTex(dw, dh, DXGI_FORMAT_R8G8B8A8_UNORM, &m.usrUDebug) &&
         m.CreateTex(dw, dh, DXGI_FORMAT_R16G16B16A16_FLOAT, &m.truth) &&
         m.CreateTex(dw, dh, DXGI_FORMAT_R16G16B16A16_FLOAT, &m.bilinear) &&
         m.CreateTex(dw, dh, DXGI_FORMAT_R16G16B16A16_FLOAT, &m.raw) &&
@@ -615,10 +692,10 @@ void Renderer::Shutdown()
         return;
     m.ReleaseRenderSize();
     for (Impl::Readback* rb : {&m.rbComposed, &m.rbUsr, &m.rbColor, &m.rbDepth,
-                               &m.rbMotion})
+                               &m.rbMotion, &m.rbUImage, &m.rbUOut})
         SafeRelease(rb->buf);
-    for (Tex* t : {&m.usrIA, &m.usrSansIA, &m.usrDebug, &m.truth, &m.bilinear,
-                   &m.raw, &m.composed})
+    for (Tex* t : {&m.usrIA, &m.usrSansIA, &m.usrDebug, &m.usrUniversel,
+                   &m.usrUDebug, &m.truth, &m.bilinear, &m.raw, &m.composed})
         SafeRelease(t->res);
     if (m.queryReadback && m.queryCpu)
         m.queryReadback->Unmap(0, nullptr);
@@ -629,6 +706,7 @@ void Renderer::Shutdown()
     SafeRelease(m.upload);
     SafeRelease(m.fontBuffer);
     SafeRelease(m.heap);
+    SafeRelease(m.psoEncode);
     SafeRelease(m.psoCompose);
     SafeRelease(m.psoUpscale);
     SafeRelease(m.psoTruth);
@@ -659,6 +737,7 @@ bool Renderer::Record(ID3D12GraphicsCommandList* cl, Controller& ctrl,
     m.stats.renderW = rw;
     m.stats.renderH = rh;
     m.stats.jitterPhases = phases;
+    m.stats.universalPeriod = usr::GetUniversalJitterPeriod(rw, rh, dw, dh);
 
     // Ce qu'il faut calculer pour les vues affichees
     auto shows = [&](View v) {
@@ -671,6 +750,12 @@ bool Renderer::Record(ID3D12GraphicsCommandList* cl, Controller& ctrl,
     const bool needBil = shows(View::Bilineaire);
     const bool needRaw = shows(View::EntreeBrute);
     const bool needTruth = shows(View::Verite);
+    const bool needUDebug = (s.split > 0.0f && NeedsUniversalDebug(s.left)) ||
+                            (s.split < 1.0f && NeedsUniversalDebug(s.right));
+    const bool needU = shows(View::UsrUniversel) || needUDebug;
+    const uint32_t uLevel = s.universalLevel >= 2 ? 2u : 1u;
+    if (needU && !m.EnsureUniversal(uLevel))
+        return false;
     const bool reset = ctrl.TakeHistoryReset();
 
     // Constantes de scene et texte de cette tranche
@@ -695,6 +780,29 @@ bool Renderer::Record(ID3D12GraphicsCommandList* cl, Controller& ctrl,
         const SceneConsts c = {{rw, rh}, {m.lastJitter[0], m.lastJitter[1]}};
         m.Pass(cl, m.psoScene, &c, 4, {},
                {SlotOf(m.color), SlotOf(m.depth), SlotOf(m.motion)}, rw, rh);
+    }
+    // --- le meme jeu, vu par un emulateur : image finale seulement ----------
+    // Niveau 1 : rendu tel quel. Niveau 2 : l'emulateur injecte son propre
+    // jitter (grille 2x2 / 3x3 si le rapport est entier), comme dans Xenia.
+    if (needU) {
+        m.uJitter[0] = m.uJitter[1] = 0.0f;
+        if (uLevel >= 2)
+            usr::GetUniversalJitter(m.frame, rw, rh, dw, dh, &m.uJitter[0],
+                                    &m.uJitter[1]);
+        Barriers b;
+        b.Transition(m.uColor, kWrite);
+        b.Transition(m.uDepth, kWrite);
+        b.Transition(m.uMotion, kWrite);
+        b.Flush(cl);
+        const SceneConsts c = {{rw, rh}, {m.uJitter[0], m.uJitter[1]}};
+        m.Pass(cl, m.psoScene, &c, 4, {},
+               {SlotOf(m.uColor), SlotOf(m.uDepth), SlotOf(m.uMotion)}, rw, rh);
+        b.Transition(m.uColor, kRead);
+        b.Transition(m.uImage, kWrite);
+        b.Flush(cl);
+        const EncodeConsts e = {{rw, rh}};
+        m.Pass(cl, m.psoEncode, &e, 2, {SlotOf(m.uColor)}, {SlotOf(m.uImage)},
+               rw, rh);
     }
     m.Stamp(cl, 1);
 
@@ -754,14 +862,46 @@ bool Renderer::Record(ID3D12GraphicsCommandList* cl, Controller& ctrl,
     }
     m.Stamp(cl, 5);
 
+    // --- USR Universel : sans profondeur ni vecteurs de mouvement -----------
+    m.uRan = needU;
+    if (needU) {
+        Barriers b;
+        b.Transition(m.uImage, kRead);
+        b.Transition(m.usrUniversel, kWrite);
+        if (needUDebug)
+            b.Transition(m.usrUDebug, kWrite);
+        b.Flush(cl);
+        usr::UniversalDispatchDesc d = {};
+        d.commandList = cl;
+        d.color = m.uImage.res;
+        d.colorFormat = m.uImage.format;
+        d.output = m.usrUniversel.res;
+        d.outputFormat = m.usrUniversel.format;
+        d.jitterX = m.uJitter[0];
+        d.jitterY = m.uJitter[1];
+        d.reset = reset || m.ctxUFresh;
+        d.sharpness = s.sharpness;
+        d.networkStrength = s.network ? s.networkStrength : 0.0f;
+        d.historyLength = s.historyLength;
+        d.antiGhosting = UniversalAntiGhosting(s);
+        d.debugOutput = needUDebug ? m.usrUDebug.res : nullptr;
+        d.debugFormat = m.usrUDebug.format;
+        usr::DispatchUniversal(m.ctxU, d);
+        m.uReset = d.reset;
+        m.ctxUFresh = false;
+    } else {
+        m.ctxUFresh = true;  // historique perime : repartira de zero
+    }
+    m.Stamp(cl, 6);
+
     // --- composition ----------------------------------------------------------
     m.BindLabo(cl);  // USR a lie son propre tas et sa signature
     {
         Tex* left = m.ColorTexFor(s.left);
         Tex* right = m.ColorTexFor(s.right);
         Barriers b;
-        for (Tex* t : {&m.usrIA, &m.usrSansIA, &m.usrDebug, &m.truth,
-                       &m.bilinear, &m.raw, &m.motion})
+        for (Tex* t : {&m.usrIA, &m.usrSansIA, &m.usrDebug, &m.usrUniversel,
+                       &m.usrUDebug, &m.truth, &m.bilinear, &m.raw, &m.motion})
             b.Transition(*t, kRead);
         b.Transition(m.composed, kWrite);
         b.Flush(cl);
@@ -800,7 +940,7 @@ bool Renderer::Record(ID3D12GraphicsCommandList* cl, Controller& ctrl,
                 SlotOf(m.motion), fontSlot, textSlot},
                {SlotOf(m.composed)}, dw, dh);
     }
-    m.Stamp(cl, 6);
+    m.Stamp(cl, 7);
 
     Barriers b;
     b.Transition(m.composed, D3D12_RESOURCE_STATE_COPY_SOURCE);
@@ -832,6 +972,16 @@ void Renderer::RecordCapture(ID3D12GraphicsCommandList* cl)
     m.CopyOut(cl, m.color, m.rbColor);
     m.CopyOut(cl, m.depth, m.rbDepth);
     m.CopyOut(cl, m.motion, m.rbMotion);
+    m.captureU = m.uRan;
+    if (m.uRan) {
+        if (!m.rbUImage.buf || m.rbUImage.fp.Footprint.Width != m.renderW ||
+            m.rbUImage.fp.Footprint.Height != m.renderH) {
+            m.CreateReadback(m.uImage, 4, &m.rbUImage);
+            m.CreateReadback(m.usrUniversel, 8, &m.rbUOut);
+        }
+        m.CopyOut(cl, m.uImage, m.rbUImage);
+        m.CopyOut(cl, m.usrUniversel, m.rbUOut);
+    }
 }
 
 bool Renderer::ReadCapture(Capture* out)
@@ -845,6 +995,18 @@ bool Renderer::ReadCapture(Capture* out)
     out->renderH = m.renderH;
     out->jitter[0] = m.captureJitter[0];
     out->jitter[1] = m.captureJitter[1];
+    out->universal = m.captureU;
+    out->universalPeriod = m.uPeriod;
+    out->universalReset = m.uReset;
+    out->universalJitter[0] = m.uJitter[0];
+    out->universalJitter[1] = m.uJitter[1];
+    out->universalInput.clear();
+    out->universalOutput.clear();
+    if (m.captureU &&
+        !(m.ReadBack(m.rbUImage, m.renderW, m.renderH, &out->universalInput) &&
+          m.ReadBack(m.rbUOut, out->displayW, out->displayH,
+                     &out->universalOutput)))
+        return false;
     return m.ReadBack(m.rbComposed, out->displayW, out->displayH,
                       &out->composed) &&
            m.ReadBack(m.rbUsr, out->displayW, out->displayH, &out->usrIA) &&

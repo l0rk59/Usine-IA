@@ -110,7 +110,7 @@ set(LABO_CORE
 if(USR_BUILD_LABO)
     usr_compile_shaders(LABO_SHADER_HEADERS labo_shaders.h
         "${LABO_DIR}/shaders"
-        labo_scene labo_truth labo_upscale labo_compose)
+        labo_scene labo_truth labo_upscale labo_compose labo_encode)
     set(LABO_SOURCES
         ${LABO_CORE}
         ${LABO_DIR}/src/labo_renderer.cpp

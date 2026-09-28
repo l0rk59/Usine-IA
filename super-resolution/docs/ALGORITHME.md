@@ -1,5 +1,9 @@
 # Comment fonctionne USR
 
+*Ce document décrit USR, qui reçoit du jeu la profondeur et les vecteurs
+de mouvement. Le mode sans vecteurs (émulateurs, captures) est décrit dans
+[UNIVERSEL.md](UNIVERSEL.md).*
+
 ## L'idée (la même que DLSS 2 et suivants)
 
 Rendre en 1080p et afficher en 4K, c'est demander 4 pixels là où on n'en a

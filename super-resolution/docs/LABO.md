@@ -7,6 +7,11 @@ régler à la manette** : résolution, puissance de l'IA, modèle, mémoire,
 anti-fantômes, netteté, jitter… avec comparaison côte à côte, loupe et
 temps GPU de chaque étape.
 
+Il montre aussi **USR Universel** : la même scène vue comme un émulateur
+la voit (l'image finale seule, sans profondeur ni vecteurs de mouvement).
+C'est le mode qui tourne dans Xenia ([XENIA.md](XENIA.md)), et le Labo est
+le moyen de mesurer son coût GPU sur la console.
+
 ![Menu du Labo : page IA, comparaison USR + IA / USR sans IA](labo-menu.png)
 
 *Le menu (page « IA ») et les mesures. À gauche USR avec l'IA, à droite
@@ -27,6 +32,8 @@ agrandissement bilinéaire à droite.*
 - **Ce n'est pas un filtre pour tes jeux.** Il travaille sur sa propre
   scène de test. En mode Développeur, la console ne lance même pas les jeux
   du commerce, et aucune application ne peut lire l'image d'un autre jeu.
+  Seule exception : les jeux Xbox 360 émulés, dont l'émulateur dessine
+  lui-même l'image ([XENIA.md](XENIA.md)).
 - **Ce n'est pas DLSS 5.** DLSS 5 (NVIDIA, septembre 2026) est un modèle
   génératif qui repeint l'éclairage, intégré jeu par jeu par les studios,
   sur cartes RTX 50. USR est un upscaler à IA du type DLSS 2 à 4 : il
@@ -130,17 +137,66 @@ Menu fermé, la croix change directement les vues : ↑↓ la moitié gauche,
 | | Anti-fantômes | tolérance de l'historique (0,25 à 8) |
 | | Finesse du noyau | 25 à 400 % |
 | | Effacer l'historique | repartir de zéro |
-| Comparaison | Moitié gauche / droite | USR + IA, USR sans IA, Bilinéaire, Vérité terrain, Entrée brute, diagnostics (alpha, bêta, confiance, désocclusion), Mouvement |
+| Universel | Niveau | 1 : image seule (émulateur qui ne touche pas au jeu) · 2 : jitter injecté (grille 2x2 / 3x3) |
+| | Comparer avec / sans vecteurs | à gauche USR, à droite USR Universel |
+| | Comparer à la vérité | à gauche USR Universel, à droite la vérité terrain |
+| | Voir ce que décide l'IA | à droite, la réactivité de USR Universel |
+| Comparaison | Moitié gauche / droite | USR + IA, USR sans IA, **USR Universel**, Bilinéaire, Vérité terrain, Entrée brute, diagnostics USR (alpha, bêta, confiance, désocclusion), Mouvement, diagnostics universels (réactivité, mémoire, doute du flot) |
 | | Séparation | position de la ligne |
 | | Loupe | coupée, x2, x4, x8 |
 | Scène | Caméra, Objets, Vitesse, Pause | pour rendre la tâche facile ou difficile |
 | | Vérité terrain | 1 à 16 échantillons par pixel |
-| Préréglages | | Par défaut · Qualité maximale · Performance maximale · **IA à fond (300 %)** · Sans IA · Sans jitter · Comparer IA / sans IA · Voir ce que décide l'IA |
+| Préréglages | | Par défaut · Qualité maximale · Performance maximale · **IA à fond (300 %)** · Sans IA · Sans jitter · Comparer IA / sans IA · Voir ce que décide l'IA · **Avec / sans vecteurs** |
 
 Les vues de diagnostic montrent ce que décide le réseau : *alpha* (clair =
 il fait confiance à l'image courante, sombre = à l'historique), *bêta* (part
 d'historique gardée sans recadrage), *confiance* (mémoire accumulée),
 *désocclusion* (zones découvertes).
+
+### USR Universel dans le Labo
+
+Pour la vue **USR Universel**, le Labo rend la scène une seconde fois,
+comme un émulateur la verrait :
+
+- **niveau 1** : sans jitter ;
+- **niveau 2** : avec le jitter que Xenia injecterait. C'est une grille
+  2x2 en Performance et 3x3 en Ultra quand le rapport tombe juste (par
+  exemple en 4K), une suite de Halton sinon.
+
+Il la compresse ensuite pour l'écran, sur 8 bits. C'est **tout** ce que
+reçoit USR Universel : ni couleur HDR, ni profondeur, ni vecteurs de
+mouvement.
+
+Il partage les réglages de USR :
+
+- netteté ;
+- IA (marche, puissance) ;
+- mémoire ;
+- anti-fantômes (rapporté à son propre défaut : 1,25 pour USR = 0,3 pour
+  USR Universel).
+
+Le modèle et la finesse du noyau ne concernent que USR.
+
+Ses diagnostics :
+
+- *réactivité* : clair = pixel refait à neuf, sombre = historique gardé ;
+- *mémoire* : historique accumulé ;
+- *doute du flot* : sombre = mouvement bien retrouvé, clair = aucune
+  correspondance.
+
+Le doute du flot s'allume normalement sur les bords d'objets qui
+découvrent le décor et sur les lignes plus fines qu'un pixel.
+
+La scène du Labo est échantillonnée sans filtrage (lignes plus fines qu'un
+pixel) : c'est la plus dure pour un upscaler sans vecteurs. Sur ce genre de
+scène, USR Universel reste proche d'un agrandissement bilinéaire (voir
+[UNIVERSEL.md](UNIVERSEL.md), scène « brute »). Là où il brille, sur des
+textures filtrées comme celles des jeux, il faut regarder les mesures de ce
+document.
+
+Dans les mesures (Vue), la ligne *Universel* rappelle le niveau et le
+nombre de phases du jitter, et *USR Universel* donne son **temps GPU sur
+la console**. C'est la mesure qui manque encore pour Xenia.
 
 ## Ce qui a été vérifié
 
@@ -150,9 +206,12 @@ d'historique gardée sans recadrage), *confiance* (mémoire accumulée),
 - Le cœur de l'appli (menu, réglages, préréglages, texte, animation de la
   scène) passe ses tests en C++ strict (`labo/tests/test_labo_core.cpp`).
 - **L'application Windows elle-même** : compilée pour Windows, exécutée
-  sur Direct3D 12 (Wine + vkd3d-proton, GPU logiciel), sa sortie USR est
-  identique à la référence Python sur 60 images (écart > 60 dB,
-  `labo/tests/capture_wine.sh` + `tests/test_labo_bout_en_bout.py`).
+  sur Direct3D 12 (Wine + vkd3d-proton, GPU logiciel), sur 24 images
+  (`labo/tests/capture_wine.sh` + `tests/test_labo_bout_en_bout.py`) :
+  - sa sortie USR est identique à la référence Python (écart > 55 dB
+    exigé) ;
+  - sa sortie **USR Universel** aussi, sur les mêmes images : image 8 bits
+    reçue, jitter, remise à zéro.
 
 Pas encore vérifié : la version **UWP** n'a été ni compilée (il faut le SDK
 Windows) ni lancée sur une vraie Xbox, et les performances sur console

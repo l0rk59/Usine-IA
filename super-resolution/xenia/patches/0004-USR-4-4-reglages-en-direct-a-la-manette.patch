@@ -1,0 +1,856 @@
+From 0226fbca895b9b1b71d3f948e1cda44be60df2f5 Mon Sep 17 00:00:00 2001
+From: Usine-IA <usr@usine-ia.local>
+Date: Mon, 28 Sep 2026 17:36:40 +0000
+Subject: [PATCH 4/4] USR 4/4 : reglages en direct a la manette
+
+Surcouche Vue + RB : le jeu continue, reste visible et ne recoit plus la
+manette ; croix pour choisir et regler, A valider, Y oublier l'historique,
+X carte de diagnostic, LT maintenue pour comparer avec FSR, B pour fermer.
+Section USR dans le menu pause et dans la fenetre d'affichage (PC).
+Variables de configuration usr_* enregistrees.
+---
+ src/xenia/app/emulator_window.cc |  74 ++++++-
+ src/xenia/app/emulator_window.h  |   3 +
+ src/xenia/app/usr_menu.cc        | 344 +++++++++++++++++++++++++++++++
+ src/xenia/app/usr_menu.h         |  66 ++++++
+ src/xenia/app/usr_menu_model.h   | 234 +++++++++++++++++++++
+ 5 files changed, 719 insertions(+), 2 deletions(-)
+ create mode 100644 src/xenia/app/usr_menu.cc
+ create mode 100644 src/xenia/app/usr_menu.h
+ create mode 100644 src/xenia/app/usr_menu_model.h
+
+diff --git a/src/xenia/app/emulator_window.cc b/src/xenia/app/emulator_window.cc
+index 1d071fc..e99d814 100644
+--- a/src/xenia/app/emulator_window.cc
++++ b/src/xenia/app/emulator_window.cc
+@@ -219,7 +219,11 @@ DEFINE_string(
+     "  Use AMD FidelityFX Super Resolution 1.0 (FSR) for highest-quality "
+     "upscaling, or AMD FidelityFX Contrast Adaptive Sharpening for sharpening "
+     "while not scaling or downsampling.\n"
+-    "  For scaling by factors of more than 2x2, multiple FSR passes are done.",
++    "  For scaling by factors of more than 2x2, multiple FSR passes are done.\n"
++    " usr:\n"
++    "  USR (Usine Super Resolution): temporal upscaler with its own motion "
++    "estimation and a small neural network, tuned live with View + RB "
++    "(settings: usr_*). Falls back to FSR where unavailable.",
+     "Display");
+ DEFINE_double(
+     postprocess_ffx_cas_additional_sharpness,
+@@ -595,6 +599,9 @@ void EmulatorWindow::DisplayConfigDialog::OnDraw(ImGuiIO& io) {
+       ImGui::RadioButton(
+           "AMD FidelityFX Super Resolution 1.0 (FSR)", &new_effect_index,
+           int(ui::Presenter::GuestOutputPaintConfig::Effect::kFsr));
++      ImGui::RadioButton(
++          "USR (Usine Super Resolution, temporel + IA)", &new_effect_index,
++          int(ui::Presenter::GuestOutputPaintConfig::Effect::kUsr));
+       new_presenter_config.SetEffect(
+           ui::Presenter::GuestOutputPaintConfig::Effect(new_effect_index));
+ 
+@@ -626,10 +633,23 @@ void EmulatorWindow::DisplayConfigDialog::OnDraw(ImGuiIO& io) {
+               "If not upscaling, Contrast Adaptive Sharpening (CAS) is used "
+               "instead.";
+           break;
++        case ui::Presenter::GuestOutputPaintConfig::Effect::kUsr:
++          effect_description =
++              "Accumule les images du jeu (mouvement estimé par USR, petit "
++              "réseau de neurones).\n"
++              "Niveau 2 : l'émulateur décale la scène 3D d'un jitter "
++              "sous-pixel pour une vraie super-résolution.\n"
++              "À la manette : Vue + RB pour régler en direct.";
++          break;
+       }
+       if (effect_description) {
+         ImGui::TextUnformatted(effect_description);
+       }
++      if (new_presenter_config.GetEffect() ==
++          ui::Presenter::GuestOutputPaintConfig::Effect::kUsr) {
++        ImGui::Spacing();
++        usr_menu::DrawImGuiSettings(new_presenter_config);
++      }
+ 
+       if (new_presenter_config.GetEffect() ==
+               ui::Presenter::GuestOutputPaintConfig::Effect::kCas ||
+@@ -749,6 +769,18 @@ void EmulatorWindow::DisplayConfigDialog::OnDraw(ImGuiIO& io) {
+         new_presenter_config.GetDither()) {
+       OVERRIDE_bool(postprocess_dither, new_presenter_config.GetDither());
+     }
++    {
++      // USR : les reglages modifies ici sont enregistres (comme la surcouche).
++      ui::Presenter::GuestOutputPaintConfig::UsrSettings cvars_usr =
++          cvars_presenter_config.GetUsrSettings();
++      ui::Presenter::GuestOutputPaintConfig::UsrSettings new_usr =
++          new_presenter_config.GetUsrSettings();
++      cvars_usr.debug_view = new_usr.debug_view;
++      cvars_usr.reset_counter = new_usr.reset_counter;
++      if (!(cvars_usr == new_usr)) {
++        usr_menu::SaveCvars(usr_menu::FromConfig(new_presenter_config));
++      }
++    }
+   }
+ 
+   ImGui::End();
+@@ -908,6 +940,16 @@ void EmulatorWindow::PauseMenuDialog::OnDraw(ImGuiIO& io) {
+     show_menu_ = !show_menu_;
+     just_opened = show_menu_;
+   }
++  // USR : surcouche de reglages en direct (Vue + RB). Le jeu continue et
++  // reste visible ; ses entrees sont bloquees comme pour ce menu.
++  ui::Presenter* usr_presenter = nullptr;
++  if (emulator_window_.emulator() &&
++      emulator_window_.emulator()->graphics_system()) {
++    usr_presenter =
++        emulator_window_.emulator()->graphics_system()->presenter();
++  }
++  const bool usr_overlay_open =
++      usr_overlay_.Draw(io, usr_presenter, show_menu_);
+   // Otherwise the same button presses used to navigate this menu (the B
+   // button to Resume, in particular) would simultaneously reach the running
+   // game's own input handling underneath it. is_xam_dialog_present_ is the
+@@ -923,7 +965,7 @@ void EmulatorWindow::PauseMenuDialog::OnDraw(ImGuiIO& io) {
+     emulator_window_.emulator()
+         ->kernel_state()
+         ->xam_state()
+-        ->is_xam_dialog_present_.store(show_menu_);
++        ->is_xam_dialog_present_.store(show_menu_ || usr_overlay_open);
+   }
+   if (!show_menu_) {
+     return;
+@@ -993,6 +1035,27 @@ void EmulatorWindow::PauseMenuDialog::OnDraw(ImGuiIO& io) {
+       config::SaveConfig();
+     }
+ 
++    ImGui::Dummy(ImVec2(0.0f, 8.0f));
++    ImGui::Separator();
++    ImGui::Text("USR (Usine Super Resolution)");
++    if (usr_presenter) {
++      ui::Presenter::GuestOutputPaintConfig usr_config =
++          usr_presenter->GetGuestOutputPaintConfigFromUIThread();
++      bool usr_on = usr_config.GetEffect() ==
++                    ui::Presenter::GuestOutputPaintConfig::Effect::kUsr;
++      if (ImGui::Checkbox("Activer USR", &usr_on)) {
++        usr_config.SetEffect(
++            usr_on ? ui::Presenter::GuestOutputPaintConfig::Effect::kUsr
++                   : ui::Presenter::GuestOutputPaintConfig::Effect::kFsr);
++        usr_presenter->SetGuestOutputPaintConfigFromUIThread(usr_config);
++        usr_menu::SaveCvars(usr_menu::FromConfig(usr_config));
++      }
++      if (ImGui::Button("Réglages en direct (Vue + RB)", button_size)) {
++        show_menu_ = false;
++        usr_overlay_.Open(usr_presenter);
++      }
++    }
++
+     {
+       auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+           std::chrono::steady_clock::now() - session_start_time_);
+@@ -1338,6 +1401,8 @@ const char* EmulatorWindow::GetCvarValueForGuestOutputPaintEffect(
+       return "cas";
+     case ui::Presenter::GuestOutputPaintConfig::Effect::kFsr:
+       return "fsr";
++    case ui::Presenter::GuestOutputPaintConfig::Effect::kUsr:
++      return "usr";
+     default:
+       return "";
+   }
+@@ -1354,6 +1419,10 @@ EmulatorWindow::GetGuestOutputPaintEffectForCvarValue(
+                         ui::Presenter::GuestOutputPaintConfig::Effect::kFsr)) {
+     return ui::Presenter::GuestOutputPaintConfig::Effect::kFsr;
+   }
++  if (cvar_value == GetCvarValueForGuestOutputPaintEffect(
++                        ui::Presenter::GuestOutputPaintConfig::Effect::kUsr)) {
++    return ui::Presenter::GuestOutputPaintConfig::Effect::kUsr;
++  }
+   return ui::Presenter::GuestOutputPaintConfig::Effect::kBilinear;
+ }
+ 
+@@ -1370,6 +1439,7 @@ EmulatorWindow::GetGuestOutputPaintConfigForCvars() {
+   paint_config.SetFsrSharpnessReduction(
+       float(cvars::postprocess_ffx_fsr_sharpness_reduction));
+   paint_config.SetDither(cvars::postprocess_dither);
++  usr_menu::ApplyCvars(paint_config);
+   return paint_config;
+ }
+ 
+diff --git a/src/xenia/app/emulator_window.h b/src/xenia/app/emulator_window.h
+index ca3b909..0f7a0f5 100644
+--- a/src/xenia/app/emulator_window.h
++++ b/src/xenia/app/emulator_window.h
+@@ -19,6 +19,7 @@
+ #include <vector>
+ 
+ #include "xenia/app/profile_dialogs.h"
++#include "xenia/app/usr_menu.h"
+ #include "xenia/emulator.h"
+ #include "xenia/gpu/command_processor.h"
+ #include "xenia/ui/imgui_dialog.h"
+@@ -261,6 +262,8 @@ class EmulatorWindow {
+    private:
+     EmulatorWindow& emulator_window_;
+     bool show_menu_ = false;
++    // USR : surcouche de reglages en direct (Vue + RB), jeu non mis en pause.
++    usr_menu::Overlay usr_overlay_;
+     // Set by the "Exit Game" button, acted on at the top of the *next*
+     // OnDraw call rather than immediately - avoids calling
+     // UWP::ExitApplication() mid-frame, partway through rendering.
+diff --git a/src/xenia/app/usr_menu.cc b/src/xenia/app/usr_menu.cc
+new file mode 100644
+index 0000000..ffc0566
+--- /dev/null
++++ b/src/xenia/app/usr_menu.cc
+@@ -0,0 +1,344 @@
++/**
++ ******************************************************************************
++ * Xenia : Xbox 360 Emulator Research Project                                 *
++ ******************************************************************************
++ * USR (Usine Super Resolution) : reglages en direct a la manette.            *
++ * Released under the BSD license - see LICENSE in the root for more details. *
++ ******************************************************************************
++ */
++
++#include "xenia/app/usr_menu.h"
++
++#include <cmath>
++
++#include "third_party/imgui/imgui.h"
++#include "xenia/base/cvar.h"
++#include "xenia/config.h"
++
++DEFINE_bool(usr_jitter, true,
++            "USR : niveau 2 -- l'emulateur decale le rendu de la scene 3D "
++            "d'un jitter sous-pixel connu, ce qui permet a USR une vraie "
++            "super-resolution. Desactiver (niveau 1) si un jeu montre des "
++            "effets mal alignes ou un HUD qui tremble.",
++            "Display");
++DEFINE_bool(usr_lod_bias_enable, true,
++            "USR, niveau 2 : textures plus fines sur la scene 3D decalee "
++            "(biais de mip-map usr_lod_bias).",
++            "Display");
++DEFINE_bool(usr_network, true,
++            "USR : petit reseau de neurones (sinon regles de base seules, "
++            "nettement moins bonnes).",
++            "Display");
++DEFINE_double(usr_network_strength, 1.0,
++              "USR : influence du reseau, de 0 a 4 (1 = tel qu'entraine).",
++              "Display");
++DEFINE_double(usr_history_length, 10.0,
++              "USR : nombre maximal d'images accumulees, de 1 a 64.",
++              "Display");
++DEFINE_double(usr_anti_ghosting, 0.3,
++              "USR : seuil anti-fantomes, de 0.05 a 4 (petit = oublie vite "
++              "l'historique : moins de trainees, moins de detail).",
++              "Display");
++DEFINE_double(usr_sharpness, 0.25,
++              "USR : accentuation finale (RCAS), de 0 a 1.", "Display");
++
++namespace xe {
++namespace app {
++namespace usr_menu {
++
++using Effect = ui::Presenter::GuestOutputPaintConfig::Effect;
++
++namespace {
++
++Effect EffectForMethod(Method method) {
++  switch (method) {
++    case Method::kUsr:
++      return Effect::kUsr;
++    case Method::kFsr:
++      return Effect::kFsr;
++    case Method::kCas:
++      return Effect::kCas;
++    default:
++      return Effect::kBilinear;
++  }
++}
++
++Method MethodForEffect(Effect effect) {
++  switch (effect) {
++    case Effect::kUsr:
++      return Method::kUsr;
++    case Effect::kFsr:
++      return Method::kFsr;
++    case Effect::kCas:
++      return Method::kCas;
++    default:
++      return Method::kBilinear;
++  }
++}
++
++const char* CvarValueForMethod(Method method) {
++  switch (method) {
++    case Method::kUsr:
++      return "usr";
++    case Method::kFsr:
++      return "fsr";
++    case Method::kCas:
++      return "cas";
++    default:
++      return "";
++  }
++}
++
++}  // namespace
++
++Values FromConfig(const ui::Presenter::GuestOutputPaintConfig& config) {
++  const ui::Presenter::GuestOutputPaintConfig::UsrSettings& s =
++      config.GetUsrSettings();
++  Values v;
++  v.method = MethodForEffect(config.GetEffect());
++  v.jitter = s.jitter;
++  v.lod_bias = s.lod_bias;
++  v.network = s.network;
++  v.network_strength = s.network_strength;
++  v.history_length = s.history_length;
++  v.anti_ghosting = s.anti_ghosting;
++  v.sharpness = s.sharpness;
++  v.debug_view = int(s.debug_view);
++  return v;
++}
++
++void ToConfig(const Values& v, uint32_t reset_counter,
++              ui::Presenter::GuestOutputPaintConfig& config) {
++  config.SetEffect(EffectForMethod(v.method));
++  ui::Presenter::GuestOutputPaintConfig::UsrSettings s;
++  s.jitter = v.jitter;
++  s.lod_bias = v.lod_bias;
++  s.network = v.network;
++  s.network_strength = v.network_strength;
++  s.history_length = v.history_length;
++  s.anti_ghosting = v.anti_ghosting;
++  s.sharpness = v.sharpness;
++  s.debug_view = uint32_t(v.debug_view);
++  s.reset_counter = reset_counter;
++  config.SetUsrSettings(s);
++}
++
++void ApplyCvars(ui::Presenter::GuestOutputPaintConfig& config) {
++  ui::Presenter::GuestOutputPaintConfig::UsrSettings s =
++      config.GetUsrSettings();
++  s.jitter = cvars::usr_jitter;
++  s.lod_bias = cvars::usr_lod_bias_enable;
++  s.network = cvars::usr_network;
++  s.network_strength = float(cvars::usr_network_strength);
++  s.history_length = float(cvars::usr_history_length);
++  s.anti_ghosting = float(cvars::usr_anti_ghosting);
++  s.sharpness = float(cvars::usr_sharpness);
++  config.SetUsrSettings(s);
++}
++
++void SaveCvars(const Values& v) {
++  // postprocess_scaling_and_sharpening est definie dans emulator_window.cc :
++  // acces par la table des variables.
++  auto method_cvar =
++      cvar::ConfigVars->find("postprocess_scaling_and_sharpening");
++  if (method_cvar != cvar::ConfigVars->end()) {
++    auto* typed =
++        dynamic_cast<cvar::ConfigVar<std::string>*>(method_cvar->second);
++    if (typed) {
++      typed->OverrideConfigValue(CvarValueForMethod(v.method));
++    }
++  }
++  OVERRIDE_bool(usr_jitter, v.jitter);
++  OVERRIDE_bool(usr_lod_bias_enable, v.lod_bias);
++  OVERRIDE_bool(usr_network, v.network);
++  OVERRIDE_double(usr_network_strength, v.network_strength);
++  OVERRIDE_double(usr_history_length, v.history_length);
++  OVERRIDE_double(usr_anti_ghosting, v.anti_ghosting);
++  OVERRIDE_double(usr_sharpness, v.sharpness);
++  config::SaveConfig();
++}
++
++void DrawImGuiSettings(ui::Presenter::GuestOutputPaintConfig& config) {
++  ui::Presenter::GuestOutputPaintConfig::UsrSettings s =
++      config.GetUsrSettings();
++  ImGui::Checkbox("Niveau 2 : jitter injecté dans la scène 3D", &s.jitter);
++  ImGui::BeginDisabled(!s.jitter);
++  ImGui::Checkbox("Textures plus fines (biais de mip-map)", &s.lod_bias);
++  ImGui::EndDisabled();
++  ImGui::Checkbox("IA (petit réseau de neurones)", &s.network);
++  ImGui::BeginDisabled(!s.network);
++  ImGui::SliderFloat("Force de l'IA", &s.network_strength, 0.0f, 4.0f,
++                     "%.2f");
++  ImGui::EndDisabled();
++  ImGui::SliderFloat("Historique (images)", &s.history_length, 1.0f, 64.0f,
++                     "%.0f");
++  ImGui::SliderFloat("Anti-fantômes", &s.anti_ghosting, 0.05f, 4.0f, "%.2f",
++                     ImGuiSliderFlags_Logarithmic);
++  ImGui::SliderFloat("Netteté", &s.sharpness, 0.0f, 1.0f, "%.2f");
++  bool debug = s.debug_view != 0;
++  ImGui::Checkbox("Carte de diagnostic (R réactivité, V gain, B confiance)",
++                  &debug);
++  s.debug_view = debug ? 1 : 0;
++  if (ImGui::Button("Oublier l'historique")) {
++    ++s.reset_counter;
++  }
++  config.SetUsrSettings(s);
++}
++
++// --- Surcouche ---------------------------------------------------------------
++
++void Overlay::Open(ui::Presenter* presenter) {
++  if (open_ || !presenter) {
++    return;
++  }
++  open_ = true;
++  comparing_ = false;
++  dirty_ = false;
++  const ui::Presenter::GuestOutputPaintConfig& config =
++      presenter->GetGuestOutputPaintConfigFromUIThread();
++  values_ = FromConfig(config);
++  reset_counter_ = config.GetUsrSettings().reset_counter;
++}
++
++void Overlay::Close(ui::Presenter* presenter) {
++  if (!open_) {
++    return;
++  }
++  open_ = false;
++  if (presenter) {
++    // Fin d'une eventuelle comparaison : revenir aux reglages choisis.
++    Apply(presenter, false);
++  }
++  comparing_ = false;
++  if (dirty_) {
++    SaveCvars(values_);
++    dirty_ = false;
++  }
++}
++
++void Overlay::Apply(ui::Presenter* presenter, bool comparing) {
++  ui::Presenter::GuestOutputPaintConfig config =
++      presenter->GetGuestOutputPaintConfigFromUIThread();
++  ToConfig(values_, reset_counter_, config);
++  if (comparing) {
++    // A/B : l'autre methode (FSR si USR est choisi, USR sinon).
++    config.SetEffect(values_.method == Method::kUsr ? Effect::kFsr
++                                                    : Effect::kUsr);
++  }
++  presenter->SetGuestOutputPaintConfigFromUIThread(config);
++}
++
++bool Overlay::Draw(ImGuiIO& io, ui::Presenter* presenter,
++                   bool other_menu_open) {
++  (void)io;
++  // Vue maintenue + RB : ouvrir / fermer.
++  if (ImGui::IsKeyDown(ImGuiKey_GamepadBack) &&
++      ImGui::IsKeyPressed(ImGuiKey_GamepadR1, false)) {
++    if (open_) {
++      Close(presenter);
++    } else {
++      Open(presenter);
++    }
++  }
++  if (open_ && (other_menu_open || !presenter)) {
++    Close(presenter);
++  }
++  if (!open_) {
++    return false;
++  }
++
++  // --- Commandes ---
++  if (ImGui::IsKeyPressed(ImGuiKey_GamepadDpadUp, true)) {
++    menu_.Move(-1);
++  }
++  if (ImGui::IsKeyPressed(ImGuiKey_GamepadDpadDown, true)) {
++    menu_.Move(1);
++  }
++  bool changed = false;
++  if (ImGui::IsKeyPressed(ImGuiKey_GamepadDpadLeft, true)) {
++    changed |= menu_.Adjust(values_, -1);
++  }
++  if (ImGui::IsKeyPressed(ImGuiKey_GamepadDpadRight, true)) {
++    changed |= menu_.Adjust(values_, 1);
++  }
++  if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceDown, false)) {
++    bool toggled = false;
++    if (menu_.Activate(values_, toggled)) {
++      ++reset_counter_;
++      changed = true;
++    }
++    changed |= toggled;
++  }
++  if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceUp, false)) {
++    ++reset_counter_;  // Y : oublier l'historique
++    changed = true;
++  }
++  if (ImGui::IsKeyPressed(ImGuiKey_F12, false)) {
++    // X (transmis comme F12 par l'application UWP) : diagnostic
++    values_.debug_view = values_.debug_view ? 0 : 1;
++    changed = true;
++  }
++  if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false)) {
++    Close(presenter);  // B : fermer
++    return false;
++  }
++  const bool comparing = ImGui::IsKeyDown(ImGuiKey_GamepadL2);
++  if (changed || comparing != comparing_) {
++    comparing_ = comparing;
++    dirty_ = true;
++    Apply(presenter, comparing_);
++  }
++
++  // --- Affichage : petit panneau, le jeu reste visible et net ---
++  const ImGuiViewport* viewport = ImGui::GetMainViewport();
++  ImGui::SetNextWindowPos(
++      ImVec2(viewport->Pos.x + viewport->Size.x * 0.03f,
++             viewport->Pos.y + viewport->Size.y * 0.05f),
++      ImGuiCond_Always);
++  ImGui::SetNextWindowBgAlpha(0.72f);
++  const ImGuiWindowFlags flags =
++      ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
++      ImGuiWindowFlags_NoMove | ImGuiWindowFlags_AlwaysAutoResize |
++      ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav |
++      ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoInputs;
++  if (ImGui::Begin("##usr_overlay", nullptr, flags)) {
++    const ImVec4 accent(0.35f, 0.85f, 1.0f, 1.0f);
++    const ImVec4 normal(0.92f, 0.92f, 0.92f, 1.0f);
++    const ImVec4 selected(1.0f, 0.85f, 0.25f, 1.0f);
++    const ImVec4 disabled(0.5f, 0.5f, 0.5f, 1.0f);
++    ImGui::TextColored(accent, "USR - réglages en direct");
++    ImGui::Separator();
++    const float value_x = ImGui::GetFontSize() * 11.0f;
++    for (int i = 0; i < int(Row::kCount); ++i) {
++      const Row row = Row(i);
++      const bool is_selected = i == menu_.selected;
++      const ImVec4& color = !RowEnabled(values_, row)
++                                ? disabled
++                                : (is_selected ? selected : normal);
++      ImGui::TextColored(color, "%s %s", is_selected ? ">" : " ",
++                         RowLabel(row));
++      ImGui::SameLine(value_x);
++      ImGui::TextColored(color, "%s", RowValue(values_, row).c_str());
++    }
++    ImGui::Separator();
++    if (comparing_) {
++      ImGui::TextColored(selected, "Comparaison : %s (relâcher LT)",
++                         values_.method == Method::kUsr ? "FSR 1" : "USR");
++    }
++    uint32_t out_w = 0, out_h = 0;
++    presenter->GetUsrOutputSize(out_w, out_h);
++    if (values_.method == Method::kUsr && out_w && out_h) {
++      ImGui::TextColored(disabled, "Sortie USR : %u x %u", out_w, out_h);
++    }
++    ImGui::TextColored(disabled, "Croix : choisir, gauche / droite : régler");
++    ImGui::TextColored(disabled, "A : valider   Y : oublier l'historique");
++    ImGui::TextColored(disabled, "X : diagnostic   LT maintenue : comparer");
++    ImGui::TextColored(disabled, "B ou Vue + RB : fermer");
++  }
++  ImGui::End();
++  return true;
++}
++
++}  // namespace usr_menu
++}  // namespace app
++}  // namespace xe
+diff --git a/src/xenia/app/usr_menu.h b/src/xenia/app/usr_menu.h
+new file mode 100644
+index 0000000..718af78
+--- /dev/null
++++ b/src/xenia/app/usr_menu.h
+@@ -0,0 +1,66 @@
++/**
++ ******************************************************************************
++ * Xenia : Xbox 360 Emulator Research Project                                 *
++ ******************************************************************************
++ * USR (Usine Super Resolution) : reglages en direct a la manette.            *
++ * Released under the BSD license - see LICENSE in the root for more details. *
++ ******************************************************************************
++ */
++
++#ifndef XENIA_APP_USR_MENU_H_
++#define XENIA_APP_USR_MENU_H_
++
++#include <cstdint>
++
++#include "xenia/app/usr_menu_model.h"
++#include "xenia/ui/presenter.h"
++
++struct ImGuiIO;
++
++namespace xe {
++namespace app {
++namespace usr_menu {
++
++// Configuration du presentateur <-> valeurs du menu.
++Values FromConfig(const ui::Presenter::GuestOutputPaintConfig& config);
++void ToConfig(const Values& values, uint32_t reset_counter,
++              ui::Presenter::GuestOutputPaintConfig& config);
++
++// Variables de configuration usr_* -> reglages USR de la configuration (la
++// methode vient de postprocess_scaling_and_sharpening).
++void ApplyCvars(ui::Presenter::GuestOutputPaintConfig& config);
++// Valeurs -> variables de configuration, enregistrees dans le fichier.
++void SaveCvars(const Values& values);
++
++// Reglages avec les widgets ImGui classiques (fenetre d'affichage, PC).
++void DrawImGuiSettings(ui::Presenter::GuestOutputPaintConfig& config);
++
++// Surcouche en direct : le jeu continue et reste visible, la manette regle
++// USR. Vue + RB ouvre / ferme ; entrees du jeu bloquees tant qu'elle est
++// ouverte.
++class Overlay {
++ public:
++  // A appeler a chaque image de l'interface. other_menu_open : un autre menu
++  // (pause) a la main, la surcouche se ferme. Renvoie vrai si elle est
++  // ouverte.
++  bool Draw(ImGuiIO& io, ui::Presenter* presenter, bool other_menu_open);
++  void Open(ui::Presenter* presenter);
++  void Close(ui::Presenter* presenter);
++  bool is_open() const { return open_; }
++
++ private:
++  void Apply(ui::Presenter* presenter, bool comparing);
++
++  bool open_ = false;
++  bool comparing_ = false;
++  bool dirty_ = false;
++  Menu menu_;
++  Values values_;
++  uint32_t reset_counter_ = 0;
++};
++
++}  // namespace usr_menu
++}  // namespace app
++}  // namespace xe
++
++#endif  // XENIA_APP_USR_MENU_H_
+diff --git a/src/xenia/app/usr_menu_model.h b/src/xenia/app/usr_menu_model.h
+new file mode 100644
+index 0000000..17ee8d8
+--- /dev/null
++++ b/src/xenia/app/usr_menu_model.h
+@@ -0,0 +1,234 @@
++/**
++ ******************************************************************************
++ * Xenia : Xbox 360 Emulator Research Project                                 *
++ ******************************************************************************
++ * USR (Usine Super Resolution) : reglages en direct a la manette.            *
++ * Released under the BSD license - see LICENSE in the root for more details. *
++ ******************************************************************************
++ */
++
++#ifndef XENIA_APP_USR_MENU_MODEL_H_
++#define XENIA_APP_USR_MENU_MODEL_H_
++
++// Modele du menu USR : lignes, valeurs, bornes, textes. Sans dependance a
++// Xenia ni a ImGui, teste a part (usr_menu_test.cc). La colle avec Xenia
++// (variables usr_*, configuration du presentateur, surcouche ImGui) est dans
++// usr_menu.h / usr_menu.cc.
++
++#include <cstdint>
++#include <cstdio>
++#include <string>
++
++namespace xe {
++namespace app {
++namespace usr_menu {
++
++enum class Method : int { kUsr, kFsr, kCas, kBilinear, kCount };
++
++struct Values {
++  Method method = Method::kUsr;
++  bool jitter = true;     // niveau 2 : jitter injecte dans la scene 3D
++  bool lod_bias = true;   // niveau 2 : textures plus fines
++  bool network = true;    // petit reseau de neurones
++  float network_strength = 1.0f;
++  float history_length = 10.0f;
++  float anti_ghosting = 0.3f;
++  float sharpness = 0.25f;
++  int debug_view = 0;     // 0 image, 1 carte de diagnostic
++  bool operator==(const Values&) const = default;
++};
++
++enum class Row : int {
++  kMethod,
++  kLevel,
++  kLodBias,
++  kNetwork,
++  kStrength,
++  kHistory,
++  kAntiGhosting,
++  kSharpness,
++  kDiagnostic,
++  kReset,
++  kCount
++};
++
++inline float Clampf(float v, float lo, float hi) {
++  return v < lo ? lo : (v > hi ? hi : v);
++}
++
++inline const char* MethodName(Method m) {
++  switch (m) {
++    case Method::kUsr:
++      return "USR";
++    case Method::kFsr:
++      return "FSR 1";
++    case Method::kCas:
++      return "CAS";
++    case Method::kBilinear:
++      return "Bilinéaire";
++    default:
++      return "?";
++  }
++}
++
++inline const char* RowLabel(Row r) {
++  switch (r) {
++    case Row::kMethod:
++      return "Méthode";
++    case Row::kLevel:
++      return "Niveau";
++    case Row::kLodBias:
++      return "Textures fines";
++    case Row::kNetwork:
++      return "IA";
++    case Row::kStrength:
++      return "Force de l'IA";
++    case Row::kHistory:
++      return "Historique";
++    case Row::kAntiGhosting:
++      return "Anti-fantômes";
++    case Row::kSharpness:
++      return "Netteté";
++    case Row::kDiagnostic:
++      return "Diagnostic";
++    case Row::kReset:
++      return "Oublier l'historique";
++    default:
++      return "?";
++  }
++}
++
++// Une ligne est-elle reglable avec les valeurs actuelles ? (Les reglages de
++// USR n'ont pas d'effet avec une autre methode, etc.)
++inline bool RowEnabled(const Values& v, Row r) {
++  const bool usr = v.method == Method::kUsr;
++  switch (r) {
++    case Row::kMethod:
++      return true;
++    case Row::kLodBias:
++      return usr && v.jitter;
++    case Row::kStrength:
++      return usr && v.network;
++    default:
++      return usr;
++  }
++}
++
++inline std::string RowValue(const Values& v, Row r) {
++  char buf[64];
++  switch (r) {
++    case Row::kMethod:
++      return MethodName(v.method);
++    case Row::kLevel:
++      return v.jitter ? "2 (jitter injecté)" : "1 (image telle quelle)";
++    case Row::kLodBias:
++      return v.lod_bias ? "oui" : "non";
++    case Row::kNetwork:
++      return v.network ? "oui" : "non (règles de base)";
++    case Row::kStrength:
++      std::snprintf(buf, sizeof(buf), "%.2f", v.network_strength);
++      return buf;
++    case Row::kHistory:
++      std::snprintf(buf, sizeof(buf), "%.0f images", v.history_length);
++      return buf;
++    case Row::kAntiGhosting:
++      std::snprintf(buf, sizeof(buf), "%.2f", v.anti_ghosting);
++      return buf;
++    case Row::kSharpness:
++      std::snprintf(buf, sizeof(buf), "%.0f %%", v.sharpness * 100.0f);
++      return buf;
++    case Row::kDiagnostic:
++      return v.debug_view ? "carte (R réactivité, V gain, B confiance)"
++                          : "image";
++    case Row::kReset:
++      return "A";
++    default:
++      return "";
++  }
++}
++
++// Modele du menu : selection et reglage a la croix / au stick.
++struct Menu {
++  int selected = 0;
++
++  void Move(int delta) {
++    const int n = int(Row::kCount);
++    selected = ((selected + delta) % n + n) % n;
++  }
++
++  Row SelectedRow() const { return Row(selected); }
++
++  // Gauche / droite. Renvoie vrai si une valeur a change.
++  bool Adjust(Values& v, int delta) const {
++    const Row r = SelectedRow();
++    if (!RowEnabled(v, r) || !delta) {
++      return false;
++    }
++    const Values before = v;
++    const int step = delta > 0 ? 1 : -1;
++    switch (r) {
++      case Row::kMethod: {
++        const int n = int(Method::kCount);
++        v.method = Method(((int(v.method) + step) % n + n) % n);
++      } break;
++      case Row::kLevel:
++        v.jitter = !v.jitter;
++        break;
++      case Row::kLodBias:
++        v.lod_bias = !v.lod_bias;
++        break;
++      case Row::kNetwork:
++        v.network = !v.network;
++        break;
++      case Row::kStrength:
++        v.network_strength =
++            Clampf(v.network_strength + 0.25f * float(step), 0.0f, 4.0f);
++        break;
++      case Row::kHistory: {
++        // pas de 1 jusqu'a 16, puis de 4
++        const float s = (v.history_length > 16.0f ||
++                         (v.history_length >= 16.0f && step > 0))
++                            ? 4.0f
++                            : 1.0f;
++        v.history_length =
++            Clampf(v.history_length + s * float(step), 1.0f, 64.0f);
++      } break;
++      case Row::kAntiGhosting: {
++        // echelle multiplicative, arrondie au centieme
++        const float f = step > 0 ? 1.25f : 0.8f;
++        const float x = Clampf(v.anti_ghosting * f, 0.05f, 4.0f);
++        v.anti_ghosting = float(int(x * 100.0f + 0.5f)) / 100.0f;
++      } break;
++      case Row::kSharpness:
++        v.sharpness = Clampf(v.sharpness + 0.05f * float(step), 0.0f, 1.0f);
++        break;
++      case Row::kDiagnostic:
++        v.debug_view = v.debug_view ? 0 : 1;
++        break;
++      default:
++        break;
++    }
++    return !(before == v);
++  }
++
++  // Bouton A. Renvoie vrai si l'historique doit etre oublie.
++  bool Activate(Values& v, bool& changed) const {
++    changed = false;
++    const Row r = SelectedRow();
++    if (r == Row::kReset) {
++      return RowEnabled(v, r);
++    }
++    // A sur une ligne a deux etats = la basculer.
++    if (r == Row::kLevel || r == Row::kLodBias || r == Row::kNetwork ||
++        r == Row::kDiagnostic) {
++      changed = Adjust(v, 1);
++    }
++    return false;
++  }
++};
++
++}  // namespace usr_menu
++}  // namespace app
++}  // namespace xe
++
++#endif  // XENIA_APP_USR_MENU_MODEL_H_

@@ -149,3 +149,17 @@ valeurs par défaut sont celles avec lesquelles le réseau a été entraîné.
 | Scintillement des détails fins | suite de jitter qui recommence trop tôt (`frameIndex` remis à zéro) |
 | Halos sur les bords d'objets | profondeur mal linéarisée (`reversedZ` inversé) |
 | Tout noir / erreur de périphérique | états des ressources (voir tableau ci-dessus) ou UAV sRGB |
+
+## Sans vecteurs de mouvement : USR Universel
+
+Si tu n'as que l'image finale, sans profondeur ni vecteurs de mouvement
+(émulateur, capture, lecteur vidéo), utilise `usr::UniversalContext` :
+
+- il estime lui-même le mouvement ;
+- il prend l'image telle qu'elle est affichée (8 bits, déjà compressée) ;
+- le jitter est optionnel. Sans jitter, il vaut un bon agrandissement
+  spatial. Avec un jitter que tu injectes toi-même, il fait de la vraie
+  super-résolution.
+
+API, conventions, mesures et limites : [UNIVERSEL.md](UNIVERSEL.md).
+Exemple complet d'intégration : Xenia ([XENIA.md](XENIA.md)).

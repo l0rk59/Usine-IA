@@ -1,0 +1,88 @@
+From 99de1571b0dd24a4cde8a50dad16c35b25e44be0 Mon Sep 17 00:00:00 2001
+From: Usine-IA <usr@usine-ia.local>
+Date: Mon, 28 Sep 2026 17:36:40 +0000
+Subject: [PATCH 1/4] USR 1/4 : bibliotheque Usine Super Resolution
+ (third_party/usr)
+
+Bibliotheque statique compilee comme les autres dependances tierces (sans
+/WX) ; shaders compute Shader Model 6.0 compiles par le dxc du Windows SDK.
+Liee a xenia-ui-d3d12 et a l'application UWP. Les sources sont copiees dans
+third_party/usr par appliquer.ps1 / appliquer.sh (depot Usine-IA).
+---
+ src/xenia/ui/d3d12/CMakeLists.txt         | 3 ++-
+ third_party/CMakeLists.txt                | 7 +++++++
+ xenia-canary-uwp/CMakeLists.txt           | 1 +
+ xenia-canary-uwp/xenia-canary-uwp.vcxproj | 5 ++++-
+ 4 files changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/src/xenia/ui/d3d12/CMakeLists.txt b/src/xenia/ui/d3d12/CMakeLists.txt
+index 74f4785..099d5dd 100644
+--- a/src/xenia/ui/d3d12/CMakeLists.txt
++++ b/src/xenia/ui/d3d12/CMakeLists.txt
+@@ -1,7 +1,8 @@
+ add_library(xenia-ui-d3d12 STATIC)
+ xe_platform_sources(xenia-ui-d3d12 ${CMAKE_CURRENT_SOURCE_DIR})
+ xe_shader_rules_dxbc(xenia-ui-d3d12 ${CMAKE_CURRENT_SOURCE_DIR}/../shaders)
+-target_link_libraries(xenia-ui-d3d12 PUBLIC xenia-base xenia-ui)
++# usr : USR (Usine Super Resolution), third_party/usr
++target_link_libraries(xenia-ui-d3d12 PUBLIC xenia-base xenia-ui usr)
+ xe_target_defaults(xenia-ui-d3d12)
+ 
+ if(XENIA_BUILD_MISC)
+diff --git a/third_party/CMakeLists.txt b/third_party/CMakeLists.txt
+index fcdca8b..49e0fa5 100644
+--- a/third_party/CMakeLists.txt
++++ b/third_party/CMakeLists.txt
+@@ -826,3 +826,10 @@ if(WIN32)
+ endif()
+ target_link_libraries(libavformat PRIVATE libavutil libavcodec)
+ ffmpeg_common(libavformat)
++
++# ==============================================================================
++# usr (Usine Super Resolution : upscaler temporel, mode Universel)
++# ==============================================================================
++if(WIN32)
++  add_subdirectory(usr)
++endif()
+diff --git a/xenia-canary-uwp/CMakeLists.txt b/xenia-canary-uwp/CMakeLists.txt
+index 7fba0c0..002cd81 100644
+--- a/xenia-canary-uwp/CMakeLists.txt
++++ b/xenia-canary-uwp/CMakeLists.txt
+@@ -48,6 +48,7 @@ if(WIN32 AND CMAKE_GENERATOR MATCHES "Visual Studio")
+     mspack
+     pugixml
+     snappy
++    usr
+     xxhash
+     zarchive
+     zlib-ng
+diff --git a/xenia-canary-uwp/xenia-canary-uwp.vcxproj b/xenia-canary-uwp/xenia-canary-uwp.vcxproj
+index ca12d33..48d4bf9 100644
+--- a/xenia-canary-uwp/xenia-canary-uwp.vcxproj
++++ b/xenia-canary-uwp/xenia-canary-uwp.vcxproj
+@@ -121,7 +121,7 @@
+            layout; add_dependencies() in ../xenia-canary-uwp/CMakeLists.txt
+            orders these to build first. -->
+       <AdditionalLibraryDirectories>..\build\obj\Windows\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <AdditionalDependencies>xenia-apu.lib;xenia-apu-nop.lib;xenia-apu-xaudio2.lib;xenia-base.lib;xenia-core.lib;xenia-cpu.lib;xenia-cpu-backend-x64.lib;xenia-debug-ui.lib;xenia-gpu.lib;xenia-gpu-d3d12.lib;xenia-gpu-null.lib;xenia-hid.lib;xenia-hid-nop.lib;xenia-hid-portal.lib;xenia-hid-xinput.lib;xenia-kernel.lib;xenia-patcher.lib;xenia-ui.lib;xenia-ui-d3d12.lib;xenia-vfs.lib;aes_128.lib;capstone.lib;discord-rpc.lib;dxbc.lib;fmt.lib;glslang-spirv.lib;imgui.lib;libavcodec.lib;libavformat.lib;libavutil.lib;libusb.lib;mspack.lib;pugixml.lib;snappy.lib;xxhash.lib;zarchive.lib;zlib-ng.lib;zstd.lib;dwmapi.lib;dxgi.lib;dxguid.lib;shlwapi.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
++      <AdditionalDependencies>xenia-apu.lib;xenia-apu-nop.lib;xenia-apu-xaudio2.lib;xenia-base.lib;xenia-core.lib;xenia-cpu.lib;xenia-cpu-backend-x64.lib;xenia-debug-ui.lib;xenia-gpu.lib;xenia-gpu-d3d12.lib;xenia-gpu-null.lib;xenia-hid.lib;xenia-hid-nop.lib;xenia-hid-portal.lib;xenia-hid-xinput.lib;xenia-kernel.lib;xenia-patcher.lib;xenia-ui.lib;xenia-ui-d3d12.lib;xenia-vfs.lib;aes_128.lib;capstone.lib;discord-rpc.lib;dxbc.lib;fmt.lib;glslang-spirv.lib;imgui.lib;libavcodec.lib;libavformat.lib;libavutil.lib;libusb.lib;mspack.lib;pugixml.lib;snappy.lib;usr.lib;xxhash.lib;zarchive.lib;zlib-ng.lib;zstd.lib;dwmapi.lib;dxgi.lib;dxguid.lib;shlwapi.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+     </Link>
+   </ItemDefinitionGroup>
+   <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+@@ -151,6 +151,8 @@
+   </ItemDefinitionGroup>
+   <ItemGroup>
+     <ClInclude Include="..\src\xenia\app\emulator_window.h" />
++    <ClInclude Include="..\src\xenia\app\usr_menu.h" />
++    <ClInclude Include="..\src\xenia\app\usr_menu_model.h" />
+     <ClInclude Include="pch.h" />
+     <ClInclude Include="surface_uwp.h" />
+     <ClInclude Include="UWPUtil.h" />
+@@ -191,6 +193,7 @@
+     <ClCompile Include="..\src\xenia\app\content_list_dialog.cc" />
+     <ClCompile Include="..\src\xenia\app\emulator_window.cc" />
+     <ClCompile Include="..\src\xenia\app\profile_dialogs.cc" />
++    <ClCompile Include="..\src\xenia\app\usr_menu.cc" />
+     <ClCompile Include="..\src\xenia\app\xenia_main.cc" />
+     <ClCompile Include="App.cpp" />
+     <ClCompile Include="pch.cpp">

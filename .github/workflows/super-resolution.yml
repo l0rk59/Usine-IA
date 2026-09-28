@@ -2,9 +2,11 @@
 # ses propres dependances (NumPy, slangpy). Cette integration continue
 # verifie la reference Python, la compilation des shaders par DXC, leur
 # parite sur un GPU logiciel (Mesa llvmpipe via Vulkan), la bibliotheque
-# C++ et l'application USR Labo : sous Linux (en-tetes DirectX ouverts,
-# puis l'application Windows executee sous Wine + vkd3d-proton) et sous
-# Windows (MSVC, version PC et version UWP pour la Xbox).
+# C++ (USR et USR Universel) et l'application USR Labo : sous Linux
+# (en-tetes DirectX ouverts, puis les programmes Windows executes sous
+# Wine + vkd3d-proton) et sous Windows (MSVC, version PC et version UWP
+# pour la Xbox). Et Xenia + USR : correctifs appliques sur un clone neuf de
+# l'emulateur, puis compiles avec MSVC (version PC et version UWP).
 name: super-resolution
 
 on:
@@ -126,14 +128,26 @@ jobs:
           echo "VKD3D_PROTON=/tmp/vkd3d-build" >> "$GITHUB_ENV"
 
       - name: Compiler usr_labo.exe et l'executer (Wine + vkd3d-proton)
+        # a gauche USR (vecteurs du jeu), a droite USR Universel
         run: |
           export PATH=/usr/lib/wine:$PATH
           labo/tests/capture_wine.sh "$PWD/captures-wine" 24
 
-      - name: Meme image que la reference Python
+      - name: Meme image que la reference Python (USR et USR Universel)
         env:
           USR_LABO_CAPTURES: ${{ github.workspace }}/super-resolution/captures-wine
         run: python -m unittest tests.test_labo_bout_en_bout -v
+
+      - name: USR Universel seul (bibliotheque C++ sous Wine)
+        run: |
+          export PATH=/usr/lib/wine:$PATH
+          python -m usr_ref universel-entree "$RUNNER_TEMP/u-entree.bin" --images 16
+          tests/wine/universel_wine.sh "$RUNNER_TEMP/u-entree.bin" "$RUNNER_TEMP/u-sortie.bin"
+
+      - name: USR Universel, meme image que la reference Python
+        env:
+          USR_UNIVERSEL_SORTIE: ${{ runner.temp }}/u-sortie.bin
+        run: python -m unittest tests.test_universel_bout_en_bout -v
 
       - uses: actions/upload-artifact@v4
         with:
@@ -167,3 +181,114 @@ jobs:
           cmake -B build-uwp -A x64 -DCMAKE_SYSTEM_NAME=WindowsStore `
                 -DCMAKE_SYSTEM_VERSION=10.0.22621.0 -DUSR_DXC="$env:USR_DXC"
           cmake --build build-uwp --config Release -- /p:AppxPackageSigningEnabled=false
+
+  # Xenia + USR, sans Windows : les correctifs s'appliquent sur un clone neuf,
+  # le menu de reglages passe ses tests, la cible third_party/usr se construit.
+  xenia-linux:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: super-resolution
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: microsoft/DirectX-Headers
+          path: DirectX-Headers
+
+      - name: DXC
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download -R microsoft/DirectXShaderCompiler \
+            --pattern 'linux_dxc_*.x86_64.tar.gz' -D /tmp/dxc
+          mkdir -p /tmp/dxc/x
+          tar -xzf /tmp/dxc/linux_dxc_*.tar.gz -C /tmp/dxc/x
+          DXC=$(find /tmp/dxc/x -type f -name dxc | head -n 1)
+          chmod +x "$DXC"
+          echo "DXC=$DXC" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$(dirname "$(find /tmp/dxc/x -name 'libdxcompiler.so*' | head -n 1)")" >> "$GITHUB_ENV"
+
+      - name: Correctifs, menu, bibliotheque
+        env:
+          DIRECTX_HEADERS: ${{ github.workspace }}/DirectX-Headers
+        run: xenia/tests/verifier_linux.sh "$RUNNER_TEMP/xenia-usr"
+
+  # Xenia + USR compile avec MSVC. La version PC (xenia-app) contient tout le
+  # code C++ des correctifs ; Xenia y traite les avertissements en erreurs.
+  xenia-windows:
+    runs-on: windows-2022
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SDK Vulkan (demande par la construction de Xenia)
+        run: |
+          Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe" -OutFile "$env:RUNNER_TEMP\vulkan-sdk.exe"
+          Start-Process -FilePath "$env:RUNNER_TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses", "--default-answer", "--confirm-command", "install" -NoNewWindow -Wait
+          $sdk = "C:\VulkanSDK\$(Get-ChildItem -Path 'C:\VulkanSDK' -Directory | Select-Object -First 1 -ExpandProperty Name)"
+          "VULKAN_SDK=$sdk" >> $env:GITHUB_ENV
+          "$sdk\Bin" >> $env:GITHUB_PATH
+
+      - name: Xenia + USR (clone, sous-modules, correctifs)
+        run: powershell -ExecutionPolicy Bypass -File super-resolution\xenia\appliquer.ps1 "$env:RUNNER_TEMP\xenia-usr"
+
+      - name: Compiler xenia-app (MSVC)
+        working-directory: ${{ runner.temp }}/xenia-usr
+        run: |
+          python xenia-build.py build --config=Release --target=xenia-app
+          if ($LASTEXITCODE -ne 0) { throw "echec de la compilation de Xenia" }
+
+      - name: USR est bien dans l'executable
+        working-directory: ${{ runner.temp }}/xenia-usr
+        run: |
+          $exe = "build\bin\Windows\Release\xenia_canary.exe"
+          if (-not (Test-Path $exe)) { throw "xenia_canary.exe absent" }
+          if (-not (Select-String -Path $exe -SimpleMatch -Quiet "USR: echec de creation du contexte")) {
+            throw "le code de USR est absent de l'executable"
+          }
+
+  # L'application UWP pour la Xbox : bibliotheques de Xenia par la solution
+  # Visual Studio, puis le projet UWP lui-meme (sans signature du paquet).
+  xenia-uwp:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SDK Vulkan (demande par la construction de Xenia)
+        run: |
+          Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe" -OutFile "$env:RUNNER_TEMP\vulkan-sdk.exe"
+          Start-Process -FilePath "$env:RUNNER_TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses", "--default-answer", "--confirm-command", "install" -NoNewWindow -Wait
+          $sdk = "C:\VulkanSDK\$(Get-ChildItem -Path 'C:\VulkanSDK' -Directory | Select-Object -First 1 -ExpandProperty Name)"
+          "VULKAN_SDK=$sdk" >> $env:GITHUB_ENV
+          "$sdk\Bin" >> $env:GITHUB_PATH
+
+      - name: Xenia + USR (clone, sous-modules, correctifs)
+        run: powershell -ExecutionPolicy Bypass -File super-resolution\xenia\appliquer.ps1 "$env:RUNNER_TEMP\xenia-usr"
+
+      - name: Bibliotheques (solution Visual Studio 2022)
+        working-directory: ${{ runner.temp }}/xenia-usr
+        run: |
+          cmake --preset vs
+          if ($LASTEXITCODE -ne 0) { throw "echec de la configuration" }
+          # les dependances declarees du projet UWP (dont usr)
+          $txt = Get-Content -Raw xenia-canary-uwp\CMakeLists.txt
+          $deps = [regex]::Match($txt, 'add_dependencies\(xenia-canary-uwp([^)]*)\)').Groups[1].Value -split '\s+' | Where-Object { $_ }
+          if (-not ($deps -contains "usr")) { throw "usr absent des dependances UWP" }
+          cmake --build --preset vs-release --target @deps
+          if ($LASTEXITCODE -ne 0) { throw "echec de la compilation des bibliotheques" }
+
+      - name: Application UWP (Xbox)
+        working-directory: ${{ runner.temp }}/xenia-usr
+        run: |
+          $msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe" | Select-Object -First 1
+          & $msbuild xenia-canary-uwp\xenia-canary-uwp.vcxproj /m /p:Configuration=Release /p:Platform=x64 /p:AppxPackageSigningEnabled=false
+          if ($LASTEXITCODE -ne 0) { throw "echec de la compilation de l'application UWP" }

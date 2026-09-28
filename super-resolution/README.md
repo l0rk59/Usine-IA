@@ -9,6 +9,16 @@ mouvement et reconstruit l'image en haute résolution (4K). Un petit réseau
 de neurones décide, pour chaque pixel, ce qu'il faut garder du passé et ce
 qu'il faut prendre de l'image courante.
 
+Deux modes :
+
+- **USR** (les vecteurs de mouvement viennent du jeu) ;
+- **USR Universel**, qui n'a besoin que de l'image : il estime lui-même
+  le mouvement.
+
+C'est ce second mode qui tourne dans **notre version de l'émulateur
+Xenia** : les jeux Xbox 360 sur ta Xbox Series X, réglables en direct à
+la manette.
+
 ---
 
 ## D'abord, trois vérités sur ta console
@@ -26,14 +36,17 @@ studios, sur RTX 50. D'où ce projet : **le principe de DLSS 2 à 4
 (super-résolution par IA), en code ouvert, écrit pour RDNA 2**. (Et un
 autre nom, « DLSS » étant une marque de NVIDIA.)
 
-**3. On ne peut pas l'ajouter aux jeux du commerce.** La Xbox est une
-plateforme fermée : les jeux sont signés et chiffrés, rien ne peut s'y
+**3. On ne peut pas l'ajouter aux jeux Xbox du commerce.** La Xbox est
+une plateforme fermée : les jeux sont signés et chiffrés, rien ne peut s'y
 injecter sans pirater la console. USR s'intègre dans **tes propres jeux et
-applications** DirectX 12 :
+applications** DirectX 12. Il s'intègre aussi, grâce à l'émulation, dans
+les **jeux Xbox 360 que Xenia fait tourner** : là, c'est l'émulateur qui
+dessine l'image, et il est à nous.
 
 | Où | Pour qui | Comment |
 |---|---|---|
 | Xbox en **mode Développeur** | tout le monde (compte gratuit) | application UWP DirectX 12 — voir **USR Labo** |
+| Xbox en **mode Développeur** | jeux **Xbox 360** émulés | notre version de **Xenia**, avec USR Universel — voir [docs/XENIA.md](docs/XENIA.md) |
 | Xbox via le **GDK** | studios inscrits (ID@Xbox) | jeu publié, shaders compilés par le dxc du GDK |
 | **PC** Direct3D 12 | tout le monde | n'importe quel GPU AMD, NVIDIA, Intel |
 
@@ -85,6 +98,45 @@ Installation pas à pas et liste des réglages : [docs/LABO.md](docs/LABO.md).
 
 ---
 
+## USR dans Xenia : les jeux Xbox 360 émulés
+
+Notre propre version de **Xenia** (l'émulateur Xbox 360, version UWP pour
+la Xbox en mode Développeur) agrandit l'image des jeux avec **USR
+Universel** :
+
+- **Vue + Menu** : menu pause, avec une section USR (l'activer, ouvrir
+  les réglages) ;
+- **Vue + RB** : réglages **en direct** (niveau, IA, force de l'IA,
+  historique, anti-fantômes, netteté, carte de diagnostic). Le jeu
+  continue et ne reçoit plus la manette tant que le panneau est ouvert ;
+- **LT maintenue** : comparaison instantanée avec FSR 1 ;
+- **niveau 2** : Xenia décale lui-même la scène 3D d'une fraction de
+  pixel à chaque image, pour une vraie super-résolution.
+
+Livré en 4 correctifs appliqués par un script sur une version précise de
+xenia-canary-uwp. Construction avec Visual Studio, installation sur la
+console, commandes et réglages : [docs/XENIA.md](docs/XENIA.md).
+
+**USR Universel** : mesuré sur une scène « jeu émulé » (HUD, écrans
+animés, textures filtrées) jamais vue à l'entraînement, rapport 3 (720p →
+4K) :
+
+| | Spatial (type FSR 1) | USR Universel niveau 1 | **niveau 2** |
+|---|---|---|---|
+| caméra mobile | 26,44 dB / 0,836 | 26,59 dB / 0,820 | **27,08 dB / 0,864** |
+| caméra fixe | 26,62 dB / 0,836 | 26,66 dB / 0,815 | **28,41 dB / 0,911** |
+
+Honnêtement :
+
+- le **niveau 1** (l'image seule) égale un bon agrandissement spatial,
+  sans le dépasser ;
+- le **niveau 2** apporte le vrai gain ;
+- en mouvement, il scintille un peu plus que FSR 1.
+
+Détails, protocole et limites : [docs/UNIVERSEL.md](docs/UNIVERSEL.md).
+
+---
+
 ## Essayer en 2 minutes (sans Xbox, sans carte graphique)
 
 ```bash
@@ -103,6 +155,7 @@ Pour aller plus loin :
 python -m usr_ref entrainer       # ré-entraîne le réseau (quelques minutes)
 python -m usr_ref parite          # exécute les VRAIS shaders et compare
                                   # (pip install slangpy + pilote Vulkan)
+python -m usr_ref universel-banc --rapide   # USR Universel (~7 min)
 ```
 
 ## L'intégrer dans un jeu (C++ / Direct3D 12)
@@ -129,7 +182,9 @@ usr::Dispatch(ctx, dispatchDesc);   // couleur + profondeur + mouvement -> 4K
 ```
 
 Toutes les conventions (jitter, vecteurs de mouvement, profondeur, états
-des ressources) : [docs/INTEGRATION.md](docs/INTEGRATION.md).
+des ressources) : [docs/INTEGRATION.md](docs/INTEGRATION.md). Sans
+vecteurs de mouvement (émulateur, capture) : `usr::UniversalContext`, voir
+[docs/UNIVERSEL.md](docs/UNIVERSEL.md).
 
 ## Comment ça marche
 
@@ -165,12 +220,19 @@ Vérifié automatiquement (voir `tests/` et `.github/workflows/super-resolution.
   Windows (MinGW), exécutée sur Direct3D 12 via Wine + vkd3d-proton sans
   carte graphique, sa sortie est identique à la référence Python sur 60
   images (écart > 60 dB) — tout le code C++ Direct3D 12 de la
-  bibliothèque est donc exercé.
+  bibliothèque est donc exercé ;
+- **USR Universel** : même chaîne de vérification (référence, parité
+  des shaders sur GPU logiciel, bibliothèque C++ sous Wine identique à la
+  référence), et sa vue dans l'application Labo ;
+- **Xenia + USR** : les 4 correctifs s'appliquent sur un clone neuf de
+  l'émulateur, et le menu de réglages passe ses tests.
 
 **Pas encore vérifié** — il faut une machine Windows ou une Xbox :
 
-- la compilation sous Windows avec MSVC, et celle de la version **UWP**
-  du Labo (prévues dans l'intégration continue, pas encore exécutées) ;
+- la compilation sous Windows avec MSVC : celle de la version **UWP**
+  du Labo, et celle de **Xenia** avec les correctifs. Elles sont prévues
+  dans l'intégration continue, mais jamais exécutées : les Actions GitHub
+  du dépôt ne démarrent actuellement aucune machine (réglage du compte) ;
 - l'exécution sur le vrai Direct3D 12 de Windows (seule la traduction
   vkd3d-proton a été utilisée) ;
 - la compilation avec le GDK console et le fonctionnement sur Xbox ;
@@ -181,20 +243,28 @@ Vérifié automatiquement (voir `tests/` et `.github/workflows/super-resolution.
 
 ```
 super-resolution/
-├── shaders/          les 3 passes HLSL (le code qui tourne sur la Xbox)
+├── shaders/          les passes HLSL : USR (usr_*) et USR Universel
+│                     (usr_u_*), le code qui tourne sur la Xbox
 ├── include/usr/      API C++ publique
 ├── src/              implémentation Direct3D 12 + poids par défaut
 ├── labo/             USR Labo : appli UWP (Xbox) et Win32 (PC), shaders
 │                     de la scène de test, menu, police, icônes
+├── xenia/            Xenia + USR : 4 correctifs, script d'application,
+│                     cible CMake de la bibliothèque, tests du menu
 ├── usr_ref/          référence Python : algorithme, scène, entraînement
-├── weights/          poids des 3 modèles (.json lisible, .bin pour le GPU)
+├── weights/          poids des 3 modèles et du réseau universel (.json
+│                     lisible, .bin pour le GPU)
 ├── tests/            tests unitaires, cohérence, parité GPU, bout en bout
-└── docs/             Xbox Series X, Labo, intégration, algorithme
+└── docs/             Xbox Series X, Labo, Xenia, USR Universel,
+                      intégration, algorithme
 ```
 
 ## Feuille de route
 
 - [x] Application de démonstration réglable à la manette (USR Labo)
+- [x] USR Universel : sans vecteurs de mouvement (émulateurs, captures)
+- [x] Xenia + USR : jeux Xbox 360, réglages en direct à la manette
+- [ ] Compiler Xenia + USR sous Windows et l'essayer sur la console
 - [ ] Mesures sur Xbox Series X (mode Développeur) et sur PC
 - [ ] Ré-entraînement sur de vraies captures de jeu
 - [ ] Résolution dynamique

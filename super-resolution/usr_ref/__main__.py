@@ -6,6 +6,12 @@
     python -m usr_ref exporter      # regenere src/usr_default_weights.h
     python -m usr_ref parite        # shaders GPU vs reference (slangpy)
     python -m usr_ref labo-actifs   # ressources de l'appli USR Labo
+
+USR Universel (sans vecteurs de mouvement : emulateurs) :
+
+    python -m usr_ref universel-banc        # mesures de docs/UNIVERSEL.md
+    python -m usr_ref universel-entrainer   # re-entraine son reseau
+    python -m usr_ref exporter --universel  # regenere usr_universal_weights.h
 """
 
 import argparse
@@ -20,6 +26,8 @@ from .scene import Scene
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HEADER = os.path.join(ROOT, "src", "usr_default_weights.h")
+UNIVERSAL_HEADER = os.path.join(ROOT, "src", "usr_universal_weights.h")
+UNIVERSAL_WEIGHTS = os.path.join(ROOT, "weights", "usr_universel.json")
 
 
 def _load(path):
@@ -84,7 +92,22 @@ def cmd_entrainer(args):
     evaluate.benchmark(net, frames=40)
 
 
+def _export_universal(net, path):
+    net.to_c_header(UNIVERSAL_HEADER, "Source : %s" % os.path.basename(path),
+                    symbol="kUniversalWeights",
+                    title="Poids par defaut du reseau USR Universel",
+                    command="python -m usr_ref exporter --universel")
+
+
 def cmd_exporter(args):
+    if args.universel:
+        path = args.poids or UNIVERSAL_WEIGHTS
+        net = Network.load(path)
+        net.flat().tofile(os.path.splitext(path)[0] + ".bin")
+        _export_universal(net, path)
+        print("Ecrit : %s et %s" % (os.path.splitext(path)[0] + ".bin",
+                                    UNIVERSAL_HEADER))
+        return
     path = args.poids or default_weights_path()
     net = Network.load(path)
     net.flat().tofile(os.path.splitext(path)[0] + ".bin")
@@ -123,6 +146,37 @@ def cmd_parite(args):
 def cmd_labo_actifs(args):
     from . import labo
     labo.generate_all()
+
+
+def cmd_universel_banc(args):
+    from . import banc_universel
+    net = Network.load(args.poids or UNIVERSAL_WEIGHTS)
+    log = lambda m: print(m, flush=True)
+    if args.rapide:
+        rows = banc_universel.run(net, ratios=(2,),
+                                  scenes=banc_universel.SCENES[:1], log=log)
+    else:
+        rows = banc_universel.run(net, log=log)
+    if args.sortie:
+        banc_universel.save(rows, args.sortie)
+        print("Ecrit : %s" % args.sortie)
+
+
+def cmd_universel_entrainer(args):
+    from . import train_universel
+    cache = args.cache or os.path.join(ROOT, "resultats", "universel-cache")
+    if args.rapide:
+        net, meta = train_universel.train(cache, frames=12, rounds=1,
+                                          steps=300, per_frame=300)
+    else:
+        net, meta = train_universel.train(cache)
+    out = args.sortie or UNIVERSAL_WEIGHTS
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    net.save(out, os.path.splitext(out)[0] + ".bin", meta)
+    print("Ecrit : %s (et .bin)" % out)
+    if os.path.abspath(out) == os.path.abspath(UNIVERSAL_WEIGHTS):
+        _export_universal(net, out)
+        print("Ecrit : %s" % UNIVERSAL_HEADER)
 
 
 def cmd_universel_entree(args):
@@ -169,6 +223,8 @@ def main(argv=None):
 
     x = sub.add_parser("exporter", help="poids JSON -> .bin + en-tete C++")
     x.add_argument("poids", nargs="?")
+    x.add_argument("--universel", action="store_true",
+                   help="reseau de USR Universel (usr_universal_weights.h)")
     x.set_defaults(func=cmd_exporter)
 
     g = sub.add_parser("parite", help="shaders GPU vs reference NumPy")
@@ -185,6 +241,22 @@ def main(argv=None):
                         help="regenere police, scene, modeles et icones "
                              "du Labo (necessite Pillow)")
     la.set_defaults(func=cmd_labo_actifs)
+
+    ub = sub.add_parser("universel-banc",
+                        help="mesures de USR Universel (docs/UNIVERSEL.md)")
+    ub.add_argument("--poids")
+    ub.add_argument("--rapide", action="store_true",
+                    help="scene 101, rapport 2 seulement")
+    ub.add_argument("--sortie", help="fichier JSON des mesures")
+    ub.set_defaults(func=cmd_universel_banc)
+
+    ut = sub.add_parser("universel-entrainer",
+                        help="re-entraine le reseau de USR Universel")
+    ut.add_argument("--rapide", action="store_true",
+                    help="petit entrainement pour essayer")
+    ut.add_argument("--cache", help="dossier des sequences rendues")
+    ut.add_argument("--sortie", help="poids (.json) ; defaut : ceux livres")
+    ut.set_defaults(func=cmd_universel_entrainer)
 
     ue = sub.add_parser("universel-entree",
                         help="sequence d'entree du banc de bout en bout "

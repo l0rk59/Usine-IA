@@ -106,10 +106,11 @@ class Network:
                    doc["b3"])
 
     def to_c_header(self, path, meta="", symbol="kDefaultWeights",
-                    title="Poids par defaut du reseau USR"):
+                    title="Poids par defaut du reseau USR",
+                    command="python -m usr_ref exporter"):
         v = self.flat()
         lines = [
-            "// Genere par `python -m usr_ref exporter` -- ne pas editer.",
+            "// Genere par `%s` -- ne pas editer." % command,
             "// %s (%d parametres). %s" % (title, N_PARAMS, meta),
             "#pragma once",
             "",

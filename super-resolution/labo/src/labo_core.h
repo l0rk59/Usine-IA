@@ -19,6 +19,7 @@ namespace labo {
 enum class View : uint32_t {
     UsrIA,         // USR avec le reseau
     UsrSansIA,     // USR, heuristique seule
+    UsrUniversel,  // USR Universel : sans vecteurs, comme dans un emulateur
     Bilineaire,    // agrandissement naif, sans jitter
     Verite,        // rendu direct a la resolution d'affichage
     EntreeBrute,   // l'image recue par USR, pixels agrandis
@@ -27,6 +28,9 @@ enum class View : uint32_t {
     Confiance,     // diagnostic : memoire accumulee
     Desocclusion,  // diagnostic : zones decouvertes
     Mouvement,     // vecteurs de mouvement du "jeu"
+    UnivReactivite,  // diagnostic universel : image refaite a neuf
+    UnivMemoire,     // diagnostic universel : memoire accumulee
+    UnivFlot,        // diagnostic universel : doute du flot estime
     Count
 };
 
@@ -35,6 +39,10 @@ const char* ViewName(View v);
 uint32_t ComposeMode(View v);
 // La vue a-t-elle besoin de la sortie diagnostic de USR ?
 bool NeedsDebug(View v);
+// La vue a-t-elle besoin de USR Universel (image ou diagnostic) ?
+bool NeedsUniversal(View v);
+// ... et de sa sortie diagnostic ?
+bool NeedsUniversalDebug(View v);
 
 enum class Quality : uint32_t {
     Native,       // 1.0x
@@ -63,6 +71,9 @@ struct Settings {
     float historyLength = 10.0f;    // 1 .. 64 images
     float antiGhosting = 1.25f;     // 0.25 .. 8 ecarts-types
     float kernelWidth = 1.0f;       // 0.25 .. 4
+    // USR Universel : 1 = l'image finale seule (emulateur sans retouche
+    // du jeu), 2 = jitter injecte dans le rendu (grille 2x2 / 3x3)
+    uint32_t universalLevel = 2;
     // Comparaison
     View left = View::UsrIA;
     View right = View::Verite;
@@ -82,6 +93,10 @@ struct Settings {
 };
 
 const char* ModelName(uint32_t model);
+const char* UniversalLevelName(uint32_t level);
+// Anti-fantomes de USR Universel (sortie de boite, defaut 0,3) : meme
+// reglage que celui de USR, rapporte a sa valeur par defaut (1,25).
+float UniversalAntiGhosting(const Settings& s);
 
 float UpscaleRatio(const Settings& s);
 void RenderSize(const Settings& s, uint32_t displayW, uint32_t displayH,
@@ -138,6 +153,7 @@ enum Pass : uint32_t {
     kPassScene,
     kPassUsrIA,
     kPassUsrSansIA,
+    kPassUsrUniversel,
     kPassVerite,
     kPassComparaisons,
     kPassComposition,
@@ -151,6 +167,7 @@ struct Stats {
     uint32_t renderW = 0, renderH = 0;
     uint32_t displayW = 0, displayH = 0;
     uint32_t jitterPhases = 0;
+    uint32_t universalPeriod = 0;   // periode du jitter injecte (niveau 2)
     std::string device;
 };
 

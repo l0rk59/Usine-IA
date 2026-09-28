@@ -2,7 +2,9 @@
 //
 // Chaque image : la scene de test est rendue comme par un jeu (basse
 // resolution, jitter, profondeur, mouvement), passe dans USR (avec et
-// sans IA), et les vues choisies sont composees a l'ecran avec le menu.
+// sans IA) et, si on l'affiche, dans USR Universel (l'image finale seule,
+// comme dans un emulateur) ; les vues choisies sont composees a l'ecran
+// avec le menu.
 // La couche plateforme ne fait que fournir le peripherique, la file de
 // commandes, la manette, et copier Output() dans la chaine d'echange.
 
@@ -40,6 +42,13 @@ struct Capture {
     std::vector<uint16_t> sceneColor;   // RGBA16F, rendu (entree de USR)
     std::vector<float> sceneDepth;      // R32F, rendu
     std::vector<uint16_t> sceneMotion;  // RG16F, rendu (pixels)
+    // USR Universel, si une vue l'affichait pendant cette image
+    bool universal = false;
+    uint32_t universalPeriod = 0;       // periode du jitter injecte
+    bool universalReset = false;
+    float universalJitter[2] = {0, 0};  // jitter injecte (pixels de rendu)
+    std::vector<uint8_t> universalInput;    // RGBA8, rendu (image affichee)
+    std::vector<uint16_t> universalOutput;  // RGBA16F, affichage
 };
 
 class Renderer {

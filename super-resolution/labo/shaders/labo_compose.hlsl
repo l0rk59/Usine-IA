@@ -1,6 +1,7 @@
 // USR Labo -- composition de l'image affichee :
 //   * ecran partage : une vue a gauche de g_SplitX, une autre a droite ;
-//   * vues de diagnostic (alpha, beta, confiance, desocclusion, mouvement) ;
+//   * vues de diagnostic (alpha, beta, confiance, desocclusion, mouvement,
+//     et celles de USR Universel) ;
 //   * loupe (grossissement au plus proche voisin, pour voir les pixels) ;
 //   * texte (menu, mesures) dessine avec une police bitmap.
 // Sortie : image 8 bits deja compressee pour l'ecran, copiee dans la
@@ -15,6 +16,8 @@
 #define LABO_VIEW_CONFIDENCE   3u
 #define LABO_VIEW_DISOCCLUSION 4u
 #define LABO_VIEW_MOTION       5u  // vecteurs de mouvement du jeu
+#define LABO_VIEW_DISPLAY      6u  // texture deja compressee pour l'ecran
+#define LABO_VIEW_CHANNEL      7u  // 7..10 : canal r, g, b ou a de la texture
 
 // Cellule de texte : glyphe (12 bits), couleur (4 bits), drapeaux.
 #define LABO_CELL_GLYPH     0x00000FFFu
@@ -89,11 +92,16 @@ float3 Hsv(float h, float s, float v)
 float3 ViewPixel(uint view, bool left, int2 p)
 {
     p = clamp(p, int2(0, 0), int2(g_OutSize) - 1);
-    if (view == LABO_VIEW_COLOR)
+    if (view == LABO_VIEW_COLOR || view >= LABO_VIEW_DISPLAY)
     {
-        const float3 c = left ? t_Left.Load(int3(p, 0)).rgb
-                              : t_Right.Load(int3(p, 0)).rgb;
-        return LaboDisplay(c);
+        const float4 t = left ? t_Left.Load(int3(p, 0))
+                              : t_Right.Load(int3(p, 0));
+        if (view == LABO_VIEW_COLOR)
+            return LaboDisplay(t.rgb);
+        if (view == LABO_VIEW_DISPLAY)
+            return saturate(t.rgb);
+        const uint ch = view - LABO_VIEW_CHANNEL;
+        return Ramp(ch == 0 ? t.r : ch == 1 ? t.g : ch == 2 ? t.b : t.a);
     }
     if (view == LABO_VIEW_MOTION)
     {

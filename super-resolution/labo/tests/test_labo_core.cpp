@@ -121,7 +121,7 @@ static PadState Pad() { return PadState{}; }
 static void TestMenu()
 {
     Controller c;
-    CHECK(c.pageCount() == 7);
+    CHECK(c.pageCount() == 8);
     CHECK(c.PageTitle(1) == "IA");
     CHECK(c.TakeHistoryReset());   // la premiere image repart de zero
     CHECK(!c.TakeHistoryReset());
@@ -205,6 +205,86 @@ static void TestPresets()
     CHECK(c.settings().historyLength == 10.0f);
 }
 
+static void TestUniversal()
+{
+    // vues : noms, mode de composition, besoins
+    CHECK(std::string(ViewName(View::UsrUniversel)) ==
+          "USR Universel (sans vecteurs)");
+    CHECK(ComposeMode(View::UsrUniversel) == 6);
+    CHECK(ComposeMode(View::UnivReactivite) == 7);
+    CHECK(ComposeMode(View::UnivMemoire) == 9);
+    CHECK(ComposeMode(View::UnivFlot) == 10);
+    CHECK(NeedsUniversal(View::UsrUniversel) && NeedsUniversal(View::UnivFlot));
+    CHECK(!NeedsUniversal(View::UsrIA) && !NeedsUniversal(View::Alpha));
+    CHECK(NeedsUniversalDebug(View::UnivMemoire));
+    CHECK(!NeedsUniversalDebug(View::UsrUniversel));
+    CHECK(!NeedsDebug(View::UnivReactivite));
+    for (uint32_t v = 0; v < static_cast<uint32_t>(View::Count); ++v)
+        CHECK(std::string(ViewName(static_cast<View>(v))) != "?");
+
+    // anti-fantomes : meme reglage, rapporte au defaut de chaque mode
+    Settings s;
+    CHECK(std::fabs(UniversalAntiGhosting(s) - 0.3f) < 1e-6f);
+    s.antiGhosting = 2.5f;
+    CHECK(std::fabs(UniversalAntiGhosting(s) - 0.6f) < 1e-6f);
+
+    // page Universel : le niveau bascule, les comparaisons se posent
+    Controller c;
+    uint32_t page = 0;
+    while (page < c.pageCount() && c.PageTitle(page) != "Universel")
+        ++page;
+    CHECK(page == 3);
+    CHECK(c.ItemLabel(page, 0) == "Niveau");
+    CHECK(c.ItemValue(page, 0) == "2 : jitter injecté");
+    for (uint32_t i = 0; i < page; ++i) {
+        PadState p = Pad();
+        p.rb = true;
+        c.Update(p, 1.0 / 60);
+        c.Update(Pad(), 1.0 / 60);
+    }
+    CHECK(c.page() == page);
+    PadState p = Pad();
+    p.right = true;
+    c.Update(p, 1.0 / 60);
+    c.Update(Pad(), 1.0 / 60);
+    CHECK(c.settings().universalLevel == 1);
+    CHECK(c.ItemValue(page, 0) == "1 : image seule");
+    p = Pad();
+    p.down = true;
+    c.Update(p, 1.0 / 60);
+    c.Update(Pad(), 1.0 / 60);
+    p = Pad();
+    p.a = true;
+    c.Update(p, 1.0 / 60);
+    c.Update(Pad(), 1.0 / 60);
+    CHECK(c.settings().left == View::UsrIA);
+    CHECK(c.settings().right == View::UsrUniversel);
+
+    // le prereglage "Par defaut" garde le niveau choisi (reglage d'affichage)
+    uint32_t defaut = 0, vecteurs = 0;
+    for (uint32_t i = 0; i < Controller::PresetCount(); ++i) {
+        const std::string n = Controller::PresetName(i);
+        if (n == "Par défaut") defaut = i;
+        if (n == "Avec / sans vecteurs") vecteurs = i;
+    }
+    CHECK(vecteurs != 0);
+    c.ApplyPreset(defaut);
+    CHECK(c.settings().universalLevel == 1);
+    c.settings().right = View::Verite;
+    c.ApplyPreset(vecteurs);
+    CHECK(c.settings().right == View::UsrUniversel);
+
+    // mesures : la ligne du mode universel s'affiche
+    TextGrid g;
+    g.Resize(160, 45);
+    Stats st;
+    st.universalPeriod = 4;
+    c.settings().universalLevel = 2;
+    c.BuildOverlay(g, st);
+    CHECK(GridContains(g, "Universel : niveau 2 (4 phases)"));
+    CHECK(GridContains(g, "USR Universel"));
+}
+
 static void TestSceneClock()
 {
     Controller c;
@@ -284,6 +364,7 @@ int main(int argc, char** argv)
     TestSizes();
     TestMenu();
     TestPresets();
+    TestUniversal();
     TestSceneClock();
     TestOverlay();
     std::printf("%d verifications, %d echec(s)\n", g_checks, g_failures);

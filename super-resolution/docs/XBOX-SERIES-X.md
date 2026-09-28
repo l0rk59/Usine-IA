@@ -46,7 +46,7 @@ principe que DLSS** (images basse résolution décalées, vecteurs de
 mouvement, historique, réseau de neurones qui arbitre) écrit pour ce GPU,
 et que l'on intègre dans **ses propres jeux et applications**.
 
-## Trois façons de l'exécuter
+## Quatre façons de l'exécuter
 
 ### 1. Sur la console, en mode Développeur (accessible à tous)
 
@@ -103,6 +103,16 @@ N'importe quel GPU Direct3D 12 (AMD, NVIDIA, Intel). C'est le moyen le
 plus simple de mettre au point l'intégration avant de passer sur console :
 un Radeon RX 6000 est d'ailleurs de la même famille que le GPU de la Series X.
 
+### 4. Dans les jeux Xbox 360 émulés (Xenia, mode Développeur)
+
+L'émulateur **Xenia** existe en version UWP pour la Xbox en mode
+Développeur. Pour un jeu Xbox 360, c'est l'émulateur qui dessine l'image
+sur la console. Notre version de Xenia peut donc l'agrandir avec **USR
+Universel**, le mode qui n'a besoin que de l'image, réglable en jouant
+(Vue + RB). Au **niveau 2**, l'émulateur décale lui-même la scène 3D du
+jeu pour une vraie super-résolution. Construction, installation et
+commandes : [XENIA.md](XENIA.md).
+
 ## Budget GPU estimé (à mesurer sur la console)
 
 Estimation *théorique* en sortie 4K (1080p → 2160p, 8,3 millions de
@@ -119,3 +129,11 @@ rendant 4 fois moins de pixels. Deux leviers si c'est trop : compiler avec
 `USR_NETWORK_HALF` (réseau en FP16 compacté, jusqu'à 2x plus rapide sur la
 partie réseau), ou créer le contexte avec `kCreateDisableNetwork`
 (heuristique seule). Les chiffres réels se mesurent avec PIX sur la console.
+
+**USR Universel** coûte plus cher : il estime lui-même le mouvement, sur
+une pyramide d'images à la résolution de rendu (recherche de candidats,
+motifs 5x5, Lucas-Kanade). Sur le GPU logiciel des tests, c'est environ
+6 fois USR, mais ce rapport ne dit rien d'un vrai GPU. Pour Xenia, il
+travaille en général sur du 720p (le flot) et sort en 4K
+(l'accumulation). Le Labo affiche son temps GPU réel sur la console, vue
+*USR Universel* : c'est la mesure à faire.

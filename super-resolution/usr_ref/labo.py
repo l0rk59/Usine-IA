@@ -280,7 +280,7 @@ def generate_all(log=print):
 # --------------------------------------------------------------------------
 
 VIEW_COLOR, VIEW_ALPHA, VIEW_BETA, VIEW_CONFIDENCE, VIEW_DISOCCLUSION, \
-    VIEW_MOTION = range(6)
+    VIEW_MOTION, VIEW_DISPLAY, VIEW_CHANNEL = range(8)  # 7..10 : r, g, b, a
 CELL_PANEL = 0x00010000
 CELL_HIGHLIGHT = 0x00020000
 
@@ -294,6 +294,13 @@ def labo_display(c):
     c = np.maximum(c, 0.0)
     y = c / (1.0 + np.max(c, axis=-1, keepdims=True))
     return np.power(np.clip(y, 0.0, 1.0), 1.0 / 2.2)
+
+
+def encode_display8(c):
+    """Jumeau de labo_encode.hlsl : l'image telle qu'affichee, sur 8 bits
+    (ce qu'un emulateur donne a USR Universel)."""
+    return np.round(np.clip(labo_display(c), 0.0, 1.0) * 255.0).astype(
+        np.uint8)
 
 
 def ramp(s):
@@ -333,8 +340,20 @@ def compose_reference(c, left, right, debug, motion, font_words, text):
     px = np.clip(sx, 0, w - 1)
     py = np.clip(sy, 0, h - 1)
 
-    color = np.where(left_side[..., None], labo_display(left[py, px]),
-                     labo_display(right[py, px]))
+    def rgba(t):
+        t = np.asarray(t, np.float32)
+        if t.shape[-1] == 3:
+            t = np.concatenate([t, np.ones(t.shape[:-1] + (1,), t.dtype)], -1)
+        return t
+
+    side = np.where(left_side[..., None], rgba(left)[py, px],
+                    rgba(right)[py, px])
+    color = labo_display(side[..., :3])
+    color = np.where((view == VIEW_DISPLAY)[..., None],
+                     np.clip(side[..., :3], 0.0, 1.0), color)
+    for ch in range(4):
+        color = np.where((view == VIEW_CHANNEL + ch)[..., None],
+                         ramp(side[..., ch]), color)
     d = debug[py, px]
     for v, ch in ((VIEW_ALPHA, 0), (VIEW_BETA, 1), (VIEW_CONFIDENCE, 2),
                   (VIEW_DISOCCLUSION, 3)):
@@ -408,9 +427,39 @@ def read_capture(path):
         "depth": take("<f4", rw * rh, (rh, rw)).astype(np.float32),
         "motion_px": take("<f2", rw * rh * 2, (rh, rw, 2)).astype(np.float32),
     }
+    if data[off:off + 4] == b"UNIV":
+        # bloc optionnel : USR Universel (vue affichee pendant la capture)
+        period, reset = np.frombuffer(data, "<u4", 2, off + 4)
+        uj = np.frombuffer(data, "<f4", 2, off + 12)
+        off += 20
+        cap["universel"] = {
+            "period": int(period), "reset": bool(reset),
+            "jitter": (float(uj[0]), float(uj[1])),
+            "input": take("<u1", rw * rh * 4, (rh, rw, 4)),
+            "output": take("<f2", dw * dh * 4, (dh, dw, 4)).astype(np.float32),
+        }
     if off != len(data):
         raise ValueError("taille de capture inattendue : %s" % path)
     return cap
+
+
+def replay_universal_captures(paths, network, **settings):
+    """Comme replay_captures, pour USR Universel : rejoue les images 8 bits
+    donnees au contexte universel (jitter, remises a zero comprises) et
+    renvoie (sortie de l'application, sortie de la reference)."""
+    from . import universel
+    caps = [read_capture(p) for p in paths]
+    first = caps[0]["universel"]
+    up = universel.UniversalUpscaler(caps[0]["render"], caps[0]["display"],
+                                     network=network,
+                                     period=first["period"], **settings)
+    out = []
+    for cap in caps:
+        u = cap["universel"]
+        x = u["input"][..., :3].astype(np.float32) / np.float32(255.0)
+        ref = up.dispatch(x, u["jitter"], reset=u["reset"])
+        out.append((u["output"][..., :3], ref))
+    return out
 
 
 def replay_captures(paths, network, **settings):

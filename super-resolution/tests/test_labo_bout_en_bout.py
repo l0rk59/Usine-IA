@@ -21,8 +21,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from usr_ref import core, evaluate, labo  # noqa: E402
-from usr_ref.network import load_default  # noqa: E402
+from usr_ref import core, emul, evaluate, labo  # noqa: E402
+from usr_ref.network import Network, load_default  # noqa: E402
 
 CAPTURES = os.environ.get("USR_LABO_CAPTURES", "")
 
@@ -48,6 +48,25 @@ class ApplicationWindows(unittest.TestCase):
         results = labo.replay_captures(self.paths, load_default())
         for i, (app, ref) in enumerate(results):
             self.assertGreater(evaluate.psnr(app, ref), 55.0, "image %d" % i)
+
+    def test_universel_meme_image_que_la_reference(self):
+        """Vue USR Universel (capture avec --droite 2) : l'image 8 bits
+        donnee au contexte universel, rejouee dans la reference Python,
+        donne la meme image (reglages par defaut du Labo)."""
+        if "universel" not in labo.read_capture(self.paths[0]):
+            self.skipTest("capture sans la vue USR Universel")
+        weights = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "weights", "usr_universel.json")
+        cap = labo.read_capture(self.paths[0])["universel"]
+        self.assertTrue(cap["reset"])          # premiere image : a zero
+        self.assertEqual(cap["period"], 4)     # rapport 2 : grille 2x2
+        results = labo.replay_universal_captures(
+            self.paths, Network.load(weights), sharpness=0.0,
+            net_strength=1.0, max_count=10, box_t1=0.3)
+        for i, (app, ref) in enumerate(results):
+            self.assertTrue(np.all(np.isfinite(app)), "image %d" % i)
+            self.assertGreater(emul.psnr_display(np.clip(app, 0.0, 1.0), ref),
+                               55.0, "image %d" % i)
 
     def test_capture_ecran(self):
         path = os.path.join(CAPTURES, "capture.png")

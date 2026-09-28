@@ -1,4 +1,4 @@
-// Genere par `python -m usr_ref exporter` -- ne pas editer.
+// Genere par `python -m usr_ref exporter --universel` -- ne pas editer.
 // Poids par defaut du reseau USR Universel (482 parametres). Source : usr_universel.json
 #pragma once
 

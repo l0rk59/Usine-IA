@@ -1,0 +1,578 @@
+From da871aefe1f2bfce592946f5617371d3665b9c15 Mon Sep 17 00:00:00 2001
+From: Usine-IA <usr@usine-ia.local>
+Date: Mon, 28 Sep 2026 17:36:40 +0000
+Subject: [PATCH 2/4] USR 2/4 : effet de sortie USR dans le presentateur
+
+Nouvel effet GuestOutputPaintConfig::Effect::kUsr et ses reglages. Le
+presentateur Direct3D 12 agrandit l'image du jeu avec USR (mode Universel :
+mouvement estime, reseau de neurones) une fois par nouvelle image du jeu,
+puis la peint en bilineaire 1:1 ; repli sur FSR en cas d'impossibilite et
+sur les autres API. Le jitter de chaque image (niveau 2) voyage avec elle
+dans la boite aux lettres des images du jeu.
+---
+ src/xenia/ui/d3d12/d3d12_presenter.cc | 277 ++++++++++++++++++++++++++
+ src/xenia/ui/d3d12/d3d12_presenter.h  |  46 +++++
+ src/xenia/ui/presenter.cc             |  29 +++
+ src/xenia/ui/presenter.h              |  87 ++++++++
+ 4 files changed, 439 insertions(+)
+
+diff --git a/src/xenia/ui/d3d12/d3d12_presenter.cc b/src/xenia/ui/d3d12/d3d12_presenter.cc
+index 01eccb0..26cbedb 100644
+--- a/src/xenia/ui/d3d12/d3d12_presenter.cc
++++ b/src/xenia/ui/d3d12/d3d12_presenter.cc
+@@ -23,6 +23,9 @@
+ #include "xenia/ui/d3d12/d3d12_util.h"
+ #include "xenia/ui/surface_win.h"
+ 
++// USR -- Usine Super Resolution (third_party/usr)
++#include "usr/usr.h"
++
+ #include <winrt/Windows.UI.Core.h>
+ #include <winrt/Windows.Foundation.h>
+ 
+@@ -64,6 +67,245 @@ D3D12Presenter::~D3D12Presenter() {
+   if (ui_completion_timeline_) {
+     ui_completion_timeline_->AwaitAllSubmissions();
+   }
++  // Toute peinture est terminee : USR peut etre libere sans attente.
++  usr_last_usage_submission_ = 0;
++  UsrShutdown();
++}
++
++void D3D12Presenter::UsrShutdown() {
++  if (usr_last_usage_submission_ &&
++      usr_last_usage_submission_ <
++          paint_context_.paint_completion_timeline->GetUpcomingSubmission()) {
++    paint_context_.paint_completion_timeline
++        ->AwaitSubmissionAndUpdateCompleted(usr_last_usage_submission_);
++  }
++  usr_last_usage_submission_ = 0;
++  if (usr_context_) {
++    usr::DestroyUniversalContext(usr_context_);
++    usr_context_ = nullptr;
++  }
++  usr_output_.Reset();
++  usr_debug_.Reset();
++  for (auto& input_ref : usr_input_refs_) {
++    input_ref.first = 0;
++    input_ref.second.Reset();
++  }
++  usr_render_width_ = 0;
++  usr_render_height_ = 0;
++  usr_display_width_ = 0;
++  usr_display_height_ = 0;
++  usr_last_frame_serial_ = 0;
++}
++
++ID3D12Resource* D3D12Presenter::UsrUpscale(
++    ID3D12GraphicsCommandList* command_list, ID3D12Resource* guest_output,
++    const GuestOutputProperties& properties,
++    const GuestOutputPaintConfig& config, uint32_t output_width,
++    uint32_t output_height, uint64_t paint_submission) {
++  const GuestOutputPaintConfig::UsrSettings& settings =
++      config.GetUsrSettings();
++  const uint32_t render_width = properties.frontbuffer_width;
++  const uint32_t render_height = properties.frontbuffer_height;
++  // USR agrandit seulement (l'image du jeu tient deja dans la sortie sinon).
++  if (render_width < 8 || render_height < 8 || output_width < render_width ||
++      output_height < render_height) {
++    return nullptr;
++  }
++  usr_output_size_.store(
++      uint64_t(output_width) | (uint64_t(output_height) << 32),
++      std::memory_order_relaxed);
++  const uint32_t period =
++      settings.jitter
++          ? usr::GetUniversalJitterPeriod(render_width, render_height,
++                                          output_width, output_height)
++          : 0;
++
++  // (Re)creation si la configuration a change.
++  if (usr_context_ &&
++      (usr_render_width_ != render_width ||
++       usr_render_height_ != render_height ||
++       usr_display_width_ != output_width ||
++       usr_display_height_ != output_height || usr_period_ != period ||
++       usr_network_ != settings.network)) {
++    UsrShutdown();
++    usr_failed_ = false;
++  }
++  if (!usr_context_) {
++    if (usr_failed_) {
++      return nullptr;
++    }
++    ID3D12Device* device = provider_.GetDevice();
++    usr::UniversalCreateDesc create_desc = {};
++    create_desc.device = device;
++    create_desc.renderWidth = render_width;
++    create_desc.renderHeight = render_height;
++    create_desc.displayWidth = output_width;
++    create_desc.displayHeight = output_height;
++    create_desc.maxFramesInFlight =
++        uint32_t(paint_context_.command_allocators.size());
++    create_desc.jitterPeriod = period;
++    create_desc.flags = settings.network ? usr::kCreateNone
++                                         : usr::kCreateDisableNetwork;
++    const usr::Result result =
++        usr::CreateUniversalContext(create_desc, &usr_context_);
++    if (result != usr::Result::Ok) {
++      XELOGE("USR: echec de creation du contexte {}x{} -> {}x{} ({})",
++             render_width, render_height, output_width, output_height,
++             int(result));
++      usr_context_ = nullptr;
++      usr_failed_ = true;
++      return nullptr;
++    }
++    D3D12_RESOURCE_DESC texture_desc = {};
++    texture_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
++    texture_desc.Width = output_width;
++    texture_desc.Height = output_height;
++    texture_desc.DepthOrArraySize = 1;
++    texture_desc.MipLevels = 1;
++    texture_desc.Format = kUsrOutputFormat;
++    texture_desc.SampleDesc.Count = 1;
++    texture_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
++    texture_desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
++    if (FAILED(device->CreateCommittedResource(
++            &util::kHeapPropertiesDefault,
++            provider_.GetHeapFlagCreateNotZeroed(), &texture_desc,
++            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
++            IID_PPV_ARGS(&usr_output_))) ||
++        FAILED(device->CreateCommittedResource(
++            &util::kHeapPropertiesDefault,
++            provider_.GetHeapFlagCreateNotZeroed(), &texture_desc,
++            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
++            IID_PPV_ARGS(&usr_debug_)))) {
++      XELOGE("USR: echec de creation des textures de sortie {}x{}",
++             output_width, output_height);
++      UsrShutdown();
++      usr_failed_ = true;
++      return nullptr;
++    }
++    usr_output_state_ = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
++    usr_debug_state_ = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
++    usr_render_width_ = render_width;
++    usr_render_height_ = render_height;
++    usr_display_width_ = output_width;
++    usr_display_height_ = output_height;
++    usr_period_ = period;
++    usr_network_ = settings.network;
++    usr_last_frame_serial_ = 0;
++    XELOGI("USR: {}x{} -> {}x{}, jitter {} (periode {}), reseau {}",
++           render_width, render_height, output_width, output_height,
++           settings.jitter ? "injecte" : "aucun", period,
++           settings.network ? "oui" : "non");
++  }
++
++  const bool debug = settings.debug_view != 0;
++  if (properties.usr_frame_serial != usr_last_frame_serial_) {
++    // Nouvelle image du jeu : une accumulation, et une seule.
++    D3D12_RESOURCE_BARRIER barriers[3];
++    UINT barrier_count = 0;
++    auto transition = [&](ID3D12Resource* resource,
++                          D3D12_RESOURCE_STATES before,
++                          D3D12_RESOURCE_STATES after) {
++      if (before == after) {
++        return;
++      }
++      D3D12_RESOURCE_BARRIER& barrier = barriers[barrier_count++];
++      barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
++      barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
++      barrier.Transition.pResource = resource;
++      barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
++      barrier.Transition.StateBefore = before;
++      barrier.Transition.StateAfter = after;
++    };
++    transition(guest_output, kGuestOutputInternalState,
++               D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
++    transition(usr_output_.Get(), usr_output_state_,
++               D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
++    if (debug) {
++      transition(usr_debug_.Get(), usr_debug_state_,
++                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
++    }
++    if (barrier_count) {
++      command_list->ResourceBarrier(barrier_count, barriers);
++    }
++    usr_output_state_ = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
++    if (debug) {
++      usr_debug_state_ = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
++    }
++
++    usr::UniversalDispatchDesc dispatch_desc = {};
++    dispatch_desc.commandList = command_list;
++    dispatch_desc.color = guest_output;
++    dispatch_desc.colorFormat = kGuestOutputFormat;
++    dispatch_desc.output = usr_output_.Get();
++    dispatch_desc.outputFormat = kUsrOutputFormat;
++    dispatch_desc.jitterX = settings.jitter ? properties.usr_jitter_x : 0.0f;
++    dispatch_desc.jitterY = settings.jitter ? properties.usr_jitter_y : 0.0f;
++    // Oubli demande, ou images du jeu sautees (chargement, pause).
++    dispatch_desc.reset =
++        settings.reset_counter != usr_last_reset_counter_ ||
++        (usr_last_frame_serial_ &&
++         properties.usr_frame_serial > usr_last_frame_serial_ + 8);
++    dispatch_desc.sharpness = settings.sharpness;
++    dispatch_desc.networkStrength = settings.network_strength;
++    dispatch_desc.historyLength = settings.history_length;
++    dispatch_desc.antiGhosting = settings.anti_ghosting;
++    if (debug) {
++      dispatch_desc.debugOutput = usr_debug_.Get();
++      dispatch_desc.debugFormat = kUsrOutputFormat;
++    }
++    const usr::Result result =
++        usr::DispatchUniversal(usr_context_, dispatch_desc);
++
++    barrier_count = 0;
++    transition(guest_output, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
++               kGuestOutputInternalState);
++    transition(usr_output_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
++               D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
++    if (debug) {
++      transition(usr_debug_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
++                 D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
++    }
++    command_list->ResourceBarrier(barrier_count, barriers);
++    usr_output_state_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
++    if (debug) {
++      usr_debug_state_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
++    }
++    if (result != usr::Result::Ok) {
++      XELOGE("USR: echec de DispatchUniversal ({})", int(result));
++      UsrShutdown();
++      usr_failed_ = true;
++      return nullptr;
++    }
++    usr_last_frame_serial_ = properties.usr_frame_serial;
++    usr_last_reset_counter_ = settings.reset_counter;
++
++    // L'image du jeu lue par USR doit vivre jusqu'a la fin de cette peinture.
++    size_t ref_index = 0;
++    const uint64_t completed = paint_context_.paint_completion_timeline
++                                   ->UpdateAndGetCompletedSubmission();
++    for (size_t i = 0; i < usr_input_refs_.size(); ++i) {
++      if (!usr_input_refs_[i].second ||
++          usr_input_refs_[i].first <= completed) {
++        ref_index = i;
++        break;
++      }
++      if (usr_input_refs_[i].first < usr_input_refs_[ref_index].first) {
++        ref_index = i;
++      }
++    }
++    if (usr_input_refs_[ref_index].second &&
++        usr_input_refs_[ref_index].first > completed) {
++      paint_context_.paint_completion_timeline
++          ->AwaitSubmissionAndUpdateCompleted(usr_input_refs_[ref_index].first);
++    }
++    usr_input_refs_[ref_index] = std::make_pair(
++        paint_submission, Microsoft::WRL::ComPtr<ID3D12Resource>(guest_output));
++  }
++  usr_last_usage_submission_ = paint_submission;
++  if (debug && usr_debug_state_ == D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) {
++    return usr_debug_.Get();
++  }
++  return usr_output_.Get();
+ }
+ 
+ Surface::TypeFlags D3D12Presenter::GetSupportedSurfaceTypes() const {
+@@ -537,6 +779,41 @@ Presenter::PaintResult D3D12Presenter::PaintAndPresentImpl(
+     // (and multiple threads can't paint the main target at the same time).
+   }
+ 
++  // USR : l'image du jeu est agrandie par USR a la taille finale, puis cette
++  // sortie est peinte a sa place, telle quelle (bilineaire 1:1).
++  if (guest_output_resource &&
++      guest_output_paint_config.GetEffect() ==
++          GuestOutputPaintConfig::Effect::kUsr) {
++    GuestOutputPaintConfig bilinear_config = guest_output_paint_config;
++    bilinear_config.SetEffect(GuestOutputPaintConfig::Effect::kBilinear);
++    GuestOutputPaintFlow usr_flow = GetGuestOutputPaintFlow(
++        guest_output_properties, paint_context_.swap_chain_width,
++        paint_context_.swap_chain_height, D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION,
++        D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION, bilinear_config);
++    ID3D12Resource* usr_result = nullptr;
++    if (usr_flow.effect_count) {
++      const std::pair<uint32_t, uint32_t>& usr_final_size =
++          usr_flow.effect_output_sizes[usr_flow.effect_count - 1];
++      usr_result = UsrUpscale(command_list, guest_output_resource.Get(),
++                              guest_output_properties,
++                              guest_output_paint_config, usr_final_size.first,
++                              usr_final_size.second, current_paint_submission);
++    }
++    if (usr_result) {
++      guest_output_resource = usr_result;
++      guest_output_properties.frontbuffer_width = usr_display_width_;
++      guest_output_properties.frontbuffer_height = usr_display_height_;
++      guest_output_paint_config = bilinear_config;
++    } else {
++      // Repli : FSR, la meilleure methode sans historique. Taille de sortie
++      // nulle : le GPU emule cesse d'injecter le jitter (qui ferait
++      // scintiller une image non accumulee).
++      usr_output_size_.store(0, std::memory_order_relaxed);
++      guest_output_paint_config.SetEffect(
++          GuestOutputPaintConfig::Effect::kFsr);
++    }
++  }
++
+   if (guest_output_resource) {
+     GuestOutputPaintFlow guest_output_flow = GetGuestOutputPaintFlow(
+         guest_output_properties, paint_context_.swap_chain_width,
+diff --git a/src/xenia/ui/d3d12/d3d12_presenter.h b/src/xenia/ui/d3d12/d3d12_presenter.h
+index a02a7e5..acf9c21 100644
+--- a/src/xenia/ui/d3d12/d3d12_presenter.h
++++ b/src/xenia/ui/d3d12/d3d12_presenter.h
+@@ -21,6 +21,10 @@
+ #include "xenia/ui/presenter.h"
+ #include "xenia/ui/surface.h"
+ 
++namespace usr {
++class UniversalContext;
++}  // namespace usr
++
+ namespace xe {
+ namespace ui {
+ namespace d3d12 {
+@@ -335,6 +339,48 @@ class D3D12Presenter final : public Presenter {
+   // DisconnectPaintingFromSurfaceFromUIThreadImpl) by the thread doing it, as
+   // well as by presenter initialization and shutdown.
+   PaintContext paint_context_;
++
++  // --- USR (Usine Super Resolution, mode Universel) -------------------------
++  // Accessible only by painting, like paint_context_.
++  //
++  // Agrandit l'image du jeu a la taille finale (une fois par nouvelle image
++  // du jeu, meme si elle est peinte plusieurs fois) et renvoie la texture a
++  // peindre a sa place (bilineaire 1:1), ou nullptr en cas d'impossibilite
++  // (repli sur FSR).
++  ID3D12Resource* UsrUpscale(ID3D12GraphicsCommandList* command_list,
++                             ID3D12Resource* guest_output,
++                             const GuestOutputProperties& properties,
++                             const GuestOutputPaintConfig& config,
++                             uint32_t output_width, uint32_t output_height,
++                             uint64_t paint_submission);
++  // Detruit le contexte et ses textures apres la fin de leur usage.
++  void UsrShutdown();
++
++  static constexpr DXGI_FORMAT kUsrOutputFormat = kGuestOutputFormat;
++  usr::UniversalContext* usr_context_ = nullptr;
++  uint32_t usr_render_width_ = 0;
++  uint32_t usr_render_height_ = 0;
++  uint32_t usr_display_width_ = 0;
++  uint32_t usr_display_height_ = 0;
++  uint32_t usr_period_ = 0;
++  bool usr_network_ = true;
++  // Creation impossible (memoire, pilote) : pas de nouvel essai a chaque
++  // image tant que la configuration ne change pas.
++  bool usr_failed_ = false;
++  Microsoft::WRL::ComPtr<ID3D12Resource> usr_output_;
++  D3D12_RESOURCE_STATES usr_output_state_ =
++      D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
++  // Carte de diagnostic (reactivite, gain, confiance), au meme format.
++  Microsoft::WRL::ComPtr<ID3D12Resource> usr_debug_;
++  D3D12_RESOURCE_STATES usr_debug_state_ =
++      D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
++  uint64_t usr_last_frame_serial_ = 0;
++  uint32_t usr_last_reset_counter_ = 0;
++  // Derniere peinture ayant utilise USR, et images du jeu lues par USR
++  // (gardees en vie jusqu'a la fin de la peinture qui les lit).
++  uint64_t usr_last_usage_submission_ = 0;
++  std::array<std::pair<uint64_t, Microsoft::WRL::ComPtr<ID3D12Resource>>, 4>
++      usr_input_refs_;
+ };
+ 
+ }  // namespace d3d12
+diff --git a/src/xenia/ui/presenter.cc b/src/xenia/ui/presenter.cc
+index 1dd5718..3d13c38 100644
+--- a/src/xenia/ui/presenter.cc
++++ b/src/xenia/ui/presenter.cc
+@@ -372,6 +372,9 @@ bool Presenter::RefreshGuestOutput(
+   writable_properties.display_aspect_ratio_x = display_aspect_ratio_x;
+   writable_properties.display_aspect_ratio_y = display_aspect_ratio_y;
+   writable_properties.is_8bpc = false;
++  writable_properties.usr_jitter_x = usr_next_jitter_x_;
++  writable_properties.usr_jitter_y = usr_next_jitter_y_;
++  writable_properties.usr_frame_serial = ++usr_frame_serial_;
+   bool is_active = writable_properties.IsActive();
+   if (is_active) {
+     if (!RefreshGuestOutputImpl(guest_output_mailbox_writable_,
+@@ -499,6 +502,23 @@ void Presenter::SetGuestOutputPaintConfigFromUIThread(
+     modified = true;
+     request_repaint = true;
+   }
++  if (!(guest_output_paint_config_.GetUsrSettings() ==
++        new_config.GetUsrSettings())) {
++    modified = true;
++    if (new_config.GetEffect() == GuestOutputPaintConfig::Effect::kUsr) {
++      request_repaint = true;
++    }
++  }
++  {
++    // Lu par le GPU emule a chaque image (niveau 2).
++    const bool usr = new_config.GetEffect() ==
++                     GuestOutputPaintConfig::Effect::kUsr;
++    usr_jitter_requested_.store(usr && new_config.GetUsrSettings().jitter,
++                                std::memory_order_relaxed);
++    usr_lod_bias_requested_.store(usr && new_config.GetUsrSettings().jitter &&
++                                      new_config.GetUsrSettings().lod_bias,
++                                  std::memory_order_relaxed);
++  }
+   if (modified) {
+     {
+       std::unique_lock<std::mutex> config_lock(
+@@ -664,6 +684,15 @@ Presenter::GuestOutputPaintFlow Presenter::GetGuestOutputPaintFlow(
+     const GuestOutputProperties& properties, uint32_t host_rt_width,
+     uint32_t host_rt_height, uint32_t max_rt_width, uint32_t max_rt_height,
+     const GuestOutputPaintConfig& config) const {
++  // USR est execute par les presentateurs qui le gerent (Direct3D 12) avant
++  // la peinture, qui se fait alors en bilineaire ; les autres se replient sur
++  // FSR.
++  if (config.GetEffect() == GuestOutputPaintConfig::Effect::kUsr) {
++    GuestOutputPaintConfig fsr_config = config;
++    fsr_config.SetEffect(GuestOutputPaintConfig::Effect::kFsr);
++    return GetGuestOutputPaintFlow(properties, host_rt_width, host_rt_height,
++                                   max_rt_width, max_rt_height, fsr_config);
++  }
+   GuestOutputPaintFlow flow = {};
+ 
+   // FIXME(Triang3l): Configuration variables racing with per-game config
+diff --git a/src/xenia/ui/presenter.h b/src/xenia/ui/presenter.h
+index e85b6c3..ebaba06 100644
+--- a/src/xenia/ui/presenter.h
++++ b/src/xenia/ui/presenter.h
+@@ -201,6 +201,34 @@ class Presenter {
+       // AMD FidelityFX Super Resolution upsampling, Contrast Adaptive
+       // Sharpening otherwise.
+       kFsr,
++      // USR (Usine Super Resolution), mode Universel : upscaler temporel qui
++      // estime lui-meme le mouvement (pas de vecteurs du jeu) et accumule les
++      // images, avec un petit reseau de neurones (third_party/usr). Les
++      // presentateurs qui ne le gerent pas se replient sur FSR.
++      kUsr,
++    };
++
++    // Reglages de USR, tous modifiables en direct (menu pause, surcouche).
++    struct UsrSettings {
++      // Niveau 2 : l'emulateur decale le rendu de la scene 3D d'un jitter
++      // sous-pixel connu (D3D12CommandProcessor), ce qui permet la vraie
++      // super-resolution. Niveau 1 (false) : l'image du jeu telle quelle.
++      bool jitter = false;
++      // Niveau 2 : biais de mip-map (textures plus fines) sur les dessins
++      // decales ; la valeur vient de la variable usr_lod_bias.
++      bool lod_bias = false;
++      // Petit reseau de neurones (false : regles de base seules).
++      bool network = true;
++      float network_strength = 1.0f;  // 0..4
++      float history_length = 10.0f;   // images, 1..64
++      float anti_ghosting = 0.3f;     // 0.05..4 (petit = oublie vite)
++      float sharpness = 0.25f;        // 0..1 (RCAS)
++      // Diagnostic : 0 image ; 1 carte des decisions de USR (rouge :
++      // reactivite, vert : gain, bleu : confiance de l'historique).
++      uint32_t debug_view = 0;
++      // Incremente pour demander l'oubli de l'historique.
++      uint32_t reset_counter = 0;
++      bool operator==(const UsrSettings&) const = default;
+     };
+ 
+     // This value is used as a lerp factor.
+@@ -270,6 +298,20 @@ class Presenter {
+     bool GetDither() const { return dither_; }
+     void SetDither(bool new_dither) { dither_ = new_dither; }
+ 
++    const UsrSettings& GetUsrSettings() const { return usr_; }
++    void SetUsrSettings(const UsrSettings& new_usr) {
++      auto clampf = [](float v, float lo, float hi) {
++        // Comme les autres reglages : min / max elimine aussi les NaN.
++        return std::min(hi, std::max(lo, v));
++      };
++      usr_ = new_usr;
++      usr_.network_strength = clampf(usr_.network_strength, 0.0f, 4.0f);
++      usr_.history_length = clampf(usr_.history_length, 1.0f, 64.0f);
++      usr_.anti_ghosting = clampf(usr_.anti_ghosting, 0.05f, 4.0f);
++      usr_.sharpness = clampf(usr_.sharpness, 0.0f, 1.0f);
++      usr_.debug_view = std::min(usr_.debug_view, uint32_t(1));
++    }
++
+    private:
+     // Tools, rather than the emulator itself, must not allow overscan cutoff
+     // and must use the kBilinear effect as the image must be as close to the
+@@ -280,6 +322,7 @@ class Presenter {
+     uint32_t fsr_max_upsampling_passes_ = kFsrMaxUpscalingPassesMax;
+     float fsr_sharpness_reduction_ = kFsrSharpnessReductionDefault;
+     bool dither_ = false;
++    UsrSettings usr_;
+   };
+ 
+   Presenter(const Presenter& presenter) = delete;
+@@ -330,6 +373,28 @@ class Presenter {
+   void SetGuestOutputPaintConfigFromUIThread(
+       const GuestOutputPaintConfig& new_config);
+ 
++  // --- USR, niveau 2 ---------------------------------------------------------
++  // Thread de rafraichissement (GPU emule), juste avant RefreshGuestOutput :
++  // jitter (pixels de l'image du jeu) utilise pour la scene 3D de l'image qui
++  // va etre envoyee. Transmis avec l'image dans la boite aux lettres.
++  void SetNextGuestOutputUsrJitter(float jitter_x, float jitter_y) {
++    usr_next_jitter_x_ = jitter_x;
++    usr_next_jitter_y_ = jitter_y;
++  }
++  // Pour le GPU emule : faut-il decaler le rendu 3D (USR actif au niveau 2),
++  // et vers quelle taille de sortie (0 tant qu'aucune image n'a ete peinte).
++  bool IsUsrJitterRequested() const {
++    return usr_jitter_requested_.load(std::memory_order_relaxed);
++  }
++  bool IsUsrLodBiasRequested() const {
++    return usr_lod_bias_requested_.load(std::memory_order_relaxed);
++  }
++  void GetUsrOutputSize(uint32_t& width_out, uint32_t& height_out) const {
++    uint64_t packed = usr_output_size_.load(std::memory_order_relaxed);
++    width_out = uint32_t(packed);
++    height_out = uint32_t(packed >> 32);
++  }
++
+   void AddUIDrawerFromUIThread(UIDrawer* drawer, size_t z_order);
+   void RemoveUIDrawerFromUIThread(UIDrawer* drawer);
+ 
+@@ -369,6 +434,12 @@ class Presenter {
+     uint32_t display_aspect_ratio_x;
+     uint32_t display_aspect_ratio_y;
+     bool is_8bpc;
++    // USR : jitter de la scene 3D dans cette image (niveau 2, 0 sinon), et
++    // numero de l'image (pour n'accumuler qu'une fois chaque image du jeu,
++    // meme si elle est peinte plusieurs fois).
++    float usr_jitter_x;
++    float usr_jitter_y;
++    uint64_t usr_frame_serial;
+ 
+     GuestOutputProperties() { SetToInactive(); }
+ 
+@@ -383,6 +454,9 @@ class Presenter {
+       display_aspect_ratio_x = 0;
+       display_aspect_ratio_y = 0;
+       is_8bpc = false;
++      usr_jitter_x = 0.0f;
++      usr_jitter_y = 0.0f;
++      usr_frame_serial = 0;
+     }
+   };
+ 
+@@ -961,6 +1035,19 @@ class Presenter {
+   // rather than being blank.
+   bool guest_output_active_last_refresh_ = false;
+ 
++  // USR : etat partage avec le thread de rafraichissement (voir plus haut).
++  float usr_next_jitter_x_ = 0.0f;
++  float usr_next_jitter_y_ = 0.0f;
++  uint64_t usr_frame_serial_ = 0;
++  std::atomic<bool> usr_jitter_requested_{false};
++  std::atomic<bool> usr_lod_bias_requested_{false};
++
++ protected:
++  // Taille de sortie de USR (largeur | hauteur << 32), ecrite par la peinture.
++  std::atomic<uint64_t> usr_output_size_{0};
++
++ private:
++
+   // Ordered by the Z order, and then by the time of addition.
+   // Note: All the iteration logic involving this Z ordering must be the same as
+   // in input handling (in the input listeners in the Window), but in reverse.

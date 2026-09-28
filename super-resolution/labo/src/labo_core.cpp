@@ -107,6 +107,7 @@ const char* ViewName(View v)
     switch (v) {
     case View::UsrIA: return "USR + IA";
     case View::UsrSansIA: return "USR sans IA";
+    case View::UsrUniversel: return "USR Universel (sans vecteurs)";
     case View::Bilineaire: return "Bilinéaire";
     case View::Verite: return "Vérité terrain";
     case View::EntreeBrute: return "Entrée brute";
@@ -115,6 +116,9 @@ const char* ViewName(View v)
     case View::Confiance: return "Diag. : confiance";
     case View::Desocclusion: return "Diag. : désocclusion";
     case View::Mouvement: return "Mouvement";
+    case View::UnivReactivite: return "Diag. univ. : réactivité";
+    case View::UnivMemoire: return "Diag. univ. : mémoire";
+    case View::UnivFlot: return "Diag. univ. : doute du flot";
     default: return "?";
     }
 }
@@ -127,6 +131,10 @@ uint32_t ComposeMode(View v)
     case View::Confiance: return 3;
     case View::Desocclusion: return 4;
     case View::Mouvement: return 5;
+    case View::UsrUniversel: return 6;    // deja compressee pour l'ecran
+    case View::UnivReactivite: return 7;  // canal r de la texture de la vue
+    case View::UnivMemoire: return 9;     // canal b
+    case View::UnivFlot: return 10;       // canal a
     default: return 0;
     }
 }
@@ -135,6 +143,17 @@ bool NeedsDebug(View v)
 {
     return v == View::Alpha || v == View::Beta || v == View::Confiance ||
            v == View::Desocclusion;
+}
+
+bool NeedsUniversal(View v)
+{
+    return v == View::UsrUniversel || NeedsUniversalDebug(v);
+}
+
+bool NeedsUniversalDebug(View v)
+{
+    return v == View::UnivReactivite || v == View::UnivMemoire ||
+           v == View::UnivFlot;
 }
 
 const char* QualityName(Quality q)
@@ -158,6 +177,16 @@ const char* ModelName(uint32_t model)
     case 2: return "Détail";
     default: return "?";
     }
+}
+
+const char* UniversalLevelName(uint32_t level)
+{
+    return level >= 2 ? "2 : jitter injecté" : "1 : image seule";
+}
+
+float UniversalAntiGhosting(const Settings& s)
+{
+    return 0.3f * s.antiGhosting / 1.25f;
 }
 
 // --------------------------------------------------------------------------
@@ -283,8 +312,8 @@ struct Controller::Item {
 namespace {
 
 const char* const kPageTitles[] = {
-    "Image", "IA", "Accumulation", "Comparaison", "Scène", "Préréglages",
-    "Aide",
+    "Image", "IA", "Accumulation", "Universel", "Comparaison", "Scène",
+    "Préréglages", "Aide",
 };
 constexpr uint32_t kPageCount = sizeof(kPageTitles) / sizeof(kPageTitles[0]);
 
@@ -303,6 +332,7 @@ void KeepDisplay(Settings& s, const Settings& before)
     s.zoomX = before.zoomX;
     s.zoomY = before.zoomY;
     s.showMenu = before.showMenu;
+    s.universalLevel = before.universalLevel;
     s.showStats = before.showStats;
     s.cameraMoving = before.cameraMoving;
     s.objectsMoving = before.objectsMoving;
@@ -358,6 +388,12 @@ const Preset kPresets[] = {
      "courante, sombre = à l'historique.",
      [](Settings& s) {
          s.left = View::UsrIA; s.right = View::Alpha; s.split = 0.5f;
+     }},
+    {"Avec / sans vecteurs",
+     "À gauche USR, qui reçoit du jeu la profondeur et les vecteurs de "
+     "mouvement ; à droite USR Universel, qui n'a que l'image (émulateur).",
+     [](Settings& s) {
+         s.left = View::UsrIA; s.right = View::UsrUniversel; s.split = 0.5f;
      }},
 };
 constexpr uint32_t kPresetCount = sizeof(kPresets) / sizeof(kPresets[0]);
@@ -479,7 +515,41 @@ std::vector<Controller::Item> Controller::Items(uint32_t page) const
             "Oublie tout, comme lors d'un changement de plan. (Bouton X.)",
             nullptr, [](Controller& c) { c.resetHistory_ = true; });
         break;
-    case 3:  // Comparaison
+    case 3:  // Universel
+        add("Niveau", UniversalLevelName(s.universalLevel),
+            "1 : USR Universel ne reçoit que l'image finale, comme un "
+            "émulateur qui ne touche pas au jeu. 2 : l'émulateur décale "
+            "lui-même le rendu (grille 2x2 ou 3x3) : bien plus de détails.",
+            [](Settings& st, int) {
+                st.universalLevel = st.universalLevel >= 2 ? 1 : 2;
+            });
+        add("Comparer avec / sans vecteurs", "",
+            "À gauche USR (vecteurs de mouvement fournis par le jeu), à "
+            "droite USR Universel (mouvement estimé sur l'image seule). "
+            "Netteté, IA, mémoire et anti-fantômes s'appliquent aux deux.",
+            nullptr, [](Controller& c) {
+                c.settings_.left = View::UsrIA;
+                c.settings_.right = View::UsrUniversel;
+                c.settings_.split = 0.5f;
+            });
+        add("Comparer à la vérité", "",
+            "À gauche USR Universel, à droite l'image calculée directement "
+            "à la résolution de l'écran.",
+            nullptr, [](Controller& c) {
+                c.settings_.left = View::UsrUniversel;
+                c.settings_.right = View::Verite;
+                c.settings_.split = 0.5f;
+            });
+        add("Voir ce que décide l'IA", "",
+            "À droite, la réactivité : clair = pixel refait à neuf (image "
+            "courante), sombre = historique gardé.",
+            nullptr, [](Controller& c) {
+                c.settings_.left = View::UsrUniversel;
+                c.settings_.right = View::UnivReactivite;
+                c.settings_.split = 0.5f;
+            });
+        break;
+    case 4:  // Comparaison
         add("Moitié gauche", ViewName(s.left),
             "Ce qu'affiche la partie gauche de l'écran. (Croix ↑↓ menu fermé.)",
             [](Settings& st, int d) {
@@ -507,7 +577,7 @@ std::vector<Controller::Item> Controller::Items(uint32_t page) const
                 st.zoom = kZoom[(i + 4 + d) % 4];
             });
         break;
-    case 4:  // Scene
+    case 5:  // Scene
         add("Caméra", OnOff(s.cameraMoving, "Mobile", "Fixe"),
             "Défilement du décor.", toggle(&Settings::cameraMoving));
         add("Objets", OnOff(s.objectsMoving, "Animés", "Fixes"),
@@ -538,7 +608,7 @@ std::vector<Controller::Item> Controller::Items(uint32_t page) const
                 c.resetHistory_ = true;
             });
         break;
-    case 5:  // Prereglages
+    case 6:  // Prereglages
         for (uint32_t i = 0; i < kPresetCount; ++i)
             add(kPresets[i].name, "", kPresets[i].help, nullptr,
                 [i](Controller& c) { c.ApplyPreset(i); });
@@ -723,7 +793,7 @@ void Controller::BuildOverlay(TextGrid& grid, const Stats& stats) const
         const int w = 36;
         const int x = cols - w - 1;
         int y = 1;
-        grid.AddFlags(x - 1, 0, w + 2, 12, kCellPanel);
+        grid.AddFlags(x - 1, 0, w + 2, 7 + kPassCount, kCellPanel);
         grid.Print(x, y++, "USR Labo  " + stats.device, kCyan);
         grid.Print(x, y++, "Images/s : " + Fixed(stats.fps, 0), kWhite);
         grid.Print(x, y++,
@@ -739,12 +809,20 @@ void Controller::BuildOverlay(TextGrid& grid, const Stats& stats) const
                                                      " phases"
                                                : std::string("coupé")),
                    kWhite);
+        grid.Print(x, y++, "Universel : niveau " +
+                               std::to_string(s.universalLevel >= 2 ? 2 : 1) +
+                               (s.universalLevel >= 2
+                                    ? " (" + std::to_string(
+                                                 stats.universalPeriod) +
+                                          " phases)"
+                                    : std::string(" (sans jitter)")),
+                   kWhite);
         grid.Print(x, y, "GPU total", kYellow);
         grid.PrintRight(x + w, y++, Fixed(stats.gpuTotalMs, 2) + " ms",
                         kYellow);
         static const char* const kNames[kPassCount] = {
-            "  scène (jeu)", "  USR + IA", "  USR sans IA", "  vérité terrain",
-            "  comparaisons", "  affichage"};
+            "  scène (jeu)", "  USR + IA", "  USR sans IA", "  USR Universel",
+            "  vérité terrain", "  comparaisons", "  affichage"};
         for (uint32_t p = 0; p < kPassCount; ++p) {
             grid.Print(x, y, kNames[p], kGray);
             grid.PrintRight(x + w, y++, Fixed(stats.gpuMs[p], 2) + " ms",

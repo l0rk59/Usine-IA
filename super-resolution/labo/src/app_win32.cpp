@@ -4,7 +4,12 @@
 //   usr_labo --largeur 1920 --hauteur 1080
 //   usr_labo --capture 12 --dossier captures   sans fenetre : rend 12
 //       images, ecrit captures/frame_NNN.bin (entrees et sortie de USR,
-//       pour la comparaison avec la reference Python) et capture.png.
+//       et de USR Universel si une vue l'affiche, pour la comparaison avec
+//       la reference Python) et capture.png.
+//   usr_labo --gauche 0 --droite 2   vues de depart (numeros : 0 USR + IA,
+//       1 USR sans IA, 2 USR Universel, 3 bilineaire, 4 verite, 5 entree
+//       brute, 6..9 diagnostics USR, 10 mouvement, 11..13 diagnostics
+//       universels : reactivite, memoire, doute du flot).
 //
 // Clavier : fleches (croix), Entree (A), Echap (B), X, Y, Tab / Maj+Tab
 // (RB / LB), F1 (menu), F2 (mesures), Q / E (gachettes), I J K L (stick
@@ -77,7 +82,9 @@ bool ParseOptions(int argc, char** argv, Options* o)
             return false;
         }
     }
-    return o->width >= 64 && o->height >= 64;
+    const int views = static_cast<int>(labo::View::Count);
+    return o->width >= 64 && o->height >= 64 && o->left < views &&
+           o->right < views;
 }
 
 void Report(const Options& o, const std::string& message)
@@ -203,6 +210,16 @@ bool WriteFrame(const std::string& path, const labo::Capture& c)
     put(c.sceneColor.data(), c.sceneColor.size() * 2);
     put(c.sceneDepth.data(), c.sceneDepth.size() * 4);
     put(c.sceneMotion.data(), c.sceneMotion.size() * 2);
+    if (c.universal) {
+        // Bloc optionnel : USR Universel (entree 8 bits et sortie).
+        const char tag[4] = {'U', 'N', 'I', 'V'};
+        const uint32_t info[2] = {c.universalPeriod, c.universalReset ? 1u : 0u};
+        put(tag, 4);
+        put(info, 8);
+        put(c.universalJitter, 8);
+        put(c.universalInput.data(), c.universalInput.size());
+        put(c.universalOutput.data(), c.universalOutput.size() * 2);
+    }
     return std::fclose(f) == 0 && ok;
 }
 
