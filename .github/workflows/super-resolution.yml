@@ -1,0 +1,96 @@
+# USR (dossier super-resolution/) : un projet independant de l'usine, avec
+# ses propres dependances (NumPy, slangpy). Cette integration continue
+# verifie la reference Python, la compilation des shaders par DXC, leur
+# parite sur un GPU logiciel (Mesa llvmpipe via Vulkan), et la
+# compilation de la bibliotheque C++ sous Linux (en-tetes DirectX
+# ouverts) et sous Windows (SDK Windows + MSVC).
+name: super-resolution
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "super-resolution/**"
+      - ".github/workflows/super-resolution.yml"
+  pull_request:
+    paths:
+      - "super-resolution/**"
+      - ".github/workflows/super-resolution.yml"
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: super-resolution
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: microsoft/DirectX-Headers
+          path: DirectX-Headers
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dependances (NumPy, slangpy, Vulkan logiciel)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends \
+            mesa-vulkan-drivers libvulkan1
+          pip install numpy slangpy
+
+      - name: DXC, le compilateur de shaders de Microsoft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download -R microsoft/DirectXShaderCompiler \
+            --pattern 'linux_dxc_*.x86_64.tar.gz' -D /tmp/dxc
+          mkdir -p /tmp/dxc/x
+          tar -xzf /tmp/dxc/linux_dxc_*.tar.gz -C /tmp/dxc/x
+          DXC=$(find /tmp/dxc/x -type f -name dxc | head -n 1)
+          LIB=$(dirname "$(find /tmp/dxc/x -name 'libdxcompiler.so*' | head -n 1)")
+          chmod +x "$DXC"
+          echo "USR_DXC=$DXC" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$LIB" >> "$GITHUB_ENV"
+          LD_LIBRARY_PATH=$LIB "$DXC" --version
+
+      - name: Tests (reference, reseau, coherence, shaders, C++, parite GPU)
+        env:
+          USR_DIRECTX_HEADERS: ${{ github.workspace }}/DirectX-Headers
+        run: python -m unittest discover -s tests -v
+
+      - name: Parite GPU (echoue si le GPU logiciel est indisponible)
+        run: python -m usr_ref parite
+
+      - name: Demo (images de comparaison)
+        run: python -m usr_ref demo --images 24 --sortie resultats
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: usr-comparaison
+          path: super-resolution/resultats/
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: super-resolution
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: dxc du SDK Windows
+        run: |
+          $dxc = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\dxc.exe" |
+                 Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $dxc) { throw "dxc.exe introuvable dans le SDK Windows" }
+          "USR_DXC=$($dxc.FullName)" >> $env:GITHUB_ENV
+
+      - name: Configurer (CMake)
+        run: cmake -B build -A x64 -DUSR_DXC="$env:USR_DXC"
+
+      - name: Compiler la bibliotheque et les shaders
+        run: cmake --build build --config Release

@@ -934,6 +934,15 @@ sait pas faire, et ce qu'on peut y ajouter — est dans
 - **Elle ne garantit aucun revenu.** Les prix proposés sont des repères, pas
   des prévisions.
 
+## Autre projet dans ce dépôt : USR
+
+Le dossier [`super-resolution/`](super-resolution/) contient un projet
+indépendant de l'usine : **USR (Usine Super Résolution)**, un upscaler à
+réseau de neurones « à la DLSS » écrit pour le GPU AMD RDNA 2 de la Xbox
+Series X (et tout PC Direct3D 12). Il a ses propres dépendances (NumPy) et
+sa propre intégration continue ; la contrainte « zéro dépendance » de
+l'usine ne s'y applique pas.
+
 ## Licence
 
 MIT — voir `LICENSE`.

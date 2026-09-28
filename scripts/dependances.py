@@ -64,6 +64,10 @@ def principal() -> int:
     for fichier in sorted(RACINE.rglob("*.py")):
         if "__pycache__" in fichier.parts or "atelier" in fichier.parts:
             continue
+        # Projet independant (upscaler GPU, NumPy assume), avec sa propre
+        # integration continue : la contrainte Termux ne le concerne pas.
+        if fichier.relative_to(RACINE).parts[0] == "super-resolution":
+            continue
         for nom, ligne in modules_importes(fichier):
             if nom in standard or nom in LOCAUX:
                 continue

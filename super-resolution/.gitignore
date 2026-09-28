@@ -1,0 +1,5 @@
+# Sorties de `python -m usr_ref demo`
+resultats/
+
+# Compilation CMake
+build*/
