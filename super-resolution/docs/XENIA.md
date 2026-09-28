@@ -34,6 +34,60 @@ Visual Studio, et sait produire le paquet pour la Xbox.
 | `third_party_usr/CMakeLists.txt` | construit la bibliothèque et ses shaders (dxc du SDK Windows) |
 | `tests/usr_menu_test.cc` | tests du menu de réglages (sans Xenia ni GPU) |
 
+## Sans PC : tout depuis ton téléphone
+
+Pas besoin de PC. GitHub compile l'appli pour toi (runners Windows,
+gratuits pour un dépôt public), et tu l'installes sur la Xbox depuis le
+navigateur de ton téléphone.
+
+### A. Récupérer l'appli compilée
+
+1. Sur ton téléphone, ouvre le dépôt sur github.com → onglet
+   **Actions** → workflow **super-resolution**.
+2. Ouvre le dernier passage réussi (coche verte) de la branche voulue.
+   Pour en lancer un toi-même : **Run workflow**.
+3. En bas, section *Artifacts* : télécharge **xenia-usr-xbox** (un
+   `.zip`). La construction de Xenia prend environ une heure.
+4. Dézippe-le (l'appli *Fichiers* du téléphone sait le faire). Il
+   contient :
+   - le paquet `….msixbundle` (ou `.appxbundle`) ;
+   - le dossier `Dependencies\x64` (bibliothèques VCLibs) ;
+   - `Xenia-USR.cer`, le certificat de test qui signe le paquet.
+
+### B. Préparer la Xbox (une seule fois)
+
+1. Sur la console, installe l'appli **Xbox Dev Mode** depuis le Store.
+2. Lance-la : elle affiche un code. Sur ton téléphone, crée ton compte
+   développeur **gratuit** sur Partner Center, puis saisis ce code sur la
+   page d'activation que l'appli indique.
+3. La console redémarre en mode Développeur et affiche **Dev Home**. Note
+   l'adresse IP affichée.
+4. Dans Dev Home, active le **Device Portal** et choisis un identifiant et
+   un mot de passe (*Remote Access Settings*).
+
+### C. Installer depuis le téléphone
+
+1. Téléphone et Xbox sur le **même réseau** (Wi-Fi de la box).
+2. Dans le navigateur du téléphone : `https://<IP de la Xbox>:11443`.
+   Accepte l'avertissement de sécurité, puis connecte-toi.
+3. **Add** → choisis le `.msixbundle` → **Next** → ajoute les fichiers de
+   `Dependencies\x64` (et `Xenia-USR.cer` si la page propose un
+   certificat) → **Start**.
+4. Dans Dev Home, surligne **Xenia USR** → bouton **Affichage** de la
+   manette → *View details* → *App type* : **Game**.
+
+**Mise à jour** : chaque construction signe avec un nouveau certificat de
+test. Si l'installation d'une nouvelle version est refusée, désinstalle
+l'ancienne (Device Portal ou Dev Home), puis recommence. Pour éviter ça,
+on peut enregistrer un certificat fixe dans les secrets du dépôt
+(`USR_UWP_PFX_BASE64`, `USR_UWP_PFX_PASSWORD`).
+
+L'appli s'appelle **Xenia USR** et a sa propre identité : elle s'installe
+à côté d'un Xenia UWP d'origine sans le remplacer.
+
+Pour les jeux, l'activation de USR et les commandes : sections 3 et 4
+plus bas.
+
 ## 1. Construire (sur un PC Windows)
 
 Il faut :

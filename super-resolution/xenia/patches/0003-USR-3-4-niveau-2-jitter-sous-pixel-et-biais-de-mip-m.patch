@@ -1,4 +1,4 @@
-From 5cc5d9bd7c5ab649321605309780662d3b24e0de Mon Sep 17 00:00:00 2001
+From 3df6088efbebbbe43877640a2392bff4c2b94f66 Mon Sep 17 00:00:00 2001
 From: Usine-IA <usr@usine-ia.local>
 Date: Mon, 28 Sep 2026 17:36:40 +0000
 Subject: [PATCH 3/4] USR 3/4 : niveau 2, jitter sous-pixel et biais de mip-map

@@ -19,6 +19,8 @@ on:
     paths:
       - "super-resolution/**"
       - ".github/workflows/super-resolution.yml"
+  # bouton « Run workflow » de l'onglet Actions (depuis un telephone aussi)
+  workflow_dispatch:
 
 env:
   VKD3D_PROTON_COMMIT: 472989a
@@ -252,8 +254,9 @@ jobs:
             throw "le code de USR est absent de l'executable"
           }
 
-  # L'application UWP pour la Xbox : bibliotheques de Xenia par la solution
-  # Visual Studio, puis le projet UWP lui-meme (sans signature du paquet).
+  # L'application pour la Xbox, prete a installer : bibliotheques de Xenia par
+  # la solution Visual Studio, puis le paquet UWP signe (certificat de test),
+  # telechargeable dans l'onglet Actions (artefact « xenia-usr-xbox »).
   xenia-uwp:
     runs-on: windows-2022
     timeout-minutes: 180
@@ -286,9 +289,61 @@ jobs:
           cmake --build --preset vs-release --target @deps
           if ($LASTEXITCODE -ne 0) { throw "echec de la compilation des bibliotheques" }
 
-      - name: Application UWP (Xbox)
+      - name: Certificat de signature
+        # Secrets optionnels USR_UWP_PFX_BASE64 / USR_UWP_PFX_PASSWORD : un
+        # certificat stable (mises a jour sans desinstaller). Sinon, un
+        # certificat de test neuf a chaque construction.
+        working-directory: ${{ runner.temp }}/xenia-usr
+        env:
+          PFX_B64: ${{ secrets.USR_UWP_PFX_BASE64 }}
+          PFX_PASS: ${{ secrets.USR_UWP_PFX_PASSWORD }}
+        run: |
+          [xml]$manifest = Get-Content xenia-canary-uwp\Package.appxmanifest
+          $publisher = $manifest.Package.Identity.Publisher
+          $pfx = "$env:RUNNER_TEMP\usr-signature.pfx"
+          if ($env:PFX_B64) {
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX_B64))
+            $pass = $env:PFX_PASS
+          } else {
+            $pass = [guid]::NewGuid().ToString()
+            $cert = New-SelfSignedCertificate -Type Custom -Subject $publisher `
+              -KeyUsage DigitalSignature -FriendlyName "Xenia USR (test)" `
+              -CertStoreLocation "Cert:\CurrentUser\My" -NotAfter (Get-Date).AddYears(3) `
+              -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+            Export-PfxCertificate -Cert $cert -FilePath $pfx `
+              -Password (ConvertTo-SecureString $pass -AsPlainText -Force) | Out-Null
+          }
+          Write-Host "::add-mask::$pass"
+          $secure = ConvertTo-SecureString $pass -AsPlainText -Force
+          $imported = Import-PfxCertificate -FilePath $pfx -CertStoreLocation "Cert:\CurrentUser\My" -Password $secure
+          if ($imported.Subject -ne $publisher) { throw "certificat : $($imported.Subject) au lieu de $publisher" }
+          "USR_PFX=$pfx" >> $env:GITHUB_ENV
+          "USR_PFX_PASS=$pass" >> $env:GITHUB_ENV
+          "USR_PFX_THUMB=$($imported.Thumbprint)" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\paquet" | Out-Null
+          Export-Certificate -Cert $imported -FilePath "$env:RUNNER_TEMP\paquet\Xenia-USR.cer" | Out-Null
+
+      - name: Paquet UWP signe (Xbox)
         working-directory: ${{ runner.temp }}/xenia-usr
         run: |
           $msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe" | Select-Object -First 1
-          & $msbuild xenia-canary-uwp\xenia-canary-uwp.vcxproj /m /p:Configuration=Release /p:Platform=x64 /p:AppxPackageSigningEnabled=false
+          & $msbuild xenia-canary-uwp\xenia-canary-uwp.vcxproj /m `
+            /p:Configuration=Release /p:Platform=x64 `
+            /p:UapAppxPackageBuildMode=SideloadOnly /p:GenerateAppxPackageOnBuild=true `
+            /p:AppxBundle=Always /p:AppxBundlePlatforms=x64 `
+            "/p:AppxPackageDir=$env:RUNNER_TEMP\paquet\\" `
+            /p:AppxPackageSigningEnabled=true `
+            "/p:PackageCertificateKeyFile=$env:USR_PFX" `
+            "/p:PackageCertificatePassword=$env:USR_PFX_PASS" `
+            "/p:PackageCertificateThumbprint=$env:USR_PFX_THUMB"
           if ($LASTEXITCODE -ne 0) { throw "echec de la compilation de l'application UWP" }
+          $bundle = Get-ChildItem "$env:RUNNER_TEMP\paquet" -Recurse -Include *.msixbundle, *.appxbundle | Select-Object -First 1
+          if (-not $bundle) { throw "aucun paquet .msixbundle / .appxbundle produit" }
+          Get-ChildItem "$env:RUNNER_TEMP\paquet" -Recurse | Select-Object FullName, Length | Format-Table -AutoSize
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xenia-usr-xbox
+          path: ${{ runner.temp }}/paquet
+          if-no-files-found: error
+          retention-days: 30

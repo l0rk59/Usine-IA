@@ -1,19 +1,27 @@
-From 99de1571b0dd24a4cde8a50dad16c35b25e44be0 Mon Sep 17 00:00:00 2001
+From 14e8b0d5413566ed4e08d20c6f7d30ffbf104664 Mon Sep 17 00:00:00 2001
 From: Usine-IA <usr@usine-ia.local>
 Date: Mon, 28 Sep 2026 17:36:40 +0000
 Subject: [PATCH 1/4] USR 1/4 : bibliotheque Usine Super Resolution
  (third_party/usr)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
 
 Bibliotheque statique compilee comme les autres dependances tierces (sans
 /WX) ; shaders compute Shader Model 6.0 compiles par le dxc du Windows SDK.
 Liee a xenia-ui-d3d12 et a l'application UWP. Les sources sont copiees dans
 third_party/usr par appliquer.ps1 / appliquer.sh (depot Usine-IA).
+
+Application UWP renommee « Xenia USR » avec sa propre identite
+(UsineIA.XeniaUSR, CN=Usine-IA) : elle s'installe a cote d'un Xenia UWP
+d'origine sans conflit de signature.
 ---
- src/xenia/ui/d3d12/CMakeLists.txt         | 3 ++-
- third_party/CMakeLists.txt                | 7 +++++++
- xenia-canary-uwp/CMakeLists.txt           | 1 +
- xenia-canary-uwp/xenia-canary-uwp.vcxproj | 5 ++++-
- 4 files changed, 14 insertions(+), 2 deletions(-)
+ src/xenia/ui/d3d12/CMakeLists.txt         |  3 ++-
+ third_party/CMakeLists.txt                |  7 +++++++
+ xenia-canary-uwp/CMakeLists.txt           |  1 +
+ xenia-canary-uwp/Package.appxmanifest     | 12 ++++++------
+ xenia-canary-uwp/xenia-canary-uwp.vcxproj |  5 ++++-
+ 5 files changed, 20 insertions(+), 8 deletions(-)
 
 diff --git a/src/xenia/ui/d3d12/CMakeLists.txt b/src/xenia/ui/d3d12/CMakeLists.txt
 index 74f4785..099d5dd 100644
@@ -56,6 +64,38 @@ index 7fba0c0..002cd81 100644
      xxhash
      zarchive
      zlib-ng
+diff --git a/xenia-canary-uwp/Package.appxmanifest b/xenia-canary-uwp/Package.appxmanifest
+index 6df4062..26753d4 100644
+--- a/xenia-canary-uwp/Package.appxmanifest
++++ b/xenia-canary-uwp/Package.appxmanifest
+@@ -1,13 +1,13 @@
+ ﻿<?xml version="1.0" encoding="utf-8"?>
+ <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10" xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities" IgnorableNamespaces="uap mp rescap">
+   <Identity
+-    Name="27d6ba69-e4f1-4b69-b391-8238bab5a431"
+-    Publisher="CN=DanP142"
++    Name="UsineIA.XeniaUSR"
++    Publisher="CN=Usine-IA"
+     Version="1.1.7.29" />
+-  <mp:PhoneIdentity PhoneProductId="27d6ba69-e4f1-4b69-b391-8238bab5a431" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
++  <mp:PhoneIdentity PhoneProductId="6f1d7c2e-5a43-4c8e-9b1f-2e7a0c3d9b51" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
+   <Properties>
+-    <DisplayName>xenia-canary-uwp</DisplayName>
+-    <PublisherDisplayName>DanP142</PublisherDisplayName>
++    <DisplayName>Xenia USR</DisplayName>
++    <PublisherDisplayName>Usine-IA</PublisherDisplayName>
+     <Logo>Assets\StoreLogo.png</Logo>
+   </Properties>
+   <Dependencies>
+@@ -18,7 +18,7 @@
+   </Resources>
+   <Applications>
+     <Application Id="App" Executable="$targetnametoken$.exe" EntryPoint="xenia_canary_uwp.App">
+-      <uap:VisualElements DisplayName="Xenia Canary" Description="The Xenia project on UWP! Xbox is a trademark of Microsoft. Xenia is not affiliated with Microsoft."
++      <uap:VisualElements DisplayName="Xenia USR" Description="The Xenia project on UWP! Xbox is a trademark of Microsoft. Xenia is not affiliated with Microsoft."
+         Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" BackgroundColor="transparent">
+         <uap:SplashScreen Image="Assets\SplashScreen.png" />
+         <uap:DefaultTile/>
 diff --git a/xenia-canary-uwp/xenia-canary-uwp.vcxproj b/xenia-canary-uwp/xenia-canary-uwp.vcxproj
 index ca12d33..48d4bf9 100644
 --- a/xenia-canary-uwp/xenia-canary-uwp.vcxproj
