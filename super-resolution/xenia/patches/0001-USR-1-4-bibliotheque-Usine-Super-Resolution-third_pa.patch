@@ -1,4 +1,4 @@
-From 14e8b0d5413566ed4e08d20c6f7d30ffbf104664 Mon Sep 17 00:00:00 2001
+From f8b0eaacb3aaed168ee885d4f4718774c1dcfe67 Mon Sep 17 00:00:00 2001
 From: Usine-IA <usr@usine-ia.local>
 Date: Mon, 28 Sep 2026 17:36:40 +0000
 Subject: [PATCH 1/4] USR 1/4 : bibliotheque Usine Super Resolution
@@ -16,24 +16,30 @@ Application UWP renommee « Xenia USR » avec sa propre identite
 (UsineIA.XeniaUSR, CN=Usine-IA) : elle s'installe a cote d'un Xenia UWP
 d'origine sans conflit de signature.
 ---
- src/xenia/ui/d3d12/CMakeLists.txt         |  3 ++-
+ src/xenia/ui/d3d12/CMakeLists.txt         |  9 ++++++++-
  third_party/CMakeLists.txt                |  7 +++++++
  xenia-canary-uwp/CMakeLists.txt           |  1 +
  xenia-canary-uwp/Package.appxmanifest     | 12 ++++++------
  xenia-canary-uwp/xenia-canary-uwp.vcxproj |  5 ++++-
- 5 files changed, 20 insertions(+), 8 deletions(-)
+ 5 files changed, 26 insertions(+), 8 deletions(-)
 
 diff --git a/src/xenia/ui/d3d12/CMakeLists.txt b/src/xenia/ui/d3d12/CMakeLists.txt
-index 74f4785..099d5dd 100644
+index 74f4785..a7cc336 100644
 --- a/src/xenia/ui/d3d12/CMakeLists.txt
 +++ b/src/xenia/ui/d3d12/CMakeLists.txt
-@@ -1,7 +1,8 @@
+@@ -1,7 +1,14 @@
  add_library(xenia-ui-d3d12 STATIC)
  xe_platform_sources(xenia-ui-d3d12 ${CMAKE_CURRENT_SOURCE_DIR})
  xe_shader_rules_dxbc(xenia-ui-d3d12 ${CMAKE_CURRENT_SOURCE_DIR}/../shaders)
 -target_link_libraries(xenia-ui-d3d12 PUBLIC xenia-base xenia-ui)
 +# usr : USR (Usine Super Resolution), third_party/usr
 +target_link_libraries(xenia-ui-d3d12 PUBLIC xenia-base xenia-ui usr)
++# d3d12_presenter.cc utilise C++/WinRT (CoreWindow) : RoGetActivationFactory
++# et RoOriginateLanguageException viennent de WindowsApp.lib (sinon LNK2001
++# dans l'executable de bureau xenia-app ; l'appli UWP la lie deja).
++if(WIN32)
++  target_link_libraries(xenia-ui-d3d12 PUBLIC WindowsApp)
++endif()
  xe_target_defaults(xenia-ui-d3d12)
  
  if(XENIA_BUILD_MISC)

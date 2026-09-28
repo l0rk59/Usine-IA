@@ -261,7 +261,9 @@ jobs:
       - name: Bibliotheques (solution Visual Studio 2022)
         working-directory: ${{ runner.temp }}/xenia-usr
         run: |
-          cmake --preset vs
+          # meme SDK Windows que le projet UWP (10.0.22621) : une seule version
+          # de C++/WinRT dans l'executable (sinon LNK2038)
+          cmake --preset vs "-DCMAKE_SYSTEM_VERSION=10.0.22621.0"
           if ($LASTEXITCODE -ne 0) { throw "echec de la configuration" }
           # version.h : genere par « xb » d'habitude, pas par CMake seul
           python -c "import importlib.util as u; s = u.spec_from_file_location('xb', 'xenia-build.py'); m = u.module_from_spec(s); s.loader.exec_module(m); m.generate_version_h('build')"

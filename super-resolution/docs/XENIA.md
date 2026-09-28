@@ -120,11 +120,12 @@ Ensuite, dans une *Developer PowerShell for VS 2022* :
 
 ```powershell
 cd C:\xenia-usr
-cmake --preset vs
+cmake --preset vs "-DCMAKE_SYSTEM_VERSION=10.0.22621.0"
 python -c "import importlib.util as u; s = u.spec_from_file_location('xb', 'xenia-build.py'); m = u.module_from_spec(s); s.loader.exec_module(m); m.generate_version_h('build')"
 ```
 
-La seconde commande crée `build\version.h` (numéro de version de Xenia),
+Le SDK 10.0.22621 est celui du projet UWP : bibliothèques et appli
+utilisent ainsi la même version de C++/WinRT. La seconde commande crée `build\version.h` (numéro de version de Xenia),
 que le script `xb` de Xenia fabrique d'habitude et que CMake seul ne crée
 pas. Le préréglage `vs` génère `build\xenia.sln`. Le projet UWP va chercher les
 bibliothèques dans `build\obj\Windows\Release` : garde bien ce dossier
