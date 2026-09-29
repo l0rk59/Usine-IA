@@ -1,6 +1,6 @@
 # Construit l'arbre source de « Xenia + USR » sous Windows : clone
 # xenia-canary-uwp au commit de reference, copie la bibliotheque USR dans
-# third_party\usr et applique les 6 correctifs.
+# third_party\usr et applique les 7 correctifs.
 #
 #   powershell -ExecutionPolicy Bypass -File xenia\appliquer.ps1 [dossier]
 #

@@ -1,7 +1,7 @@
-From c2a6665f4fea9fa7a064892f36b7d3c572a8b058 Mon Sep 17 00:00:00 2001
+From e2729de1d1f1ac0b5ef8daf35522d92df42f2259 Mon Sep 17 00:00:00 2001
 From: Usine-IA <usr@usine-ia.local>
 Date: Mon, 28 Sep 2026 17:36:40 +0000
-Subject: [PATCH 3/6] USR 3/6 : niveau 2, jitter sous-pixel et biais de mip-map
+Subject: [PATCH 3/7] USR 3/7 : niveau 2, jitter sous-pixel et biais de mip-map
 
 Quand USR est actif au niveau 2, le GPU emule decale la scene 3D d'un
 jitter connu -- grille ordonnee 2x2 / 3x3 pour un rapport entier -- et, en

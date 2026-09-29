@@ -1,0 +1,123 @@
+From bc8a658232a623aa968d48a63d5bb6d92a82005f Mon Sep 17 00:00:00 2001
+From: Usine-IA <kopec.lrz@gmail.com>
+Date: Tue, 29 Sep 2026 18:12:32 +0000
+Subject: [PATCH 7/7] USR 7/7 : valeurs conseillees dans le menu manette
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Premier essai sur la console (Call of Duty: Modern Warfare 2) : tous les
+curseurs pousses au maximum -- IA 4, historique 64, anti-fantomes 4,
+nettete 100 % --, une image granuleuse aux trainees horizontales, et
+rien dans le menu pour savoir ou etaient les reglages d'origine ni pour
+y revenir.
+
+Chaque reglage chiffre affiche maintenant la valeur conseillee des qu'il
+s'en ecarte (« 4.00 (conseille 1.00) »), et la ligne « Valeurs
+conseillees » (A) remet tous les reglages de USR d'un coup, sans changer
+la methode, et oublie l'historique.
+---
+ src/xenia/app/usr_menu_model.h | 42 ++++++++++++++++++++++++++++++----
+ 1 file changed, 38 insertions(+), 4 deletions(-)
+
+diff --git a/src/xenia/app/usr_menu_model.h b/src/xenia/app/usr_menu_model.h
+index ec06f62..acd3f87 100644
+--- a/src/xenia/app/usr_menu_model.h
++++ b/src/xenia/app/usr_menu_model.h
+@@ -52,6 +52,7 @@ enum class Row : int {
+   kSharpness,
+   kFrameGeneration,
+   kDiagnostic,
++  kDefaults,
+   kReset,
+   kCount
+ };
+@@ -99,6 +100,8 @@ inline const char* RowLabel(Row r) {
+       return "Génération d'images";
+     case Row::kDiagnostic:
+       return "Diagnostic";
++    case Row::kDefaults:
++      return "Valeurs conseillées";
+     case Row::kReset:
+       return "Oublier l'historique";
+     default:
+@@ -112,6 +115,7 @@ inline bool RowEnabled(const Values& v, Row r) {
+   const bool usr = v.method == Method::kUsr;
+   switch (r) {
+     case Row::kMethod:
++    case Row::kDefaults:
+       return true;
+     case Row::kLodBias:
+       return usr && v.jitter;
+@@ -122,8 +126,25 @@ inline bool RowEnabled(const Values& v, Row r) {
+   }
+ }
+ 
++// Premier essai sur la console : tous les curseurs pousses au maximum
++// (IA 4, historique 64, anti-fantomes 4, nettete 100 %), une image granuleuse
++// et trainante, et rien pour revenir en arriere ni pour savoir ou etait le
++// reglage d'origine. La valeur conseillee s'affiche donc des qu'on s'en
++// ecarte, et « Valeurs conseillees » remet tout d'un coup.
++inline std::string WithAdvice(const char* current, const char* advised) {
++  std::string text = current;
++  if (text != advised) {
++    text += " (conseillé ";
++    text += advised;
++    text += ")";
++  }
++  return text;
++}
++
+ inline std::string RowValue(const Values& v, Row r) {
++  const Values d;
+   char buf[64];
++  char def[64];
+   switch (r) {
+     case Row::kMethod:
+       return MethodName(v.method);
+@@ -137,21 +158,26 @@ inline std::string RowValue(const Values& v, Row r) {
+       return v.network ? "oui" : "non (règles de base)";
+     case Row::kStrength:
+       std::snprintf(buf, sizeof(buf), "%.2f", v.network_strength);
+-      return buf;
++      std::snprintf(def, sizeof(def), "%.2f", d.network_strength);
++      return WithAdvice(buf, def);
+     case Row::kHistory:
+       std::snprintf(buf, sizeof(buf), "%.0f images", v.history_length);
+-      return buf;
++      std::snprintf(def, sizeof(def), "%.0f images", d.history_length);
++      return WithAdvice(buf, def);
+     case Row::kAntiGhosting:
+       std::snprintf(buf, sizeof(buf), "%.2f", v.anti_ghosting);
+-      return buf;
++      std::snprintf(def, sizeof(def), "%.2f", d.anti_ghosting);
++      return WithAdvice(buf, def);
+     case Row::kSharpness:
+       std::snprintf(buf, sizeof(buf), "%.0f %%", v.sharpness * 100.0f);
+-      return buf;
++      std::snprintf(def, sizeof(def), "%.0f %%", d.sharpness * 100.0f);
++      return WithAdvice(buf, def);
+     case Row::kFrameGeneration:
+       return v.frame_generation ? "x2 (jeux à 30 images/s)" : "non";
+     case Row::kDiagnostic:
+       return v.debug_view ? "carte (R réactivité, V gain, B confiance)"
+                           : "image";
++    case Row::kDefaults:
+     case Row::kReset:
+       return "A";
+     default:
+@@ -233,6 +259,14 @@ struct Menu {
+   bool Activate(Values& v, bool& changed) const {
+     changed = false;
+     const Row r = SelectedRow();
++    if (r == Row::kDefaults) {
++      // Tous les reglages de USR, pas la methode : on reste sur USR.
++      Values advised;
++      advised.method = v.method;
++      changed = !(advised == v);
++      v = advised;
++      return changed;
++    }
+     if (r == Row::kReset) {
+       return RowEnabled(v, r);
+     }

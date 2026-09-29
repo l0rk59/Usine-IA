@@ -1,7 +1,7 @@
-From df719949e6a5b968fc7e4de8e8150ee26f9baa36 Mon Sep 17 00:00:00 2001
+From d1ece6ec9c0b4f2ff41df3f627ba6f953f0786af Mon Sep 17 00:00:00 2001
 From: Usine-IA <kopec.lrz@gmail.com>
 Date: Tue, 29 Sep 2026 16:40:43 +0000
-Subject: [PATCH 6/6] USR 6/6 : mode capture, des sequences de vrais jeux pour
+Subject: [PATCH 6/7] USR 6/7 : mode capture, des sequences de vrais jeux pour
  l'entrainement
 
 Variable usr_capture (section GPU). Avec draw_resolution_scale_x/y = 3,

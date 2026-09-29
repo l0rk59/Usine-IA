@@ -121,7 +121,7 @@ Universel** :
   terrain, pour mesurer et entraîner USR sur la Xbox 360. De la manette
   au réseau réentraîné, sans PC : [docs/CAPTURE.md](docs/CAPTURE.md).
 
-Livré en 6 correctifs appliqués par un script sur une version précise de
+Livré en 7 correctifs appliqués par un script sur une version précise de
 xenia-canary-uwp. Construction avec Visual Studio, installation sur la
 console, commandes et réglages : [docs/XENIA.md](docs/XENIA.md).
 
@@ -232,7 +232,7 @@ Vérifié automatiquement (voir `tests/` et `.github/workflows/super-resolution.
 - **USR Universel** : même chaîne de vérification (référence, parité
   des shaders sur GPU logiciel, bibliothèque C++ sous Wine identique à la
   référence), et sa vue dans l'application Labo ;
-- **Xenia + USR** : les 6 correctifs s'appliquent sur un clone neuf de
+- **Xenia + USR** : les 7 correctifs s'appliquent sur un clone neuf de
   l'émulateur, et le menu de réglages passe ses tests ;
 - **compilation sous Windows avec MSVC** (intégration continue) : la
   bibliothèque, le Labo PC et le Labo **UWP**, et **Xenia** avec les
@@ -257,7 +257,7 @@ super-resolution/
 ├── src/              implémentation Direct3D 12 + poids par défaut
 ├── labo/             USR Labo : appli UWP (Xbox) et Win32 (PC), shaders
 │                     de la scène de test, menu, police, icônes
-├── xenia/            Xenia + USR : 6 correctifs, script d'application,
+├── xenia/            Xenia + USR : 7 correctifs, script d'application,
 │                     cible CMake de la bibliothèque, tests du menu
 ├── usr_ref/          référence Python : algorithme, scène, entraînement
 ├── weights/          poids des 3 modèles et du réseau universel (.json

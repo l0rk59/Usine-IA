@@ -19,7 +19,7 @@ UWP pour Xbox en mode Développeur) avec **USR Universel** intégré.
 ## Ce qu'il y a dans `xenia/`
 
 On ne copie pas Xenia (des centaines de mégaoctets) : on livre
-**6 correctifs** et un script qui les applique sur une version précise de
+**7 correctifs** et un script qui les applique sur une version précise de
 [xenia-canary-uwp](https://github.com/amitamit99/xenia-canary-uwp)
 (commit `3e236f0`). Ce fork de Xenia Canary se compile avec CMake et
 Visual Studio, et sait produire le paquet pour la Xbox.
@@ -32,6 +32,7 @@ Visual Studio, et sait produire le paquet pour la Xbox.
 | `patches/0004-…` | réglages en direct à la manette : surcouche, menu pause, fenêtre d'affichage (PC), variables `usr_*` |
 | `patches/0005-…` | sortie native (DLAA) puis FSR, et génération d'images ×2 : voir [GENERATION.md](GENERATION.md) |
 | `patches/0006-…` | mode capture : séquences de vrais jeux pour mesurer et entraîner USR, voir [CAPTURE.md](CAPTURE.md) |
+| `patches/0007-…` | menu manette : valeur conseillée affichée à côté de chaque réglage modifié, ligne « Valeurs conseillées » |
 | `appliquer.ps1` / `appliquer.sh` | clone Xenia, copie USR dans `third_party/usr`, applique les correctifs |
 | `third_party_usr/CMakeLists.txt` | construit la bibliothèque et ses shaders (dxc du SDK Windows) |
 | `tests/usr_menu_test.cc` | tests du menu de réglages (sans Xenia ni GPU) |
@@ -116,7 +117,7 @@ powershell -ExecutionPolicy Bypass -File xenia\appliquer.ps1 C:\xenia-usr
 
 Le script clone Xenia au bon commit avec ses sous-modules (quelques
 minutes), copie USR et sa licence dans `third_party\usr`, et applique les
-6 correctifs sur une branche `usr`.
+7 correctifs sur une branche `usr`.
 
 Ensuite, dans une *Developer PowerShell for VS 2022* :
 
@@ -240,6 +241,7 @@ Les lignes du panneau :
 | Netteté | 0 à 100 %, **25 %** | accentuation finale (RCAS) |
 | Génération d'images | **non** · x2 (jeux à 30 images/s) | une image fabriquée entre deux images du jeu ; voir plus bas |
 | Diagnostic | image · carte | rouge = réactivité (pixel refait à neuf), vert = gain, bleu = confiance (mémoire accumulée) |
+| Valeurs conseillées | A | remet tous les réglages de USR aux valeurs en gras, et oublie l'historique |
 | Oublier l'historique | A | repartir de zéro |
 
 En bas, le panneau affiche la taille de sortie de USR : la preuve qu'il
@@ -361,7 +363,7 @@ Vérifié sous Linux, sans Windows, par le script
 développement, et c'est aussi le job `xenia-linux` de l'intégration
 continue :
 
-- les 6 correctifs **s'appliquent** sans conflit sur un clone neuf de
+- les 7 correctifs **s'appliquent** sans conflit sur un clone neuf de
   xenia-canary-uwp au commit de référence ;
 - le **menu de réglages** passe ses tests (`xenia/tests/usr_menu_test.cc`,
   C++20 strict) : bornes, pas, lignes grisées, bascules, « oublier
@@ -397,13 +399,23 @@ vérification sous Linux ne pouvait voir :
 - la bibliothèque `WindowsApp` manquante à l'édition de liens ;
 - deux versions de C++/WinRT mélangées entre bibliothèques et appli.
 
-**Pas encore vérifié** — il faut la console :
+**Vérifié sur une Xbox Series X** (29/09/2026, *Call of Duty: Modern
+Warfare 2*, photos de l'écran) :
 
-- l'**installation et le lancement sur Xbox** ;
-- le **fonctionnement de USR en jeu** : surcouche, niveaux, qualité
-  d'image ;
-- les performances (le Labo mesure le coût de USR Universel sur la
-  console) ;
+- le paquet `xenia-usr-xbox` s'**installe** par le Device Portal depuis un
+  téléphone, et le jeu se **lance** ;
+- USR **tourne** : la surcouche (Vue + RB) affiche la sortie 1920×1080
+  (agrandie par USR) et 1280×720 (sortie native, DLAA) ;
+- à l'œil, l'image USR est jugée meilleure que FSR 1 ;
+- réglages poussés au maximum : image granuleuse, traînées ; d'où la
+  ligne « Valeurs conseillées » (correctif 7) ;
+- niveau 2 : « quelques problèmes » signalés, pas encore décrits ;
+- quelques ralentissements, pas encore attribués (Xenia ou USR).
+
+**Pas encore vérifié** :
+
+- les performances mesurées (le Labo mesure le coût de USR Universel sur
+  la console) ;
 - le comportement du niveau 2 jeu par jeu ;
 - la **génération d'images** en jeu : la cadence réelle à la télé, et le
   ressenti de la demi-image de latence ajoutée. Le code est vérifié

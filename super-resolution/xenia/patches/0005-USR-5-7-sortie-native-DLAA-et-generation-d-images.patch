@@ -1,7 +1,7 @@
-From 4b6657d7d7f86a514765ddf601585f8868b279ac Mon Sep 17 00:00:00 2001
+From 942f5df07943da6149cb43fe05ac1deab656d5e6 Mon Sep 17 00:00:00 2001
 From: Usine-IA <kopec.lrz@gmail.com>
 Date: Tue, 29 Sep 2026 16:13:13 +0000
-Subject: [PATCH 5/6] USR 5/6 : sortie native (DLAA) et generation d'images
+Subject: [PATCH 5/7] USR 5/7 : sortie native (DLAA) et generation d'images
 
 Sortie native : USR travaille a la taille de l'image du jeu (jitter
 Halton au niveau 2), puis FSR agrandit jusqu'a l'ecran. Utile quand

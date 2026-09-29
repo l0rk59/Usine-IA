@@ -88,6 +88,29 @@ int main() {
   CHECK(!RowEnabled(v, Row::kOutput) && !RowEnabled(v, Row::kFrameGeneration));
   CHECK(!m.Adjust(v, 1) && v.frame_generation);
   v.method = Method::kUsr;
+  // valeurs conseillees : affichees quand on s'en ecarte, remises par A
+  v.network_strength = 4.0f;
+  v.history_length = 64.0f;
+  v.anti_ghosting = 4.0f;
+  v.sharpness = 1.0f;
+  CHECK(RowValue(v, Row::kStrength) == "4.00 (conseillé 1.00)");
+  CHECK(RowValue(v, Row::kSharpness) == "100 % (conseillé 25 %)");
+  CHECK(RowValue(Values(), Row::kHistory) == "10 images");
+  Select(m, Row::kDefaults);
+  CHECK(m.Activate(v, changed) && changed);
+  {
+    Values advised;
+    advised.method = v.method;
+    CHECK(v == advised);
+  }
+  CHECK(!m.Activate(v, changed) && !changed);  // deja conseillees
+  v.method = Method::kFsr;
+  v.sharpness = 0.5f;
+  CHECK(RowEnabled(v, Row::kDefaults));
+  CHECK(m.Activate(v, changed) && v.method == Method::kFsr &&
+        v.sharpness == 0.25f);
+  v.method = Method::kUsr;
+  v.jitter = false;  // la suite teste le niveau 1
   // « Oublier l'historique » : A demande la remise a zero
   Select(m, Row::kReset);
   CHECK(m.Activate(v, changed) && !changed);
