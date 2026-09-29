@@ -342,26 +342,29 @@ Le but était d'éliminer les erreurs de C++ dans le code ajouté. Des
 erreurs volontaires injectées dans ce code ont prouvé qu'il était bien
 analysé.
 
-Prévu dans l'intégration continue sous Windows, avec MSVC :
+Vérifié par l'intégration continue sous Windows, avec MSVC (premier
+passage complet le 28/09/2026) :
 
 - job `xenia-windows` : la **version PC** complète (`xenia-app`), qui
-  contient tout le code C++ des correctifs ;
-- job `xenia-uwp` : l'**application UWP** pour la Xbox (sans signature du
-  paquet).
+  contient tout le code C++ des correctifs, compile et se lie. Une étape
+  vérifie que le code de USR est bien dans l'exécutable ;
+- job `xenia-uwp` : l'**application UWP** pour la Xbox compile, se lie et
+  donne un **paquet signé** (certificat de test), l'artefact
+  `xenia-usr-xbox` de l'onglet *Actions*.
 
-Ces jobs **n'ont encore jamais tourné**. Les Actions GitHub du dépôt ne
-démarrent actuellement aucune machine : tous les workflows, y compris
-celui de l'usine, échouent en quelques secondes et sans journal. C'est un
-réglage du compte GitHub (facturation ou limite de dépense des Actions),
-pas le code.
+Ce premier passage a trouvé, puis permis de corriger, ce qu'aucune
+vérification sous Linux ne pouvait voir :
 
-**Pas encore vérifié** :
+- les fins de ligne des correctifs converties par Git sous Windows ;
+- `version.h`, que CMake seul ne génère pas ;
+- la bibliothèque `WindowsApp` manquante à l'édition de liens ;
+- deux versions de C++/WinRT mélangées entre bibliothèques et appli.
 
-- la **compilation par MSVC** (voir ci-dessus). Xenia traite les
-  avertissements comme des erreurs : si une erreur apparaît, c'est
-  probablement un détail (avertissement, `#include` manquant) dans le code
-  des correctifs ;
-- le **fonctionnement sur Xbox** ;
+**Pas encore vérifié** — il faut la console :
+
+- l'**installation et le lancement sur Xbox** ;
+- le **fonctionnement de USR en jeu** : surcouche, niveaux, qualité
+  d'image ;
 - les performances (le Labo mesure le coût de USR Universel sur la
   console) ;
 - le comportement du niveau 2 jeu par jeu.

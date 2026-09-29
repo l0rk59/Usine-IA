@@ -212,8 +212,9 @@ la console**. C'est la mesure qui manque encore pour Xenia.
     exigé) ;
   - sa sortie **USR Universel** aussi, sur les mêmes images : image 8 bits
     reçue, jitter, remise à zéro.
+- **La version UWP compile** avec MSVC dans l'intégration continue (C++20,
+  manifeste complet).
 
-Pas encore vérifié : la version **UWP** n'a été ni compilée (il faut le SDK
-Windows) ni lancée sur une vraie Xbox, et les performances sur console
-restent à mesurer. Si quelque chose coince à la compilation ou au
-déploiement, c'est là qu'il faudra regarder en premier.
+Pas encore vérifié : la version UWP n'a pas encore été lancée sur une
+vraie Xbox, et les performances sur console restent à mesurer. Si quelque
+chose coince au déploiement, c'est là qu'il faudra regarder en premier.

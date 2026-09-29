@@ -225,14 +225,14 @@ Vérifié automatiquement (voir `tests/` et `.github/workflows/super-resolution.
   des shaders sur GPU logiciel, bibliothèque C++ sous Wine identique à la
   référence), et sa vue dans l'application Labo ;
 - **Xenia + USR** : les 4 correctifs s'appliquent sur un clone neuf de
-  l'émulateur, et le menu de réglages passe ses tests.
+  l'émulateur, et le menu de réglages passe ses tests ;
+- **compilation sous Windows avec MSVC** (intégration continue) : la
+  bibliothèque, le Labo PC et le Labo **UWP**, et **Xenia** avec les
+  correctifs, en version PC et en appli Xbox. Le paquet Xbox signé de
+  Xenia USR est produit à chaque passage (artefact `xenia-usr-xbox`).
 
-**Pas encore vérifié** — il faut une machine Windows ou une Xbox :
+**Pas encore vérifié** — il faut une Xbox (ou un PC Windows) :
 
-- la compilation sous Windows avec MSVC : celle de la version **UWP**
-  du Labo, et celle de **Xenia** avec les correctifs. Elles sont prévues
-  dans l'intégration continue, mais jamais exécutées : les Actions GitHub
-  du dépôt ne démarrent actuellement aucune machine (réglage du compte) ;
 - l'exécution sur le vrai Direct3D 12 de Windows (seule la traduction
   vkd3d-proton a été utilisée) ;
 - la compilation avec le GDK console et le fonctionnement sur Xbox ;
