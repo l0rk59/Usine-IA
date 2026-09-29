@@ -445,11 +445,12 @@ def banc_sequence(frames=16, render_size=(192, 108), display_size=(384, 216),
 
 
 def write_banc_input(path, images, jitters, render_size, display_size,
-                     period, no_network=False, reset=True, sharpness=0.5):
+                     period, no_network=False, reset=True, sharpness=0.5,
+                     generation=True):
     rw, rh = render_size
     dw, dh = display_size
     flags = (1 if no_network else 0) | (2 if reset else 0) | (
-        int(round(sharpness * 255)) << 8)
+        4 if generation else 0) | (int(round(sharpness * 255)) << 8)
     with open(path, "wb") as f:
         f.write(np.array([BANC_MAGIC, rw, rh, dw, dh, len(images), period,
                           flags], "<u4").tobytes())
@@ -460,20 +461,31 @@ def write_banc_input(path, images, jitters, render_size, display_size,
             f.write(np.ascontiguousarray(rgba).tobytes())
 
 
-def read_banc_output(path, display_size, frames):
+def read_banc_output(path, display_size, frames, generation=False):
+    """Sorties du banc ; avec ``generation``, (sorties, images generees)."""
     dw, dh = display_size
     data = np.fromfile(path, "<f2").astype(np.float32)
-    return data.reshape(frames, dh, dw, 4)[..., :3]
+    if not generation:
+        return data.reshape(frames, dh, dw, 4)[..., :3]
+    both = data.reshape(frames, 2, dh, dw, 4)[..., :3]
+    return both[:, 0], both[:, 1]
 
 
 def banc_reference(images, jitters, render_size, display_size, period,
-                   network, reset=True, sharpness=0.5):
-    """Ce que la bibliotheque doit produire, image par image."""
+                   network, reset=True, sharpness=0.5, flows=None):
+    """Ce que la bibliotheque doit produire, image par image. ``flows`` :
+    liste completee par le flot de chaque image (None quand il n'existe
+    pas : premiere image, remise a zero), pour la generation d'images."""
     up = UniversalUpscaler(render_size, display_size, network=network,
                            period=period, sharpness=sharpness)
     outs = []
     for f, (img, j) in enumerate(zip(images, jitters)):
         x = img.astype(np.float32) / np.float32(255.0)
-        outs.append(up.dispatch(x, (float(j[0]), float(j[1])),
-                                reset=reset and f == BANC_RESET_FRAME))
+        cut = f == 0 or (reset and f == BANC_RESET_FRAME)
+        out, info = up.dispatch(x, (float(j[0]), float(j[1])),
+                                reset=reset and f == BANC_RESET_FRAME,
+                                return_internals=True)
+        outs.append(out)
+        if flows is not None:
+            flows.append(None if cut else info["flow"]["motion"])
     return outs

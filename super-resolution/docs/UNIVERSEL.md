@@ -222,6 +222,15 @@ Conventions :
   64 images), `antiGhosting` (0,05 à 4, défaut 0,3).
 - **Diagnostic** : `debugOutput` (RGBA, résolution d'écran) reçoit par
   pixel la réactivité, le gain, la mémoire accumulée et le doute du flot.
+- **DLAA** : `displayWidth/Height` égaux à la taille de rendu. Le jitter
+  est alors Halton, sur 8 phases.
+- **Génération d'images** : après `DispatchUniversal`, et avant le
+  suivant, `usr::InterpolateUniversal` fabrique l'image du milieu entre
+  la sortie précédente et celle-ci, avec le flot tout juste estimé.
+  - Il faut garder la sortie précédente dans une seconde texture.
+  - L'appel rend `NotReady` tant qu'aucun flot n'existe : première image,
+    ou juste après une coupure.
+  - Mesures et limites : [GENERATION.md](GENERATION.md).
 
 ## Vérifié, et pas encore vérifié
 

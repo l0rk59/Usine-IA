@@ -77,7 +77,8 @@ if(USR_BUILD_LIBRARY OR USR_BUILD_LABO)
     usr_compile_shaders(USR_U_SHADER_HEADERS usr_universal_shaders.h
         "${CMAKE_CURRENT_SOURCE_DIR}/shaders"
         usr_u_luma usr_u_down usr_u_grad usr_u_flow usr_u_median
-        usr_u_finalize usr_u_residual usr_u_accumulate usr_u_output)
+        usr_u_finalize usr_u_residual usr_u_accumulate usr_u_output
+        usr_u_interp_ecart usr_u_interp)
     add_library(usr STATIC
         src/usr_dx12.cpp
         src/usr_universal_dx12.cpp

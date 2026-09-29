@@ -26,7 +26,8 @@ PASSES = ("usr_prepare", "usr_accumulate", "usr_sharpen")
 # USR Universel (sans vecteurs de mouvement)
 UPASSES = ("usr_u_luma", "usr_u_down", "usr_u_grad", "usr_u_flow",
            "usr_u_median", "usr_u_finalize", "usr_u_residual",
-           "usr_u_accumulate", "usr_u_output")
+           "usr_u_accumulate", "usr_u_output", "usr_u_interp_ecart",
+           "usr_u_interp")
 LABO_PASSES = ("labo_scene", "labo_truth", "labo_upscale", "labo_compose",
                "labo_encode")
 
@@ -123,6 +124,18 @@ class Constantes(unittest.TestCase):
         self.assertEqual(define("USR_NET_W3"), h * i + 2 * h + h * h)
         self.assertEqual(define("USR_NET_B3"), h * i + 2 * h + h * h + o * h)
         self.assertIn("float4 g_Net[%d]" % (network.N_PADDED // 4), text)
+
+    def test_generation_hlsl_egal_numpy(self):
+        from usr_ref import interpolation
+        text = _read("shaders", "usr_u_interp.hlsli")
+        pairs = {"USR_U_SIGMA_ACCORD": interpolation.SIGMA_ACCORD,
+                 "USR_U_SEUIL_FLOT": interpolation.SEUIL_FLOT,
+                 "USR_U_POIDS_SUR_PLACE": interpolation.POIDS_SUR_PLACE}
+        for name, value in pairs.items():
+            self.assertAlmostEqual(_hlsl_const(text, name), value, msg=name)
+        # meme borne des deux cotes : 2 passes par image generee
+        cpp = _read("src", "usr_universal_dx12.cpp")
+        self.assertIn("2 * kMaxInterpolationsPerFrame", cpp)
 
     def test_20_constantes_racine(self):
         text = _read("shaders", "usr_common.hlsli")

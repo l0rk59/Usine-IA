@@ -162,6 +162,26 @@ def cmd_universel_banc(args):
         print("Ecrit : %s" % args.sortie)
 
 
+def cmd_universel_dlaa(args):
+    from . import banc_universel
+    net = Network.load(args.poids or UNIVERSAL_WEIGHTS)
+    rows = banc_universel.run_dlaa(net, log=lambda m: print(m, flush=True))
+    if args.sortie:
+        banc_universel.save(rows, args.sortie)
+        print("Ecrit : %s" % args.sortie)
+
+
+def cmd_universel_generation(args):
+    from . import banc_universel
+    rows = banc_universel.run_generation(
+        steps=(3.0,) if args.rapide else (1.0, 3.0),
+        scenes=banc_universel.GEN_SCENES[:1] if args.rapide else
+        banc_universel.GEN_SCENES, log=lambda m: print(m, flush=True))
+    if args.sortie:
+        banc_universel.save(rows, args.sortie)
+        print("Ecrit : %s" % args.sortie)
+
+
 def cmd_universel_entrainer(args):
     from . import train_universel
     cache = args.cache or os.path.join(ROOT, "resultats", "universel-cache")
@@ -257,6 +277,21 @@ def main(argv=None):
     ut.add_argument("--cache", help="dossier des sequences rendues")
     ut.add_argument("--sortie", help="poids (.json) ; defaut : ceux livres")
     ut.set_defaults(func=cmd_universel_entrainer)
+
+    ud = sub.add_parser("universel-dlaa",
+                        help="USR sans agrandissement contre l'image brute "
+                             "(docs/GENERATION.md)")
+    ud.add_argument("--poids", help="poids universels (.json)")
+    ud.add_argument("--sortie", help="resultats (.json)")
+    ud.set_defaults(func=cmd_universel_dlaa)
+
+    ug = sub.add_parser("universel-generation",
+                        help="generation d'images x2 : image du milieu "
+                             "contre la verite (docs/GENERATION.md)")
+    ug.add_argument("--rapide", action="store_true",
+                    help="une scene, pas 3")
+    ug.add_argument("--sortie", help="resultats (.json)")
+    ug.set_defaults(func=cmd_universel_generation)
 
     ue = sub.add_parser("universel-entree",
                         help="sequence d'entree du banc de bout en bout "

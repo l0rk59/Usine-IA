@@ -57,7 +57,8 @@ set(USR_SHADER_OUTPUTS "")
 usr_shader_header(usr_shaders.h usr_prepare usr_accumulate usr_sharpen)
 usr_shader_header(usr_universal_shaders.h
   usr_u_luma usr_u_down usr_u_grad usr_u_flow usr_u_median
-  usr_u_finalize usr_u_residual usr_u_accumulate usr_u_output)
+  usr_u_finalize usr_u_residual usr_u_accumulate usr_u_output
+  usr_u_interp_ecart usr_u_interp)
 
 add_library(usr STATIC
   src/usr_dx12.cpp

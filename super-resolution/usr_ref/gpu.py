@@ -291,7 +291,8 @@ U_FLAG_PREV = 32
 
 U_KERNELS = ("usr_u_luma", "usr_u_down", "usr_u_grad", "usr_u_flow",
              "usr_u_median", "usr_u_finalize", "usr_u_residual",
-             "usr_u_accumulate", "usr_u_output")
+             "usr_u_accumulate", "usr_u_output", "usr_u_interp_ecart",
+             "usr_u_interp")
 
 
 class GpuUniversal:
@@ -356,7 +357,7 @@ class GpuUniversal:
         return self.dev.create_texture(format=fmt, width=w, height=h,
                                        usage=usage, mip_count=1, **kw)
 
-    def _constants(self, jitter, djitter, flags, level=0):
+    def _constants(self, jitter, djitter, flags, level=0, time=0.0):
         spy = self.spy
         rw, rh = self.render_size
         dw, dh = self.display_size
@@ -377,7 +378,7 @@ class GpuUniversal:
             "g_MaxCount": float(self.max_count),
             "g_BoxT1": float(self.box_t1),
             "g_Sharpness": float(self.sharpness),
-            "g_Reserved0": 0, "g_Reserved1": 0,
+            "g_Time": float(time), "g_Reserved1": 0,
         }
 
     def _run(self, name, threads, consts, resources, net=False):
@@ -480,6 +481,34 @@ class GpuUniversal:
         self.frame += 1
         self.total += 1
         return self.output.to_numpy()[..., :3].astype(np.float32)
+
+    def interpolate(self, prev, cur, t=0.5):
+        """Generation d'images (passes usr_u_interp*) entre deux sorties
+        ``prev`` et ``cur`` (h, w, 3), avec le flot de la derniere image
+        traitee : meme interface que interpolation.interpoler(), sans les
+        cartes. None si ce flot n'existe pas (premiere image)."""
+        F = self.spy.Format
+        dw, dh = self.display_size
+        if self.frame < 2:
+            return None
+        cur_i = (self.total - 1) % 2
+        ones = np.ones((dh, dw, 1), np.float32)
+        tp = self._tex(F.rgba32_float, dw, dh,
+                       np.concatenate([np.asarray(prev, np.float32), ones], -1))
+        tc = self._tex(F.rgba32_float, dw, dh,
+                       np.concatenate([np.asarray(cur, np.float32), ones], -1))
+        ecart = self._tex(F.rg32_float, dw, dh)
+        out = self._tex(F.rgba32_float, dw, dh)
+        flags = U_FLAG_PREV if self.frame >= 3 else 0
+        consts = self._constants((0.0, 0.0), (0.0, 0.0), flags, time=t)
+        res = {"t_Prev": tp, "t_Cur": tc, "t_Motion": self.final[cur_i],
+               "t_MotionPrev": self.final[1 - cur_i]}
+        self._run("usr_u_interp_ecart", (dw, dh), consts,
+                  dict(res, u_Ecart=ecart))
+        self._run("usr_u_interp", (dw, dh), consts,
+                  dict(res, t_Ecart=ecart, u_Output=out))
+        self.dev.wait()
+        return out.to_numpy()[..., :3].astype(np.float32)
 
     def read(self, what):
         """Intermediaires pour les tests : 'motion', 'aux', 'residual',

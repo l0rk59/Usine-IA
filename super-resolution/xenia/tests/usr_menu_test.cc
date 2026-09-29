@@ -75,6 +75,19 @@ int main() {
   Select(m, Row::kLevel);
   CHECK(!m.Activate(v, changed) && changed && !v.jitter);
   CHECK(!RowEnabled(v, Row::kLodBias));
+  // sortie native (DLAA) et generation d'images : A bascule, inactives hors
+  // USR, desactivees par defaut
+  CHECK(!Values().native && !Values().frame_generation);
+  Select(m, Row::kOutput);
+  CHECK(!m.Activate(v, changed) && changed && v.native);
+  CHECK(RowValue(v, Row::kOutput) == "native (DLAA) + FSR");
+  Select(m, Row::kFrameGeneration);
+  CHECK(!m.Activate(v, changed) && changed && v.frame_generation);
+  CHECK(RowValue(v, Row::kFrameGeneration) == "x2 (jeux à 30 images/s)");
+  v.method = Method::kFsr;
+  CHECK(!RowEnabled(v, Row::kOutput) && !RowEnabled(v, Row::kFrameGeneration));
+  CHECK(!m.Adjust(v, 1) && v.frame_generation);
+  v.method = Method::kUsr;
   // « Oublier l'historique » : A demande la remise a zero
   Select(m, Row::kReset);
   CHECK(m.Activate(v, changed) && !changed);

@@ -52,7 +52,9 @@ constexpr uint32_t kUavCount = 4;   // u0..u3
 constexpr uint32_t kSlotsPerPass = kSrvCount + kUavCount;
 constexpr uint32_t kMaxLevels = 6;  // = flow.MAX_LEVELS
 constexpr uint32_t kMinCoarseSide = 24;  // = flow.MIN_COARSE_SIDE
-constexpr uint32_t kMaxPasses = 4 * kMaxLevels + 4;
+// Passes d'une image : 4 par niveau de flot + 4, puis 2 par image generee.
+constexpr uint32_t kMaxPasses =
+    4 * kMaxLevels + 4 + 2 * kMaxInterpolationsPerFrame;
 constexpr uint32_t kDescriptorsPerFrame = kMaxPasses * kSlotsPerPass;
 constexpr uint32_t kWeightFloats = 484;
 constexpr uint32_t kWeightBufferSize = 2048;
@@ -81,7 +83,8 @@ struct Constants {
     float maxCount;
     float boxT1;
     float sharpness;
-    uint32_t reserved[2];
+    float time;  // generation d'images
+    uint32_t reserved;
 };
 static_assert(sizeof(Constants) == kRootConstantCount * 4,
               "doit suivre le cbuffer USRUConstants");
@@ -109,6 +112,7 @@ public:
     Result Init(const UniversalCreateDesc& desc);
     void Release();
     Result Dispatch(const UniversalDispatchDesc& desc);
+    Result Interpolate(const UniversalInterpolateDesc& desc);
     Result SetWeights(const float* weights, uint32_t count);
 
 private:
@@ -152,6 +156,7 @@ private:
     Tracked aux_;
     Tracked residual_;
     Tracked history_[2];
+    Tracked ecart_;  // generation d'images : ecarts des deux hypotheses
 
     uint64_t frame_ = 0;      // images depuis la derniere remise a zero
     uint64_t total_ = 0;      // images depuis la creation
@@ -188,6 +193,8 @@ Result UniversalContext::Init(const UniversalCreateDesc& desc)
         {g_usr_u_residual, sizeof(g_usr_u_residual)},
         {g_usr_u_accumulate, sizeof(g_usr_u_accumulate)},
         {g_usr_u_output, sizeof(g_usr_u_output)},
+        {g_usr_u_interp_ecart, sizeof(g_usr_u_interp_ecart)},
+        {g_usr_u_interp, sizeof(g_usr_u_interp)},
     };
     for (uint32_t i = 0; i < kPassCount; ++i)
         if (!code[i].data)
@@ -236,6 +243,8 @@ Result UniversalContext::Init(const UniversalCreateDesc& desc)
         if ((r = CreateTexture(dw, dh, DXGI_FORMAT_R16G16B16A16_FLOAT,
                                &history_[b])) != Result::Ok) return r;
     }
+    if ((r = CreateTexture(dw, dh, DXGI_FORMAT_R32G32_FLOAT, &ecart_)) !=
+        Result::Ok) return r;
     for (uint32_t k = 0; k < levels_; ++k) {
         if ((r = CreateTexture(levelW_[k], levelH_[k],
                                DXGI_FORMAT_R32G32_FLOAT, &motionRaw_[k])) !=
@@ -283,6 +292,7 @@ void UniversalContext::Release()
     if (weights_ && weightsMapped_)
         weights_->Unmap(0, nullptr);
     SafeRelease(weights_);
+    SafeRelease(ecart_.resource);
     for (Tracked& t : history_) SafeRelease(t.resource);
     SafeRelease(residual_.resource);
     SafeRelease(aux_.resource);
@@ -676,6 +686,84 @@ Result UniversalContext::Dispatch(const UniversalDispatchDesc& d)
     return Result::Ok;
 }
 
+Result UniversalContext::Interpolate(const UniversalInterpolateDesc& d)
+{
+    if (!d.commandList || !d.previous || !d.current || !d.output)
+        return Result::InvalidArgument;
+    const DXGI_FORMAT outputFormat = ViewFormat(d.output, d.outputFormat);
+    if (IsSrgb(outputFormat))
+        return Result::InvalidArgument;
+    // Le flot de l'image courante n'existe qu'a partir de la 2e image.
+    if (frame_ < 2)
+        return Result::NotReady;
+    if (passIndex_ + 2 > kMaxPasses)
+        return Result::InvalidArgument;  // plus de kMaxInterpolations...
+
+    ID3D12GraphicsCommandList* cl = d.commandList;
+    // Dispatch a deja avance les compteurs : l'image courante est total_-1.
+    const uint32_t cur = static_cast<uint32_t>((total_ - 1) & 1);
+    const uint32_t prev = cur ^ 1u;
+    Constants c = {};
+    c.renderSize[0] = desc_.renderWidth;
+    c.renderSize[1] = desc_.renderHeight;
+    c.displaySize[0] = desc_.displayWidth;
+    c.displaySize[1] = desc_.displayHeight;
+    // Le flot de l'image 0 d'une sequence est nul, pas mesure : le test de
+    // coherence dans le temps le prendrait pour un saut.
+    c.flags = frame_ >= 3 ? kFlagPrev : 0u;
+    c.time = Clamp(d.time, 0.0f, 1.0f);
+
+    ID3D12DescriptorHeap* heaps[] = {heap_};
+    cl->SetDescriptorHeaps(1, heaps);
+    cl->SetComputeRootSignature(rootSignature_);
+    cl->SetComputeRootConstantBufferView(kRootNetwork,
+                                         weights_->GetGPUVirtualAddress());
+
+    const DXGI_FORMAT RG32 = DXGI_FORMAT_R32G32_FLOAT;
+    Tracked prevIn = {d.previous,
+                      D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE};
+    Tracked curIn = {d.current, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE};
+    const DXGI_FORMAT pf = ViewFormat(d.previous, d.previousFormat);
+    const DXGI_FORMAT cf = ViewFormat(d.current, d.currentFormat);
+    const uint32_t dw = desc_.displayWidth, dh = desc_.displayHeight;
+    {
+        ID3D12Resource* s[kSrvCount] = {d.previous, d.current,
+                                        final_[cur].resource,
+                                        final_[prev].resource};
+        DXGI_FORMAT sf[kSrvCount] = {pf, cf, RG32, RG32};
+        ID3D12Resource* u[kUavCount] = {ecart_.resource};
+        DXGI_FORMAT uf[kUavCount] = {RG32};
+        PassIo io;
+        io.reads[0] = &prevIn;
+        io.reads[1] = &curIn;
+        io.reads[2] = &final_[cur];
+        io.reads[3] = &final_[prev];
+        io.writes[0] = &ecart_;
+        Run(cl, UniversalPass::InterpDiff, c, dw, dh, s, sf, u, uf, io);
+    }
+    {
+        ID3D12Resource* s[kSrvCount] = {d.previous, d.current,
+                                        final_[cur].resource,
+                                        final_[prev].resource,
+                                        ecart_.resource};
+        DXGI_FORMAT sf[kSrvCount] = {pf, cf, RG32, RG32, RG32};
+        ID3D12Resource* u[kUavCount] = {d.output};
+        DXGI_FORMAT uf[kUavCount] = {outputFormat};
+        PassIo io;
+        io.reads[0] = &prevIn;
+        io.reads[1] = &curIn;
+        io.reads[2] = &final_[cur];
+        io.reads[3] = &final_[prev];
+        io.reads[4] = &ecart_;
+        Run(cl, UniversalPass::Interpolate, c, dw, dh, s, sf, u, uf, io);
+    }
+    D3D12_RESOURCE_BARRIER b = {};
+    b.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    b.UAV.pResource = d.output;
+    cl->ResourceBarrier(1, &b);
+    return Result::Ok;
+}
+
 // --- API publique ---------------------------------------------------------
 
 Result CreateUniversalContext(const UniversalCreateDesc& desc,
@@ -711,6 +799,12 @@ Result DispatchUniversal(UniversalContext* context,
                          const UniversalDispatchDesc& desc)
 {
     return context ? context->Dispatch(desc) : Result::InvalidArgument;
+}
+
+Result InterpolateUniversal(UniversalContext* context,
+                            const UniversalInterpolateDesc& desc)
+{
+    return context ? context->Interpolate(desc) : Result::InvalidArgument;
 }
 
 Result SetUniversalWeights(UniversalContext* context, const float* weights,

@@ -7,13 +7,17 @@
 //
 // entree.bin : en-tete de 8 uint32 (magic 'USRU', rw, rh, dw, dh, images,
 // periode, drapeaux), puis par image : jitter (2 float) et l'image RGBA8.
-// sortie.bin : par image, l'image d'affichage en RGBA16F (dw*dh*8 octets).
+// sortie.bin : par image, l'image d'affichage en RGBA16F (dw*dh*8 octets),
+// suivie, si le bit 2 est mis, de l'image generee entre la sortie
+// precedente et celle-ci (InterpolateUniversal, t = 0,5) -- ou de la sortie
+// elle-meme quand il n'y a pas encore de flot (NotReady).
 // drapeaux : bit 0 = sans reseau, bit 1 = remise a zero a l'image 12,
-// bits 8..15 = accentuation * 255.
+// bit 2 = generation d'images, bits 8..15 = accentuation * 255.
 
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 #include <vector>
 
 #include <d3d12.h>
@@ -162,11 +166,23 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    // Image d'entree (RGBA8) + tampon d'envoi, sortie (RGBA16F) + relecture
+    // Image d'entree (RGBA8) + tampon d'envoi ; deux sorties (RGBA16F) en
+    // alternance -- la precedente sert a la generation d'images --, l'image
+    // generee, et leur relecture.
+    const bool generation = (h.flags & 4u) != 0;
     ID3D12Resource* color = Texture(dev, h.rw, h.rh, DXGI_FORMAT_R8G8B8A8_UNORM,
                                     D3D12_RESOURCE_FLAG_NONE,
                                     D3D12_RESOURCE_STATE_COPY_DEST);
-    ID3D12Resource* output = Texture(
+    ID3D12Resource* outputs[2];
+    D3D12_RESOURCE_STATES outputState[2];
+    for (int i = 0; i < 2; ++i) {
+        outputs[i] = Texture(dev, h.dw, h.dh, DXGI_FORMAT_R16G16B16A16_FLOAT,
+                             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                             D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        outputState[i] = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    }
+    ID3D12Resource* output = outputs[0];
+    ID3D12Resource* mid = Texture(
         dev, h.dw, h.dh, DXGI_FORMAT_R16G16B16A16_FLOAT,
         D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -184,7 +200,10 @@ int main(int argc, char** argv)
                                     D3D12_RESOURCE_STATE_GENERIC_READ);
     ID3D12Resource* readback = Buffer(dev, D3D12_HEAP_TYPE_READBACK, rbSize,
                                       D3D12_RESOURCE_STATE_COPY_DEST);
-    if (!color || !output || !upload || !readback) {
+    ID3D12Resource* readbackMid = Buffer(dev, D3D12_HEAP_TYPE_READBACK, rbSize,
+                                         D3D12_RESOURCE_STATE_COPY_DEST);
+    if (!color || !outputs[0] || !outputs[1] || !mid || !upload ||
+        !readback || !readbackMid) {
         std::fprintf(stderr, "ressources\n");
         return 1;
     }
@@ -198,6 +217,9 @@ int main(int argc, char** argv)
             std::fprintf(stderr, "entree tronquee (image %u)\n", f);
             return 1;
         }
+        const int oi = static_cast<int>(f & 1u);
+        output = outputs[oi];
+        ID3D12Resource* previous = outputs[oi ^ 1];
         uint8_t* dst = nullptr;
         upload->Map(0, nullptr, reinterpret_cast<void**>(&dst));
         for (uint32_t y = 0; y < h.rh; ++y)
@@ -219,6 +241,12 @@ int main(int argc, char** argv)
             color, D3D12_RESOURCE_STATE_COPY_DEST,
             D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         cl->ResourceBarrier(1, &b);
+        if (outputState[oi] != D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
+            b = Barrier(output, outputState[oi],
+                        D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            cl->ResourceBarrier(1, &b);
+            outputState[oi] = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        }
 
         usr::UniversalDispatchDesc d = {};
         d.commandList = cl;
@@ -239,19 +267,52 @@ int main(int argc, char** argv)
             Barrier(color, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
                     D3D12_RESOURCE_STATE_COPY_DEST),
             Barrier(output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                    D3D12_RESOURCE_STATE_COPY_SOURCE)};
+                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)};
         cl->ResourceBarrier(2, bb);
+        outputState[oi] = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+
+        // Image generee entre la sortie precedente et celle-ci.
+        ID3D12Resource* midSource = output;
+        if (generation &&
+            outputState[oi ^ 1] ==
+                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) {
+            usr::UniversalInterpolateDesc id = {};
+            id.commandList = cl;
+            id.previous = previous;
+            id.current = output;
+            id.output = mid;
+            const usr::Result ir = usr::InterpolateUniversal(ctx, id);
+            if (ir == usr::Result::Ok) {
+                midSource = mid;
+            } else if (ir != usr::Result::NotReady) {
+                std::fprintf(stderr, "InterpolateUniversal : %d\n",
+                             static_cast<int>(ir));
+                return 1;
+            }
+        }
+
         D3D12_TEXTURE_COPY_LOCATION rs = {}, rd = {};
-        rs.pResource = output;
-        rs.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-        rd.pResource = readback;
-        rd.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-        rd.PlacedFootprint = rbFoot;
-        cl->CopyTextureRegion(&rd, 0, 0, 0, &rs, nullptr);
-        D3D12_RESOURCE_BARRIER back = Barrier(
-            output, D3D12_RESOURCE_STATE_COPY_SOURCE,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        cl->ResourceBarrier(1, &back);
+        auto readBack = [&](ID3D12Resource* source, ID3D12Resource* target,
+                            D3D12_RESOURCE_STATES state) {
+            D3D12_RESOURCE_BARRIER x =
+                Barrier(source, state, D3D12_RESOURCE_STATE_COPY_SOURCE);
+            cl->ResourceBarrier(1, &x);
+            rs.pResource = source;
+            rs.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            rd.pResource = target;
+            rd.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+            rd.PlacedFootprint = rbFoot;
+            cl->CopyTextureRegion(&rd, 0, 0, 0, &rs, nullptr);
+            x = Barrier(source, D3D12_RESOURCE_STATE_COPY_SOURCE, state);
+            cl->ResourceBarrier(1, &x);
+        };
+        readBack(output, readback,
+                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        if (generation)
+            readBack(midSource, readbackMid,
+                     midSource == mid
+                         ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+                         : D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         cl->Close();
         ID3D12CommandList* lists[] = {cl};
         queue->ExecuteCommandLists(1, lists);
@@ -259,17 +320,21 @@ int main(int argc, char** argv)
         fence->SetEventOnCompletion(fenceValue, event);
         WaitForSingleObject(event, INFINITE);
 
-        uint8_t* rb = nullptr;
-        D3D12_RANGE range = {0, static_cast<SIZE_T>(rbSize)};
-        readback->Map(0, &range, reinterpret_cast<void**>(&rb));
-        for (uint32_t y = 0; y < h.dh; ++y) {
-            std::memcpy(row.data(),
-                        rb + rbFoot.Offset + y * rbFoot.Footprint.RowPitch,
-                        row.size());
-            std::fwrite(row.data(), 1, row.size(), out);
+        for (ID3D12Resource* buffer : {readback, readbackMid}) {
+            if (buffer == readbackMid && !generation)
+                break;
+            uint8_t* rb = nullptr;
+            D3D12_RANGE range = {0, static_cast<SIZE_T>(rbSize)};
+            buffer->Map(0, &range, reinterpret_cast<void**>(&rb));
+            for (uint32_t y = 0; y < h.dh; ++y) {
+                std::memcpy(row.data(),
+                            rb + rbFoot.Offset + y * rbFoot.Footprint.RowPitch,
+                            row.size());
+                std::fwrite(row.data(), 1, row.size(), out);
+            }
+            D3D12_RANGE none = {0, 0};
+            buffer->Unmap(0, &none);
         }
-        D3D12_RANGE none = {0, 0};
-        readback->Unmap(0, &none);
     }
     std::fclose(out);
     std::fclose(in);

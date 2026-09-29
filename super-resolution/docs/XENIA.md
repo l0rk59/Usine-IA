@@ -19,7 +19,7 @@ UWP pour Xbox en mode Développeur) avec **USR Universel** intégré.
 ## Ce qu'il y a dans `xenia/`
 
 On ne copie pas Xenia (des centaines de mégaoctets) : on livre
-**4 correctifs** et un script qui les applique sur une version précise de
+**5 correctifs** et un script qui les applique sur une version précise de
 [xenia-canary-uwp](https://github.com/amitamit99/xenia-canary-uwp)
 (commit `3e236f0`). Ce fork de Xenia Canary se compile avec CMake et
 Visual Studio, et sait produire le paquet pour la Xbox.
@@ -30,6 +30,7 @@ Visual Studio, et sait produire le paquet pour la Xbox.
 | `patches/0002-…` | l'effet de sortie « USR » dans le présentateur Direct3D 12 (repli sur FSR si besoin) |
 | `patches/0003-…` | niveau 2 : jitter sous-pixel injecté dans la scène 3D, et biais de mip-map |
 | `patches/0004-…` | réglages en direct à la manette : surcouche, menu pause, fenêtre d'affichage (PC), variables `usr_*` |
+| `patches/0005-…` | sortie native (DLAA) puis FSR, et génération d'images ×2 : voir [GENERATION.md](GENERATION.md) |
 | `appliquer.ps1` / `appliquer.sh` | clone Xenia, copie USR dans `third_party/usr`, applique les correctifs |
 | `third_party_usr/CMakeLists.txt` | construit la bibliothèque et ses shaders (dxc du SDK Windows) |
 | `tests/usr_menu_test.cc` | tests du menu de réglages (sans Xenia ni GPU) |
@@ -114,7 +115,7 @@ powershell -ExecutionPolicy Bypass -File xenia\appliquer.ps1 C:\xenia-usr
 
 Le script clone Xenia au bon commit avec ses sous-modules (quelques
 minutes), copie USR et sa licence dans `third_party\usr`, et applique les
-4 correctifs sur une branche `usr`.
+5 correctifs sur une branche `usr`.
 
 Ensuite, dans une *Developer PowerShell for VS 2022* :
 
@@ -228,6 +229,7 @@ Les lignes du panneau :
 | Ligne | Valeurs | Ce qu'elle fait |
 |---|---|---|
 | Méthode | USR · FSR 1 · CAS · Bilinéaire | l'agrandissement final de Xenia |
+| Sortie | **agrandie par USR** · native (DLAA) + FSR | voir plus bas |
 | Niveau | 1 (image telle quelle) · **2 (jitter injecté)** | voir plus bas |
 | Textures fines | **oui** · non | niveau 2 : biais de mip-map, textures deux fois plus fines |
 | IA | **oui** · non (règles de base) | le petit réseau de neurones |
@@ -235,6 +237,7 @@ Les lignes du panneau :
 | Historique | 1 à 64 images, **10** | plus = plus fin à l'arrêt, mais oublie plus lentement |
 | Anti-fantômes | 0,05 à 4, **0,30** | petit = oublie vite (moins de traînées, moins de détail) |
 | Netteté | 0 à 100 %, **25 %** | accentuation finale (RCAS) |
+| Génération d'images | **non** · x2 (jeux à 30 images/s) | une image fabriquée entre deux images du jeu ; voir plus bas |
 | Diagnostic | image · carte | rouge = réactivité (pixel refait à neuf), vert = gain, bleu = confiance (mémoire accumulée) |
 | Oublier l'historique | A | repartir de zéro |
 
@@ -273,6 +276,36 @@ supporter mal :
 Si tu vois quelque chose de ce genre, passe au **niveau 1** pour ce jeu.
 Si les textures fourmillent, coupe **Textures fines**.
 
+### Sortie native (DLAA)
+
+USR travaille à la taille de l'image du jeu, sans l'agrandir : il ne fait
+que l'anticrénelage et la stabilité. FSR 1 agrandit ensuite jusqu'à
+l'écran. C'est moins coûteux qu'un agrandissement complet par USR quand
+l'écran est bien plus grand que l'image du jeu, par exemple un jeu en
+720p sur une télé 4K.
+
+À n'utiliser qu'au **niveau 2**. Sans jitter, USR n'apporte rien à taille
+égale : +0,1 dB mesuré, autant dire rien. Au niveau 2, il gagne 1 à
+1,7 dB sur l'image brute, mais scintille un peu plus. Les chiffres sont
+dans [GENERATION.md](GENERATION.md).
+
+### Génération d'images
+
+Pour les jeux à **30 images/s**, la grande majorité sur Xbox 360. À
+chaque nouvelle image du jeu, USR fabrique celle du milieu avec le
+mouvement qu'il vient d'estimer. Elle est montrée d'abord, l'image réelle
+suit une synchronisation verticale plus tard : 60 images à l'écran.
+
+- **Latence** : la génération ajoute une demi-image de latence. C'est
+  inévitable, car l'image du milieu a besoin de la suivante.
+- **Jeux plus rapides** : sans effet au-delà de 40 images/s, où la paire
+  ne tiendrait pas dans deux balayages d'un écran à 60 Hz.
+- **Ce qu'elle suit bien** : les objets qui bougent vite, nettement
+  mieux qu'un simple fondu.
+- **Son point faible** : les motifs répétitifs qui défilent, comme un
+  écran animé ou une grille. Là, elle retombe sur un fondu ou sur l'image
+  réelle.
+
 ## 5. Tous les paramètres (fichier de configuration)
 
 | Variable | Défaut | Plage | Effet |
@@ -286,6 +319,8 @@ Si les textures fourmillent, coupe **Textures fines**.
 | `usr_history_length` | `10.0` | 1 à 64 | images accumulées au plus |
 | `usr_anti_ghosting` | `0.3` | 0,05 à 4 | seuil anti-fantômes |
 | `usr_sharpness` | `0.25` | 0 à 1 | netteté finale |
+| `usr_native` | `false` | | sortie native (DLAA) puis FSR |
+| `usr_frame_generation` | `false` | | génération d'images ×2 |
 
 Conseils :
 
@@ -324,12 +359,12 @@ Vérifié sous Linux, sans Windows, par le script
 développement, et c'est aussi le job `xenia-linux` de l'intégration
 continue :
 
-- les 4 correctifs **s'appliquent** sans conflit sur un clone neuf de
+- les 5 correctifs **s'appliquent** sans conflit sur un clone neuf de
   xenia-canary-uwp au commit de référence ;
 - le **menu de réglages** passe ses tests (`xenia/tests/usr_menu_test.cc`,
   C++20 strict) : bornes, pas, lignes grisées, bascules, « oublier
   l'historique » ;
-- la **cible CMake** `third_party/usr` se construit entièrement : les 12
+- la **cible CMake** `third_party/usr` se construit entièrement : les 14
   shaders par dxc, la bibliothèque en `-Wall -Wextra -Werror`.
 
 Et par `tests/wine/universel_wine.sh` : **la bibliothèque et ses
@@ -367,7 +402,11 @@ vérification sous Linux ne pouvait voir :
   d'image ;
 - les performances (le Labo mesure le coût de USR Universel sur la
   console) ;
-- le comportement du niveau 2 jeu par jeu.
+- le comportement du niveau 2 jeu par jeu ;
+- la **génération d'images** en jeu : la cadence réelle à la télé, et le
+  ressenti de la demi-image de latence ajoutée. Le code est vérifié
+  (shaders identiques à la référence, bibliothèque sous Wine, compilation
+  MSVC), pas la présentation à l'écran.
 
 ### Si ça ne marche pas
 
@@ -382,3 +421,8 @@ vérification sous Linux ne pouvait voir :
 - **Des traînées derrière les objets** : baisse *Anti-fantômes*, ou
   appuie sur Y.
 - **Image trop douce** : monte *Netteté* ou *Historique*.
+- **Génération d'images, l'image saccade** : le jeu dépasse sans doute
+  40 images/s par moments, et la génération s'arrête puis reprend. Coupe-la
+  pour ce jeu.
+- **Génération d'images, un écran ou une grille « bave »** : c'est son
+  point faible mesuré, les motifs répétitifs qui défilent.

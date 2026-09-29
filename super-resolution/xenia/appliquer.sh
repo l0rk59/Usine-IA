@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Construit l'arbre source de « Xenia + USR » : clone xenia-canary-uwp au
 # commit sur lequel les correctifs ont ete ecrits, copie la bibliotheque USR
-# dans third_party/usr et applique les 4 correctifs (git am).
+# dans third_party/usr et applique les 5 correctifs (git am).
 #
 #   xenia/appliquer.sh [dossier]          (defaut : ./xenia-usr)
 #

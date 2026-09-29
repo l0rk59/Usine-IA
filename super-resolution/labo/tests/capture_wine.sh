@@ -23,7 +23,7 @@ trap 'rm -rf "$WORK"' EXIT
 
 echo "== shaders (dxc)"
 PASSES="usr_prepare usr_accumulate usr_sharpen"
-UPASSES="usr_u_luma usr_u_down usr_u_grad usr_u_flow usr_u_median usr_u_finalize usr_u_residual usr_u_accumulate usr_u_output"
+UPASSES="usr_u_luma usr_u_down usr_u_grad usr_u_flow usr_u_median usr_u_finalize usr_u_residual usr_u_accumulate usr_u_output usr_u_interp_ecart usr_u_interp"
 LPASSES="labo_scene labo_truth labo_upscale labo_compose labo_encode"
 for p in $PASSES $UPASSES; do
     "$DXC" -T cs_6_0 -E main -O3 -WX -Fh "$WORK/$p.h" -Vn "g_$p" \

@@ -188,3 +188,102 @@ def run(network, ratios=(2, 3), scenes=SCENES, log=print):
 def save(rows, path):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(rows, f, indent=1)
+
+
+# --------------------------------------------------------------------------
+# DLAA : USR sans agrandissement (rapport 1), docs/GENERATION.md
+# --------------------------------------------------------------------------
+
+DLAA_SCENES = (("real", 101, False), ("real", 101, True))
+
+
+def run_dlaa(network, scenes=DLAA_SCENES, log=print):
+    """USR a la resolution de rendu contre l'image brute du jeu. Le jitter
+    du niveau 2 est alors Halton (8 phases, universel.jitter_plan)."""
+    rows = []
+    for kind, seed, static in scenes:
+        name = "%s%d%s" % (kind, seed, "-fixe" if static else "")
+        key = dict(kind=kind, seed=seed, static=static)
+        s0 = sequence(kind, seed, static, DISPLAY)
+        variants = [("brut", "-", s0, None, 0)]
+        for level, jit, lod in ((1, "aucun", 0.0), (2, "auto", 0.0),
+                                (2, "auto", -1.0)):
+            seq = s0 if level == 1 else sequence(kind, seed, static, DISPLAY,
+                                                 jit, lod)
+            _, period = universel.jitter_plan(DISPLAY, DISPLAY, jit)
+            label = "%d%s" % (level, " lod-1" if lod else "")
+            variants.append(("USR-U regles", label, seq, None, period))
+            if network is not None:
+                variants.append(("USR-U IA", label, seq, network, period))
+        for method, level, seq, net, period in variants:
+            if method == "brut":
+                up = lambda img, j: img
+            else:
+                u = universel.UniversalUpscaler(DISPLAY, DISPLAY, network=net,
+                                                period=period)
+                up = (lambda u: lambda img, j: u.dispatch(img, j))(u)
+            r = score(seq, up, **key)["tout"]
+            rows.append({"scene": name, "niveau": level, "methode": method,
+                         "psnr": float(r[0]), "ssim": float(r[1]),
+                         "scint": float(r[2])})
+            log("  %-13s niveau %-7s %-13s PSNR %.2f  SSIM %.3f  "
+                "scint. %.4f" % (name, level, method, r[0], r[1], r[2]))
+    return rows
+
+
+# --------------------------------------------------------------------------
+# Generation d'images x2 : docs/GENERATION.md
+# --------------------------------------------------------------------------
+
+GEN_SCENES = (("real", 101), ("real", 202), ("brut", 101))
+
+
+def run_generation(steps=(1.0, 3.0), scenes=GEN_SCENES, frames=14,
+                   log=print):
+    """Le jeu produit les images t = pas * f ; on juge l'image generee au
+    milieu (t = pas * (f - 1/2)) contre la verite a cet instant. Pas 1 : les
+    scenes du banc (0,7 pixel de rendu par image) ; pas 3 : trois fois plus
+    vite, la ou un fondu dedouble les objets. USR en regles de base (le
+    reseau ne change pas le flot, qui fait l'interpolation)."""
+    from . import interpolation
+    methods = {
+        "repetition": lambda p, c, m, mp: p,
+        "fondu": lambda p, c, m, mp: 0.5 * (p + c),
+        "USR (flot)": lambda p, c, m, mp: interpolation.interpoler(
+            p, c, m, mp)[0],
+    }
+    rows = []
+    rsize = RENDER[2]
+    for step in steps:
+        for kind, seed in scenes:
+            game = emul.EmulatedGame(_scene(kind, seed, False))
+            up = universel.UniversalUpscaler(rsize, DISPLAY)
+            res = {m: {} for m in methods}
+            prev = prev_flow = None
+            for f in range(frames):
+                img, _, _ = game.frame(step * f, rsize, (0.0, 0.0),
+                                       hud_jitter=False)
+                out, info = up.dispatch(img, return_internals=True)
+                out = np.clip(out, 0.0, 1.0)
+                flow = info["flow"]["motion"] if f else None
+                if f >= 7:
+                    gt = game.truth(step * (f - 0.5), DISPLAY)
+                    masks = regions(kind, seed, False, f)
+                    masks["tout"] = np.ones(gt.shape[:2], bool)
+                    for m, fn in methods.items():
+                        o = fn(prev, out, flow, prev_flow)
+                        for k, mk in masks.items():
+                            if mk.any():
+                                res[m].setdefault(k, []).append(
+                                    np.mean((o[mk] - gt[mk]) ** 2))
+                prev, prev_flow = out, flow
+            name = "%s%d" % (kind, seed)
+            for m in methods:
+                db = {k: float(10.0 * np.log10(1.0 / np.mean(v)))
+                      for k, v in res[m].items()}
+                rows.append({"scene": name, "pas": step, "methode": m,
+                             **db})
+                log("  %-8s pas %g %-11s " % (name, step, m) + "  ".join(
+                    "%s %.2f" % (k, db[k]) for k in
+                    ("tout", "fond", "anime", "objets") if k in db))
+    return rows

@@ -1,0 +1,533 @@
+From b6523ac19bd17a5f0f15a672e24cf7807eb5e436 Mon Sep 17 00:00:00 2001
+From: Usine-IA <kopec.lrz@gmail.com>
+Date: Tue, 29 Sep 2026 16:13:13 +0000
+Subject: [PATCH 5/5] USR 5/5 : sortie native (DLAA) et generation d'images
+
+Sortie native : USR travaille a la taille de l'image du jeu (jitter
+Halton au niveau 2), puis FSR agrandit jusqu'a l'ecran. Utile quand
+l'ecran est bien plus grand que l'image du jeu (720p sur une tele 4K),
+ou l'agrandissement complet par USR coute le plus.
+
+Generation d'images : a chaque nouvelle image du jeu, une image du
+milieu est generee entre la sortie precedente et la courante
+(usr::InterpolateUniversal, avec le flot deja estime par USR), presentee
+d'abord, puis l'image reelle a la synchronisation verticale suivante
+(Present(1)). Seulement si le jeu laisse au moins 25 ms entre deux
+images : plus rapide, la paire ne tient pas dans deux balayages d'un
+ecran a 60 Hz et la file de presentation pleine ralentirait l'emulation.
+
+Deux lignes du menu manette, deux variables (usr_native,
+usr_frame_generation), toutes deux desactivees par defaut.
+---
+ src/xenia/app/usr_menu.cc             |  22 ++++
+ src/xenia/app/usr_menu_model.h        |  21 +++-
+ src/xenia/ui/d3d12/d3d12_presenter.cc | 164 ++++++++++++++++++++++++--
+ src/xenia/ui/d3d12/d3d12_presenter.h  |  33 ++++++
+ src/xenia/ui/presenter.h              |   9 ++
+ 5 files changed, 239 insertions(+), 10 deletions(-)
+
+diff --git a/src/xenia/app/usr_menu.cc b/src/xenia/app/usr_menu.cc
+index ffc0566..853528a 100644
+--- a/src/xenia/app/usr_menu.cc
++++ b/src/xenia/app/usr_menu.cc
+@@ -41,6 +41,17 @@ DEFINE_double(usr_anti_ghosting, 0.3,
+               "Display");
+ DEFINE_double(usr_sharpness, 0.25,
+               "USR : accentuation finale (RCAS), de 0 a 1.", "Display");
++DEFINE_bool(usr_native, false,
++            "USR : sortie native (DLAA) -- anticrenelage a la taille de "
++            "l'image du jeu, puis FSR jusqu'a l'ecran. Utile quand l'ecran "
++            "est bien plus grand que l'image du jeu. Au niveau 2 seulement : "
++            "sans jitter, USR n'apporte rien a taille egale.",
++            "Display");
++DEFINE_bool(usr_frame_generation, false,
++            "USR : generation d'images -- une image intermediaire entre deux "
++            "images du jeu, pour les jeux a 30 images/s (sans effet au-dela "
++            "de 40). Ajoute une demi-image de latence.",
++            "Display");
+ 
+ namespace xe {
+ namespace app {
+@@ -104,6 +115,8 @@ Values FromConfig(const ui::Presenter::GuestOutputPaintConfig& config) {
+   v.anti_ghosting = s.anti_ghosting;
+   v.sharpness = s.sharpness;
+   v.debug_view = int(s.debug_view);
++  v.native = s.native;
++  v.frame_generation = s.frame_generation;
+   return v;
+ }
+ 
+@@ -119,6 +132,8 @@ void ToConfig(const Values& v, uint32_t reset_counter,
+   s.anti_ghosting = v.anti_ghosting;
+   s.sharpness = v.sharpness;
+   s.debug_view = uint32_t(v.debug_view);
++  s.native = v.native;
++  s.frame_generation = v.frame_generation;
+   s.reset_counter = reset_counter;
+   config.SetUsrSettings(s);
+ }
+@@ -133,6 +148,8 @@ void ApplyCvars(ui::Presenter::GuestOutputPaintConfig& config) {
+   s.history_length = float(cvars::usr_history_length);
+   s.anti_ghosting = float(cvars::usr_anti_ghosting);
+   s.sharpness = float(cvars::usr_sharpness);
++  s.native = cvars::usr_native;
++  s.frame_generation = cvars::usr_frame_generation;
+   config.SetUsrSettings(s);
+ }
+ 
+@@ -155,6 +172,8 @@ void SaveCvars(const Values& v) {
+   OVERRIDE_double(usr_history_length, v.history_length);
+   OVERRIDE_double(usr_anti_ghosting, v.anti_ghosting);
+   OVERRIDE_double(usr_sharpness, v.sharpness);
++  OVERRIDE_bool(usr_native, v.native);
++  OVERRIDE_bool(usr_frame_generation, v.frame_generation);
+   config::SaveConfig();
+ }
+ 
+@@ -175,6 +194,9 @@ void DrawImGuiSettings(ui::Presenter::GuestOutputPaintConfig& config) {
+   ImGui::SliderFloat("Anti-fantômes", &s.anti_ghosting, 0.05f, 4.0f, "%.2f",
+                      ImGuiSliderFlags_Logarithmic);
+   ImGui::SliderFloat("Netteté", &s.sharpness, 0.0f, 1.0f, "%.2f");
++  ImGui::Checkbox("Sortie native (DLAA) puis FSR", &s.native);
++  ImGui::Checkbox("Génération d'images x2 (jeux à 30 images/s)",
++                  &s.frame_generation);
+   bool debug = s.debug_view != 0;
+   ImGui::Checkbox("Carte de diagnostic (R réactivité, V gain, B confiance)",
+                   &debug);
+diff --git a/src/xenia/app/usr_menu_model.h b/src/xenia/app/usr_menu_model.h
+index 17ee8d8..ec06f62 100644
+--- a/src/xenia/app/usr_menu_model.h
++++ b/src/xenia/app/usr_menu_model.h
+@@ -35,11 +35,14 @@ struct Values {
+   float anti_ghosting = 0.3f;
+   float sharpness = 0.25f;
+   int debug_view = 0;     // 0 image, 1 carte de diagnostic
++  bool native = false;    // DLAA : USR a la taille du jeu, puis FSR
++  bool frame_generation = false;  // image intermediaire (jeux a 30 i/s)
+   bool operator==(const Values&) const = default;
+ };
+ 
+ enum class Row : int {
+   kMethod,
++  kOutput,
+   kLevel,
+   kLodBias,
+   kNetwork,
+@@ -47,6 +50,7 @@ enum class Row : int {
+   kHistory,
+   kAntiGhosting,
+   kSharpness,
++  kFrameGeneration,
+   kDiagnostic,
+   kReset,
+   kCount
+@@ -75,6 +79,8 @@ inline const char* RowLabel(Row r) {
+   switch (r) {
+     case Row::kMethod:
+       return "Méthode";
++    case Row::kOutput:
++      return "Sortie";
+     case Row::kLevel:
+       return "Niveau";
+     case Row::kLodBias:
+@@ -89,6 +95,8 @@ inline const char* RowLabel(Row r) {
+       return "Anti-fantômes";
+     case Row::kSharpness:
+       return "Netteté";
++    case Row::kFrameGeneration:
++      return "Génération d'images";
+     case Row::kDiagnostic:
+       return "Diagnostic";
+     case Row::kReset:
+@@ -119,6 +127,8 @@ inline std::string RowValue(const Values& v, Row r) {
+   switch (r) {
+     case Row::kMethod:
+       return MethodName(v.method);
++    case Row::kOutput:
++      return v.native ? "native (DLAA) + FSR" : "agrandie par USR";
+     case Row::kLevel:
+       return v.jitter ? "2 (jitter injecté)" : "1 (image telle quelle)";
+     case Row::kLodBias:
+@@ -137,6 +147,8 @@ inline std::string RowValue(const Values& v, Row r) {
+     case Row::kSharpness:
+       std::snprintf(buf, sizeof(buf), "%.0f %%", v.sharpness * 100.0f);
+       return buf;
++    case Row::kFrameGeneration:
++      return v.frame_generation ? "x2 (jeux à 30 images/s)" : "non";
+     case Row::kDiagnostic:
+       return v.debug_view ? "carte (R réactivité, V gain, B confiance)"
+                           : "image";
+@@ -171,6 +183,9 @@ struct Menu {
+         const int n = int(Method::kCount);
+         v.method = Method(((int(v.method) + step) % n + n) % n);
+       } break;
++      case Row::kOutput:
++        v.native = !v.native;
++        break;
+       case Row::kLevel:
+         v.jitter = !v.jitter;
+         break;
+@@ -202,6 +217,9 @@ struct Menu {
+       case Row::kSharpness:
+         v.sharpness = Clampf(v.sharpness + 0.05f * float(step), 0.0f, 1.0f);
+         break;
++      case Row::kFrameGeneration:
++        v.frame_generation = !v.frame_generation;
++        break;
+       case Row::kDiagnostic:
+         v.debug_view = v.debug_view ? 0 : 1;
+         break;
+@@ -219,7 +237,8 @@ struct Menu {
+       return RowEnabled(v, r);
+     }
+     // A sur une ligne a deux etats = la basculer.
+-    if (r == Row::kLevel || r == Row::kLodBias || r == Row::kNetwork ||
++    if (r == Row::kOutput || r == Row::kLevel || r == Row::kLodBias ||
++        r == Row::kNetwork || r == Row::kFrameGeneration ||
+         r == Row::kDiagnostic) {
+       changed = Adjust(v, 1);
+     }
+diff --git a/src/xenia/ui/d3d12/d3d12_presenter.cc b/src/xenia/ui/d3d12/d3d12_presenter.cc
+index 26cbedb..c804fd4 100644
+--- a/src/xenia/ui/d3d12/d3d12_presenter.cc
++++ b/src/xenia/ui/d3d12/d3d12_presenter.cc
+@@ -86,6 +86,9 @@ void D3D12Presenter::UsrShutdown() {
+   }
+   usr_output_.Reset();
+   usr_debug_.Reset();
++  usr_previous_output_.Reset();
++  usr_generated_.Reset();
++  usr_previous_valid_ = false;
+   for (auto& input_ref : usr_input_refs_) {
+     input_ref.first = 0;
+     input_ref.second.Reset();
+@@ -97,6 +100,36 @@ void D3D12Presenter::UsrShutdown() {
+   usr_last_frame_serial_ = 0;
+ }
+ 
++bool D3D12Presenter::UsrEnsureGenerationTextures() {
++  if (usr_previous_output_ && usr_generated_) {
++    return true;
++  }
++  if (!usr_output_) {
++    return false;
++  }
++  D3D12_RESOURCE_DESC texture_desc = usr_output_->GetDesc();
++  ID3D12Device* device = provider_.GetDevice();
++  if (FAILED(device->CreateCommittedResource(
++          &util::kHeapPropertiesDefault,
++          provider_.GetHeapFlagCreateNotZeroed(), &texture_desc,
++          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
++          IID_PPV_ARGS(&usr_previous_output_))) ||
++      FAILED(device->CreateCommittedResource(
++          &util::kHeapPropertiesDefault,
++          provider_.GetHeapFlagCreateNotZeroed(), &texture_desc,
++          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
++          IID_PPV_ARGS(&usr_generated_)))) {
++    XELOGE("USR: echec de creation des textures de generation d'images");
++    usr_previous_output_.Reset();
++    usr_generated_.Reset();
++    return false;
++  }
++  usr_previous_output_state_ = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
++  usr_generated_state_ = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
++  usr_previous_valid_ = false;
++  return true;
++}
++
+ ID3D12Resource* D3D12Presenter::UsrUpscale(
+     ID3D12GraphicsCommandList* command_list, ID3D12Resource* guest_output,
+     const GuestOutputProperties& properties,
+@@ -198,8 +231,30 @@ ID3D12Resource* D3D12Presenter::UsrUpscale(
+   }
+ 
+   const bool debug = settings.debug_view != 0;
++  ID3D12Resource* result_texture = nullptr;
+   if (properties.usr_frame_serial != usr_last_frame_serial_) {
+     // Nouvelle image du jeu : une accumulation, et une seule.
++    const auto now = std::chrono::steady_clock::now();
++    const auto interval = now - usr_last_new_frame_time_;
++    usr_last_new_frame_time_ = now;
++    // Generation d'images : la sortie precedente doit survivre a celle-ci,
++    // d'ou deux textures echangees a chaque image.
++    const bool keep_previous = settings.frame_generation && !debug &&
++                               UsrEnsureGenerationTextures();
++    if (keep_previous) {
++      std::swap(usr_output_, usr_previous_output_);
++      std::swap(usr_output_state_, usr_previous_output_state_);
++    }
++    // Au moins 25 ms entre deux images du jeu (40 images/s au plus) : sur un
++    // ecran a 60 Hz, l'image generee et l'image reelle ont alors chacune
++    // leur synchronisation verticale (16,7 ms). Un jeu plus rapide ne
++    // laisserait pas la place a la paire, et la file de presentation
++    // pleine ralentirait l'emulation elle-meme.
++    const bool generate =
++        keep_previous && usr_previous_valid_ &&
++        !usr_painting_real_after_generated_ &&
++        interval >= std::chrono::milliseconds(25);
++    usr_present_on_vblank_ = generate;
+     D3D12_RESOURCE_BARRIER barriers[3];
+     UINT barrier_count = 0;
+     auto transition = [&](ID3D12Resource* resource,
+@@ -259,14 +314,15 @@ ID3D12Resource* D3D12Presenter::UsrUpscale(
+     barrier_count = 0;
+     transition(guest_output, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                kGuestOutputInternalState);
++    // Lue par la peinture, et par la generation d'images (calcul).
+     transition(usr_output_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+-               D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
++               kUsrReadState);
+     if (debug) {
+       transition(usr_debug_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                  D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+     }
+     command_list->ResourceBarrier(barrier_count, barriers);
+-    usr_output_state_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
++    usr_output_state_ = kUsrReadState;
+     if (debug) {
+       usr_debug_state_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+     }
+@@ -279,6 +335,46 @@ ID3D12Resource* D3D12Presenter::UsrUpscale(
+     usr_last_frame_serial_ = properties.usr_frame_serial;
+     usr_last_reset_counter_ = settings.reset_counter;
+ 
++    if (generate) {
++      barrier_count = 0;
++      transition(usr_previous_output_.Get(), usr_previous_output_state_,
++                 kUsrReadState);
++      transition(usr_generated_.Get(), usr_generated_state_,
++                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
++      if (barrier_count) {
++        command_list->ResourceBarrier(barrier_count, barriers);
++      }
++      usr_previous_output_state_ = kUsrReadState;
++      usr_generated_state_ = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
++      usr::UniversalInterpolateDesc interpolate_desc = {};
++      interpolate_desc.commandList = command_list;
++      interpolate_desc.previous = usr_previous_output_.Get();
++      interpolate_desc.current = usr_output_.Get();
++      interpolate_desc.output = usr_generated_.Get();
++      interpolate_desc.previousFormat = kUsrOutputFormat;
++      interpolate_desc.currentFormat = kUsrOutputFormat;
++      interpolate_desc.outputFormat = kUsrOutputFormat;
++      const usr::Result generation_result =
++          usr::InterpolateUniversal(usr_context_, interpolate_desc);
++      barrier_count = 0;
++      transition(usr_generated_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
++                 D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
++      command_list->ResourceBarrier(barrier_count, barriers);
++      usr_generated_state_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
++      if (generation_result == usr::Result::Ok) {
++        result_texture = usr_generated_.Get();
++        usr_generated_painted_ = true;
++      } else if (generation_result != usr::Result::NotReady) {
++        // L'image reelle reste montree : la generation seule est perdue.
++        XELOGE("USR: echec de InterpolateUniversal ({})",
++               int(generation_result));
++        usr_present_on_vblank_ = false;
++      }
++    }
++    // Une coupure (reset) rend la sortie precedente etrangere a celle-ci ;
++    // la bibliotheque le sait aussi (NotReady), ceci garde la texture.
++    usr_previous_valid_ = keep_previous && !dispatch_desc.reset;
++
+     // L'image du jeu lue par USR doit vivre jusqu'a la fin de cette peinture.
+     size_t ref_index = 0;
+     const uint64_t completed = paint_context_.paint_completion_timeline
+@@ -302,6 +398,9 @@ ID3D12Resource* D3D12Presenter::UsrUpscale(
+         paint_submission, Microsoft::WRL::ComPtr<ID3D12Resource>(guest_output));
+   }
+   usr_last_usage_submission_ = paint_submission;
++  if (result_texture) {
++    return result_texture;
++  }
+   if (debug && usr_debug_state_ == D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) {
+     return usr_debug_.Get();
+   }
+@@ -725,6 +824,25 @@ void D3D12Presenter::PaintContext::DestroySwapChain() {
+ 
+ Presenter::PaintResult D3D12Presenter::PaintAndPresentImpl(
+     bool execute_ui_drawers) {
++  usr_generated_painted_ = false;
++  PaintResult result = PaintAndPresentOnce(execute_ui_drawers);
++  // Generation d'images : l'image generee vient d'etre presentee, l'image
++  // reelle suit a la synchronisation verticale suivante (Present(1)).
++  // L'ordre -- generee d'abord -- coute une demi-image de latence, le prix
++  // de toute generation d'images : l'image du milieu a besoin de la
++  // suivante.
++  if (usr_generated_painted_ && (result == PaintResult::kPresented ||
++                                 result == PaintResult::kPresentedSuboptimal)) {
++    usr_generated_painted_ = false;
++    usr_painting_real_after_generated_ = true;
++    result = PaintAndPresentOnce(execute_ui_drawers);
++    usr_painting_real_after_generated_ = false;
++  }
++  return result;
++}
++
++Presenter::PaintResult D3D12Presenter::PaintAndPresentOnce(
++    bool execute_ui_drawers) {
+   // Begin the command list with the command allocator not currently potentially
+   // used on the GPU.
+   const uint64_t current_paint_submission =
+@@ -779,21 +897,40 @@ Presenter::PaintResult D3D12Presenter::PaintAndPresentImpl(
+     // (and multiple threads can't paint the main target at the same time).
+   }
+ 
++  // Seule une generation d'images en cours presente a la synchronisation
++  // verticale ; tout autre chemin reprend la presentation immediate.
++  if (!guest_output_resource ||
++      guest_output_paint_config.GetEffect() !=
++          GuestOutputPaintConfig::Effect::kUsr ||
++      !guest_output_paint_config.GetUsrSettings().frame_generation) {
++    usr_present_on_vblank_ = false;
++  }
++
+   // USR : l'image du jeu est agrandie par USR a la taille finale, puis cette
+-  // sortie est peinte a sa place, telle quelle (bilineaire 1:1).
++  // sortie est peinte a sa place, telle quelle (bilineaire 1:1). En DLAA
++  // (sortie native), USR garde la taille du jeu et FSR agrandit ensuite.
+   if (guest_output_resource &&
+       guest_output_paint_config.GetEffect() ==
+           GuestOutputPaintConfig::Effect::kUsr) {
++    const bool usr_native = guest_output_paint_config.GetUsrSettings().native;
+     GuestOutputPaintConfig bilinear_config = guest_output_paint_config;
+     bilinear_config.SetEffect(GuestOutputPaintConfig::Effect::kBilinear);
++    GuestOutputPaintConfig after_usr_config = guest_output_paint_config;
++    after_usr_config.SetEffect(usr_native
++                                   ? GuestOutputPaintConfig::Effect::kFsr
++                                   : GuestOutputPaintConfig::Effect::kBilinear);
+     GuestOutputPaintFlow usr_flow = GetGuestOutputPaintFlow(
+         guest_output_properties, paint_context_.swap_chain_width,
+         paint_context_.swap_chain_height, D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION,
+         D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION, bilinear_config);
+     ID3D12Resource* usr_result = nullptr;
+     if (usr_flow.effect_count) {
+-      const std::pair<uint32_t, uint32_t>& usr_final_size =
++      std::pair<uint32_t, uint32_t> usr_final_size =
+           usr_flow.effect_output_sizes[usr_flow.effect_count - 1];
++      if (usr_native) {
++        usr_final_size.first = guest_output_properties.frontbuffer_width;
++        usr_final_size.second = guest_output_properties.frontbuffer_height;
++      }
+       usr_result = UsrUpscale(command_list, guest_output_resource.Get(),
+                               guest_output_properties,
+                               guest_output_paint_config, usr_final_size.first,
+@@ -803,12 +940,13 @@ Presenter::PaintResult D3D12Presenter::PaintAndPresentImpl(
+       guest_output_resource = usr_result;
+       guest_output_properties.frontbuffer_width = usr_display_width_;
+       guest_output_properties.frontbuffer_height = usr_display_height_;
+-      guest_output_paint_config = bilinear_config;
++      guest_output_paint_config = after_usr_config;
+     } else {
+       // Repli : FSR, la meilleure methode sans historique. Taille de sortie
+       // nulle : le GPU emule cesse d'injecter le jitter (qui ferait
+       // scintiller une image non accumulee).
+       usr_output_size_.store(0, std::memory_order_relaxed);
++      usr_present_on_vblank_ = false;
+       guest_output_paint_config.SetEffect(
+           GuestOutputPaintConfig::Effect::kFsr);
+     }
+@@ -1381,10 +1519,18 @@ Presenter::PaintResult D3D12Presenter::PaintAndPresentImpl(
+   // fullscreen is ever used in, the allow tearing flag must not be passed in
+   // fullscreen, but DXGI fullscreen is largely unneeded with the flip
+   // presentation model used in Direct3D 12).
+-  HRESULT present_result = paint_context_.swap_chain->Present(
+-      0, DXGI_PRESENT_RESTART | (paint_context_.swap_chain_allows_tearing
+-                                     ? DXGI_PRESENT_ALLOW_TEARING
+-                                     : 0));
++  // USR, generation d'images : a la synchronisation verticale, qui espace
++  // l'image generee et l'image reelle (sinon la premiere serait remplacee
++  // par la seconde avant d'etre vue). Sans DXGI_PRESENT_RESTART, qui
++  // jetterait l'image generee encore en file.
++  HRESULT present_result =
++      usr_present_on_vblank_
++          ? paint_context_.swap_chain->Present(1, 0)
++          : paint_context_.swap_chain->Present(
++                0, DXGI_PRESENT_RESTART |
++                       (paint_context_.swap_chain_allows_tearing
++                            ? DXGI_PRESENT_ALLOW_TEARING
++                            : 0));
+   // Even if presentation has failed, work might have been enqueued anyway
+   // internally before the failure according to Jesse Natalie from the DirectX
+   // Discord server.
+diff --git a/src/xenia/ui/d3d12/d3d12_presenter.h b/src/xenia/ui/d3d12/d3d12_presenter.h
+index acf9c21..a662288 100644
+--- a/src/xenia/ui/d3d12/d3d12_presenter.h
++++ b/src/xenia/ui/d3d12/d3d12_presenter.h
+@@ -11,6 +11,7 @@
+ #define XENIA_UI_D3D12_D3D12_PRESENTER_H_
+ 
+ #include <array>
++#include <chrono>
+ #include <cstdint>
+ #include <memory>
+ #include <utility>
+@@ -355,8 +356,20 @@ class D3D12Presenter final : public Presenter {
+                              uint64_t paint_submission);
+   // Detruit le contexte et ses textures apres la fin de leur usage.
+   void UsrShutdown();
++  // Generation d'images : textures de la sortie precedente et de l'image
++  // generee, creees au premier usage.
++  bool UsrEnsureGenerationTextures();
++  // Le corps de la peinture ; PaintAndPresentImpl l'appelle une seconde
++  // fois quand une image generee vient d'etre presentee.
++  PaintResult PaintAndPresentOnce(bool execute_ui_drawers);
+ 
+   static constexpr DXGI_FORMAT kUsrOutputFormat = kGuestOutputFormat;
++  // Sortie de USR prete : lue par la peinture et par la generation d'images.
++  // (En entiers : l'operateur | des en-tetes Windows n'est pas constexpr
++  // partout.)
++  static constexpr D3D12_RESOURCE_STATES kUsrReadState =
++      D3D12_RESOURCE_STATES(int(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) |
++                            int(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+   usr::UniversalContext* usr_context_ = nullptr;
+   uint32_t usr_render_width_ = 0;
+   uint32_t usr_render_height_ = 0;
+@@ -376,6 +389,26 @@ class D3D12Presenter final : public Presenter {
+       D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+   uint64_t usr_last_frame_serial_ = 0;
+   uint32_t usr_last_reset_counter_ = 0;
++
++  // Generation d'images. usr_previous_output_ : la sortie de l'image
++  // precedente, echangee avec usr_output_ a chaque nouvelle image ;
++  // usr_generated_ : l'image du milieu.
++  Microsoft::WRL::ComPtr<ID3D12Resource> usr_previous_output_;
++  D3D12_RESOURCE_STATES usr_previous_output_state_ =
++      D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
++  Microsoft::WRL::ComPtr<ID3D12Resource> usr_generated_;
++  D3D12_RESOURCE_STATES usr_generated_state_ =
++      D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
++  std::chrono::steady_clock::time_point usr_last_new_frame_time_;
++  // usr_previous_output_ tient bien l'image precedente de la sequence.
++  bool usr_previous_valid_ = false;
++  // Une image generee vient d'etre peinte : l'image reelle suit.
++  bool usr_generated_painted_ = false;
++  // Seconde peinture : montrer l'image reelle, ne rien generer.
++  bool usr_painting_real_after_generated_ = false;
++  // Presenter a la synchronisation verticale (generation active) : c'est
++  // elle qui espace l'image generee et l'image reelle.
++  bool usr_present_on_vblank_ = false;
+   // Derniere peinture ayant utilise USR, et images du jeu lues par USR
+   // (gardees en vie jusqu'a la fin de la peinture qui les lit).
+   uint64_t usr_last_usage_submission_ = 0;
+diff --git a/src/xenia/ui/presenter.h b/src/xenia/ui/presenter.h
+index ebaba06..6b0a51d 100644
+--- a/src/xenia/ui/presenter.h
++++ b/src/xenia/ui/presenter.h
+@@ -223,6 +223,15 @@ class Presenter {
+       float history_length = 10.0f;   // images, 1..64
+       float anti_ghosting = 0.3f;     // 0.05..4 (petit = oublie vite)
+       float sharpness = 0.25f;        // 0..1 (RCAS)
++      // DLAA : USR a la resolution du jeu (anticrenelage et stabilite, sans
++      // agrandissement), puis FSR jusqu'a l'ecran. Moins couteux que
++      // l'agrandissement complet quand l'ecran est bien plus grand que
++      // l'image du jeu (720p sur une tele 4K).
++      bool native = false;
++      // Generation d'images : une image intermediaire entre deux images du
++      // jeu, presentee a la synchronisation verticale entre elles. Seulement
++      // pour les jeux a 30 images/s ou moins (sinon sans effet).
++      bool frame_generation = false;
+       // Diagnostic : 0 image ; 1 carte des decisions de USR (rouge :
+       // reactivite, vert : gain, bleu : confiance de l'historique).
+       uint32_t debug_view = 0;

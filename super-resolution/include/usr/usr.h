@@ -49,6 +49,9 @@ enum class Result : int32_t {
     InvalidArgument,
     OutOfMemory,
     DeviceError,
+    // Generation d'images : pas encore de flot (premiere image apres une
+    // creation ou une remise a zero). Montrer l'image reelle.
+    NotReady,
 };
 
 // Rapport affichage / rendu, par axe.
@@ -225,6 +228,8 @@ enum class UniversalPass : uint32_t {
     Residual,     // usr_u_residual
     Accumulate,   // usr_u_accumulate
     Output,       // usr_u_output
+    InterpDiff,   // usr_u_interp_ecart (generation d'images)
+    Interpolate,  // usr_u_interp
     Count
 };
 
@@ -291,6 +296,36 @@ Result DispatchUniversal(UniversalContext* context,
                          const UniversalDispatchDesc& desc);
 Result SetUniversalWeights(UniversalContext* context, const float* weights,
                            uint32_t count);
+
+// --- Generation d'images ---------------------------------------------------
+//
+// Une image intermediaire entre les deux dernieres sorties, avec le flot que
+// DispatchUniversal vient d'estimer : a appeler apres DispatchUniversal de
+// l'image « current » et avant le suivant. Ou le flot ne sait pas suivre
+// (desocclusion, motif periodique qui defile), l'image reste un fondu ou
+// l'image courante seule : voir docs/GENERATION.md, mesures comprises.
+//
+// Etats attendus a l'appel (et laisses tels quels) :
+//   previous, current : D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+//   output            : D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+struct UniversalInterpolateDesc {
+    ID3D12GraphicsCommandList* commandList = nullptr;
+    ID3D12Resource* previous = nullptr;  // sortie de l'image precedente
+    ID3D12Resource* current = nullptr;   // sortie de cette image
+    ID3D12Resource* output = nullptr;    // resolution d'affichage, UAV
+    DXGI_FORMAT previousFormat = DXGI_FORMAT_UNKNOWN;
+    DXGI_FORMAT currentFormat = DXGI_FORMAT_UNKNOWN;
+    DXGI_FORMAT outputFormat = DXGI_FORMAT_UNKNOWN;
+    float time = 0.5f;  // 0 : previous .. 1 : current
+};
+
+// Au plus kMaxInterpolationsPerFrame appels par image reelle (x4).
+constexpr uint32_t kMaxInterpolationsPerFrame = 3;
+
+// NotReady s'il n'y a pas encore de flot. Comme Dispatch, lie son propre
+// tas de descripteurs : re-lier le sien apres.
+Result InterpolateUniversal(UniversalContext* context,
+                            const UniversalInterpolateDesc& desc);
 
 // Jitter du niveau 2 : grille ordonnee (2x2, 3x3) quand le rapport est
 // entier -- chaque pixel d'affichage recoit un echantillon exactement en

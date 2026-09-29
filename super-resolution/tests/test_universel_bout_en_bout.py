@@ -22,7 +22,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from usr_ref import emul, universel  # noqa: E402
+from usr_ref import emul, interpolation, universel  # noqa: E402
 from usr_ref.network import Network  # noqa: E402
 
 SORTIE = os.environ.get("USR_UNIVERSEL_SORTIE", "")
@@ -44,14 +44,29 @@ def _weights():
 class BibliothequeUniverselle(unittest.TestCase):
     def test_meme_image_que_la_reference(self):
         images, jitters, period = universel.banc_sequence(IMAGES)
+        flows = []
         ref = universel.banc_reference(images, jitters, (192, 108),
-                                       (384, 216), period, _weights())
-        app = universel.read_banc_output(SORTIE, (384, 216), IMAGES)
+                                       (384, 216), period, _weights(),
+                                       flows=flows)
+        app, mids = universel.read_banc_output(SORTIE, (384, 216), IMAGES,
+                                               generation=True)
         for f in range(IMAGES):
             out = np.clip(app[f], 0.0, 1.0)
             self.assertTrue(np.all(np.isfinite(app[f])), "image %d" % f)
             self.assertGreater(emul.psnr_display(out, ref[f]), 55.0,
                                "image %d" % f)
+            if flows[f] is None:
+                # pas de flot : la bibliotheque refuse (NotReady), le banc
+                # recopie la sortie
+                np.testing.assert_array_equal(mids[f], app[f])
+                continue
+            # Memes images d'entree que la bibliotheque (les siennes) : seule
+            # la generation est jugee ici. Sorties stockees en 16 bits.
+            prev = np.clip(app[f - 1], 0.0, 1.0)
+            want, _, _ = interpolation.interpoler(prev, out, flows[f],
+                                                  flows[f - 1])
+            self.assertGreater(emul.psnr_display(mids[f], want), 50.0,
+                               "image generee %d" % f)
 
 
 if __name__ == "__main__":

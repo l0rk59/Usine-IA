@@ -56,7 +56,7 @@ cbuffer USRUConstants : register(b0)
     float  g_MaxCount;      // longueur maximale de l'historique
     float  g_BoxT1;         // anti-fantomes (sortie de boite -> reactif)
     float  g_Sharpness;     // RCAS, 0..1
-    uint   g_Reserved0;
+    float  g_Time;          // generation d'images : instant, 0 (prec.) .. 1
     uint   g_Reserved1;
 };
 

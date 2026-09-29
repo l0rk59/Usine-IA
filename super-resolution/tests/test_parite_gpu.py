@@ -147,3 +147,45 @@ class PariteGpuUniversel(unittest.TestCase):
                       rng.normal(0, 0.3, (2, 16)), rng.normal(0, 0.1, 2))
         self._compare(net, "grille", frames=10, hud_jitter=False,
                       reset_at=6)
+
+
+@unittest.skipUnless(_vulkan_ok(), "slangpy ou Vulkan indisponible")
+class PariteGpuGeneration(unittest.TestCase):
+    """Passes usr_u_interp_ecart + usr_u_interp contre
+    interpolation.interpoler(), sur les memes sorties et le meme flot (celui
+    du GPU, identique au bit pres a la reference : PariteGpuUniversel)."""
+
+    RS = (96, 54)
+    DS = (192, 108)
+
+    def test_image_du_milieu(self):
+        from usr_ref import emul, interpolation
+        from usr_ref.scene_realiste import RealisticScene
+        # Scene rapide (pas de 3) : le flot, le repli et le doute servent.
+        game = emul.EmulatedGame(RealisticScene(seed=11))
+        g = gpu.GpuUniversal(self.RS, self.DS, device=_device())
+        prev = None
+        flows = []
+        for f in range(6):
+            img, _, _ = game.frame(3.0 * f, self.RS, (0.0, 0.0))
+            out = g.dispatch(img)
+            flows.append(g.read("motion")[..., :2].copy())
+            if prev is None:
+                # une seule image : aucun flot, rien a generer
+                self.assertIsNone(g.interpolate(out, out))
+            else:
+                mid = g.interpolate(prev, out)
+                # le flot de l'image 0 n'existe pas : pas de test temporel
+                ref, poids, repli = interpolation.interpoler(
+                    prev, out, flows[-1], flows[-2] if f >= 2 else None)
+                # Au bit pres sous llvmpipe ; 70 dB laisse aux pilotes leur
+                # exp() et leur division. Un repli mal branche coute 50 a
+                # 57 dB sur cette scene : 55 dB l'aurait laisse passer.
+                self.assertGreater(emul.psnr_display(mid, ref), 70.0,
+                                   "image %d" % f)
+                if f == 5:
+                    # les deux hypotheses et le repli ont bien servi
+                    self.assertGreater(float(np.mean(poids > 0.5)), 0.2)
+                    self.assertGreater(float(np.mean(poids < 0.5)), 0.01)
+                    self.assertGreater(float(np.mean(repli > 0.0)), 0.001)
+            prev = out

@@ -234,6 +234,10 @@ jobs:
           if (-not (Select-String -Path $exe -SimpleMatch -Quiet "USR: echec de creation du contexte")) {
             throw "le code de USR est absent de l'executable"
           }
+          # Correctif 5 : la generation d'images est compilee, elle aussi.
+          if (-not (Select-String -Path $exe -SimpleMatch -Quiet "USR: echec de InterpolateUniversal")) {
+            throw "la generation d'images est absente de l'executable"
+          }
 
   # L'application pour la Xbox, prete a installer : bibliotheques de Xenia par
   # la solution Visual Studio, puis le paquet UWP signe (certificat de test),
