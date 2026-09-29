@@ -24,6 +24,7 @@ le détecter, un pour le corriger) mais un seul.
 |---|---|---|
 | **Tics** | 30 tournures d'IA en français | ≥ 3 occurrences ou 2,5 ‰ |
 | **Promesses** | « garanti », « sans risque », « du jour au lendemain » | 1 suffit, bloquant |
+| **Marqueurs de travail** | une consigne laissée à l'auteur : « [Insérer un exemple ici] », « [TODO …] », « lorem ipsum » | 1 suffit, bloquant |
 | **Chiffres sans source** | un `%` ou un « 3× plus » sans « par exemple » ni « selon » | 1 → mineur, 2 → majeur |
 | **Répétition** | n-grammes de 4 et 6 mots réapparaissant | > 6 % / > 2 % |
 | **Diversité lexicale** | vocabulaire pauvre, normalisé par fenêtres de 300 mots | < 0,42 |
@@ -31,6 +32,17 @@ le détecter, un pour le corriger) mais un seul.
 | **Continuité** | recouvrement du vocabulaire avec les sections précédentes | < 0,35 |
 | **Volume** | mots produits / mots visés | < 60 % |
 | **Structure** | sous-titres et listes présents | aucun `##` au-delà de 400 mots |
+
+### Un vocabulaire volontairement étroit
+
+Les marqueurs de travail viennent de la comparaison du 23/09/2026 : la chaîne
+ebook-factory vérifie l'absence de « TODO » et « LOREM » avant de livrer, la
+nôtre ne le faisait pas. Mais un crochet n'est pas un défaut en soi : un guide
+pratique met « [à compléter] » dans ses exercices — c'est au lecteur qu'il
+parle —, un modèle porte « [VOTRE PRODUIT] », un script de formation
+« [PAUSE] ». Aucun de ceux-là n'est signalé, et un test le garde : élargir la
+liste pour y ajouter « [à compléter] » fait échouer la suite. On rate un
+marqueur plutôt que d'accuser un exercice.
 
 ### Trois choix expliqués
 
@@ -104,4 +116,32 @@ La page lisait `g.note` là où le bilan porte `note_moyenne`. Rien n'aurait
 échoué : chaque barre se serait affichée vide, à zéro, et le classement aurait
 eu l'air d'annoncer que rien ne compte. Un test lit maintenant le script servi
 et vérifie le nom du champ.
+
+## Ce que le modèle écrit, tel que l'acheteur le reçoit
+
+Le contrôle qualité mesure le texte ; il ne regardait pas ce que les rendus
+en faisaient. Balayage du 24/09/2026, avec un modèle simulé qui fait ce que
+font couramment les vrais — du `**gras**` dans ses réponses, et des gabarits
+du genre `<VOTRE NOM>` :
+
+- des `**` en clair dans les **PDF de douze types sur dix-huit** : le PDF
+  imprimait le texte tel quel, et seul le chemin markdown le nettoyait ;
+- dans les **posts sociaux** et le **CSV des e-mails**, qui partent tels quels
+  sur LinkedIn ou dans la boîte des abonnés — aucun des deux n'interprète le
+  markdown ;
+- `<VOTRE NOM>` **avalé comme une balise**, donc invisible, dans les pages des
+  outils (6 fois), des modèles (70), des prompts (16) et du pack social (7) :
+  leur texte entrait dans le HTML sans échappement. La page des imprimables
+  n'échappait rien du tout — un « a < b » dans une consigne cassait la page.
+
+Le PDF retire désormais le balisage en ligne dans toutes ses méthodes de texte,
+sauf pour un bloc de code, qui reste littéral (`2**3**2` est du Python). Les
+pages échappent et rendent le gras (`inline_html`). Les canaux en texte brut
+sont nettoyés à la source. Et l'italique ne mange plus une multiplication :
+« 5 * 3 * 2 » n'en est pas.
+
+Les six chaînes de fiction étaient déjà propres. `tests/test_texte_livre.py`
+garde le tout avec ce modèle bavard ; douze mutations, douze vues — après
+qu'un premier jet du test eut laissé passer quatre défauts, faute de piquer
+les textes courts, les corps longs et un vrai code.
 

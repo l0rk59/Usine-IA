@@ -33,6 +33,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from ..render import libelles
+
 # --------------------------------------------------------------------------
 # Ce qui interdit l'execution
 # --------------------------------------------------------------------------
@@ -61,6 +63,19 @@ class Souci:
     message: str
     ligne: int = 0
     extrait: str = ""
+    # Le motif et sa valeur, pour qui doit redire le souci dans une autre
+    # langue : le message est en francais, et la notice d'un outil vendu en
+    # anglais recopiait « erreur de syntaxe : invalid syntax » a l'acheteur.
+    motif: str = ""
+    valeur: str = ""
+
+
+def _souci(gravite: str, motif: str, valeur: str, ligne: int = 0,
+           extrait: str = "") -> Souci:
+    """Un souci dont le message vient de « render/libelles.py »."""
+    return Souci(gravite,
+                 libelles.FR["logiciel_soucis"][motif].format(valeur=valeur),
+                 ligne=ligne, extrait=extrait, motif=motif, valeur=valeur)
 
 
 @dataclass
@@ -85,7 +100,7 @@ class Rapport:
             return "{} : NE COMPILE PAS — {}".format(
                 self.fichier, self.casse[0].message)
         if self.dangers:
-            return "{} : syntaxe correcte, {} construction(s) a relire".format(
+            return "{} : syntaxe correcte, {} construction(s) à relire".format(
                 self.fichier, len(self.dangers))
         if self.soucis:
             return "{} : correct, {} remarque(s)".format(
@@ -118,8 +133,8 @@ def analyser_python(code: str, nom: str = "script.py") -> Rapport:
     except SyntaxError as exc:
         rapport.valide = False
         rapport.executable = False
-        rapport.soucis.append(Souci(
-            "casse", "erreur de syntaxe : {}".format(exc.msg),
+        rapport.soucis.append(_souci(
+            "casse", "syntaxe", str(exc.msg),
             ligne=exc.lineno or 0, extrait=(exc.text or "").strip()))
         return rapport
 
@@ -132,29 +147,25 @@ def analyser_python(code: str, nom: str = "script.py") -> Rapport:
             for nom_module in noms:
                 racine = (nom_module or "").split(".")[0]
                 if racine in MODULES_SENSIBLES:
-                    rapport.soucis.append(Souci(
-                        "dangereux",
-                        "importe « {} » : acces systeme ou reseau".format(racine),
-                        ligne=ligne))
+                    rapport.soucis.append(_souci(
+                        "dangereux", "import", racine, ligne=ligne))
 
         if isinstance(noeud, ast.Call):
             cible = _nom_appel(noeud.func)
             if cible in INTEGREES_INTERDITES:
-                rapport.soucis.append(Souci(
-                    "dangereux", "appelle « {}() »".format(cible), ligne=ligne))
+                rapport.soucis.append(_souci(
+                    "dangereux", "appel", cible, ligne=ligne))
             elif cible.startswith("os.") and cible.split(".", 1)[1] in OS_INTERDITS:
-                rapport.soucis.append(Souci(
-                    "dangereux", "appelle « {}() »".format(cible), ligne=ligne))
+                rapport.soucis.append(_souci(
+                    "dangereux", "appel", cible, ligne=ligne))
             elif cible == "open":
                 mode = _mode_ouverture(noeud)
                 if mode and any(c in mode for c in "wax+"):
                     chemin = _premier_texte(noeud)
                     if chemin and (chemin.startswith("/") or chemin.startswith("~")
                                    or ".." in chemin):
-                        rapport.soucis.append(Souci(
-                            "dangereux",
-                            "ecrit hors du dossier de travail : {}".format(chemin),
-                            ligne=ligne))
+                        rapport.soucis.append(_souci(
+                            "dangereux", "ecriture", chemin, ligne=ligne))
             elif cible == "input":
                 rapport.soucis.append(Souci(
                     "avertissement",
@@ -198,8 +209,8 @@ _JS_DANGERS = [
     (r"\beval\s*\(", "appelle eval()"),
     (r"\bnew\s+Function\s*\(", "construit une fonction depuis du texte"),
     (r"require\s*\(\s*['\"]child_process", "lance des processus"),
-    (r"require\s*\(\s*['\"]fs['\"]", "acces au systeme de fichiers"),
-    (r"\bdocument\.write\s*\(", "document.write() : a eviter"),
+    (r"require\s*\(\s*['\"]fs['\"]", "accès au système de fichiers"),
+    (r"\bdocument\.write\s*\(", "document.write() : à éviter"),
     (r"\binnerHTML\s*=", "innerHTML : risque d'injection si la valeur vient "
                          "de l'utilisateur"),
 ]
@@ -225,18 +236,17 @@ def analyser_js(code: str, nom: str = "script.js") -> Rapport:
             if resultat.returncode != 0:
                 rapport.valide = False
                 rapport.executable = False
-                rapport.soucis.append(Souci(
-                    "casse", "erreur de syntaxe : {}".format(
-                        _message_node(resultat.stderr or "")),
+                rapport.soucis.append(_souci(
+                    "casse", "syntaxe", _message_node(resultat.stderr or ""),
                     extrait=(resultat.stderr or "").strip()[:300]))
         except (subprocess.TimeoutExpired, OSError) as exc:
-            rapport.verifie_par = "controle structurel (node indisponible)"
+            rapport.verifie_par = "contrôle structurel (node indisponible)"
             _controle_structurel(code, rapport)
         finally:
             os.unlink(chemin)
     else:
         # Termux n'a pas node par defaut. On verifie ce qu'on peut, et on le dit.
-        rapport.verifie_par = "controle structurel (node absent)"
+        rapport.verifie_par = "contrôle structurel (node absent)"
         _controle_structurel(code, rapport)
 
     for motif, message in _JS_DANGERS:
@@ -259,7 +269,7 @@ def _message_node(stderr: str) -> str:
     for ligne in lignes:
         if not ligne.startswith("Node.js v") and not ligne.startswith("at "):
             return ligne
-    return "node a refuse le fichier"
+    return "node a refusé le fichier"
 
 
 def _controle_structurel(code: str, rapport: Rapport) -> None:
@@ -310,7 +320,7 @@ def analyser_json(texte: str, nom: str = "data.json",
             if cle not in donnees:
                 rapport.valide = False
                 rapport.soucis.append(Souci(
-                    "casse", "cle obligatoire absente : « {} »".format(cle)))
+                    "casse", "clé obligatoire absente : « {} »".format(cle)))
     return rapport
 
 
@@ -325,14 +335,14 @@ def analyser_manifeste(texte: str, nom: str = "manifest.json") -> Rapport:
     if not rapport.valide:
         return rapport
     donnees = json.loads(texte)
-    rapport.verifie_par = "json.loads + schema Chrome MV3"
+    rapport.verifie_par = "json.loads + schéma Chrome MV3"
     # analyser_json valide la syntaxe ; « [1, 2, 3] » est du JSON correct.
     # Un manifeste qui n'est pas un objet faisait tomber toute la chaine sur
     # un AttributeError, la ou c'est justement le genre de sortie qu'un
     # modele produit de temps en temps.
     if not isinstance(donnees, dict):
         rapport.soucis.append(Souci(
-            "casse", "le manifeste doit etre un objet JSON, pas un {}".format(
+            "casse", "le manifeste doit être un objet JSON, pas un {}".format(
                 type(donnees).__name__)))
         rapport.valide = False
         rapport.executable = False
@@ -346,7 +356,7 @@ def analyser_manifeste(texte: str, nom: str = "manifest.json") -> Rapport:
 
     if not re.match(r"^\d+(\.\d+){0,3}$", str(donnees.get("version", ""))):
         rapport.soucis.append(Souci(
-            "casse", "« version » doit etre une suite de nombres, ex : 1.0.0"))
+            "casse", "« version » doit être une suite de nombres, ex : 1.0.0"))
         rapport.valide = False
 
     permissions = set(donnees.get("permissions") or []) | set(
@@ -364,7 +374,7 @@ def analyser_html(texte: str, nom: str = "index.html") -> Rapport:
     import html.parser
 
     rapport = Rapport(fichier=nom, langage="html",
-                      verifie_par="analyseur HTML + dependances")
+                      verifie_par="analyseur HTML + dépendances")
 
     class Verificateur(html.parser.HTMLParser):
         vides = {"br", "img", "hr", "meta", "link", "input", "source", "area",
@@ -414,7 +424,7 @@ def analyser_html(texte: str, nom: str = "index.html") -> Rapport:
                                   texte):
         rapport.soucis.append(Souci(
             "avertissement",
-            "depend de {} : le produit ne fonctionnera plus hors ligne".format(
+            "dépend de {} : le produit ne fonctionnera plus hors ligne".format(
                 occurrence.group(1)[:60]),
             ligne=texte[: occurrence.start()].count("\n") + 1))
 
@@ -438,6 +448,9 @@ class Execution:
     sortie: str = ""
     erreur: str = ""
     refus: str = ""
+    # Le souci qui a motive le refus, pour le redire dans la langue du produit.
+    motif: str = ""
+    valeur: str = ""
 
     @property
     def reussi(self) -> bool:
@@ -456,8 +469,9 @@ def executer_python(
     pas sur votre telephone un code qu'aucun humain n'a lu.
     """
     if rapport is not None and not rapport.executable:
-        raison = (rapport.casse or rapport.dangers)[0].message
-        return Execution(refus="analyse statique : {}".format(raison))
+        souci = (rapport.casse or rapport.dangers)[0]
+        return Execution(refus="analyse statique : {}".format(souci.message),
+                         motif=souci.motif, valeur=souci.valeur)
 
     environnement = dict(os.environ)
     # Un script genere n'a aucune raison d'atteindre le reseau pendant la
@@ -506,7 +520,7 @@ def analyser_fichier(chemin: str, contenu: str) -> Rapport:
     analyseur = _ANALYSEURS.get(Path(chemin).suffix.lower())
     if analyseur is None:
         return Rapport(fichier=nom, langage="texte",
-                       verifie_par="aucune verification pour ce format")
+                       verifie_par="aucune vérification pour ce format")
     return analyseur(contenu, nom)
 
 

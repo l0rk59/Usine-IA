@@ -17,14 +17,37 @@
   var ctx = toile.getContext('2d');
   var L = 0, H = 0, dpr = Math.min(window.devicePixelRatio || 1, 2);
 
+  /* Les couleurs du fond anime, lues sur la peau en cours.
+
+     Deux jeux etaient ecrits ici, un pour « jour » et un pour tout le reste :
+     sous « ambre », la grille et la pluie restaient cyan et magenta devant
+     une page ambre. Chaque peau declare deja son accent et son magenta —
+     autant les lire, plutot que d'ajouter une branche par peau et d'oublier
+     la septieme. */
+  function teinte(nom, secours, alpha) {
+    var v = String(getComputedStyle(document.documentElement)
+                   .getPropertyValue(nom) || '').trim();
+    var r, g, b;
+    if (v.charAt(0) === '#') {
+      var h = v.length < 7 ? v[1] + v[1] + v[2] + v[2] + v[3] + v[3] : v.slice(1, 7);
+      r = parseInt(h.slice(0, 2), 16);
+      g = parseInt(h.slice(2, 4), 16);
+      b = parseInt(h.slice(4, 6), 16);
+    } else {
+      var m = v.match(/[\d.]+/g);
+      if (!m || m.length < 3) return secours;
+      r = +m[0]; g = +m[1]; b = +m[2];
+    }
+    if (!isFinite(r) || !isFinite(g) || !isFinite(b)) return secours;
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+  }
+
   function theme() {
-    // On lit les couleurs du theme en cours pour rester coherent avec le jour.
-    var jour = document.documentElement.dataset.theme === 'jour';
-    return jour
-      ? { grille: 'rgba(0,141,158,0.20)', pluie: 'rgba(192,26,160,0.28)',
-          horizon: 'rgba(0,141,158,0.30)' }
-      : { grille: 'rgba(0,240,255,0.14)', pluie: 'rgba(255,43,214,0.30)',
-          horizon: 'rgba(0,240,255,0.30)' };
+    return {
+      grille: teinte('--accent', 'rgba(0,240,255,0.14)', 0.14),
+      pluie: teinte('--magenta', 'rgba(255,43,214,0.30)', 0.30),
+      horizon: teinte('--accent', 'rgba(0,240,255,0.30)', 0.30),
+    };
   }
 
   function taille() {

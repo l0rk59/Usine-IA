@@ -77,7 +77,7 @@ class Pool:
         maintenant = time.time()
         return [c for c in self.cles if c.disponible(maintenant)]
 
-    def ordonnees(self, plafond_journalier: int) -> List[Cle]:
+    def ordonnees(self, plafond_journalier: int, modele: str = "") -> List[Cle]:
         """Toutes les cles utilisables, de la moins sollicitee a la plus sollicitee.
 
         Le routeur a besoin de la LISTE, pas seulement du meilleur candidat :
@@ -87,16 +87,16 @@ class Pool:
         """
         candidates = []
         for cle in self.disponibles():
-            utilisation = store.compteur_jour_cle(self.fournisseur, cle.id)
+            utilisation = store.compteur_jour_cle(self.fournisseur, cle.id, modele)
             if plafond_journalier and utilisation >= plafond_journalier:
                 continue
             candidates.append((utilisation, cle.rang, cle))
         candidates.sort(key=lambda t: (t[0], t[1]))
         return [c for _, _, c in candidates]
 
-    def choisir(self, plafond_journalier: int) -> Optional[Cle]:
+    def choisir(self, plafond_journalier: int, modele: str = "") -> Optional[Cle]:
         """La cle la moins sollicitee, ou None si toutes sont saturees."""
-        ordre = self.ordonnees(plafond_journalier)
+        ordre = self.ordonnees(plafond_journalier, modele)
         return ordre[0] if ordre else None
 
     def mettre_au_repos(self, cle: Cle, secondes: float, raison: str = "") -> None:
@@ -140,6 +140,17 @@ def charger(fournisseur: str, nom_variable: str) -> Pool:
     pool = Pool(fournisseur, [
         Cle(valeur=v, fournisseur=fournisseur, rang=i) for i, v in enumerate(valeurs)
     ])
+    # Le repos survit au processus : c'est la base qui le porte, pas la
+    # memoire. Un telephone qui redemarre ne doit pas resolliciter une cle
+    # que le service vient de refuser.
+    try:
+        persistes = store.repos_actifs()
+    except Exception:
+        persistes = {}
+    for cle in pool.cles:
+        fin = persistes.get((fournisseur, cle.id))
+        if fin:
+            cle.repos_jusqu_a = fin
     ancien = _pools.get(fournisseur)
     if ancien:
         # On conserve l'etat de repos des cles deja connues.
@@ -147,7 +158,8 @@ def charger(fournisseur: str, nom_variable: str) -> Pool:
         for cle in pool.cles:
             precedente = etat.get(cle.id)
             if precedente:
-                cle.repos_jusqu_a = precedente.repos_jusqu_a
+                cle.repos_jusqu_a = max(cle.repos_jusqu_a,
+                                        precedente.repos_jusqu_a)
                 cle.echecs = precedente.echecs
     _pools[fournisseur] = pool
     return pool

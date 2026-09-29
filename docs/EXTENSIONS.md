@@ -113,11 +113,19 @@ titres de chapitres doivent être de **vrais styles de titre** — c'est ce qui
 engendre la table des matières de l'ebook — et chaque chapitre commence par
 un saut de page, jamais par des paragraphes vides.
 
-L'usine produit déjà des titres structurés et une table des matières. Il
-manque la **page de copyright**, la dédicace, et la validation
-[EPUBCheck](https://reedsy.com/studio/resources/how-many-words-in-a-novel/)
-avant livraison. Un roman sans page de copyright se repère au premier coup
-d'œil.
+**Fait.** L'EPUB porte maintenant l'appareil liminaire complet, dans l'ordre
+attendu : couverture, page de titre, **page de copyright**, dédicace
+(`--dedicace`), table des matières, puis le texte. La page de copyright porte
+l'année, l'auteur, l'éditeur quand il diffère, la date d'édition,
+l'identifiant unique de la publication et la mention d'assistance IA quand le
+réglage `signature_ia` est actif.
+
+La validation avant livraison est faite, mais **pas par EPUBCheck** : c'est un
+programme Java, qui ne tournera jamais sur Termux. Les contrôles structurels
+qu'il applique sont refaits en Python dans `render/epub_conformite.py`, et le
+rapport dit lui-même ce qu'il ne couvre pas (schémas XSD, vocabulaire complet
+des propriétés, liens internes) plutôt que de laisser croire à une validation
+complète.
 
 ---
 
@@ -201,29 +209,80 @@ marché retire ce qu'elle juge être de l'outillage offensif.
 Classé par rapport entre ce que ça apporte et ce que ça coûte.
 
 ### `ebook` — guides
-- **Page de copyright et appareil liminaire** (attendu par KDP, absent
-  aujourd'hui). Petit, visible.
-- **Validation EPUBCheck** avant livraison — l'usine vérifie déjà la
-  structure de l'archive, pas sa conformité.
-- **Éditions déclinées** : le même livre en « version courte » offerte pour
-  capter des adresses, et en version complète payante.
+- ~~**Page de copyright et appareil liminaire**~~ **Fait.** Voir §2.
+- ~~**Validation EPUBCheck** avant livraison~~ **Fait**, en Python : voir §2.
+- ~~**Éditions déclinées** : le même livre en « version courte » offerte pour
+  capter des adresses.~~ **Fait.** `usine ebook … --marketing` produit
+  `marketing/extrait/` : PDF + EPUB des premiers chapitres (un quart par
+  défaut, `--extrait N` pour décider), suivis d'une page qui liste ce qui
+  reste et où l'obtenir. **Aucun appel au modèle** — l'extrait est découpé
+  dans le livre déjà produit, donc gratuit et fidèle à ce qu'on vend.
 
 ### `roman` / `nouvelle` — fiction *(chaîne nouvelle)*
-Voir §2. C'est le plus gros chantier de la liste, et le plus demandé.
-Une **nouvelle** (5 000 – 10 000 mots) est le bon premier pas : assez courte
-pour qu'un résumé roulant suffise, assez longue pour prouver la continuité.
+**Fait pour la nouvelle.** `usine nouvelle` livre les trois pièces décrites au
+§2 — bible, résumé roulant, grille de beats — plus un contrôle de continuité
+déterministe. Voir [FICTION.md](FICTION.md).
+
+**La mémoire du roman est faite.** Elle a commencé par la mesure annoncée :
+un résumé de taille fixe porte douze scènes, la treizième chasse la première,
+et c'est de l'arithmétique — sept mots par événement, quatre-vingt-dix mots
+de résumé. La mémoire hiérarchique (parties closes figées + état courant)
+s'active seule au-delà, et retient 24 faits sur 24 là où la plate en retenait
+12. Chiffres et méthode dans [FICTION.md](FICTION.md) ; la mesure tourne dans
+`tests/test_memoire.py`.
+
+**La structure suit.** La grille porte maintenant des **fils tendus** (une
+promesse, sa scène de pose, sa scène de paiement) et un **arc par
+personnage** avec sa scène de bascule. Les deux entrent dans l'invite de
+chaque scène — ce qu'elle doit poser, payer, et ce qu'elle porte sans le
+résoudre — et sont vérifiés *contre la prose*, pas seulement contre le JSON :
+un fil déclaré payé à la scène 11 est cherché dans le texte de la scène 11.
+Le tout dans le même appel que la grille, donc sans surcoût.
+
+**Les intrigues secondaires suivent.** La grille porte des lignes parallèles
+— une ligne appartient à un personnage autre que le protagoniste, tient sur
+trois scènes au moins et doit se résoudre — et le contrôle sait dire qu'une a
+été **abandonnée en route**, ce qui est le défaut le plus fréquent d'un récit
+long. Une nouvelle n'en reçoit aucune : sa force est de n'avoir qu'une ligne.
+
+Il ne reste donc au roman rien de structurel. Ce qui manque est du **jugement**
+— savoir si l'histoire vaut la peine d'être lue — et aucun outil ne sait le
+faire.
 
 ### `prompts` — packs de prompts
 - **Variantes par modèle** : ce qui marche sur un modèle échoue sur un autre.
 - **Fichier importable** dans les outils qui acceptent des bibliothèques.
 
 ### `formation` — mini-formations
-- **Quiz auto-corrigés** en HTML autonome (la chaîne produit déjà du HTML).
-- **Script de narration** par module, pour qui veut enregistrer une voix.
+- ~~**Quiz auto-corrigés** en HTML autonome.~~ **Fait.** `quiz.html` : deux
+  questions par module, corrigées dans le navigateur, hors ligne, sans
+  bibliothèque. Un seul appel de modèle pour toute la formation — il voit
+  alors la progression entière et évite de poser deux fois la même question.
+- ~~**Script de narration** par module, pour qui veut enregistrer une voix.~~
+  **Fait**, en option : `usine formation "sujet" --narration` écrit
+  `narration.md` — chaque module réécrit pour être *dit*, avec ses indications
+  de jeu (`[PAUSE]`, `[INSISTER]`) et sa durée calculée au débit de 150 mots
+  par minute, encadrée d'une fourchette. En option parce qu'elle coûte **un
+  appel par module** : doubler le prix d'une formation sans le demander serait
+  une mauvaise surprise.
 
 ### `outils` — boîtes à outils
 - **Cadres de référence** : la valeur d'une checklist vient de ce sur quoi
   elle s'appuie. CIS et NIST CSF sont publics et faits pour ça.
+
+  **Volontairement pas fait, et la raison vaut d'être écrite.** L'usine
+  travaille hors ligne : elle ne peut pas aller lire les CIS Benchmarks ni le
+  NIST CSF. Le seul moyen de les embarquer serait de les écrire **de
+  mémoire** — celle d'un modèle, ou la mienne. Ce serait exactement le défaut
+  que le contrôle qualité refuse ailleurs sous le nom de *chiffre sans
+  source*, et il partirait cette fois dans un produit **vendu** : un numéro
+  de contrôle faux est pire qu'un contrôle absent, parce qu'il se présente
+  comme une référence.
+
+  Ce qui rendrait la chose faisable : que l'utilisateur **fournisse** le
+  fichier du référentiel qu'il a le droit d'utiliser, et que la chaîne
+  `outils` s'y adosse. C'est une autre fonction, et elle demande quelqu'un
+  qui ait le fichier.
 
 ### `modeles` — Notion / tableur
 - **Formules réellement calculées** plutôt que des colonnes vides.
@@ -232,7 +291,16 @@ pour qu'un résumé roulant suffise, assez longue pour prouver la continuité.
 ### `impression` — cahiers
 - **Format A5 et Letter** en plus de A4 : le marché anglophone imprime en
   Letter.
-- **Marge de reliure** pour l'impression à la demande.
+- ~~**Marge de reliure** pour l'impression à la demande.~~ **Fait** :
+  `usine impression "sujet" --reliure 12` décale le contenu vers l'extérieur,
+  **alternativement à gauche et à droite**, puisque le côté intérieur change
+  de bord à chaque page. Zéro par défaut, et le PDF produit sans reliure est
+  identique **octet pour octet** à celui d'avant — c'est ce que garde le
+  premier test du fichier.
+
+  La valeur exacte n'est pas devinée : chaque service d'impression publie la
+  sienne, souvent fonction du nombre de pages. L'usine prend celle qu'on lui
+  donne et le dit.
 
 ### `social` — packs de publications
 - **Découpage par réseau** avec les limites réelles de caractères.
@@ -251,22 +319,43 @@ pour qu'un résumé roulant suffise, assez longue pour prouver la continuité.
 
 ## 5. Termux et le navigateur local
 
-L'intégration Termux est aujourd'hui **documentaire** : `termux-open` et
-`termux-wake-lock` sont *conseillés dans le texte*, jamais appelés. Or
-`termux-api` expose exactement ce qui manque à une usine qui tourne des
-heures sur un téléphone verrouillé.
+L'intégration Termux était **documentaire** : `termux-open` et
+`termux-wake-lock` étaient *conseillés dans le texte*, jamais appelés. Elle
+est maintenant branchée, dans `core/telephone.py`.
 
-| Appel | Ce que ça change |
-|---|---|
-| `termux-notification` | savoir qu'un produit est prêt sans regarder le terminal. **Le plus utile de la liste.** |
-| `termux-battery-status` | l'usine continue s'arrête sous X % au lieu de vider le téléphone |
-| `termux-wake-lock` | pris automatiquement pendant une longue fabrication, relâché après |
-| `termux-share` | envoyer le ZIP vers Drive, un courriel ou Telegram sans chercher le fichier |
-| `termux-open` | ouvrir le PDF produit, au lieu d'afficher son chemin |
+| Appel | Ce que ça change | État |
+|---|---|:-:|
+| `termux-notification` | savoir qu'un produit est prêt sans regarder le terminal | ✅ |
+| `termux-battery-status` | l'usine continue s'arrête sous X % au lieu de vider le téléphone | ✅ |
+| `termux-wake-lock` | pris automatiquement pendant une fabrication, relâché après | ✅ |
+| `termux-open` | ouvrir le PDF produit, au lieu d'afficher son chemin | ✅ *(notification, et menu)* |
+| `termux-share` | envoyer le ZIP vers Drive, un courriel ou Telegram | ✅ *(menu)* |
 
 Tous se comportent pareil quand `termux-api` n'est pas installé : le binaire
 est absent, on l'ignore. Aucune dépendance ajoutée — ce qui est la contrainte
 fondatrice.
+
+Deux choix méritent d'être notés, parce qu'ils ne se devinent pas :
+
+- **la batterie se lit entre deux produits**, jamais pendant. C'est le seul
+  point d'arrêt propre : couper au milieu d'un chapitre laisserait un dossier
+  à moitié écrit, ce que le reste de la conception s'acharne à éviter ;
+- **un délai d'attente sur chaque appel**. Le paquet `termux-api` installe les
+  commandes, mais elles dialoguent avec l'application Termux:API, à installer
+  séparément. Paquet sans application, `termux-battery-status` ne rend jamais
+  la main : sans délai, l'usine se figerait avant son premier produit, sans
+  rien dire. C'est le pire mode de panne, et il coûtait une ligne à éviter.
+
+L'écran **Mes produits** du menu porte les deux derniers : *Ouvrir sur le
+téléphone* (le PDF principal — celui qui pèse le plus lourd, car l'annexe
+`guide-annexe.pdf` trie *avant* `guide.pdf`) et *Partager l'archive*. Sans
+archive, le menu propose de la créer plutôt que de renvoyer l'utilisateur vers
+`usine livrer`.
+
+Les deux entrées existent **partout**, y compris là où `termux-api` est
+absent : une numérotation qui change selon la machine est un piège pour les
+tests comme pour l'utilisateur. Quand l'outil manque, le menu le dit, donne la
+commande d'installation et affiche le chemin du fichier.
 
 ### Côté navigateur
 
@@ -291,9 +380,95 @@ certains moteurs). Ce qui reste ouvert et utile :
    diagnostic gagne l'**espace disque libre** : un téléphone se remplit, et
    une fabrication qui s'arrête faute de place ne dit pas pourquoi.
 2. ~~**Le domaine `securite`** dans le garde-fou des sujets.~~ **Fait.**
-3. **Les notifications Termux**, plus la coupure sur batterie faible.
-4. **L'appareil liminaire des ebooks** et la validation EPUBCheck.
-5. **La chaîne `nouvelle`** — la fiction par le format le plus court, pour
-   éprouver la continuité avant d'attaquer le roman.
+3. ~~**Les notifications Termux**, plus la coupure sur batterie faible.~~
+   **Fait.** Voir §5 : `core/telephone.py`, trois réglages (`notifications`,
+   `batterie_minimum`, `verrou_veille`), et l'état de `termux-api` remonté
+   dans `usine docteur` comme au tableau de bord.
+4. ~~**L'appareil liminaire des ebooks** et la validation EPUBCheck.~~
+   **Fait.** Page de copyright et dédicace dans l'EPUB ; contrôle structurel
+   en Python plutôt qu'EPUBCheck, qui demanderait Java. 16 des tests du
+   contrôle cassent volontairement un EPUB valide — un contrôle qui ne sait
+   rien refuser ne prouve rien.
+5. ~~**La chaîne `nouvelle`** — la fiction par le format le plus court, pour
+   éprouver la continuité avant d'attaquer le roman.~~ **Fait.**
+   `usine/pipelines/nouvelle.py` : bible, résumé roulant, grille de beats,
+   contrôle de continuité déterministe. Le test de fumée refuse désormais de
+   passer si un type du catalogue n'est fabriqué par aucun de ses scénarios —
+   c'est ainsi que l'oubli d'une chaîne se voit.
+
+### Ce qui vient ensuite
+
+Le backlog n'est pas vide pour autant. Par ordre de rapport entre ce que ça
+apporte et ce que ça coûte :
+
+1. ~~**La mémoire hiérarchique**, sans laquelle le roman reste hors de portée.~~
+   **Fait**, et mesuré avant d'être écrite (voir §4). La suite pour le roman
+   est la **structure** : une grille qui sache noter une promesse en suspens
+   et l'arc de chaque personnage.
+2. ~~**`termux-share`** : envoyer une archive livrable vers Drive ou un
+   courriel depuis l'écran « Mes produits » du menu.~~ **Fait**, avec
+   *Ouvrir sur le téléphone* dans le même écran (voir §5).
+3. ~~**Éditions déclinées** d'un ebook.~~ **Fait** (voir §4, `ebook`).
+4. ~~**Quiz auto-corrigés** en HTML autonome pour les mini-formations.~~
+   **Fait** (voir §4, `formation`).
+
+Cette liste-ci est donc close à son tour. La suite naturelle, par ordre de
+rapport entre ce que ça apporte et ce que ça coûte :
+
+1. ~~**La structure du roman** : une grille qui sache noter une promesse en
+   suspens et l'arc de chaque personnage.~~ **Fait** (voir §2). Reste les
+   **intrigues secondaires**, qui sont un objet différent d'un fil tendu :
+   une ligne narrative parallèle, pas une promesse ponctuelle.
+2. ~~**Script de narration** par module de formation.~~ **Fait** (§4,
+   `formation`).
+3. **Cadres de référence** pour les boîtes à outils — **écarté tant que le
+   référentiel doit être écrit de mémoire** (§4, `outils`). Rouvrable le jour
+   où l'utilisateur fournit le fichier.
+4. ~~**Marge de reliure** pour les cahiers imprimables.~~ **Fait** (§4,
+   `impression`).
+
+### Un trou systématique, mesuré en septembre 2026
+
+Le catalogue déclare huit options par type de produit — relire le livre
+entier, produire le script de narration, poser une marge de reliure, choisir
+un réseau, la forme d'un outil, interroger les sources de marché, ranger un
+récit dans une série. Mesure :
+
+| | menu | tableau de bord |
+|---|---|---|
+| avant | 1 sur 8 | 2 sur 8 |
+| après | 7 sur 8 | 2 sur 8 + la série |
+
+**Six leviers n'existaient que dans la ligne de commande** — c'est-à-dire, en
+pratique, pour personne : la vraie porte d'entrée de cette usine est le menu,
+sur un téléphone.
+
+C'est le défaut du réglage orphelin déplacé d'un cran. Le réglage orphelin
+était affiché et jamais lu ; l'option inaccessible est lue et jamais proposée.
+Dans les deux cas l'utilisateur croit disposer d'un levier qu'il n'a pas.
+
+Le garde-fou est dans `tests/test_connexions.py` : il **pilote le menu par son
+entrée standard** et vérifie que chaque option du catalogue est bien demandée.
+Lire le source ne suffisait pas — une première version passait alors que le
+menu ne posait aucune question, parce que le nom de l'option figurait dans un
+commentaire. Une exemption reste possible, mais nommée : `executer` désactive
+la vérification du programme généré, c'est un levier de mise au point.
+
+Cette troisième liste est close. Ce qui reste ouvert, en une phrase chacun :
+
+- ~~les **intrigues secondaires** de la fiction~~ **faites** (§2, §5 de
+  [FICTION.md](FICTION.md)) ;
+- les **cadres de référence** des boîtes à outils, qui attendent une source
+  plutôt qu'un développement (§4) ;
+- ~~les **utilitaires sans appelant** hérités~~ **retirés.** La mesure en a
+  trouvé six, pas trois : `inventaire`, `env_int`, `nb_abonnes`,
+  `empreinte_courte` (doublon de `cles.empreinte`), `compteur_minute_cle`
+  (rendu inutile par le comptage par clé) et `ecrire_dictionnaires`. **Aucun
+  test n'a cassé en les retirant** — ce qui est précisément la preuve qu'elles
+  ne protégeaient personne. « Laissés pour éviter du brassage » était un
+  mauvais motif : une fonction gardée « au cas où » est une fonction qu'on ne
+  supprimera jamais, parce que le cas n'arrive pas et que personne n'osera
+  décider. `tests/test_connexions.py` refuse désormais la récidive, avec une
+  liste d'exemptions **vide** : y ajouter un nom demande d'écrire pourquoi.
 *(L'ancien item « profil audit local » est retiré : la direction outillage de
 sécurité a été abandonnée.)*

@@ -14,6 +14,7 @@ chapitres sur douze qu'un dossier vide.
 
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional
@@ -40,6 +41,7 @@ class Plafonds:
     appels_produit: int = 0
     produits_jour: int = 0
     minutes_produit: int = 0
+    jetons_jour: int = 0
 
     @classmethod
     def depuis_reglages(cls) -> "Plafonds":
@@ -48,11 +50,13 @@ class Plafonds:
             appels_produit=int(reglages.lire("budget_appels_produit", 0) or 0),
             produits_jour=int(reglages.lire("budget_produits_jour", 0) or 0),
             minutes_produit=int(reglages.lire("budget_minutes_produit", 0) or 0),
+            jetons_jour=int(reglages.lire("budget_jetons_jour", 0) or 0),
         )
 
     def actif(self) -> bool:
         return any((self.appels_jour, self.appels_produit,
-                    self.produits_jour, self.minutes_produit))
+                    self.produits_jour, self.minutes_produit,
+                    self.jetons_jour))
 
 
 class Compteur:
@@ -67,8 +71,16 @@ class Compteur:
         self.plafonds = plafonds or Plafonds.depuis_reglages()
         self.produits_faits = 0
         self._debut_produit = 0.0
-        self._appels_debut_produit = 0
-        self._motif_arret = ""
+        # Les requetes du produit en cours, comptees ICI et pas relues en
+        # base : la base recoit aussi celles des autres fils. Voir
+        # « brancher » pour la mesure.
+        self._appels_produit = 0
+        # Le plafond de l'UTILISATEUR qui a coupe le produit en cours, s'il y
+        # en a un. Les chaines attrapent de la meme facon ce refus et le
+        # silence des fournisseurs (« PLUS_RIEN_A_DEMANDER ») ; l'usine
+        # continue doit pourtant les distinguer : l'un l'arrete, l'autre la
+        # fait attendre que les quotas repartent.
+        self.refus = ""
 
     # -- consommation reelle ---------------------------------------------
     def appels_aujourdhui(self) -> int:
@@ -77,9 +89,12 @@ class Compteur:
         return store.compteur_intervalle(debut)
 
     def appels_produit(self) -> int:
-        if not self._debut_produit:
-            return 0
-        return store.compteur_intervalle(self._debut_produit)
+        return self._appels_produit if self._debut_produit else 0
+
+    def jetons_aujourdhui(self) -> int:
+        debut = time.mktime(time.strptime(
+            time.strftime("%Y-%m-%d"), "%Y-%m-%d"))
+        return store.tokens_intervalle(debut)
 
     def minutes_produit(self) -> float:
         if not self._debut_produit:
@@ -88,8 +103,9 @@ class Compteur:
 
     # -- cycle de vie ------------------------------------------------------
     def demarrer_produit(self) -> None:
+        self.refus = ""
         self._debut_produit = time.time()
-        self._appels_debut_produit = self.appels_aujourdhui()
+        self._appels_produit = 0
 
     def terminer_produit(self, reussi: bool = True) -> None:
         if reussi:
@@ -102,6 +118,8 @@ class Compteur:
         p = self.plafonds
         if p.produits_jour and self.produits_faits >= p.produits_jour:
             return "plafond de {} produit(s) par jour atteint".format(p.produits_jour)
+        if p.jetons_jour and self.jetons_aujourdhui() >= p.jetons_jour:
+            return "plafond de {} jetons par jour atteint".format(p.jetons_jour)
         if p.appels_jour:
             restants = p.appels_jour - self.appels_aujourdhui()
             if restants <= 0:
@@ -116,7 +134,19 @@ class Compteur:
 
     def verifier_appel(self) -> None:
         """Appele avant chaque requete IA. Leve BudgetEpuise si un plafond tombe."""
+        try:
+            self._verifier_appel()
+        except BudgetEpuise as exc:
+            self.refus = str(exc)
+            raise
+        self._appels_produit += 1
+
+    def _verifier_appel(self) -> None:
         p = self.plafonds
+        if p.jetons_jour:
+            consommes = self.jetons_aujourdhui()
+            if consommes >= p.jetons_jour:
+                raise BudgetEpuise("jetons par jour", consommes, p.jetons_jour)
         if p.appels_jour:
             consomme = self.appels_aujourdhui()
             if consomme >= p.appels_jour:
@@ -143,6 +173,8 @@ class Compteur:
             "produits_jour_max": p.produits_jour,
             "minutes_produit": round(self.minutes_produit(), 1),
             "minutes_produit_max": p.minutes_produit,
+            "jetons_jour": self.jetons_aujourdhui(),
+            "jetons_jour_max": p.jetons_jour,
             "reste_aujourdhui": (p.appels_jour - self.appels_aujourdhui()
                                  if p.appels_jour else None),
         }
@@ -152,16 +184,24 @@ class Compteur:
 # Garde branchee sur le routeur IA
 # --------------------------------------------------------------------------
 
-_garde: Optional[Callable[[], None]] = None
+# Une garde PAR FIL. Le tableau de bord fait tourner l'usine continue dans un
+# fil, et l'on peut appuyer sur « Generer » pendant ce temps. Mesure du
+# 24/09/2026, plafond de douze appels par produit, deux ebooks qui en
+# demandent dix chacun : seuls, ils passaient ; ensemble, les DEUX sortaient
+# inacheves et l'usine s'arretait sur « budget epuise ». La garde etait
+# globale — le produit du tableau de bord, qui n'a aucun plafond, se faisait
+# couper par celui de la boucle — et le compte par produit relisait en base
+# les appels de tous les fils.
+_local = threading.local()
 
 
 def brancher(compteur: Optional[Compteur]) -> None:
-    """Installe (ou retire) la garde consultee avant chaque appel IA."""
-    global _garde
-    _garde = compteur.verifier_appel if compteur is not None else None
+    """Installe (ou retire) la garde du fil courant."""
+    _local.garde = compteur.verifier_appel if compteur is not None else None
 
 
 def verifier() -> None:
-    """Appele par le routeur. Sans budget branche, ne fait rien."""
-    if _garde is not None:
-        _garde()
+    """Appele par le routeur. Sans budget branche dans ce fil, ne fait rien."""
+    garde: Optional[Callable[[], None]] = getattr(_local, "garde", None)
+    if garde is not None:
+        garde()

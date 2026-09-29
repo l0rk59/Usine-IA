@@ -11,11 +11,16 @@ import itertools
 import queue
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List
 
 from .securite import expurger
 
 _abonnes: List["queue.Queue[Dict[str, Any]]"] = []
+# Des ecouteurs SYNCHRONES : la ligne de commande n'a pas de file a vider,
+# elle affiche au moment ou l'evenement arrive. Sans eux, une attente du
+# routeur — jusqu'a deux minutes — laissait le terminal muet, et sur un
+# telephone on tue un processus muet.
+_ecouteurs: List[Callable[[Dict[str, Any]], None]] = []
 _verrou = threading.Lock()
 _compteur = itertools.count(1)
 _HISTORIQUE_MAX = 400
@@ -43,7 +48,25 @@ def publier(type_evenement: str, **donnees: Any) -> Dict[str, Any]:
             file.put_nowait(evenement)
         except queue.Full:
             pass  # abonne trop lent : on saute plutot que de bloquer l'usine
+    for ecouteur in list(_ecouteurs):
+        try:
+            ecouteur(evenement)
+        except Exception:
+            pass  # un affichage rate ne doit pas arreter une fabrication
     return evenement
+
+
+def ecouter(ecouteur: Callable[[Dict[str, Any]], None]) -> None:
+    """Appelle « ecouteur » a chaque evenement. Une seule fois par fonction."""
+    with _verrou:
+        if ecouteur not in _ecouteurs:
+            _ecouteurs.append(ecouteur)
+
+
+def ne_plus_ecouter(ecouteur: Callable[[Dict[str, Any]], None]) -> None:
+    with _verrou:
+        if ecouteur in _ecouteurs:
+            _ecouteurs.remove(ecouteur)
 
 
 def abonner(taille: int = 200) -> "queue.Queue[Dict[str, Any]]":
@@ -62,11 +85,6 @@ def desabonner(file: "queue.Queue[Dict[str, Any]]") -> None:
 def historique(depuis_id: int = 0) -> List[Dict[str, Any]]:
     with _verrou:
         return [e for e in _historique if e["id"] > depuis_id]
-
-
-def nb_abonnes() -> int:
-    with _verrou:
-        return len(_abonnes)
 
 
 def vider() -> None:

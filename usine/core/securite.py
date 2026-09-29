@@ -8,7 +8,6 @@ Trois risques traites :
 
 from __future__ import annotations
 
-import hashlib
 import hmac
 import re
 import secrets
@@ -35,8 +34,18 @@ _MOTIFS_SECRETS = [
 def expurger(texte: str) -> str:
     """Remplace tout secret reconnaissable par un marqueur.
 
-    Applique a chaque message de journal et a chaque message d'erreur avant
-    qu'il n'atteigne la console, le fichier de log ou le tableau de bord.
+    Applique aux deux endroits ou un message quitte le processus pour de
+    bon : le tableau de bord, qui l'envoie sur le reseau local, et le journal
+    sur disque (« core/trace.py »), qui l'y laisse des semaines.
+
+    La console n'y passe pas, et c'est un constat plutot qu'un oubli : rien
+    n'y fait transiter de secret. Le corps d'une reponse HTTP en erreur —
+    le seul endroit ou un service renverrait une cle — est porte par
+    « HttpErreur.corps », et un seul endroit l'affiche : l'audit des quotas
+    (« diagnostic »), qui le fait passer par ici. Cette docstring
+    annoncait trois destinations pour une seule ; une garantie de securite
+    qui surestime sa couverture est pire qu'une absence de garantie, parce
+    qu'on cesse de chercher.
     """
     if not texte:
         return texte
@@ -47,6 +56,13 @@ def expurger(texte: str) -> str:
 
 
 def contient_un_secret(texte: str) -> bool:
+    """Un secret figure-t-il dans ce texte ?
+
+    Distinct d'« expurger » : masquer repare la fuite, reconnaitre permet de
+    la DIRE. Une cle masquee en silence laisse l'utilisateur avec une cle
+    exposee quelque part et aucune raison de la renouveler. Le journal sur
+    disque s'en sert pour alerter, une fois.
+    """
     return any(motif.search(texte or "") for motif in _MOTIFS_SECRETS)
 
 
@@ -65,10 +81,6 @@ def jeton_valide(attendu: str, fourni: str) -> bool:
     if not attendu:
         return True  # aucun jeton configure : acces local libre
     return hmac.compare_digest(attendu.encode("utf-8"), (fourni or "").encode("utf-8"))
-
-
-def empreinte_courte(valeur: str) -> str:
-    return hashlib.sha256(valeur.encode("utf-8")).hexdigest()[:12]
 
 
 # --------------------------------------------------------------------------

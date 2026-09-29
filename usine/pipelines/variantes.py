@@ -11,7 +11,7 @@ from __future__ import annotations
 import html
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from ..agents import equipe
 from ..core import config, diagnostic_titre, evenements, experience, images
@@ -135,7 +135,13 @@ def _completer(ctx: Contexte, titre_actuel: str, description: str,
     try:
         donnees = equipe.MARKETEUR.travailler_json(ctx, invite, max_tokens=1200,
                                                    temperature=0.9)
-    except Exception:
+    except Exception as exc:
+        # Le test garde les titres distincts et part avec moins de variantes
+        # que demande. Il le faisait sans un mot : on en demandait quatre, on
+        # en recevait trois, et rien ne disait pourquoi.
+        ctx.journal("  titres de remplacement indisponibles ({}) : {} "
+                    "variante(s) au lieu de {}.".format(
+                        exc, len(deja), len(deja) + manquants))
         return []
     propositions = donnees.get("titres") if isinstance(donnees, dict) else donnees
     return [
@@ -323,7 +329,7 @@ def preparer_test(
         produit_id=produit_id)
 
     if sujet == "couverture":
-        ctx.journal("Generation des couvertures...")
+        ctx.journal("Génération des couvertures...")
         elements = generer_couvertures(ctx, titre_actuel, dossier, nombre)
         for element in elements:
             experience.ajouter_variante(
@@ -334,7 +340,7 @@ def preparer_test(
                        "message": "{} directions visuelles distinctes.".format(
                            len(elements))}
     else:
-        ctx.journal("Generation des titres...")
+        ctx.journal("Génération des titres...")
         elements = generer_titres(ctx, titre_actuel, description, nombre)
         for element in elements:
             experience.ajouter_variante(

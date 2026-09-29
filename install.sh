@@ -49,6 +49,15 @@ if [ "$TERMUX" = "1" ]; then
         || avertir "echec de l'installation de $paquet"
     fi
   done
+  # git (recommande) : c'est lui qui fait marcher « usine maj ». Sans lui, la
+  # mise a jour telecharge une archive, ce qui ne fonctionne que sur un depot
+  # public — et ce depot-ci peut etre prive.
+  if command -v git >/dev/null 2>&1; then
+    succes "git present : « usine maj » mettra a jour sans retelecharger"
+  else
+    yes | pkg install -y git >/dev/null 2>&1 && succes "git installe" \
+      || avertir "git absent : « usine maj » ne marchera que sur un depot public"
+  fi
   # Node.js (optionnel) : sans lui, le JavaScript genere par la chaine
   # « logiciel » n'est verifie qu'en mode degrade. L'usine produit sans.
   if command -v node >/dev/null 2>&1; then
@@ -129,6 +138,21 @@ if PYTHONPATH="$RACINE" python3 -m usine.cli --version >/dev/null 2>&1; then
 else
   avertir "L'usine ne demarre pas — lancez : PYTHONPATH=$RACINE python3 -m usine.cli docteur"
   exit 1
+fi
+
+# --------------------------------------------------------------------------
+# 7. Ce qui manque encore sur CET appareil
+# --------------------------------------------------------------------------
+# La liste des outils utiles vit dans usine/core/specs.py, pas ici : deux
+# listes divergeraient, et c'est celle du script d'installation qui vieillit
+# le plus vite. On lui demande.
+info "Ce qui manque sur cet appareil"
+PYTHONPATH="$RACINE" python3 -m usine.cli specs --vers "$RACINE/SPECS-APPAREIL.md" \
+  >/dev/null 2>&1 || true
+if [ -f "$RACINE/SPECS-APPAREIL.md" ]; then
+  succes "Fiche ecrite : SPECS-APPAREIL.md"
+  printf '      %sLa pousser sur le depot aide a corriger install.sh pour tout le monde.%s\n' \
+    "$GRIS" "$FIN"
 fi
 
 cat <<FIN_MESSAGE

@@ -24,7 +24,7 @@ sys.path.insert(0, str(RACINE))
 
 from tests import atelier  # noqa: E402
 from usine.pipelines.base import code_langue
-from usine.render import epub, lisibilite, page
+from usine.render import epub, lisibilite, page, quiz
 from usine.render.couverture import contraste
 from usine.render.pdf import DocumentPDF
 from usine.render.raster import couleur_hex
@@ -199,7 +199,8 @@ class TestContrasteDesDocuments(unittest.TestCase):
         conformite qu'elle n'avait plus.
         """
         declarees = lisibilite.couleurs_declarees()
-        for nom, feuille in (("epub", epub.STYLE), ("html", page.GABARIT)):
+        for nom, feuille in (("epub", epub.STYLE), ("html", page.GABARIT),
+                             ("quiz", quiz.STYLE)):
             trouvees = {c.lower() for c in re.findall(r"#[0-9a-fA-F]{6}", feuille)}
             inconnues = trouvees - declarees
             self.assertFalse(
@@ -215,3 +216,102 @@ class TestContrasteDesDocuments(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNoticeDeContact(unittest.TestCase):
+    """La notice ne promet pas ce qu'elle ne peut pas tenir.
+
+    Le repli valait « votre adresse e-mail », et il partait tel quel chez
+    l'acheteur : « Ecrivez a votre adresse e-mail ». Un rappel destine au
+    VENDEUR, imprime dans le document VENDU.
+
+    Pire que ridicule : la section accessibilite promettait d'envoyer une
+    version adaptee a une adresse qui n'existe pas — et c'est precisement la
+    promesse que la reglementation europeenne attend de voir tenue.
+    """
+
+    def _notice(self, contact):
+        import tempfile
+
+        from usine.packaging.livraison import ecrire_notice
+
+        with tempfile.TemporaryDirectory() as brut:
+            dossier = Path(brut)
+            (dossier / "livre.pdf").write_bytes(b"%PDF-1.4\n")
+            return ecrire_notice(dossier, "Un titre", "une promesse",
+                                 "Une autrice", contact).read_text(
+                                     encoding="utf-8")
+
+    def test_sans_adresse_aucune_promesse_n_est_faite(self):
+        texte = self._notice("")
+        self.assertNotIn("Écrivez à", texte)
+        self.assertNotIn("une version adaptée", texte)
+
+    def test_aucun_texte_de_rappel_ne_part_chez_l_acheteur(self):
+        """Le defaut exact : le repli etait une consigne au vendeur."""
+        self.assertNotIn("votre adresse e-mail", self._notice(""))
+
+    def test_avec_adresse_les_deux_passages_reviennent(self):
+        texte = self._notice("contact@exemple.fr")
+        self.assertIn("une version adaptée", texte)
+        self.assertIn("## Une question ?", texte)
+        self.assertEqual(texte.count("contact@exemple.fr"), 2)
+
+    def test_la_notice_reste_lisible_sans_adresse(self):
+        """Retirer deux passages ne doit pas laisser un trou de trois lignes
+        vides avant la signature."""
+        texte = self._notice("")
+        self.assertNotIn("\n\n\n", texte)
+        self.assertIn("sont incluses dans le fichier.\n\n---", texte)
+
+    def test_le_defaut_de_la_fonction_n_invente_rien_non_plus(self):
+        """Un appelant qui omet l'argument ne doit pas retrouver le repli.
+
+        Les autres cas passent « contact » explicitement : c'est justement
+        ce qui laissait le defaut de la signature hors de portee.
+        """
+        import tempfile
+
+        from usine.packaging.livraison import ecrire_notice
+
+        with tempfile.TemporaryDirectory() as brut:
+            dossier = Path(brut)
+            (dossier / "livre.pdf").write_bytes(b"%PDF-1.4\n")
+            texte = ecrire_notice(dossier, "Un titre", "", "Une autrice"
+                                  ).read_text(encoding="utf-8")
+        self.assertNotIn("votre adresse e-mail", texte)
+        self.assertNotIn("Écrivez à", texte)
+
+    def test_la_ligne_de_commande_ne_fabrique_pas_d_adresse(self):
+        """Le bout en bout : c'est « usine ebook --zip » qui ecrit la notice,
+        et c'est la que le repli etait pose."""
+        import tempfile
+
+        from tests.simulateur import simulateur
+        from usine.cli import principal
+        from usine.core import llm
+
+        llm.definir_simulateur(simulateur)
+        try:
+            with tempfile.TemporaryDirectory() as brut:
+                dossier = Path(brut)
+                (dossier / "livre.pdf").write_bytes(b"%PDF-1.4\n")
+                from usine.packaging import livraison
+
+                archive = livraison.empaqueter(
+                    dossier, "un-titre", "Un titre", "Une autrice",
+                    promesse="une promesse")
+                self.assertTrue(archive.exists())
+                notice = (dossier / "LISEZ-MOI.md").read_text(encoding="utf-8")
+            self.assertNotIn("votre adresse e-mail", notice)
+            source = (RACINE / "usine" / "cli.py").read_text(encoding="utf-8")
+            self.assertNotIn('"votre adresse e-mail"', source)
+        finally:
+            llm.definir_simulateur(None)
+        self.assertTrue(callable(principal))
+
+    def test_le_vendeur_est_prevenu_quand_il_n_a_pas_donne_d_adresse(self):
+        """C'est lui qui decide de tenir la promesse ou non — mais il doit
+        savoir qu'elle n'est pas ecrite."""
+        source = (RACINE / "usine" / "cli.py").read_text(encoding="utf-8")
+        self.assertIn("Aucune adresse de contact", source)

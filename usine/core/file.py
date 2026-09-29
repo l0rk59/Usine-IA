@@ -35,23 +35,10 @@ CREATE INDEX IF NOT EXISTS idx_file_statut ON file_production(statut, priorite, 
 
 STATUTS = ("en_attente", "en_cours", "fait", "echec", "annule")
 
-_pret = False
-
-
-def _assurer() -> None:
-    global _pret
-    if not _pret:
-        store.connect().executescript(SCHEMA)
-        _pret = True
-
-
-def _oublier() -> None:
-    """La base a change : les tables de ce module sont a recreer."""
-    global _pret
-    _pret = False
-
-
-store.oublier_avec_la_base(_oublier)
+# Les tables de ce module se creent au premier usage, et le drapeau qui dit
+# « c'est fait » retombe quand la base change. Le mecanisme etait recopie ici,
+# dans « experience » et dans « apprentissage » — a l'octet pres.
+_assurer = store.tables_a_la_demande(SCHEMA)
 
 
 def ajouter(
@@ -155,6 +142,81 @@ def echouer(identifiant: int, erreur: str = "") -> str:
             (statut, (erreur or "")[:400], time.time(), identifiant),
         )
         return statut
+
+
+def reporter(identifiant: int, erreur: str, produit_id: str = "") -> None:
+    """Remet une niche en attente SANS lui compter l'essai qu'elle vient de faire.
+
+    Pour un seul cas : les fournisseurs se sont tus avant que le produit
+    sorte. Ce n'est pas la niche qui a echoue — la suivante echouerait de la
+    meme facon. « echouer » comptait pourtant l'essai, et deux essais font un
+    echec definitif. Voir « UsineContinue._silence » pour la mesure.
+
+    Si le produit a eu le temps d'exister, c'est lui que la niche reprendra :
+    en fabriquer un second laisserait le premier inacheve sur le disque, sans
+    rien pour le finir.
+    """
+    _assurer()
+    with store.cursor() as cur:
+        cur.execute("SELECT options FROM file_production WHERE id=?",
+                    (identifiant,))
+        ligne = cur.fetchone()
+        options = json.loads((ligne["options"] if ligne else "") or "{}")
+        if produit_id:
+            options["reprendre_id"] = produit_id
+        cur.execute(
+            "UPDATE file_production SET statut='en_attente',"
+            " tentatives=MAX(0, tentatives - 1), erreur=?, options=?,"
+            " produit_id=COALESCE(NULLIF(?, ''), produit_id), maj_le=?"
+            " WHERE id=?",
+            ((erreur or "")[:400], json.dumps(options, ensure_ascii=False),
+             produit_id, time.time(), identifiant),
+        )
+
+
+def a_finir(identifiant: int, produit_id: str, manquants: int) -> Dict[str, Any]:
+    """Remet en tete de file une niche dont le produit est reste inacheve.
+
+    Avant, la niche etait marquee « fait » : le produit coupe par les quotas
+    restait inacheve sur le disque, et rien ne le reprenait jamais — il
+    fallait penser a appuyer sur « Reprendre ». La niche repart donc en
+    tete, avec de quoi reprendre CE produit plutot qu'en fabriquer un autre.
+
+    Rend les options ecrites : « sans_progres » compte les reprises qui n'ont
+    pas fait baisser le nombre de sections manquantes. C'est l'appelant qui
+    decide quand renoncer — un quota epuise n'est pas un echec de la niche.
+    """
+    _assurer()
+    with store.cursor() as cur:
+        cur.execute("SELECT options FROM file_production WHERE id=?",
+                    (identifiant,))
+        ligne = cur.fetchone()
+        options = json.loads((ligne["options"] if ligne else "") or "{}")
+        avant = options.get("manquants")
+        # « 0 » avant : le produit a ete coupe avant sa premiere section, il
+        # n'y avait rien a compter. Le prendre pour une mesure ferait croire
+        # a la premiere vraie reprise qu'elle n'a rien fait avancer.
+        progres = not avant or manquants < int(avant)
+        options["reprendre_id"] = produit_id
+        options["manquants"] = manquants
+        options["sans_progres"] = (0 if progres
+                                   else int(options.get("sans_progres") or 0) + 1)
+        cur.execute(
+            "UPDATE file_production SET statut='en_attente', priorite=0,"
+            " tentatives=0, options=?, produit_id=?, maj_le=? WHERE id=?",
+            (json.dumps(options, ensure_ascii=False), produit_id, time.time(),
+             identifiant),
+        )
+    return options
+
+
+def abandonner(identifiant: int, erreur: str) -> None:
+    """Sort une niche de la file pour de bon, quel que soit son compte d'essais."""
+    _assurer()
+    with store.cursor() as cur:
+        cur.execute(
+            "UPDATE file_production SET statut='echec', erreur=?, maj_le=?"
+            " WHERE id=?", ((erreur or "")[:400], time.time(), identifiant))
 
 
 def liberer_orphelins() -> int:

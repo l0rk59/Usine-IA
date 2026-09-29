@@ -15,7 +15,7 @@ import json
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..core import controle as ctrl
-from ..core import evenements, prompts
+from ..core import evenements, llm, prompts
 from .base import Agent, Critique
 
 # --------------------------------------------------------------------------
@@ -47,19 +47,106 @@ REVISEUR = _agent("reviseur")
 STYLISTE = _agent("styliste")
 MARKETEUR = _agent("marketeur")
 CONTROLEUR = _agent("controleur")
+# Les cinq metiers que l'usine exercait sans les nommer, plus le lecteur.
+FORMATEUR = _agent("formateur")
+ANIMATEUR = _agent("animateur")
+BIBLIOTHECAIRE = _agent("bibliothecaire")
+OUTILLEUR = _agent("outilleur")
+PROSPECTEUR = _agent("prospecteur")
+LECTEUR = _agent("lecteur")
+
+# Les quatre metiers de la fiction. Les six chaines de fiction n'employaient
+# que l'architecte et le redacteur — ecrits l'un et l'autre pour le
+# non-fictionnel, jusqu'a « donner des etapes numerotees executables
+# aujourd'hui ». Le detail de ce qui clochait est dans « core/prompts.py »,
+# au-dessus de leurs fiches.
+SCENARISTE = _agent("scenariste")
+ROMANCIER = _agent("romancier")
+CONTEUR = _agent("conteur")
+LECTEUR_DE_FICTION = _agent("lecteur_de_fiction")
 
 EQUIPE: Dict[str, Agent] = {
     a.nom: a for a in (ARCHITECTE, REDACTEUR, EDITEUR, REVISEUR, STYLISTE,
-                       MARKETEUR, CONTROLEUR)
+                       MARKETEUR, CONTROLEUR, FORMATEUR, ANIMATEUR,
+                       BIBLIOTHECAIRE, OUTILLEUR, PROSPECTEUR, LECTEUR,
+                       SCENARISTE, ROMANCIER, CONTEUR, LECTEUR_DE_FICTION)
 }
+
+# Le nom que l'on MONTRE. Le tableau de bord ecrivait l'identifiant de
+# chaque agent, tiret bas compris : « lecteur_de_fiction au travail »
+# (capture du 26/09/2026). L'identifiant reste la cle des evenements et des
+# fiches de prompts ; ceci ne sert qu'a l'ecran. Un test exige une entree
+# par agent de l'equipe.
+ETIQUETTES: Dict[str, str] = {
+    "architecte": "Architecte",
+    "redacteur": "Rédacteur",
+    "editeur": "Éditeur",
+    "reviseur": "Réviseur",
+    "styliste": "Styliste",
+    "marketeur": "Marketeur",
+    "controleur": "Contrôleur",
+    "formateur": "Formateur",
+    "animateur": "Animateur",
+    "bibliothecaire": "Bibliothécaire",
+    "outilleur": "Outilleur",
+    "prospecteur": "Prospecteur",
+    "lecteur": "Lecteur",
+    "scenariste": "Scénariste",
+    "romancier": "Romancier",
+    "conteur": "Conteur",
+    "lecteur_de_fiction": "Lecteur de fiction",
+}
+
+# Le texte de ces trois-la passe par « controler_et_corriger » : le redacteur
+# et le romancier l'ecrivent, le reviseur le corrige. C'est la que chaque tic
+# evite en amont epargne un appel de correction en aval.
+for _agent_suivi in (REDACTEUR, ROMANCIER, REVISEUR):
+    _agent_suivi.tics = True
+
 
 
 # --------------------------------------------------------------------------
 # La boucle qualite
 # --------------------------------------------------------------------------
 
+
+def _plafond_reecriture(texte: str, marge: int) -> int:
+    """Jetons a demander pour RENDRE un texte de cette taille, corrige.
+
+    Une reecriture doit pouvoir rendre au moins autant que ce qu'elle recoit.
+    L'ancien plafond fige a 4096 coupait toute reecriture d'un texte de plus
+    de huit mille caracteres — soit un chapitre long — et le garde-fou
+    « texte tronque » d'en face rejetait alors la correction : une boucle qui
+    corrigeait sans jamais rien appliquer.
+    """
+    from ..pipelines.base import JETONS_MAX
+
+    return max(512, min(JETONS_MAX, len(texte) // 2 + marge))
+
 def grille() -> str:
     return prompts.modele("grille_qualite")
+
+
+def cause_lisible(exc: BaseException, longueur: int = 110) -> str:
+    """La cause d'un echec, sur une ligne et sans phrase coupee.
+
+    Le bilan du routeur tient sur plusieurs lignes. Le couper a quatre-vingts
+    signes affichait, sous chaque chapitre : « relecture indisponible — pas
+    de note (relecture indisponible : Aucun fournisseur n'a pu repondre.
+    Pas essayes : - cerebras : 4118 jetons ) » — deux fois le meme mot, une
+    liste tronquee au milieu d'une ligne, et la raison perdue.
+    """
+    lignes = [l.strip(" -") for l in str(exc).splitlines()]
+    # « Essayes : », « Pas essayes : » : des titres de liste, pas des causes.
+    lignes = [l for l in lignes if l and not l.endswith(":")]
+    if not lignes:
+        return type(exc).__name__
+    texte = lignes[0].rstrip(".")
+    if len(lignes) > 1:
+        texte += " — " + " ; ".join(lignes[1:])
+    if len(texte) > longueur:
+        texte = texte[:longueur].rsplit(" ", 1)[0].rstrip(" ;,—") + "…"
+    return texte
 
 
 def critiquer(
@@ -91,22 +178,37 @@ def critiquer(
         texte=texte[:14000],
         grille=grille(),
     )
+    relecteur = ""
     try:
-        donnees = EDITEUR.travailler_json(
+        donnees, relecteur = EDITEUR.travailler_json(
             contexte, invite, max_tokens=2600,
             eviter=[fournisseur_auteur] if fournisseur_auteur else None,
+            avec_fournisseur=True,
         )
     except Exception as exc:
         evenements.publier("qualite", etat="critique_indisponible", detail=str(exc))
-        return Critique(note=7.5, verdict="relecture indisponible")
+        return Critique(note=0.0, mesuree=False, verdict=cause_lisible(exc))
 
     if not isinstance(donnees, dict):
-        return Critique(note=7.5, verdict="relecture illisible")
+        return Critique(note=0.0, mesuree=False,
+                        verdict="relecture illisible",
+                        fournisseur_auteur=fournisseur_auteur,
+                        fournisseur_relecteur=relecteur)
 
+    # Une note absente ou illisible n'est PAS une note de 7. L'ancienne ligne
+    # « float(donnees.get("note") or 7.0) » avait deux defauts : elle
+    # fabriquait une mesure quand le relecteur n'en donnait pas — la meme
+    # famille que le 7,5 de la branche d'erreur — et, parce que « 0 or 7.0 »
+    # vaut 7.0, elle changeait un 0/10 en 7/10. Un editeur qui demolissait un
+    # chapitre voyait son avis retourne en approbation.
+    #
+    # Les problemes, eux, restent : ils sont une information vraie, meme
+    # sans note, et la boucle d'amelioration peut les appliquer.
     try:
-        note = float(donnees.get("note") or 7.0)
+        note = float(donnees.get("note"))
+        mesuree = True
     except (TypeError, ValueError):
-        note = 7.0
+        note, mesuree = 0.0, False
     problemes = [
         {
             "passage": str(p.get("passage") or "")[:300],
@@ -118,6 +220,9 @@ def critiquer(
         if isinstance(p, dict) and p.get("correction")
     ]
     return Critique(
+        fournisseur_auteur=fournisseur_auteur,
+        fournisseur_relecteur=relecteur,
+        mesuree=mesuree,
         note=max(0.0, min(10.0, note)),
         problemes=problemes[:6],
         points_forts=[str(x) for x in (donnees.get("points_forts") or [])][:5],
@@ -143,8 +248,13 @@ def reviser(contexte: Any, texte: str, critique: Critique, intitule: str) -> str
         "Renvoie le texte COMPLET corrige, en markdown, sans titre de niveau 1, "
         "sans commentaire, sans preambule. Conserve la structure et la longueur."
     ).format(intitule=intitule, texte=texte[:14000], corrections=corrections)
-    reponse = REVISEUR.travailler(contexte, invite,
-                                  max_tokens=min(4096, len(texte) // 2 + 1200))
+    try:
+        reponse = REVISEUR.travailler(
+            contexte, invite, max_tokens=_plafond_reecriture(texte, 1200))
+    except llm.DemandeRefusee:
+        # Une reecriture refusee laisse le texte tel qu'il etait : il existe,
+        # et le perdre pour une correction serait pire que ne pas corriger.
+        return texte
     from ..pipelines.base import elaguer_markdown
 
     corrige = elaguer_markdown(reponse.texte)
@@ -187,8 +297,11 @@ def corriger_defauts(
     ).format(intitule=intitule, texte=texte[:14000], consignes=numerotees,
              citations=citations)
 
-    reponse = REVISEUR.travailler(
-        contexte, invite, max_tokens=min(4096, len(texte) // 2 + 1200))
+    try:
+        reponse = REVISEUR.travailler(
+            contexte, invite, max_tokens=_plafond_reecriture(texte, 1200))
+    except llm.DemandeRefusee:
+        return texte  # voir « reviser »
     from ..pipelines.base import elaguer_markdown
 
     corrige = elaguer_markdown(reponse.texte)
@@ -206,11 +319,16 @@ def controler_et_corriger(
     mots_cibles: int = 0,
     precedents: Optional[List[str]] = None,
     tentatives: int = 2,
+    exiger_structure: bool = True,
 ) -> Tuple[str, List["ctrl.Controle"]]:
     """Boucle locale : mesurer, corriger, remesurer. Un appel IA par tour.
 
     Renvoie le texte et l'historique des controles, pour que le rapport montre
     la progression reelle plutot qu'une affirmation.
+
+    « exiger_structure » existe pour la fiction : une scene de nouvelle n'a ni
+    sous-titre ni liste numerotee, et lui reprocher leur absence la ferait
+    reecrire dans le sens contraire de ce qu'elle doit etre.
     """
     # Le controle deterministe EST le travail du controleur : on allume
     # sa pastille pour que l'interface le montre a l'oeuvre, meme si
@@ -220,7 +338,8 @@ def controler_et_corriger(
     historique: List[ctrl.Controle] = []
     courant = texte
     for tour in range(max(1, tentatives)):
-        rapport = ctrl.controler(courant, mots_cibles, precedents or [])
+        rapport = ctrl.controler(courant, mots_cibles, precedents or [],
+                                 exiger_structure=exiger_structure)
         historique.append(rapport)
         evenements.publier("controle", intitule=intitule, note=rapport.note,
                            anomalies=len(rapport.anomalies),
@@ -231,6 +350,207 @@ def controler_et_corriger(
     evenements.publier("agent", agent=CONTROLEUR.nom, etat="fin",
                        emoji=CONTROLEUR.emoji)
     return courant, historique
+
+
+# --------------------------------------------------------------------------
+# La deliberation : l'auteur peut contester, un tiers tranche
+# --------------------------------------------------------------------------
+#
+# Ce que la chaine faisait jusqu'ici n'etait pas un echange : l'editeur
+# critiquait, le reviseur appliquait. Sept agents, et aucune conversation —
+# une file d'attente, chacun corrigeant le precedent sans jamais lui repondre.
+#
+# Le defaut que cela produit est mesurable et connu : une critique
+# d'editeur peut etre FAUSSE. « Ajoute un chiffre pour appuyer cette
+# affirmation » fait inventer une statistique ; « developpe ce passage » fait
+# ajouter du remplissage a un texte volontairement dense ; « donne un exemple
+# concret » fait fabriquer un temoignage. Le reviseur applique tout, parce
+# qu'il n'a pas mandat pour discuter — et le controle qualite deterministe
+# signale ensuite un chiffre sans source que PERSONNE n'avait demande.
+#
+# La deliberation ajoute les deux tours qui manquaient : l'auteur repond aux
+# points qu'il juge errones, et le controleur tranche point par point. Seules
+# les corrections retenues sont appliquees.
+#
+# Elle coute deux appels par section. C'est pourquoi elle n'existe qu'au
+# niveau « exigeant » : ailleurs, on continue d'appliquer tout, ce qui reste
+# le bon compromis quand on paie chaque appel.
+
+# Nombre de points contestables retenus pour l'arbitrage. Au-dela, ce n'est
+# plus une contestation, c'est un refus de relecture.
+CONTESTATIONS_MAX = 4
+
+
+def deliberation_active(contexte: Any) -> bool:
+    """La deliberation n'a lieu qu'au niveau « exigeant ».
+
+    Deux appels de plus par section, sur un quota gratuit, se paient
+    immediatement : a douze chapitres, c'est vingt-quatre appels. Le niveau de
+    qualite est deja l'endroit ou l'utilisateur declare ce qu'il accepte de
+    depenser — on n'ajoute pas un second reglage pour dire la meme chose.
+    """
+    return getattr(contexte, "qualite", "standard") == "exigeant"
+
+
+def contester(contexte: Any, texte: str, critique: Critique,
+              intitule: str) -> List[Dict[str, str]]:
+    """L'auteur repond aux critiques qu'il juge errones. Rend ses objections.
+
+    Rend une liste vide des que quelque chose se passe mal — pas de reponse,
+    JSON illisible, plus de fournisseur. Sans objection, l'arbitrage n'a rien
+    a trancher et la chaine se comporte comme avant : la deliberation est un
+    supplement, jamais un passage oblige.
+    """
+    if not critique.problemes:
+        return []
+    points = "\n".join(
+        "{}. [{}] {} — correction demandee : {}".format(
+            i + 1, p.get("gravite", "mineur"), p.get("probleme", ""),
+            p.get("correction", ""))
+        for i, p in enumerate(critique.problemes[:6]))
+    invite = (
+        "Tu as ecrit ce texte. Un editeur le critique. Certaines critiques "
+        "sont justes, d'autres non — reponds honnetement.\n\n"
+        "--- TON TEXTE (« {intitule} ») ---\n{texte}\n--- FIN ---\n\n"
+        "--- CRITIQUES ---\n{points}\n--- FIN ---\n\n"
+        "Conteste UNIQUEMENT ce qui te parait errone, et dis pourquoi en une "
+        "phrase. Conteste en particulier :\n"
+        "- une correction qui t'obligerait a inventer un chiffre, une etude "
+        "ou un temoignage ;\n"
+        "- une demande de developpement sur un passage volontairement dense ;\n"
+        "- une critique qui contredit la promesse ou le public vise.\n"
+        "N'invente pas d'objection : si toutes les critiques sont justes, "
+        "renvoie une liste vide.\n\n"
+        "JSON exact :\n"
+        '{{"objections": [{{"numero": 1, "raison": "une phrase"}}]}}'
+    ).format(intitule=intitule, texte=texte[:9000], points=points)
+    try:
+        donnees = REDACTEUR.travailler_json(contexte, invite, max_tokens=900,
+                                            temperature=0.3)
+    except Exception as exc:
+        evenements.publier("qualite", etat="contestation_indisponible",
+                           detail=str(exc))
+        return []
+    if not isinstance(donnees, dict):
+        return []
+    objections = []
+    for brut in (donnees.get("objections") or [])[:CONTESTATIONS_MAX]:
+        if not isinstance(brut, dict):
+            continue
+        try:
+            numero = int(brut.get("numero"))
+        except (TypeError, ValueError):
+            continue
+        if 1 <= numero <= len(critique.problemes) and brut.get("raison"):
+            objections.append({"numero": numero,
+                               "raison": str(brut["raison"])[:300]})
+    return objections
+
+
+def arbitrer(contexte: Any, critique: Critique,
+             objections: List[Dict[str, str]],
+             intitule: str) -> Dict[int, bool]:
+    """Le controleur tranche chaque point conteste. Rend {numero: appliquer}.
+
+    En cas de doute — pas de reponse, JSON illisible, numero inconnu — la
+    correction est APPLIQUEE. C'est le choix conservateur : sans arbitrage, on
+    retombe exactement sur le comportement d'avant, alors qu'ecarter par
+    defaut ferait de chaque panne d'arbitrage une relecture silencieusement
+    annulee.
+    """
+    # Un numero vient du modele : rien ne garantit qu'il designe un point qui
+    # existe. Sans ce filtre, un numero fantaisiste faisait tomber la
+    # fabrication entiere sur un « list index out of range », au milieu d'un
+    # chapitre — et l'appelant n'avait aucun moyen de comprendre pourquoi.
+    valides = [o for o in objections
+               if 1 <= int(o.get("numero", 0)) <= len(critique.problemes)]
+    if not valides:
+        return {}
+    resume = "\n".join(
+        "{}. CRITIQUE : {} — CORRECTION : {}\n   OBJECTION DE L'AUTEUR : {}".format(
+            o["numero"],
+            critique.problemes[o["numero"] - 1].get("probleme", ""),
+            critique.problemes[o["numero"] - 1].get("correction", ""),
+            o["raison"])
+        for o in valides)
+    invite = (
+        "Un editeur a critique un texte. L'auteur conteste certains points. "
+        "Tranche, point par point.\n\n"
+        "SECTION : « {intitule} »\n"
+        "PUBLIC : {audience}\n\n"
+        "--- POINTS CONTESTES ---\n{resume}\n--- FIN ---\n\n"
+        "Pour chacun, decide si la correction doit etre APPLIQUEE ou ECARTEE. "
+        "Ecarte-la si l'auteur a raison — notamment si l'appliquer obligerait "
+        "a inventer un fait, un chiffre ou un temoignage. Applique-la si "
+        "l'objection est une simple resistance au changement.\n\n"
+        "JSON exact :\n"
+        '{{"decisions": [{{"numero": 1, "appliquer": false, '
+        '"motif": "une phrase"}}]}}'
+    ).format(intitule=intitule, resume=resume,
+             audience=getattr(contexte, "audience", "un public francophone"))
+    try:
+        donnees = CONTROLEUR.travailler_json(contexte, invite, max_tokens=900,
+                                             temperature=0.2)
+    except Exception as exc:
+        evenements.publier("qualite", etat="arbitrage_indisponible",
+                           detail=str(exc))
+        return {}
+    if not isinstance(donnees, dict):
+        return {}
+    decisions: Dict[int, bool] = {}
+    for brut in (donnees.get("decisions") or []):
+        if not isinstance(brut, dict):
+            continue
+        try:
+            numero = int(brut.get("numero"))
+        except (TypeError, ValueError):
+            continue
+        if 1 <= numero <= len(critique.problemes):
+            decisions[numero] = bool(brut.get("appliquer", True))
+    return decisions
+
+
+def deliberer(contexte: Any, texte: str, critique: Critique,
+              intitule: str) -> Tuple[Critique, List[Dict[str, str]]]:
+    """Fait repondre l'auteur, fait trancher le controleur, et rend la
+    critique REDUITE aux corrections retenues.
+
+    Rend aussi le compte rendu de la deliberation : qui a conteste quoi, et
+    ce qui a ete decide. Il entre dans le rapport qualite — une decision
+    qu'on ne retrouve plus six mois apres n'aide pas a comprendre le texte.
+    """
+    objections = contester(contexte, texte, critique, intitule)
+    if not objections:
+        return critique, []
+    decisions = arbitrer(contexte, critique, objections, intitule)
+
+    compte_rendu = []
+    ecartes = set()
+    for objection in objections:
+        numero = objection["numero"]
+        applique = decisions.get(numero, True)
+        if not applique:
+            ecartes.add(numero)
+        probleme = critique.problemes[numero - 1]
+        compte_rendu.append({
+            "probleme": str(probleme.get("probleme", ""))[:200],
+            "objection": objection["raison"],
+            "retenue": applique,
+        })
+        evenements.publier("deliberation", intitule=intitule,
+                           probleme=str(probleme.get("probleme", ""))[:120],
+                           objection=objection["raison"][:120],
+                           retenue=applique)
+
+    if not ecartes:
+        return critique, compte_rendu
+    retenus = [p for i, p in enumerate(critique.problemes, 1) if i not in ecartes]
+    reduite = Critique(
+        note=critique.note, problemes=retenus,
+        points_forts=critique.points_forts, verdict=critique.verdict,
+        fournisseur_auteur=critique.fournisseur_auteur,
+        fournisseur_relecteur=critique.fournisseur_relecteur)
+    return reduite, compte_rendu
 
 
 def affiner(
@@ -247,20 +567,42 @@ def affiner(
     qualite montre l'evolution reelle plutot qu'une affirmation.
     """
     historique: List[Critique] = []
+    deliberations: List[Dict[str, Any]] = []
     courant = texte
     for passe in range(max(0, passes)):
         critique = critiquer(contexte, courant, intitule, promesse, fournisseur_auteur)
         historique.append(critique)
+        # « mesuree » voyage avec la note : une relecture qui n'a pas eu lieu
+        # porte 0, et la page affichait « relecture : 0/10 » — une note que
+        # personne n'avait donnee, chapitre apres chapitre.
         evenements.publier("qualite", etat="critique", intitule=intitule,
                            note=critique.note, passe=passe + 1,
-                           problemes=len(critique.problemes))
+                           problemes=len(critique.problemes),
+                           mesuree=critique.mesuree)
         if critique.acceptable and not critique.bloquants:
             break
         if not critique.problemes:
             break
+        if deliberation_active(contexte):
+            # Deux appels de plus par section : c'est pourquoi cela n'existe
+            # qu'au niveau « exigeant ». Ailleurs, on applique tout, ce qui
+            # reste le bon compromis quand on paie chaque appel.
+            critique, rendu = deliberer(contexte, courant, critique, intitule)
+            if rendu:
+                deliberations.append({"passe": passe + 1, "points": rendu})
+                ecartees = sum(1 for p in rendu if not p["retenue"])
+                if ecartees:
+                    contexte.journal(
+                        "     délibération : {} correction(s) écartée(s) après "
+                        "objection de l'auteur".format(ecartees))
+            if not critique.problemes:
+                break
         courant = reviser(contexte, courant, critique, intitule)
         evenements.publier("qualite", etat="revision", intitule=intitule,
                            passe=passe + 1)
+    if deliberations and hasattr(contexte, "meta"):
+        contexte.meta.setdefault("deliberations", []).append(
+            {"section": intitule, "passes": deliberations})
     return courant, historique
 
 
@@ -275,7 +617,7 @@ def polir(contexte: Any, texte: str, fournisseur_auteur: str = "") -> str:
     ).format(texte=texte[:12000])
     try:
         reponse = STYLISTE.travailler(
-            contexte, invite, max_tokens=min(4096, len(texte) // 2 + 900),
+            contexte, invite, max_tokens=_plafond_reecriture(texte, 900),
             eviter=[fournisseur_auteur] if fournisseur_auteur else None,
         )
     except Exception:
@@ -286,6 +628,261 @@ def polir(contexte: Any, texte: str, fournisseur_auteur: str = "") -> str:
     return poli if len(poli) > len(texte) * 0.6 else texte
 
 
+def lire_comme_l_audience(contexte: Any, sections: List[Tuple[str, str]],
+                          promesse: str = "",
+                          fournisseur_auteur: str = "") -> Dict[str, Any]:
+    """Le produit lu par celui a qui on le vend, et par personne d'autre.
+
+    Tous les controles de l'usine jugent le TEXTE : sa progression, sa tenue,
+    ses tics, ses contradictions. Aucun ne demandait s'il est comprehensible
+    pour son audience. Ce sont deux questions differentes, et la seconde est
+    celle qui decide si un acheteur demande un remboursement : un chapitre
+    techniquement excellent et incomprehensible pour son public est un
+    chapitre rate, et rien ne le signalait.
+
+    Un appel par produit, sur le texte entier — comme la relecture
+    d'ensemble, et pour la meme raison : ce qu'on cherche n'est visible
+    qu'a la lecture complete. Un sigle explique au chapitre neuf mais employe
+    au chapitre deux ne se voit d'aucune section prise seule.
+    """
+    if len(sections) < 2:
+        return {}
+    corps = "\n\n".join(
+        "### {}\n{}".format(titre, texte[:2200]) for titre, texte in sections)
+    invite = (
+        "Tu es le lecteur a qui ce produit est vendu : {audience}.\n"
+        "Tu n'es ni editeur, ni correcteur. Tu l'as achete pour apprendre a "
+        "faire quelque chose.\n\n"
+        "CE QU'ON T'A PROMIS : {promesse}\n\n"
+        "--- LE PRODUIT ---\n{corps}\n--- FIN ---\n\n"
+        "Reponds honnetement, a la premiere personne :\n"
+        "- ou as-tu decroche, et a quel endroit exactement ;\n"
+        "- quel mot ou sigle est employe sans avoir ete explique avant ;\n"
+        "- qu'est-ce que tu ne sauras toujours pas faire apres avoir lu ;\n"
+        "- la promesse a-t-elle ete tenue, oui ou non.\n\n"
+        "Ne parle ni du style ni de la mise en forme. Si tout etait clair, "
+        "dis-le : c'est une reponse parfaitement acceptable.\n\n"
+        "Schema JSON exact :\n"
+        '{{"promesse_tenue": true, "note_clarte": 8.0, '
+        '"decrochages": [{{"section": "titre", "passage": "citation exacte", '
+        '"pourquoi": "ce que je n\'ai pas compris"}}], '
+        '"mots_non_expliques": ["..."], '
+        '"ce_que_je_ne_sais_toujours_pas_faire": ["..."]}}'
+    ).format(audience=getattr(contexte, "audience", "un public francophone"),
+             promesse=promesse or "non precisee", corps=corps[:28000])
+
+    try:
+        donnees, relecteur = LECTEUR.travailler_json(
+            contexte, invite, max_tokens=1600,
+            eviter=[fournisseur_auteur] if fournisseur_auteur else None,
+            avec_fournisseur=True)
+    except Exception as exc:
+        evenements.publier("qualite", etat="lecteur_indisponible", detail=str(exc))
+        return {"disponible": False, "raison": str(exc)}
+    if not isinstance(donnees, dict):
+        return {"disponible": False, "raison": "reponse illisible"}
+
+    decrochages = [d for d in (donnees.get("decrochages") or [])
+                   if isinstance(d, dict) and d.get("pourquoi")][:6]
+    mots = [str(m)[:60] for m in (donnees.get("mots_non_expliques") or [])][:8]
+    manques = [str(m)[:160] for m in
+               (donnees.get("ce_que_je_ne_sais_toujours_pas_faire") or [])][:5]
+    try:
+        clarte = round(float(donnees.get("note_clarte")), 1)
+    except (TypeError, ValueError):
+        clarte = None
+    resume = "lecteur : {} decrochage(s), {} mot(s) non explique(s)".format(
+        len(decrochages), len(mots))
+    if clarte is not None:
+        resume += ", clarte {}/10".format(clarte)
+    if donnees.get("promesse_tenue") is False:
+        resume += " — PROMESSE NON TENUE"
+    evenements.publier("lecteur", clarte=clarte, decrochages=len(decrochages),
+                       promesse_tenue=bool(donnees.get("promesse_tenue", True)),
+                       relecteur=relecteur)
+    return {
+        "disponible": True,
+        "promesse_tenue": bool(donnees.get("promesse_tenue", True)),
+        "note_clarte": clarte,
+        "decrochages": decrochages,
+        "mots_non_expliques": mots,
+        "manques": manques,
+        "resume": resume,
+        "relecteur": relecteur,
+    }
+
+
+def lire_comme_un_lecteur_de_fiction(
+        contexte: Any, sections: List[Tuple[str, str]], promesse: str = "",
+        fournisseur_auteur: str = "") -> Dict[str, Any]:
+    """La lecture en acheteur, pour un livre qu'on n'a pas achete pour apprendre.
+
+    « lire_comme_l_audience » existait deja — et demande « qu'est-ce que tu ne
+    sauras toujours pas faire apres avoir lu », « quel sigle est employe sans
+    avoir ete explique ». Ce sont les bonnes questions pour un guide. Posees a
+    propos d'un roman, elles ne mesurent rien : un roman ne promet pas de
+    savoir-faire, et un lecteur de fiction ne decroche pas sur un sigle.
+
+    Les questions qui decident, elles, si un lecteur finit le livre : ou a-t-il
+    cesse d'y croire, a-t-il devine la fin trop tot, quels personnages a-t-il
+    confondus. Aucune ne se mesure en Python — c'est precisement pourquoi elle
+    passe par un modele, et par un AUTRE que celui qui a ecrit.
+
+    Un appel par produit, sur le texte entier : confondre deux personnages ne
+    se voit d'aucune scene prise seule.
+    """
+    if len(sections) < 2:
+        return {}
+    corps = "\n\n".join(
+        "### {}\n{}".format(titre, texte[:2200]) for titre, texte in sections)
+    invite = (
+        "Tu es le lecteur qui a achete ce livre pour passer une soiree avec. "
+        "Public : {audience}.\n"
+        "Tu n'es ni editeur, ni correcteur, ni professeur de litterature.\n\n"
+        "CE QU'ON T'A PROMIS : {promesse}\n\n"
+        "--- LE LIVRE ---\n{corps}\n--- FIN ---\n\n"
+        "Reponds honnetement, a la premiere personne :\n"
+        "- a quel endroit exactement as-tu cesse d'y croire, et pourquoi ;\n"
+        "- as-tu devine la fin, et a partir de quel moment ;\n"
+        "- quels personnages as-tu confondus, et a partir d'ou ;\n"
+        "- y a-t-il une promesse du debut qui n'est jamais payee ;\n"
+        "- aurais-tu tourne la page, oui ou non.\n\n"
+        "Ne corrige ni le style ni la ponctuation. Si tu as tout lu d'une "
+        "traite, dis-le : c'est une reponse parfaitement acceptable.\n\n"
+        "Schema JSON exact :\n"
+        '{{"aurait_tourne_la_page": true, "note_envie_de_lire": 8.0, '
+        '"decrochages": [{{"section": "titre", "passage": "citation exacte", '
+        '"pourquoi": "ce a quoi je n\'ai plus cru"}}], '
+        '"fin_devinee": "a partir de quelle scene, ou vide", '
+        '"personnages_confondus": ["X et Y"], '
+        '"promesses_non_payees": ["..."]}}'
+    ).format(audience=getattr(contexte, "audience", "un public francophone"),
+             promesse=promesse or "non precisee", corps=corps[:28000])
+
+    try:
+        donnees, relecteur = LECTEUR_DE_FICTION.travailler_json(
+            contexte, invite, max_tokens=1600,
+            eviter=[fournisseur_auteur] if fournisseur_auteur else None,
+            avec_fournisseur=True)
+    except Exception as exc:
+        evenements.publier("qualite", etat="lecteur_indisponible",
+                           detail=str(exc))
+        return {"disponible": False, "raison": str(exc)}
+    if not isinstance(donnees, dict):
+        return {"disponible": False, "raison": "reponse illisible"}
+
+    decrochages = [d for d in (donnees.get("decrochages") or [])
+                   if isinstance(d, dict) and d.get("pourquoi")][:6]
+    confondus = [str(c)[:80] for c in
+                 (donnees.get("personnages_confondus") or [])][:6]
+    promesses = [str(p)[:160] for p in
+                 (donnees.get("promesses_non_payees") or [])][:5]
+    devinee = str(donnees.get("fin_devinee") or "").strip()[:160]
+    try:
+        envie = round(float(donnees.get("note_envie_de_lire")), 1)
+    except (TypeError, ValueError):
+        envie = None
+    resume = "lecteur : {} decrochage(s), {} confusion(s) de personnage".format(
+        len(decrochages), len(confondus))
+    if envie is not None:
+        resume += ", envie de lire {}/10".format(envie)
+    if donnees.get("aurait_tourne_la_page") is False:
+        resume += " — N'AURAIT PAS TOURNE LA PAGE"
+    evenements.publier("lecteur", envie=envie, decrochages=len(decrochages),
+                       tournerait_la_page=bool(
+                           donnees.get("aurait_tourne_la_page", True)),
+                       relecteur=relecteur)
+    return {
+        "disponible": True,
+        "aurait_tourne_la_page": bool(
+            donnees.get("aurait_tourne_la_page", True)),
+        "note_envie_de_lire": envie,
+        "decrochages": decrochages,
+        "fin_devinee": devinee,
+        "personnages_confondus": confondus,
+        "promesses_non_payees": promesses,
+        "resume": resume,
+        "relecteur": relecteur,
+    }
+
+
+def relire_l_ensemble(contexte: Any, sections: List[Tuple[str, str]],
+                      promesse: str = "",
+                      fournisseur_auteur: str = "") -> Dict[str, Any]:
+    """Une seule lecture du produit ENTIER, a la recherche des incoherences.
+
+    Ce n'est pas la resurrection de « equipe.controler() », retire lors d'un
+    audit precedent. Celle-la rendait un VERDICT — une note avant-vente, que
+    le controle deterministe donne gratuitement et mieux. Celle-ci cherche
+    ce qu'aucun outil local ne peut voir : ce qui se contredit d'une section
+    a l'autre.
+
+    Chaque agent travaille section par section ; personne ne lit le produit
+    en entier. Une promesse faite dans l'avant-propos et jamais tenue, deux
+    chapitres qui donnent des conseils opposes, un terme defini deux fois
+    differemment : aucun de ces defauts n'est visible depuis une section
+    seule, et aucun ne se mesure en Python.
+
+    C'est un appel de modele par produit, sur un long texte : la chaine le
+    demande, il ne s'impose pas.
+    """
+    if len(sections) < 2:
+        return {}
+    corps = "\n\n".join(
+        "### {}\n{}".format(titre, texte[:2500]) for titre, texte in sections)
+    invite = (
+        "Voici un produit complet, section par section. Tu le lis d'un bout a "
+        "l'autre pour trouver ce qui SE CONTREDIT — rien d'autre.\n\n"
+        "PROMESSE ANNONCEE : {promesse}\n\n"
+        "--- DEBUT ---\n{corps}\n--- FIN ---\n\n"
+        "Cherche uniquement :\n"
+        "- une promesse faite quelque part et jamais tenue ailleurs ;\n"
+        "- deux passages qui se contredisent ou donnent des conseils opposes ;\n"
+        "- un terme ou un chiffre defini deux fois differemment ;\n"
+        "- une section qui repete ce qu'une autre a deja dit.\n\n"
+        "Ne juge NI le style NI la qualite : d'autres s'en chargent. "
+        "S'il n'y a aucune incoherence, renvoie une liste vide — c'est une "
+        "reponse parfaitement acceptable.\n\n"
+        "Schema JSON exact :\n"
+        '{{"incoherences": [{{"sections": ["titre A", "titre B"], '
+        '"probleme": "ce qui se contredit", '
+        '"gravite": "bloquant|majeur|mineur"}}]}}'
+    ).format(promesse=promesse or "non precisee", corps=corps[:30000])
+
+    try:
+        donnees, relecteur = EDITEUR.travailler_json(
+            contexte, invite, max_tokens=1800,
+            eviter=[fournisseur_auteur] if fournisseur_auteur else None,
+            avec_fournisseur=True)
+    except Exception as exc:
+        evenements.publier("qualite", etat="ensemble_indisponible", detail=str(exc))
+        return {"disponible": False, "raison": str(exc)}
+
+    brutes = donnees.get("incoherences") if isinstance(donnees, dict) else None
+    incoherences = []
+    titres = {titre for titre, _ in sections}
+    for element in brutes or []:
+        if not isinstance(element, dict) or not element.get("probleme"):
+            continue
+        citees = [str(t) for t in (element.get("sections") or [])
+                  if str(t) in titres]
+        incoherences.append({
+            "sections": citees,
+            "probleme": str(element["probleme"])[:400],
+            "gravite": str(element.get("gravite") or "mineur").lower(),
+        })
+    graves = [i for i in incoherences if i["gravite"] in ("bloquant", "majeur")]
+    return {
+        "disponible": True,
+        "relecteur": relecteur,
+        "incoherences": incoherences,
+        "majeures": len(graves),
+        "resume": ("aucune incoherence d'ensemble" if not incoherences else
+                   "{} incoherence(s) entre sections, dont {} majeure(s)".format(
+                       len(incoherences), len(graves))),
+    }
+
+
 def rapport_qualite(historiques: Dict[str, List[Critique]]) -> Dict[str, Any]:
     """Synthese chiffree des relectures, ecrite dans le dossier du produit."""
     lignes = []
@@ -294,8 +891,13 @@ def rapport_qualite(historiques: Dict[str, List[Critique]]) -> Dict[str, Any]:
     for intitule, critiques in historiques.items():
         if not critiques:
             continue
-        notes_avant.append(critiques[0].note)
-        notes_apres.append(critiques[-1].note)
+        # Une note non mesuree vaut zero et tirerait la moyenne vers le bas
+        # en faisant croire a une mesure. On ne la compte pas, et le compte
+        # des relectures perdues est rendu a cote.
+        if critiques[0].mesuree:
+            notes_avant.append(critiques[0].note)
+        if critiques[-1].mesuree:
+            notes_apres.append(critiques[-1].note)
         lignes.append({
             "section": intitule,
             "note_initiale": critiques[0].note,
@@ -305,8 +907,18 @@ def rapport_qualite(historiques: Dict[str, List[Critique]]) -> Dict[str, Any]:
             "restants": [p["probleme"] for p in critiques[-1].problemes],
         })
     moyenne = lambda v: round(sum(v) / len(v), 2) if v else None  # noqa: E731
+    toutes = [c for suite in historiques.values() for c in suite]
+    croisees = [c for c in toutes if c.croisee]
     return {
         "sections": lignes,
         "note_moyenne_initiale": moyenne(notes_avant),
         "note_moyenne_finale": moyenne(notes_apres),
+        # Mesure, pas promesse : quand un seul fournisseur est configure, la
+        # relecture a lieu sur le modele qui a ecrit — c'est un repli assume,
+        # et le rapport doit le montrer plutot que de laisser croire.
+        "relecture_croisee": {
+            "relectures": len(toutes),
+            "sur_un_autre_modele": len(croisees),
+            "part": (round(len(croisees) / len(toutes), 2) if toutes else None),
+        },
     }

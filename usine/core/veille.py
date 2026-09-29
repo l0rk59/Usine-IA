@@ -40,7 +40,7 @@ import re
 import time
 import urllib.parse
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Sequence, Tuple
 
 from .http import HttpErreur, requete
 
@@ -135,7 +135,7 @@ def _flux(chemin: str, timeout: int = 15, patience: float = 20.0
         except OSError as exc:
             return ([], "Reddit injoignable ({}).".format(exc))
         if statut != 200:
-            return ([], "Reddit a repondu {}.".format(statut))
+            return ([], "Reddit a répondu {}.".format(statut))
         return (_ENTREE.findall(corps.decode("utf-8", "replace")), "")
     return ([], "Reddit limite le debit (429).")
 
@@ -236,7 +236,7 @@ def scouter(niche: str, periode: str = "year", combien: int = 2,
         return veille
     veille.communautes = trouvees
     if not trouvees:
-        veille.indisponible = ("aucune communaute ne correspond a cette "
+        veille.indisponible = ("aucune communauté ne correspond à cette "
                                "niche sur Reddit. Cela ne dit rien de son "
                                "marche : Reddit est anglophone.")
         return veille
@@ -262,8 +262,8 @@ def resume_pour_ia(veille: Veille, maximum: int = 12) -> str:
     """Ce que la veille apprend, a injecter dans une invite."""
     if not veille.utilisable:
         return ""
-    lignes = ["Discussions reelles sur cette niche (source : Reddit, donc "
-              "anglophone et non representative d'un marche francais) :"]
+    lignes = ["Discussions réelles sur cette niche (source : Reddit, donc "
+              "anglophone et non représentative d'un marché français) :"]
     # Les formulations de probleme d'abord, le reste ensuite — mais jamais
     # le reste a la place. Ne montrer que les douleurs quand le reperage
     # n'en trouve qu'une revenait a cacher quarante-neuf discussions

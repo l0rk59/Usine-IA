@@ -7,25 +7,28 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
+import textwrap
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from . import __version__
-from .core import cles as pool_cles
 from .core import apprentissage, budget, config, experience, images
 from .core import file as file_prod
 from .core import llm, marche
+from .core.http import hors_ligne as http_hors_ligne
+from .core.http import hors_ligne_actif as http_hors_ligne_actif
 from .core import prompts as registre_prompts
-from .core import empreinte, reglages, securite, store, ventes, verification
-from .core.http import en_ligne
+from .core import empreinte, evenements, reglages, securite, store, telephone, ventes
+from .core import verification
 from .marketing import vente
 from .packaging import livraison
-from .pipelines import (boite_outils, catalogue, ebook, formation, idees,
-                        impression, logiciel, modeles, pack_prompts, social)
-from .pipelines.base import (CHAPITRES_MAX, CHAPITRES_MIN, Contexte, MOTS_MAX,
-                             MOTS_MIN, TAILLES, TONS)
+from .pipelines import apres
+from .pipelines import boite_outils, catalogue, ebook, logiciel, social
+from .pipelines.base import (CHAPITRES_MAX, CHAPITRES_MIN, MOTS_MAX, MOTS_MIN,
+                             TAILLES, TONS, Contexte, code_langue)
 
 # Couleurs ANSI : Termux les gere, mais on s'abstient si la sortie est redirigee.
 _COULEUR = sys.stdout.isatty()
@@ -33,6 +36,29 @@ _COULEUR = sys.stdout.isatty()
 
 def _c(texte: str, code: str) -> str:
     return "\033[{}m{}\033[0m".format(code, texte) if _COULEUR else texte
+
+
+def _compte(valeur: Optional[int]) -> str:
+    """Un compteur du jour, ou « ? » quand la base ne se lit plus.
+
+    Ecrire « 0 » serait plus joli et faux : zero appel et compteur illisible
+    ne demandent pas la meme chose a l'utilisateur.
+    """
+    return "?" if valeur is None else str(valeur)
+
+
+def _milliers(nombre: int) -> str:
+    """Nombre lisible a l'oeil : 200000 devient « 200 000 »."""
+    return "{:,}".format(int(nombre)).replace(",", "\u202f")
+
+
+def _dire_l_attente(evenement: Dict[str, Any]) -> None:
+    """Une attente du routeur, dite dans le terminal pendant qu'elle dure."""
+    if evenement.get("type") != "attente":
+        return
+    alerte(str(evenement.get("message") or "{} : limite par minute atteinte, "
+               "reprise dans {} s".format(evenement.get("fournisseur", ""),
+                                          evenement.get("secondes", 0))))
 
 
 def titre_console(texte: str) -> None:
@@ -45,6 +71,24 @@ def ok(texte: str) -> None:
 
 def alerte(texte: str) -> None:
     print(_c("  [!] ", "33") + texte)
+
+
+def dire_la_prose(resume: Dict[str, Any]) -> None:
+    """Les releves de prose, a l'ecran, et jamais en alerte.
+
+    Ce sont des COMPTES, pas des verdicts : « six mots filtres », « doucement
+    onze fois ». Les passer par « alerte » ferait clignoter en jaune un texte
+    qui n'a rien de fautif, et un signal jaune qui se declenche a chaque
+    production finit ignore — y compris les fois ou il dit quelque chose.
+    """
+    mesure = resume.get("prose") or {}
+    if mesure.get("mots"):
+        from .pipelines import prose as module_prose
+
+        print("  " + module_prose.situer_le_dialogue(
+            mesure.get("part_de_dialogue") or 0.0))
+    for lecture in resume.get("lectures_prose") or []:
+        print("  " + _c("[prose] ", "36") + lecture)
 
 
 def erreur(texte: str) -> None:
@@ -60,15 +104,83 @@ BANNIERE = r"""
 """
 
 
+class SujetIntrouvable(Exception):
+    """L'usine devait choisir une niche et n'a pas pu.
+
+    Rendre une chaine vide etait la premiere version, et c'etait un defaut :
+    la fabrication CONTINUAIT avec un sujet vide. Elle annoncait « aucune
+    niche a proposer », puis sondait un marche pour «  », lancait une veille
+    pour «  », et mourait une minute plus tard sur un message sans rapport.
+    Quatre appels reseau et beaucoup de confusion apres avoir deja dit qu'elle
+    s'arretait.
+    """
+
+
+def sujet_ou_choix(args: argparse.Namespace) -> str:
+    """Le sujet donne, ou celui que l'usine choisit quand on n'en donne pas.
+
+    Un seul endroit pour les dix chaines : le mettre dans chaque commande
+    aurait garanti qu'une d'elles l'oublie, et personne ne s'en apercevrait
+    avant de taper « usine social » sans rien derriere.
+    """
+    sujet = (getattr(args, "sujet", "") or "").strip()
+    if sujet:
+        return sujet
+    from .production import choisir_une_niche
+
+    titre_console("L'usine choisit la niche")
+    choix = choisir_une_niche(journal=lambda m: print("  " + m),
+                              type_produit=getattr(args, "_type", "ebook"))
+    if not choix["sujet"]:
+        raise SujetIntrouvable(
+            "L'usine devait choisir une niche et n'a pas pu.")
+    if choix.get("source") == "froid" and not choix.get("mesure", True):
+        # Un domaine propose et non mesure reste un choix du modele. Le dire
+        # ici est le seul moment ou cela change quelque chose pour celui qui
+        # decide de continuer ou non.
+        alerte("Aucune source de marché n'a répondu : cette niche est "
+               "proposée, pas mesurée.")
+    args.sujet = choix["sujet"]
+    # Les reglages de fiction voyagent avec la promesse : ils sont poses sur
+    # « args » pour que « contexte_depuis » les trouve comme s'ils avaient ete
+    # tapes. Sans cela la chaine les re-devinerait a partir du seul titre.
+    for cle, valeur in (choix.get("options") or {}).items():
+        if not getattr(args, cle, ""):
+            setattr(args, cle, valeur)
+    return choix["sujet"]
+
+
 def contexte_depuis(args: argparse.Namespace) -> Contexte:
     """Construit le contexte : options de la commande, puis reglages, puis defauts."""
+    # Une reprise d'abord, et avant tout le reste : c'est le contexte de la
+    # premiere fabrication qui fait foi. Passer par « sujet_ou_choix » avec
+    # un sujet laisse vide a l'origine faisait choisir une NOUVELLE niche,
+    # ecrite ensuite dans le dossier de l'ancienne.
+    reprise = getattr(args, "reprendre_id", "") or ""
+    if reprise:
+        from .pipelines import reprise as module_reprise
+
+        garde = module_reprise.contexte_garde(
+            reprise, journal=lambda message: print("  " + message))
+        if garde is not None:
+            return garde
+    # Le sujet d'abord, et ici plutot que dans chaque commande : les quatorze
+    # chaines passent toutes par cette fonction, et aucune autre ligne n'est
+    # commune aux quatorze. Une niche choisie par l'usine doit ensuite passer
+    # les memes controles qu'une niche tapee a la main — dont l'avertissement
+    # sur les domaines ou un produit genere expose son vendeur.
+    sujet_ou_choix(args)
+    _avertir_sujet(getattr(args, "sujet", "") or "")
     profil = reglages.charger()
 
     def choisir(nom: str, defaut_profil: str) -> str:
         valeur = getattr(args, nom, None)
         return valeur if valeur else profil.get(defaut_profil, "")
 
-    return Contexte(
+    # « --reprendre-id » fait ecrire la fabrication dans le dossier d'un
+    # produit existant au lieu d'en creer un neuf. C'est tout ce qui separe
+    # une reprise d'une relance : le carnet qui s'y trouve fait le reste.
+    contexte = Contexte(
         sujet=args.sujet,
         audience=choisir("audience", "audience"),
         langue=choisir("langue", "langue"),
@@ -80,39 +192,69 @@ def contexte_depuis(args: argparse.Namespace) -> Contexte:
         mots_section=int(getattr(args, "mots", 0) or 0),
         prix=getattr(args, "prix", "") or "",
         marque=getattr(args, "marque", "") or profil.get("marque", ""),
+        dedicace=getattr(args, "dedicace", "") or "",
         hors_ligne=args.hors_ligne,
         sans_image=args.sans_image or args.hors_ligne or not profil.get("images", True),
         journal=lambda message: print("  " + message),
     )
+    if reprise:
+        # Produit d'avant le contexte garde au carnet : on reprend depuis les
+        # arguments. Sans rebriefer — redecider donnerait au second tiers du
+        # livre un autre ton que le premier.
+        contexte.produit_id = reprise
+        contexte.dossier = config.PRODUITS_DIR / reprise
+        return contexte
+    # Ce que l'utilisateur n'a pas choisi, l'usine le decide en lisant le
+    # sujet — ici, en un seul endroit, pour les dix chaines a la fois.
+    from .pipelines import brief
+
+    brief.completer(contexte, getattr(args, "commande", "produit"), args)
+    return contexte
 
 
 def _avertir_sujet(sujet: str) -> None:
     """Signale les domaines ou un produit genere expose son vendeur."""
     for domaine, avertissement in securite.analyser_sujet(sujet):
-        alerte("Domaine sensible detecte : {}".format(domaine))
+        alerte("Domaine sensible détecté : {}".format(domaine))
         print("      " + avertissement)
 
 
 def _verifier_fournisseurs() -> bool:
     disponibles = config.active_providers()
+    hors_ligne = http_hors_ligne_actif()
+    if hors_ligne:
+        disponibles = [p for p in disponibles if p.local]
     if disponibles:
-        distants = [p.name for p in disponibles if not p.local]
+        # Un fournisseur local est toujours « disponible » : c'est une
+        # adresse, pas un serveur qui tourne. Cette ligne disait « actifs :
+        # ollama, llamacpp » sur un telephone ou aucun des deux n'etait
+        # installe — et comme ils l'etaient toujours, l'alerte « aucune
+        # cle » plus bas ne pouvait jamais s'afficher.
+        avec_cle = [p.name for p in disponibles if not p.local and p.nb_cles()]
+        anonymes = [p.name for p in disponibles if not p.local and not p.nb_cles()]
         locaux = [p.name for p in disponibles if p.local]
         details = []
-        if distants:
-            details.append("API : " + ", ".join(distants))
+        if avec_cle:
+            details.append("API : " + ", ".join(avec_cle))
+        if anonymes:
+            details.append("sans clé : " + ", ".join(anonymes))
         if locaux:
-            details.append("local : " + ", ".join(locaux))
-        ok("Fournisseurs actifs — " + " | ".join(details))
-        avec_cle = [p for p in disponibles if not p.local and not p.keyless]
-        if not avec_cle and not locaux:
-            alerte("Seul Pollinations est disponible : son quota anonyme est partage "
-                   "par adresse IP et s'epuise vite.")
-            alerte("Pour fabriquer un produit entier, ajoutez une cle gratuite : "
+            details.append("local, s'il tourne : " + ", ".join(locaux))
+        ok("Fournisseurs — " + " | ".join(details))
+        if hors_ligne:
+            ok("Hors ligne : aucune invite ne part vers une API.")
+        elif not avec_cle:
+            alerte("Aucune clé API : le palier anonyme de Pollinations ne "
+                   "publie pas son quota, et il est partagé par adresse IP.")
+            alerte("Pour fabriquer un produit entier, ajoutez une clé gratuite : "
                    + _c("usine cles", "1"))
         return True
+    if hors_ligne:
+        erreur("Hors ligne, et aucun serveur d'IA locale n'est configuré.")
+        print("\n  USINE_PROVIDERS les ecarte : ajoutez-y « ollama ».")
+        return False
     erreur("Aucun fournisseur IA disponible.")
-    print("\n  Lancez " + _c("usine cles", "1") + " pour obtenir une cle gratuite "
+    print("\n  Lancez " + _c("usine cles", "1") + " pour obtenir une clé gratuite "
           "en 2 minutes,\n  ou demarrez une IA locale (voir " +
           _c("usine docteur", "1") + ").")
     return False
@@ -123,69 +265,332 @@ def _verifier_fournisseurs() -> bool:
 # --------------------------------------------------------------------------
 
 
+def _tranche(args: argparse.Namespace, option: str) -> Optional[bool]:
+    """Ce que la ligne de commande dit d'une etape facultative.
+
+    Trois etats, et c'est ce qui compte : « --zip » veut oui, « --sans-zip »
+    veut non, et l'absence des deux veut « None » — laisse le reglage decider.
+    Ecraser ce troisieme etat par « False » rendrait le reglage inapplicable,
+    ce qui est la facon la plus discrete de creer un reglage orphelin.
+    """
+    if getattr(args, "sans_" + option, False):
+        return False
+    if getattr(args, option, False):
+        return True
+    return None
+
+
 def _apres_production(args: argparse.Namespace, ctx: Contexte,
                       resume: Dict[str, Any], description: str) -> Dict[str, Any]:
-    """Kit de vente + archive, si demandes."""
-    dossier = Path(resume["dossier"])
-    if getattr(args, "marketing", False):
+    """Kit de vente + archive, si demandes.
+
+    Le travail lui-meme vit dans « pipelines/apres.py », parce que le tableau
+    de bord doit faire exactement la meme chose : il l'a longtemps ignore, et
+    quatre reglages coches depuis le telephone ne produisaient rien. Ici ne
+    restent que la lecture des options de la ligne de commande et l'affichage.
+    """
+    if not (getattr(args, "contact", "") or reglages.lire("contact", "")):
+        # La notice promet d'envoyer une version adaptee a qui en demande une.
+        # C'est ce que la reglementation europeenne d'accessibilite attend
+        # d'etre tenu — et sans adresse, la promesse n'est pas ecrite. Le
+        # vendeur doit le savoir : c'est lui qui decide, pas nous.
+        alerte("Aucune adresse de contact : la notice livrée ne propose donc "
+               "pas de version adaptée aux lecteurs qui en auraient besoin.")
+        print("      " + _c("usine reglages", "1")
+              + "  ou  " + _c("--contact vous@exemple.fr", "1"))
+    # « --marketing » force, « --sans-marketing » empeche, et sans les deux on
+    # laisse le reglage decider. Un vendeur qui empaquette toujours ses
+    # produits retapait « --zip » cent fois ; celui qui ne le fait jamais
+    # n'avait pas a le voir.
+    veut_kit = _tranche(args, "marketing")
+    veut_zip = _tranche(args, "zip")
+    # Le titre seulement si un kit va suivre : « is not False » l'affichait
+    # aussi quand le reglage n'en demandait aucun, et rien ne venait dessous.
+    if apres.veut(veut_kit, "marketing_auto"):
         titre_console("Kit de vente")
-        try:
-            kit = vente.produire_kit(
-                ctx, resume["titre"], description, dossier,
-                plateforme=getattr(args, "plateforme", "gumroad"),
-                couverture=next(
-                    (n for n in resume.get("fichiers", []) if n.startswith("couverture")), ""
-                ),
-            )
-            resume["marketing"] = kit["fichiers"]
-            prix = (kit["fiche"].get("prix_conseille") or {}).get("cible")
-            ok("Kit de vente pret ({} fichiers)".format(len(kit["fichiers"])))
-            if prix:
-                ok("Prix conseille : {} EUR".format(prix))
-        except Exception as exc:
-            alerte("Kit de vente non genere : {}".format(exc))
-
-    if getattr(args, "zip", False):
-        titre_console("Mise en carton")
-        from .pipelines.base import slug
-
-        archive = livraison.empaqueter(
-            dossier, slug(resume["titre"], 46), resume["titre"], ctx.auteur,
-            promesse=description[:200], contact=getattr(args, "contact", "") or
-            "votre adresse e-mail",
-        )
-        resume["archive"] = str(archive)
-        ok("Archive : {} ({} Ko)".format(archive.name, archive.stat().st_size // 1024))
-    return resume
+    return apres.apres_production(
+        ctx, resume, description,
+        type_produit=getattr(args, "commande", "ebook"),
+        kit=veut_kit, archive=veut_zip,
+        plateforme=getattr(args, "plateforme", ""),
+        extrait=getattr(args, "extrait", 0),
+        contact=getattr(args, "contact", ""),
+        journal=ok,
+    )
 
 
-def _resume_console(resume: Dict[str, Any]) -> None:
-    titre_console("Produit livre")
+def _resume_console(resume: Dict[str, Any]) -> int:
+    """Ce qui a ete fabrique, et le code de sortie qui va avec.
+
+    Un produit inacheve — des sections reduites a leur plan, faute de
+    fournisseur — s'annoncait « Produit livre » a la console, « Produit
+    pret » dans la notification du telephone, et la commande rendait 0.
+    Mesure du 25/09/2026, sans cle : sept sections sur sept manquaient, et
+    tout disait le contraire. Il s'annonce maintenant pour ce qu'il est, et
+    la commande rend 3, comme quand les fournisseurs se taisent avant meme
+    qu'il commence : un script qui enchaine les fabrications doit pouvoir
+    le savoir.
+    """
+    fiche = store.lire_produit(str(resume.get("produit_id") or "")) or {}
+    inacheve = apres.pas_encore_vendable(fiche)
+    titre_console("Produit inachevé" if inacheve else "Produit livré")
     print("  " + _c(resume["titre"], "1"))
     print("  Dossier : " + resume["dossier"])
     for nom in resume.get("fichiers", []):
         print("    - " + nom)
     if resume.get("archive"):
         print("  Archive : " + resume["archive"])
+    a_ouvrir = next(
+        (Path(resume["dossier"]) / n for n in resume.get("fichiers", [])
+         if n.endswith(".pdf")), Path(resume["dossier"]))
     print("\n  Ouvrir sur Termux : " + _c(
-        "termux-open '{}'".format(
-            next((str(Path(resume["dossier"]) / n) for n in resume.get("fichiers", [])
-                  if n.endswith(".pdf")), resume["dossier"])
-        ), "2"))
+        "termux-open '{}'".format(a_ouvrir), "2"))
+    # Une fabrication dure 10 a 20 minutes : personne ne regarde le terminal
+    # pendant ce temps. La notification est ce qui rappelle le telephone.
+    if inacheve:
+        alerte(inacheve[0].upper() + inacheve[1:])
+    if reglages.lire("notifications", True):
+        telephone.notifier("Produit inachevé" if inacheve else "Produit prêt",
+                           resume["titre"][:70], ouvrir=a_ouvrir)
+    return 3 if inacheve else 0
 
 
 def cmd_ebook(args: argparse.Namespace) -> int:
     if not _verifier_fournisseurs():
         return 2
-    _avertir_sujet(args.sujet)
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un ebook")
-    resume = ebook.produire(ctx)
+    resume = _par_le_catalogue(
+        args, "ebook", ctx,
+        relecture_ensemble=(getattr(args, "relecture_ensemble", False)
+                            or bool(reglages.lire("relecture_ensemble", False))))
     description = "Ebook de {} chapitres, {} mots. {}".format(
         resume["chapitres"], resume["mots"], resume.get("sous_titre", "")
     )
-    _resume_console(_apres_production(args, ctx, resume, description))
+    return _resume_console(_apres_production(args, ctx, resume, description))
+
+
+def cmd_nouvelle(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication d'une nouvelle")
+    resume = _par_le_catalogue(args, "nouvelle", ctx)
+    description = "Nouvelle{}, {} scenes, {} mots.".format(
+        " — " + resume["sous_titre"] if resume.get("sous_titre") else "",
+        resume["scenes"], resume["mots"])
+    if resume.get("rang"):
+        description = "Tome {} de « {} ». ".format(
+            resume["rang"], args.serie) + description
+    dire_la_prose(resume)
+    return _resume_console(_apres_production(args, ctx, resume, description))
+
+
+def cmd_roman(args: argparse.Namespace) -> int:
+    """Un roman : la meme chaine que la nouvelle, a l'echelle du format.
+
+    Il etait deja fabricable et invisible — « usine nouvelle --chapitres 40 » —
+    donc inexistant pour qui ne lit pas le code.
+    """
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication d'un roman")
+    print("  Trente scènes relues et contrôlées : comptez une à trois heures.")
+    print("  Une coupure ne perd rien : " + _c("usine reprendre", "1")
+          + " finit ce qui manque.")
+    resume = _par_le_catalogue(args, "roman", ctx)
+    description = "Roman{}, {} scenes, {} mots.".format(
+        " — " + resume["sous_titre"] if resume.get("sous_titre") else "",
+        resume["scenes"], resume["mots"])
+    dire_la_prose(resume)
+    return _resume_console(_apres_production(args, ctx, resume, description))
+
+
+def cmd_journal(args: argparse.Namespace) -> int:
+    """Ce que l'usine a fait pendant qu'on ne regardait pas."""
+    from .core import trace
+
+    jours = trace.jours_disponibles()
+    if not jours:
+        print("  Aucun journal pour l'instant. Il s'ecrit pendant une")
+        print("  production continue : " + _c("usine usine demarrer", "1"))
+        return 0
+    jour = args.jour or jours[0]
+    if jour not in jours:
+        alerte("Aucun journal pour le {}. Disponibles : {}".format(
+            jour, ", ".join(jours[:7])))
+        return 1
+    lignes = trace.relire(args.lignes, jour)
+    titre_console("Journal du {}".format(jour))
+    for ligne in lignes:
+        print("  " + ligne)
+    if len(jours) > 1:
+        print("\n  " + _c("Autres jours : " + ", ".join(jours[1:7]), "90"))
     return 0
+
+
+def cmd_series(args: argparse.Namespace) -> int:
+    """Ce que l'usine a accumule pour chaque suite en cours."""
+    from .core import serie as module_serie
+
+    if args.nom and getattr(args, "rafraichir", False):
+        from .pipelines import nouvelle as chaine_nouvelle
+
+        if not module_serie.lire(args.nom):
+            alerte("Aucune série « {} ».".format(args.nom))
+            return 1
+        titre_console("Rafraichissement de « {} »".format(args.nom))
+        refaits = chaine_nouvelle.rafraichir_serie(args.nom, journal=print)
+        if not refaits:
+            ok("Aucun tome antérieur à refaire : leur page de fin est à jour.")
+            return 0
+        ok("{} tome(s) refaits. Leur dernière page annonce désormais les "
+           "tomes parus depuis.".format(len(refaits)))
+        print("      Redeposez ces fichiers chez votre distributeur pour que "
+              "les lecteurs les voient.")
+        return 0
+
+    if args.nom:
+        bible = module_serie.lire(args.nom)
+        if not bible:
+            alerte("Aucune série « {} ». Elle naîtra au premier tome : "
+                   "usine nouvelle \"...\" --serie \"{}\"".format(
+                       args.nom, args.nom))
+            return 1
+        titre_console("Série « {} »".format(bible.get("nom") or args.nom))
+        cadre = bible.get("cadre") or {}
+        if cadre.get("lieu") or cadre.get("epoque"):
+            print("  Cadre : {} — {}".format(cadre.get("lieu") or "?",
+                                             cadre.get("epoque") or "?"))
+        for regle in cadre.get("regles") or []:
+            print("  Regle : " + regle)
+        if bible.get("personnages"):
+            titre_console("Distribution")
+            for personnage in bible["personnages"]:
+                faits = (bible.get("faits") or {}).get(personnage.get("nom"), {})
+                print("  {:<24} {:<14} {}".format(
+                    personnage.get("nom", ""), personnage.get("role", ""),
+                    _c(", ".join("{} : {}".format(a, v)
+                                 for a, v in sorted(faits.items())), "90")))
+        titre_console("Tomes")
+        for tome in bible.get("tomes") or []:
+            print("  {}. {}".format(tome.get("rang"), tome.get("titre")))
+            if tome.get("resume"):
+                print("     " + _c(tome["resume"][:160], "90"))
+        # Le lecteur du tome 1 est celui qui a paye en premier et qui revient.
+        # Sa derniere page ne connait pourtant aucun des tomes suivants.
+        attente = module_serie.tomes_a_rafraichir(args.nom)
+        if attente:
+            print()
+            alerte("{} tome(s) ont une dernière page qui n'annonce pas les "
+                   "suivants.".format(len(attente)))
+            print("      " + _c('usine series "{}" --rafraichir'.format(args.nom), "1"))
+        return 0
+
+    series = module_serie.lister()
+    if not series:
+        print("Aucune série. Une série commence à son premier tome :")
+        print("  " + _c('usine nouvelle "votre idee" --serie "Nom de la serie"', "1"))
+        return 0
+    titre_console("Séries")
+    for ligne in series:
+        print("  {:<28} {} tome(s), {} personnage(s)".format(
+            ligne["nom"], ligne["tomes"], ligne["personnages"]))
+    print("\n  Détail : " + _c("usine series \"<nom>\"", "1"))
+    return 0
+
+
+def cmd_auto(args: argparse.Namespace) -> int:
+    """L'usine choisit la niche ET le type de produit.
+
+    Les dix commandes de fabrication demandent un type : « usine ebook »,
+    « usine social ». Choisir le type suppose deja de savoir ce qui se vend
+    dans une niche qu'on n'a pas encore cherchee — c'est l'ordre inverse de
+    celui dans lequel la question se pose.
+
+    Il manquait donc le point d'entree ou l'usine decide des deux. Une idee
+    trouvee par la chaine « idees » porte deja son type ; il n'etait suivi
+    nulle part, parce que rien ne savait quoi en faire.
+    """
+    if not _verifier_fournisseurs():
+        return 2
+    from .production import AUTO, choisir_une_niche
+
+    donne = (getattr(args, "sujet", "") or "").strip()
+    if donne:
+        # Sujet impose : il ne reste que le type a decider, et c'est la
+        # question la plus utile — celle que les dix autres commandes
+        # obligent a trancher AVANT de savoir ce qui se vend.
+        titre_console("L'usine choisit le type de produit")
+        args._type = "ebook"
+        ctx_choix = contexte_depuis(args)
+        cle = catalogue.type_pour_sujet(ctx_choix, donne)
+        choix = {"sujet": donne, "type": cle, "source": "sujet donne"}
+    else:
+        titre_console("L'usine choisit la niche et le type")
+        choix = choisir_une_niche(journal=lambda m: print("  " + m),
+                                  type_produit=AUTO)
+        if not choix["sujet"]:
+            raise SujetIntrouvable(
+                "L'usine devait choisir une niche et n'a pas pu.")
+    fiche = catalogue.obtenir(choix["type"]) or catalogue.obtenir("ebook")
+    ok("Type retenu : {} — « {} »".format(fiche.nom, choix["sujet"]))
+    if choix.get("source") == "froid" and not choix.get("mesure", True):
+        alerte("Aucune source de marché n'a répondu : cette niche est "
+               "proposée, pas mesurée.")
+    args.sujet = choix["sujet"]
+    args._type = fiche.cle
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication : {}".format(fiche.nom))
+    # Les options propres au type gardent leurs valeurs par defaut : personne
+    # n'a pu les donner, puisque le type vient d'etre decide.
+    resume = catalogue.executer(fiche.cle, ctx, _defauts_du_type(fiche))
+    return _resume_console(_apres_production(args, ctx, resume, fiche.resume))
+
+
+def _par_le_catalogue(args: argparse.Namespace, cle: str, ctx: Contexte,
+                      **supplement: Any) -> Dict[str, Any]:
+    """Fabrique par le point unique du catalogue, avec ce que la commande a fixe.
+
+    Mesure du 24/09/2026 : dix-sept types sur dix-sept, zero reglage decide
+    par l'usine en ligne de commande — contre un appel de decision par
+    produit depuis le tableau de bord. Chaque commande appelait sa chaine
+    directement, avec des valeurs en dur : tout pack de posts partait sur
+    LinkedIn, toute sequence d'e-mails etait de « bienvenue », tout quiz de
+    niveau « intermediaire », tout roman sans genre choisi. Le menu Termux
+    passe par ces commandes : il avait le meme defaut.
+
+    Un argument que personne n'a tape vaut None (voir « _options_du_type ») :
+    c'est ce qui le distingue d'une valeur choisie, et ce qui laisse
+    « executer » le faire decider a partir du sujet.
+    """
+    fiche = catalogue.obtenir(cle)
+    options: Dict[str, Any] = {}
+    for champ in (fiche.champs if fiche else ()):
+        valeur = getattr(args, champ.nom, None)
+        if valeur is None or valeur == "" or valeur is False:
+            continue
+        options[champ.nom] = valeur
+    options.update(supplement)
+    return catalogue.executer(cle, ctx, options)
+
+
+def _defauts_du_type(fiche) -> Dict[str, Any]:
+    """Les valeurs par defaut declarees au catalogue pour ce type.
+
+    Elles sont lues sur la fiche plutot que recopiees : un champ ajoute au
+    catalogue arrive ici tout seul. Recopier la liste aurait garanti qu'un
+    champ ajoute un jour manque ici sans que rien n'echoue — le type serait
+    fabrique avec un zero a la place de sa quantite.
+    """
+    options: Dict[str, Any] = {}
+    if fiche.quantite:
+        options["nombre"] = fiche.defaut_quantite
+    for champ in fiche.champs:
+        if champ.defaut not in (None, ""):
+            options[champ.nom] = champ.defaut
+    return options
 
 
 def cmd_prompts(args: argparse.Namespace) -> int:
@@ -193,11 +598,150 @@ def cmd_prompts(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un pack de prompts")
-    resume = pack_prompts.produire(ctx, nombre=args.nombre)
-    _resume_console(_apres_production(
+    resume = _par_le_catalogue(args, "prompts", ctx)
+    return _resume_console(_apres_production(
         args, ctx, resume, "Pack de {} prompts professionnels.".format(resume["prompts"])
     ))
-    return 0
+
+
+def cmd_emails(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication d'une séquence e-mail")
+    resume = _par_le_catalogue(args, "emails", ctx)
+    return _resume_console(_apres_production(
+        args, ctx, resume,
+        "Sequence de {} messages, etalee sur {} jours.".format(
+            resume["messages"], resume["jours"])))
+
+
+def cmd_memo(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication d'un mémo")
+    resume = _par_le_catalogue(args, "memo", ctx)
+    return _resume_console(_apres_production(
+        args, ctx, resume,
+        "Memo de {} blocs, {} reperes.".format(
+            resume["blocs"], resume["entrees"])))
+
+
+def cmd_quiz(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication d'un quiz")
+    resume = _par_le_catalogue(args, "quiz", ctx)
+    return _resume_console(_apres_production(
+        args, ctx, resume,
+        "Quiz de {} questions, corrige explique.".format(resume["questions"])))
+
+
+def cmd_cartes(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication de cartes de révision")
+    resume = _par_le_catalogue(args, "cartes", ctx)
+    return _resume_console(_apres_production(
+        args, ctx, resume,
+        "{} cartes de révision, à imprimer ou à importer dans Anki.".format(
+            resume["cartes"])))
+
+
+def cmd_mots_meles(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication d'un cahier de mots mêlés")
+    resume = _par_le_catalogue(args, "mots-meles", ctx)
+    return _resume_console(_apres_production(
+        args, ctx, resume,
+        "{} grilles, {} mots à trouver, solutions à la fin.".format(
+            resume["grilles"], resume["mots"])))
+
+
+def cmd_interactive(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication d'un livre dont le lecteur est le héros")
+    # Comme pour le roman : la quantite arrive par « --chapitres », l'option
+    # commune aux types. Un « --sections » propre a ce type ferait deux
+    # drapeaux pour le meme chiffre, et le second ecraserait le premier.
+    resume = _par_le_catalogue(args, "interactive", ctx)
+    description = "{} sections, {} fins.".format(
+        resume["sections"], resume["fins"])
+    if resume.get("carte_elaguee"):
+        # Une degradation se dit a l'ecran, pas seulement dans le JSON : c'est
+        # la seule facon que l'utilisateur sache s'il doit refabriquer.
+        alerte("La carte a dû être élaguée pour rester jouable.")
+    for defaut in resume.get("defauts_restants") or []:
+        alerte(defaut)
+    dire_la_prose(resume)
+    return _resume_console(_apres_production(args, ctx, resume, description))
+
+
+def cmd_recueil(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication d'un recueil de nouvelles")
+    resume = _par_le_catalogue(args, "recueil", ctx)
+    description = "{} nouvelles, {} mots.".format(
+        resume["recits"], resume["mots"])
+    # La variete est la raison d'etre de cette chaine : elle se dit a l'ecran,
+    # pas seulement dans le JSON que personne n'ouvre.
+    variete = resume["variete"]
+    print("  {} protagoniste(s) distinct(s), {} forme(s) de fin.".format(
+        variete["protagonistes_distincts"], variete["fins_distinctes"]))
+    proche = variete.get("proximite_maximale") or {}
+    if proche.get("titres"):
+        print("  Les deux récits les plus proches : « {} » et « {} » "
+              "({}).".format(proche["titres"][0][:26],
+                             proche["titres"][1][:26], proche["score"]))
+    for lecture in resume.get("lectures") or []:
+        alerte(lecture)
+    dire_la_prose(resume)
+    return _resume_console(_apres_production(args, ctx, resume, description))
+
+
+def cmd_feuilleton(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication d'un feuilleton")
+    resume = _par_le_catalogue(args, "feuilleton", ctx)
+    for lecture in resume.get("lectures") or []:
+        alerte(lecture)
+    if resume.get("episodes_sans_suspens"):
+        alerte("Épisodes sans suspens déclaré : {} — le lecteur n'a aucune "
+               "raison de revenir.".format(", ".join(
+                   str(e) for e in resume["episodes_sans_suspens"])))
+    dire_la_prose(resume)
+    return _resume_console(_apres_production(
+        args, ctx, resume,
+        "{} episodes, {} mots.".format(resume["episodes"], resume["mots"])))
+
+
+def cmd_conte(args: argparse.Namespace) -> int:
+    if not _verifier_fournisseurs():
+        return 2
+    ctx = contexte_depuis(args)
+    titre_console("Fabrication d'un conte jeunesse")
+    resume = _par_le_catalogue(args, "conte", ctx)
+    lisibilite = resume["lisibilite"]
+    print("  {} mots par phrase en moyenne, pour {} demandes au maximum "
+          "({}).".format(lisibilite["mots_par_phrase"],
+                         lisibilite["plafond_demande"], resume["tranche"]))
+    for lecture in resume.get("lectures") or []:
+        alerte(lecture)
+    return _resume_console(_apres_production(
+        args, ctx, resume,
+        "{} doubles-pages, {} illustration(s).".format(
+            resume["pages"], resume["illustrations"])))
 
 
 def cmd_formation(args: argparse.Namespace) -> int:
@@ -205,36 +749,33 @@ def cmd_formation(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'une mini-formation")
-    resume = formation.produire(ctx, modules=args.modules)
-    _resume_console(_apres_production(
+    resume = _par_le_catalogue(args, "formation", ctx)
+    return _resume_console(_apres_production(
         args, ctx, resume,
         "Mini-formation en {} modules, cahier d'exercices inclus.".format(resume["modules"])
     ))
-    return 0
 
 
 def cmd_outils(args: argparse.Namespace) -> int:
     if not _verifier_fournisseurs():
         return 2
     ctx = contexte_depuis(args)
-    titre_console("Fabrication d'une boite a outils")
-    resume = boite_outils.produire(ctx, nombre=args.nombre)
-    _resume_console(_apres_production(
+    titre_console("Fabrication d'une boîte à outils")
+    resume = _par_le_catalogue(args, "outils", ctx)
+    return _resume_console(_apres_production(
         args, ctx, resume, "Boite de {} outils pratiques.".format(resume["outils"])
     ))
-    return 0
 
 
 def cmd_modeles(args: argparse.Namespace) -> int:
     if not _verifier_fournisseurs():
         return 2
     ctx = contexte_depuis(args)
-    titre_console("Fabrication de modeles Notion / tableur")
-    resume = modeles.produire(ctx, nombre=args.nombre)
-    _resume_console(_apres_production(
+    titre_console("Fabrication de modèles Notion / tableur")
+    resume = _par_le_catalogue(args, "modeles", ctx)
+    return _resume_console(_apres_production(
         args, ctx, resume,
         "Systeme de {} bases liees, CSV prets a importer.".format(resume["bases"])))
-    return 0
 
 
 def cmd_impression(args: argparse.Namespace) -> int:
@@ -242,12 +783,11 @@ def cmd_impression(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un cahier imprimable")
-    resume = impression.produire(ctx, pages=args.nombre)
-    _resume_console(_apres_production(
+    resume = _par_le_catalogue(args, "impression", ctx)
+    return _resume_console(_apres_production(
         args, ctx, resume,
         "Cahier de {} fiches a imprimer, formats A4 et Lettre US.".format(
             resume["fiches"])))
-    return 0
 
 
 def cmd_logiciel(args: argparse.Namespace) -> int:
@@ -255,21 +795,20 @@ def cmd_logiciel(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un outil logiciel")
-    resume = logiciel.produire(ctx, cible=args.cible,
-                               executer=not args.sans_essai)
+    resume = _par_le_catalogue(args, "logiciel", ctx)
     if not resume["code_valide"]:
-        alerte("Du code n'a pas passe la verification : voir verification.json")
+        alerte("Du code n'a pas passé la vérification : voir verification.json")
     etat = "verifie"
     if resume["demarre"] is True:
         etat = "verifie et demarre"
     elif resume["demarre"] is False:
         etat = "verifie, mais l'essai reel a echoue"
-    _resume_console(_apres_production(
+    code = _resume_console(_apres_production(
         args, ctx, resume,
         "{} en {} fichiers, {}.".format(
             logiciel.CIBLES[resume["cible"]]["nom"].capitalize(),
             resume["fichiers_code"], etat)))
-    return 0 if resume["code_valide"] else 1
+    return code or (0 if resume["code_valide"] else 1)
 
 
 def cmd_ventes(args: argparse.Namespace) -> int:
@@ -287,8 +826,8 @@ def cmd_ventes(args: argparse.Namespace) -> int:
     if args.rattacher:
         propositions = ventes.rattacher_automatiquement()
         if not propositions:
-            print("  Rien a rattacher : toutes les ventes ont deja leur produit,")
-            print("  ou aucun titre connu ne ressemble aux references importees.")
+            print("  Rien à rattacher : toutes les ventes ont déjà leur produit,")
+            print("  ou aucun titre connu ne ressemble aux références importées.")
             return 0
         for reference, produit_id, score in propositions:
             ventes.lier(reference, produit_id)
@@ -306,13 +845,13 @@ def _ajouter_vente(args: argparse.Namespace) -> int:
         "date": args.date or time.strftime("%Y-%m-%d"),
         "reference": args.reference or args.ajouter,
         "unites": max(1, args.unites), "brut": args.brut, "net": args.net,
-        "devise": (args.devise or "EUR").upper(),
+        "devise": (args.devise or reglages.lire("devise", "EUR")).upper(),
         "remboursement": 1 if args.remboursement else 0,
         "plateforme": args.plateforme_vente, "source": "manuel",
     }
     ligne["empreinte"] = None       # saisie manuelle : pas de dedoublonnage
     if ventes.enregistrer(ligne, produit_id=args.ajouter):
-        ok("{} x {:.2f} {} enregistre pour {}".format(
+        ok("{} x {:.2f} {} enregistré pour {}".format(
             ligne["unites"], ligne["brut"], ligne["devise"], args.ajouter))
     return 0
 
@@ -345,9 +884,9 @@ def _importer_ventes(args: argparse.Namespace) -> int:
     ajoutes = sum(1 for ligne in lecture.lignes if ventes.enregistrer(ligne))
     deja = len(lecture.lignes) - ajoutes
     print()
-    ok("{} vente(s) ajoutee(s)".format(ajoutes))
+    ok("{} vente(s) ajoutée(s)".format(ajoutes))
     if deja:
-        print("  {} deja connue(s) — reimporter le meme export n'ajoute rien."
+        print("  {} déjà connue(s) — réimporter le même export n'ajoute rien."
               .format(deja))
     if lecture.ignorees:
         alerte("{} ligne(s) sans date ou sans montant lisible, ignorees."
@@ -369,11 +908,11 @@ def _resume_ventes(args: argparse.Namespace) -> int:
     titre_console("Ventes")
     totaux = ventes.total_par_devise(args.depuis)
     if not totaux:
-        print("  Aucune vente enregistree.")
+        print("  Aucune vente enregistrée.")
         print("\n  " + _c("usine ventes --importer export.csv --sur gumroad", "1"))
         print("  " + _c("usine ventes --ajouter <produit_id> --brut 29", "1"))
         print("\n  Sans cette donnee, « usine bilan » sait quel ton donne vos")
-        print("  meilleures notes, jamais quelle niche a paye.")
+        print("  meilleures notes, jamais quelle niche a payé.")
         return 0
 
     for total in totaux:
@@ -386,7 +925,7 @@ def _resume_ventes(args: argparse.Namespace) -> int:
             print("      {} ligne(s) sans revenu net dans l'export.".format(
                 total["net_inconnu"]))
         if total["rembourses"]:
-            print("      {} remboursement(s), deja deduit(s).".format(
+            print("      {} remboursement(s), déjà déduit(s).".format(
                 total["rembourses"]))
 
     produits = ventes.par_produit(args.nombre)
@@ -405,9 +944,9 @@ def _resume_ventes(args: argparse.Namespace) -> int:
                 ligne["produits"]))
     prix = ventes.prix_observes()
     if prix:
-        titre_console("Prix reellement encaisses")
+        titre_console("Prix réellement encaissés")
         for ligne in prix:
-            print("  {} : median {:.2f}, moitie centrale {:.2f} a {:.2f}"
+            print("  {} : médian {:.2f}, moitié centrale {:.2f} à {:.2f}"
                   " ({} ventes)".format(ligne["devise"], ligne["median"],
                                         ligne["bas"], ligne["haut"],
                                         ligne["ventes"]))
@@ -438,7 +977,7 @@ def cmd_veille(args: argparse.Namespace) -> int:
 
     douleurs = rapport.douleurs
     if douleurs:
-        print("\n  " + _c("Formulations de probleme", "1"))
+        print("\n  " + _c("Formulations de problème", "1"))
         for discussion in douleurs[:args.nombre]:
             print("    - {}".format(discussion.titre[:72]))
 
@@ -455,7 +994,7 @@ def cmd_veille(args: argparse.Namespace) -> int:
             "trace sans que cela dise rien de son marche.", 68):
         print("    " + ligne)
     print("\n  " + _c('usine idees "{}"'.format(args.sujet[:36]), "1")
-          + " s'en sert deja pour formuler les promesses.")
+          + " s'en sert déjà pour formuler les promesses.")
     return 0
 
 
@@ -471,12 +1010,14 @@ def cmd_sauvegarde(args: argparse.Namespace) -> int:
         if not fiche["valide"]:
             erreur(fiche["probleme"])
             return 1
-        print("  Creee le      : {}".format(fiche.get("cree_le", "?")))
+        print("  Créée le      : {}".format(fiche.get("cree_le", "?")))
         print("  Schema        : version {}".format(fiche.get("schema", "?")))
-        print("  Reglages      : {}".format(
+        print("  Réglages      : {}".format(
             "inclus" if fiche.get("avec_reglages") else "absents"))
         print("  Fichiers de produits : {}".format(
             fiche.get("fichiers_produits", 0)))
+        print("  Invites personnalisees : {}".format(
+            fiche.get("fichiers_invites", 0)))
         return 0
 
     titre_console("Sauvegarde de l'atelier")
@@ -486,15 +1027,15 @@ def cmd_sauvegarde(args: argparse.Namespace) -> int:
     taille = archive.stat().st_size
     ok("{} ({} Ko)".format(archive, max(1, taille // 1024)))
     print("\n  Contient l'historique de production, les empreintes, les tests")
-    print("  A/B et " + _c("les ventes", "1") + " — c'est cette derniere qui ne")
+    print("  A/B et " + _c("les ventes", "1") + " — c'est cette dernière qui ne")
     print("  se refabrique pas.")
     if not args.avec_produits:
         print("\n  Les fichiers des produits ne sont PAS inclus : "
               + _c("--avec-produits", "1"))
-    print("  Les cles API non plus : elles vivent dans .env, et une archive")
+    print("  Les clés API non plus : elles vivent dans .env, et une archive")
     print("  se copie sur un ordinateur ou dans un nuage.")
-    print("\n  Copiez-la hors du telephone. Une sauvegarde restee sur")
-    print("  l'appareil ne protege de rien.")
+    print("\n  Copiez-la hors du téléphone. Une sauvegarde restée sur")
+    print("  l'appareil ne protège de rien.")
     return 0
 
 
@@ -508,8 +1049,8 @@ def _restaurer(args: argparse.Namespace, sauvegarde) -> int:
     print("  Archive du {}, schema {}".format(
         fiche.get("cree_le", "?"), fiche.get("schema", "?")))
     if not args.oui:
-        alerte("Cette operation remplace l'atelier actuel.")
-        print("      L'ancienne base est mise de cote, pas supprimee.")
+        alerte("Cette opération remplace l'atelier actuel.")
+        print("      L'ancienne base est mise de côté, pas supprimée.")
         print("      Confirmez avec " + _c("--oui", "1"))
         return 1
     resultat = sauvegarde.restaurer(chemin, avec_produits=not args.sans_produits)
@@ -522,10 +1063,10 @@ def _restaurer(args: argparse.Namespace, sauvegarde) -> int:
             print("      " + _c("usine usine arreter", "1")
                   + " attend la fin du produit en cours.")
         return 1
-    ok("Atelier restaure ({} fichier(s) de produits).".format(
+    ok("Atelier restauré ({} fichier(s) de produits).".format(
         resultat["fichiers_produits"]))
     if resultat["ancienne_base"]:
-        print("  Ancienne base conservee : {}".format(
+        print("  Ancienne base conservée : {}".format(
             resultat["ancienne_base"]))
     return 0
 
@@ -534,12 +1075,12 @@ def cmd_doublons(args: argparse.Namespace) -> int:
     """Les produits qui se recouvrent, tous types confondus."""
     if args.reconstruire:
         return _reconstruire_empreintes()
-    titre_console("Ce que l'usine a ecrit deux fois")
+    titre_console("Ce que l'usine a écrit deux fois")
     empreintes = store.lister_empreintes(args.type or "")
     if len(empreintes) < 2:
-        print("  Moins de deux produits enregistres : rien a comparer.")
-        print("  Les empreintes sont posees a la fabrication ; les produits")
-        print("  fabriques avant cette version n'en ont pas.")
+        print("  Moins de deux produits enregistrés : rien à comparer.")
+        print("  Les empreintes sont posées à la fabrication ; les produits")
+        print("  fabriqués avant cette version n'en ont pas.")
         return 0
 
     charges = [{
@@ -577,7 +1118,7 @@ def cmd_doublons(args: argparse.Namespace) -> int:
         print("    {}  |  {}".format(courant["produit_id"][:34],
                                      voisin.produit_id[:34]))
     print("\n  Une place de marche retire les doublons, et un acheteur qui")
-    print("  prend deux fois le meme livre demande deux remboursements.")
+    print("  prend deux fois le même livre demande deux remboursements.")
     return 1
 
 
@@ -590,7 +1131,7 @@ def _reconstruire_empreintes() -> int:
     produits = [p for p in store.lister_produits(1000)
                 if p["id"] not in connues and p["statut"] != "bonus_integre"]
     if not produits:
-        ok("Tous les produits connus ont deja leur empreinte.")
+        ok("Tous les produits connus ont déjà leur empreinte.")
         return 0
 
     faits, sans_matiere = 0, []
@@ -610,7 +1151,7 @@ def _reconstruire_empreintes() -> int:
             print("      {}".format(titre[:56]))
         print("      Dossier deplace ou supprime, ou type sans fichier texte.")
     if faits:
-        print("\n  " + _c("usine doublons", "1") + " compare desormais tout "
+        print("\n  " + _c("usine doublons", "1") + " compare désormais tout "
               "le catalogue.")
     return 0
 
@@ -620,13 +1161,13 @@ def cmd_reglages(args: argparse.Namespace) -> int:
         modifications = {}
         for paire in args.definir:
             if "=" not in paire:
-                erreur("Format attendu : nom=valeur (recu : {})".format(paire))
+                erreur("Format attendu : nom=valeur (reçu : {})".format(paire))
                 return 1
             nom, valeur = paire.split("=", 1)
             nom = nom.strip()
             if nom not in reglages.DEFAUTS:
-                erreur("Reglage inconnu : {}".format(nom))
-                print("  Reglages valides : " + ", ".join(reglages.DEFAUTS))
+                erreur("Réglage inconnu : {}".format(nom))
+                print("  Réglages valides : " + ", ".join(reglages.DEFAUTS))
                 return 1
             modifications[nom] = valeur
         reglages.ecrire(modifications)
@@ -635,12 +1176,20 @@ def cmd_reglages(args: argparse.Namespace) -> int:
         return 0
     if args.reinitialiser:
         reglages.reinitialiser()
-        ok("Reglages remis a zero.")
+        ok("Réglages remis à zéro.")
         return 0
-    titre_console("Reglages")
+    titre_console("Réglages")
+    # L'etiquette pour lire, le nom pour « --definir » : la CLI est le seul
+    # endroit ou l'identifiant sert a quelque chose, donc il reste, entre
+    # parentheses, apres ce qu'il veut dire.
+    groupe_courant = ""
     for ligne in reglages.lignes_affichables():
-        print("  {:<14} {}".format(ligne["nom"], _c(ligne["valeur"], "1")))
-        print("  {:<14} {}".format("", _c(ligne["description"], "2")))
+        if ligne["groupe"] != groupe_courant:
+            groupe_courant = ligne["groupe"]
+            print("\n  " + _c(ligne["titre_groupe"], "1;36"))
+        print("  {} {}  {}".format(ligne["etiquette"], _c("(" + ligne["nom"] + ")", "2"),
+                                  _c(ligne["valeur"], "1")))
+        print("      " + _c(ligne["description"], "2"))
     print("\n  Modifier : " + _c('usine reglages --definir auteur="Votre Nom"', "1"))
     print("  Fichier  : " + str(reglages.chemin()))
     return 0
@@ -675,15 +1224,37 @@ def cmd_file(args: argparse.Namespace) -> int:
         for sujet in ajoutees:
             ok("ajoute : {} ({})".format(sujet, args.type))
         for sujet in doublons:
-            alerte("deja en file : {}".format(sujet))
+            alerte("déjà en file : {}".format(sujet))
         for sujet in ajoutees:
             for proche in empreinte.sujets_proches(sujet, args.type)[:2]:
-                alerte("« {} » recouvre une niche deja produite : « {} »".format(
+                alerte("« {} » recouvre une niche déjà produite : « {} »".format(
                     sujet, proche["sujet"]))
-                print("      Produit : {} — verifiez avant de vendre les deux."
+                print("      Produit : {} — vérifiez avant de vendre les deux."
                       .format(proche["titre"][:52]))
         print("\n  File : " + _resume_file())
         return 0
+
+    if getattr(args, "fiction", None) is not None:
+        from .production import prospecter_fiction
+
+        titre_console("Promesses de lecture")
+        print("  Une fiction ne se cherche pas comme une niche. Le lecteur\n"
+              "  n'achète pas la solution d'un problème : il achète une\n"
+              "  experience qu'il veut revivre — un sous-genre, des tropes,\n"
+              "  une ambiance, et une fin qu'on ne lui refuse pas.\n")
+        rapport = prospecter_fiction(
+            nombre=args.nombre or 8, graine=args.fiction or "",
+            journal=lambda message: print("  " + message))
+        if rapport["ajoutees"]:
+            ok("{} promesse(s) mise(s) en file.".format(rapport["ajoutees"]))
+        elif rapport["en_file"]:
+            alerte("Aucune promesse NEUVE : les {} sont déjà en file."
+                   .format(rapport["en_file"]))
+        elif rapport["pistes"]:
+            alerte("Aucune promesse retenue : toutes recouvrent un récit "
+                   "déjà écrit.")
+        print("\n  File : " + _resume_file())
+        return 0 if rapport["ajoutees"] else 1
 
     if args.explorer is not None:
         from .production import prospecter
@@ -696,30 +1267,40 @@ def cmd_file(args: argparse.Namespace) -> int:
         if not rapport["graine"]:
             return 1
         if rapport["ajoutees"]:
-            ok("{} niche(s) ajoutee(s) a la file.".format(rapport["ajoutees"]))
+            ok("{} niche(s) ajoutée(s) à la file.".format(rapport["ajoutees"]))
         elif rapport["pistes"]:
-            alerte("Aucune piste retenue : toutes recouvrent un produit deja "
-                   "fabrique.")
+            # Nommer la VRAIE cause. « Toutes recouvrent un produit deja
+            # fabrique » etait affiche meme quand aucune ne recouvrait quoi
+            # que ce soit : elles etaient deja en file, ce qui appelle un
+            # autre geste — produire ce qui attend, pas chercher ailleurs.
+            if rapport.get("en_file") and not rapport["ecartees"]:
+                alerte("Aucune piste NEUVE : les {} pistes sont déjà en file "
+                       "d'attente.".format(rapport["en_file"]))
+                print("      Lancez « usine produire » pour les fabriquer, ou "
+                      "explorez une autre graine.")
+            else:
+                alerte("Aucune piste retenue : toutes recouvrent un produit "
+                       "déjà fabriqué, ou sont déjà en file.")
         print("\n  File : " + _resume_file())
         return 0 if rapport["ajoutees"] else 1
 
     if args.retirer:
         for identifiant in args.retirer:
             if file_prod.retirer(identifiant):
-                ok("entree {} retiree".format(identifiant))
+                ok("entrée {} retirée".format(identifiant))
             else:
-                alerte("entree {} introuvable ou deja terminee".format(identifiant))
+                alerte("entrée {} introuvable ou déjà terminée".format(identifiant))
         print("\n  File : " + _resume_file())
         return 0
 
     if args.rejouer is not None:
         nombre = file_prod.rejouer(args.rejouer or 0)
-        ok("{} entree(s) remise(s) en file".format(nombre))
+        ok("{} entrée(s) remise(s) en file".format(nombre))
         return 0
 
     if args.vider or args.tout_vider:
         nombre = file_prod.vider(tout=args.tout_vider)
-        ok("{} entree(s) supprimee(s)".format(nombre))
+        ok("{} entrée(s) supprimée(s)".format(nombre))
         return 0
 
     entrees = file_prod.lister(args.statut, 60)
@@ -739,10 +1320,23 @@ def cmd_file(args: argparse.Namespace) -> int:
     return 0
 
 
+# Le statut est une cle en base ; a l'ecran, c'est un mot. « memo | pret |
+# ... » s'affichait tel quel dans « usine liste ». « en_cours » a son propre
+# mot, « inachevé », plus bas.
+STATUTS_LISIBLES = {"pret": "prêt"}
+
+
 def _resume_file() -> str:
     compte = file_prod.compter()
-    return "{} en attente, {} en cours, {} livre(s), {} echec(s)".format(
-        compte["en_attente"], compte["en_cours"], compte["fait"], compte["echec"])
+    return "{} en attente, {} en cours, {}, {}".format(
+        compte["en_attente"], compte["en_cours"],
+        _accord(compte["fait"], "livré", "livrés"),
+        _accord(compte["echec"], "échec", "échecs"))
+
+
+def _accord(nombre: int, singulier: str, pluriel: str) -> str:
+    """« 0 livré », « 3 livrés » : « livre(s) » se lit comme un formulaire."""
+    return "{} {}".format(nombre, pluriel if nombre > 1 else singulier)
 
 
 def cmd_usine(args: argparse.Namespace) -> int:
@@ -751,7 +1345,7 @@ def cmd_usine(args: argparse.Namespace) -> int:
 
     if args.action == "arreter":
         if demander_arret():
-            ok("Arret demande. L'usine termine le produit en cours puis s'arrete.")
+            ok("Arrêt demandé. L'usine termine le produit en cours puis s'arrête.")
             return 0
         alerte("Aucune usine en marche.")
         return 1
@@ -764,15 +1358,22 @@ def cmd_usine(args: argparse.Namespace) -> int:
             ok("en marche (pid {}) depuis {:.0f} min".format(
                 etat["pid"], (session.get("duree") or 0) / 60))
             courant = session.get("courant")
-            if courant:
+            if courant and courant.get("attente_jusqu_a"):
+                # Une attente de quota se lisait « En cours » pendant des
+                # heures : on croyait l'usine bloquee.
+                print("  En attente des fournisseurs — reprise automatique "
+                      "vers {} : « {} »".format(
+                          time.strftime("%H:%M", time.localtime(
+                              courant["attente_jusqu_a"])), courant["sujet"]))
+            elif courant:
                 print("  En cours : {} — « {} »".format(
                     courant["type"], courant["sujet"]))
             print("  Produits livres cette session : {}".format(
                 session.get("nombre_faits", 0)))
         else:
-            print("  " + _c("a l'arret", "90"))
+            print("  " + _c("à l'arrêt", "90"))
             if etat["session"].get("motif_fin"):
-                print("  Derniere session : " + etat["session"]["motif_fin"])
+                print("  Dernière session : " + etat["session"]["motif_fin"])
 
         compte = etat["file"]
         print("\n  " + _c("File", "1") + "   : " + _resume_file())
@@ -786,11 +1387,14 @@ def cmd_usine(args: argparse.Namespace) -> int:
             if b["appels_jour_max"]:
                 print("    appels   : {} / {}   (reste {})".format(
                     b["appels_jour"], b["appels_jour_max"], b["reste_aujourdhui"]))
+            if b["jetons_jour_max"]:
+                print("    jetons   : {} / {}".format(
+                    b["jetons_jour"], b["jetons_jour_max"]))
             if b["produits_jour_max"]:
                 print("    produits : {} / {}".format(
                     b["produits_faits"], b["produits_jour_max"]))
         else:
-            alerte("Aucun budget defini : "
+            alerte("Aucun budget défini : "
                    + _c("usine reglages --definir budget_appels_jour=250", "1"))
         return 0
 
@@ -798,9 +1402,9 @@ def cmd_usine(args: argparse.Namespace) -> int:
     if not _verifier_fournisseurs():
         return 2
     if verrou_actif() is not None:
-        erreur("Une usine tourne deja (pid {}).".format(verrou_actif()))
+        erreur("Une usine tourne déjà (pid {}).".format(verrou_actif()))
         print("  Suivre : " + _c("usine usine statut", "1"))
-        print("  Arreter : " + _c("usine usine arreter", "1"))
+        print("  Arrêter : " + _c("usine usine arreter", "1"))
         return 1
 
     for paire in args.budget or []:
@@ -812,7 +1416,7 @@ def cmd_usine(args: argparse.Namespace) -> int:
         if cle not in reglages.DEFAUTS:
             erreur("Budget inconnu : {}".format(nom))
             print("  Disponibles : appels_jour, appels_produit, produits_jour, "
-                  "minutes_produit")
+                  "minutes_produit, jetons_jour")
             return 1
         reglages.ecrire({cle: valeur})
 
@@ -895,7 +1499,7 @@ def _rythme_ab(args: argparse.Namespace) -> int:
         if not mesure["periode"]:
             print("  {} {:<40} {}".format(
                 _c("[" + variante["etiquette"] + "]", "1;36"),
-                variante["contenu"][:40], _c("periode non renseignee", "33")))
+                variante["contenu"][:40], _c("période non renseignée", "33")))
             continue
         print("  {} {:<40} {:>3} vente(s) en {:>3.0f} j = {:.2f}/jour".format(
             _c("[" + variante["etiquette"] + "]", "1;36"),
@@ -904,7 +1508,7 @@ def _rythme_ab(args: argparse.Namespace) -> int:
         print("      {}".format(_c(mesure["periode"], "90")))
     if sans_periode:
         print()
-        alerte("{} variante(s) sans periode : elles ne peuvent rien recevoir."
+        alerte("{} variante(s) sans période : elles ne peuvent rien recevoir."
                .format(len(sans_periode)))
         print("      " + _c("usine ab periode <variante> --du AAAA-MM-JJ", "1"))
 
@@ -919,7 +1523,7 @@ def _rythme_ab(args: argparse.Namespace) -> int:
     titre_console("Comparaison")
     for resultat in comparaison["variantes"]:
         variante = {"etiquette": resultat["etiquette"]}
-        print("  {}  P(meilleure) {:>5.0f} %   rythme median {:.2f}/jour"
+        print("  {}  P(meilleure) {:>5.0f} %   rythme médian {:.2f}/jour"
               "   (90 % entre {:.2f} et {:.2f})".format(
                   _c("[" + variante["etiquette"] + "]", "1;36"),
                   resultat["probabilite_meilleure"] * 100,
@@ -933,7 +1537,7 @@ def _rythme_ab(args: argparse.Namespace) -> int:
         print("  " + ligne)
     print()
     print("  " + _c("Ce test est sequentiel", "1") + " : les variantes n'ont pas")
-    print("  ete exposees en meme temps. Une semaine de vacances ou un partage")
+    print("  été exposées en même temps. Une semaine de vacances ou un partage")
     print("  inattendu se confond avec l'effet du titre, et aucun calcul ne")
     print("  repare cela. Alternez les variantes sur plusieurs cycles.")
     return 0 if conclusion["etat"] in ("gagnant", "tendance") else 1
@@ -1003,7 +1607,7 @@ def cmd_ab(args: argparse.Namespace) -> int:
         titre_console("Tests A/B")
         if not experiences:
             print("  Aucun test.")
-            print("\n  Creer : " + _c('usine ab creer --titre "votre titre"', "1"))
+            print("\n  Créer : " + _c('usine ab creer --titre "votre titre"', "1"))
             return 0
         for exp in experiences:
             analyse = experience.analyser(exp["id"])
@@ -1027,7 +1631,7 @@ def cmd_ab(args: argparse.Namespace) -> int:
             return 1
         ok("Variante {} en ligne du {} au {}".format(
             args.identifiant, args.du, args.au or "aujourd'hui"))
-        print("  Les ventes de cette periode lui seront attribuees :")
+        print("  Les ventes de cette période lui seront attribuées :")
         print("  " + _c("usine ab rythme <numero du test>", "1"))
         return 0
 
@@ -1053,9 +1657,9 @@ def cmd_ab(args: argparse.Namespace) -> int:
         except ValueError as exc:
             erreur(str(exc))
             return 1
-        ok("Observation enregistree : +{} vue(s), +{} action(s)".format(
+        ok("Observation enregistrée : +{} vue(s), +{} action(s)".format(
             args.vues or 0, args.actions or 0))
-        print("  Les chiffres s'additionnent aux releves precedents.")
+        print("  Les chiffres s'additionnent aux relevés précédents.")
         return 0
 
     if action in ("verdict", "planche", "clore"):
@@ -1134,7 +1738,7 @@ def _afficher_verdict(analyse: Dict[str, Any]) -> None:
 
 def _rappel_echelle() -> None:
     print()
-    print("  " + _c("A savoir avant de lancer le test", "1"))
+    print("  " + _c("À savoir avant de lancer le test", "1"))
     for ligne in _envelopper(
         "Un test A/B honnete demande beaucoup de trafic : a 5 % de conversion, "
         "il faut de l'ordre de 7 600 vues par variante pour detecter un ecart "
@@ -1174,7 +1778,7 @@ def cmd_marche(args: argparse.Namespace) -> int:
         chemin.write_text(json.dumps(rapport, ensure_ascii=False, indent=2),
                           encoding="utf-8")
         print("\n  Rapport complet : " + str(chemin))
-    print("\n  Etape suivante : " + _c('usine idees "{}"'.format(args.sujet), "1"))
+    print("\n  Étape suivante : " + _c('usine idees "{}"'.format(args.sujet), "1"))
     return 0
 
 
@@ -1201,11 +1805,22 @@ def cmd_bilan(args: argparse.Namespace) -> int:
         return 0
 
     titre_console("Bilan de production")
-    print("  {} production(s), {} reussie(s), {} echec(s)".format(
+    print("  {} production(s), {} réussie(s), {} échec(s)".format(
         donnees["productions"], donnees["reussites"], donnees["echecs"]))
     if donnees["note_moyenne"] is not None:
+        notees = donnees.get("productions_notees") or 0
         print("  Note moyenne : {} /10   (meilleure {} — pire {})".format(
-            donnees["note_moyenne"], donnees["note_meilleure"], donnees["note_pire"]))
+            donnees["note_moyenne"], donnees["note_meilleure"],
+            donnees["note_pire"]))
+        # Dire sur combien : une moyenne affichee sous « 4 production(s) » se
+        # lit comme la moyenne des quatre, meme quand une seule etait
+        # mesurable. Le controle mesure de la prose ; un pack de prompts ou
+        # un outil logiciel n'en sont pas, et n'ont donc pas de note.
+        if notees and notees < donnees["reussites"]:
+            print("    " + _c("sur {} produit(s) sur {} : les autres ne sont "
+                              "pas de la prose, ou leurs sections sont trop "
+                              "courtes pour être mesurées"
+                              .format(notees, donnees["reussites"]), "2"))
     if donnees["gain_moyen_relecture"] is not None:
         print("  Gain moyen de la relecture : {:+.2f} point".format(
             donnees["gain_moyen_relecture"]))
@@ -1225,13 +1840,13 @@ def cmd_bilan(args: argparse.Namespace) -> int:
                 groupe["appels_moyens"]))
 
     if donnees["defauts_frequents"]:
-        print("\n  " + _c("Defauts les plus frequents", "1"))
+        print("\n  " + _c("Défauts les plus fréquents", "1"))
         for defaut in donnees["defauts_frequents"][:5]:
             print("    {:>3}x  {}".format(defaut["occurrences"], defaut["defaut"]))
 
     _bilan_des_ventes()
 
-    titre_console("Conseils tires de vos donnees")
+    titre_console("Conseils tirés de vos données")
     for conseil in apprentissage.conseils():
         print("  " + _c("[{}]".format(conseil["sujet"]), "36"))
         for ligne in _envelopper(conseil["conseil"], 68):
@@ -1249,14 +1864,14 @@ def _bilan_des_ventes() -> None:
     """
     totaux = ventes.total_par_devise()
     if not totaux:
-        print("\n  " + _c("Aucune vente enregistree", "33"))
-        print("    Les conseils ci-dessous portent sur la QUALITE mesuree,")
+        print("\n  " + _c("Aucune vente enregistrée", "33"))
+        print("    Les conseils ci-dessous portent sur la QUALITÉ mesurée,")
         print("    pas sur ce qui se vend — l'usine n'en sait rien.")
         print("    " + _c("usine ventes --importer export.csv", "1"))
         return
     titre_console("Ce que les ventes disent")
     for total in totaux:
-        print("  {}  {} unites, {:.2f} encaisses".format(
+        print("  {}  {} unités, {:.2f} encaissés".format(
             _c(total["devise"], "1"), total["unites"] or 0, total["brut"] or 0))
     types = ventes.par_champ("type")
     if types:
@@ -1268,7 +1883,7 @@ def _bilan_des_ventes() -> None:
     prix = ventes.prix_observes()
     for ligne in prix:
         if ligne["ventes"] >= 3:
-            print("\n  Prix median reellement encaisse : {:.2f} {}"
+            print("\n  Prix médian réellement encaissé : {:.2f} {}"
                   " ({} ventes)".format(ligne["median"], ligne["devise"],
                                         ligne["ventes"]))
 
@@ -1281,7 +1896,7 @@ def cmd_prompts_systeme(args: argparse.Namespace) -> int:
         for fichier in fichiers:
             ok(str(fichier))
         print("\n  Editez ces fichiers, puis relancez une fabrication :")
-        print("  les modifications sont prises en compte au demarrage suivant.")
+        print("  les modifications sont prises en compte au démarrage suivant.")
         print("  Revenir aux valeurs d'origine : supprimez le fichier.")
         return 0
     if args.reinitialiser:
@@ -1321,12 +1936,10 @@ def cmd_social(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Fabrication d'un pack de contenu")
-    resume = social.produire(ctx, nombre=args.nombre, reseau=args.reseau,
-                             visuels=args.visuels)
-    _resume_console(_apres_production(
+    resume = _par_le_catalogue(args, "social", ctx)
+    return _resume_console(_apres_production(
         args, ctx, resume, "Pack de {} publications prets a publier.".format(resume["posts"])
     ))
-    return 0
 
 
 def cmd_idees(args: argparse.Namespace) -> int:
@@ -1334,16 +1947,14 @@ def cmd_idees(args: argparse.Namespace) -> int:
         return 2
     ctx = contexte_depuis(args)
     titre_console("Exploration de niche")
-    resultat = idees.produire(ctx, nombre=args.nombre,
-                              avec_marche=not getattr(args, "sans_marche", False),
-                              avec_veille=not getattr(args, "sans_veille", False))
+    resultat = _par_le_catalogue(args, "idees", ctx)
     if resultat.get("marche", {}).get("signaux"):
         print()
         for signal in resultat["marche"]["signaux"]:
             ok(signal)
     for index, idee in enumerate(resultat["idees"], 1):
         print("\n  {}. {}".format(_c(str(index), "1;36"), _c(idee["titre"], "1")))
-        print("     type={} prix={} EUR difficulte={} concurrence={}".format(
+        print("     type={} prix={} EUR difficulté={} concurrence={}".format(
             idee["type"], idee["prix_eur"], idee["difficulte"], idee["concurrence"]))
         print("     " + idee["probleme"][:110])
         print("     " + _c('usine {} "{}"'.format(idee["type"], idee["titre"]), "2"))
@@ -1357,11 +1968,11 @@ def cmd_complet(args: argparse.Namespace) -> int:
         return 2
     debut = time.time()
     ctx = contexte_depuis(args)
-    titre_console("Offre complete — produit principal")
+    titre_console("Offre complète — produit principal")
     principal = ebook.produire(ctx)
     dossier = Path(principal["dossier"])
 
-    titre_console("Bonus 1 — boite a outils")
+    titre_console("Bonus 1 — boîte à outils")
     ctx_outils = contexte_depuis(args)
     ctx_outils.sujet = principal["titre"]
     ctx_outils.sans_image = True
@@ -1369,17 +1980,20 @@ def cmd_complet(args: argparse.Namespace) -> int:
         bonus_outils = boite_outils.produire(ctx_outils, nombre=6)
         _deplacer_bonus(Path(bonus_outils["dossier"]), dossier / "bonus-boite-outils",
                         bonus_outils["produit_id"])
-        ok("Boite a outils integree ({} outils)".format(bonus_outils["outils"]))
+        ok("Boîte à outils intégrée ({} outils)".format(bonus_outils["outils"]))
     except Exception as exc:
-        alerte("Bonus boite a outils ignore : {}".format(exc))
+        alerte("Bonus boîte à outils ignoré : {}".format(exc))
 
     titre_console("Bonus 2 — pack de contenu de lancement")
     ctx_social = contexte_depuis(args)
     ctx_social.sujet = principal["titre"]
     ctx_social.sans_image = True
     try:
-        bonus_social = social.produire(ctx_social, nombre=10, reseau=args.reseau,
-                                       visuels=0)
+        # Le reseau decide a partir du sujet, comme pour un pack seul : il
+        # valait « linkedin » en dur, quel que soit le livre.
+        bonus_social = catalogue.executer(
+            "social", ctx_social,
+            dict({"nombre": 10}, **({"reseau": args.reseau} if args.reseau else {})))
         _deplacer_bonus(Path(bonus_social["dossier"]), dossier / "bonus-publications",
                         bonus_social["produit_id"])
         ok("Pack de contenu integre ({} publications)".format(bonus_social["posts"]))
@@ -1393,9 +2007,9 @@ def cmd_complet(args: argparse.Namespace) -> int:
         "Ebook de {} chapitres ({} mots), boite a outils et pack de publications "
         "de lancement inclus.".format(principal["chapitres"], principal["mots"]),
     )
-    _resume_console(resume)
+    code = _resume_console(resume)
     print("\n  Duree totale : {:.0f} min".format((time.time() - debut) / 60))
-    return 0
+    return code
 
 
 def _deplacer_bonus(source: Path, cible: Path, produit_id: str = "") -> None:
@@ -1429,26 +2043,42 @@ def cmd_marketing(args: argparse.Namespace) -> int:
         erreur("Produit inconnu : {}".format(args.produit_id))
         print("  Liste des produits : usine liste")
         return 1
+    from .pipelines import apres, brief, porte
+
+    refus = apres.pas_encore_vendable(produit)
+    if refus:
+        erreur("Pas de kit de vente : " + refus)
+        return 1
     dossier = Path(produit["dossier"])
     meta = produit.get("meta") or {}
-    ctx = Contexte(
+
+    # Le contexte de la fabrication, garde au carnet. Les valeurs en dur de
+    # cette commande — « pro », « un public francophone motive » — donnaient
+    # au kit de vente d'un conte pour enfants la voix d'un rapport annuel.
+    ctx = porte.contexte_existant(
+        produit["id"], lambda message: print("  " + message),
         sujet=produit["sujet"] or produit["titre"],
-        audience=produit["audience"] or "un public francophone motive",
-        auteur=meta.get("auteur", "Usine-IA"),
-        ton=meta.get("ton", "pro"),
-        prix=args.prix or "",
-        journal=lambda message: print("  " + message),
-    )
+        audience=produit["audience"] or brief.AUTO,
+        auteur=meta.get("auteur") or reglages.lire("auteur", "Usine-IA"),
+        ton=meta.get("ton") or brief.AUTO)
+    ctx.prix = args.prix or ""
     ctx.produit_id = produit["id"]
     titre_console("Kit de vente — {}".format(produit["titre"]))
     description = "Produit de type {}. {}".format(
         produit["type"], meta.get("promesse") or produit["sujet"]
     )
     kit = vente.produire_kit(ctx, produit["titre"], description, dossier,
-                             plateforme=args.plateforme)
+                             plateforme=args.plateforme,
+                             type_produit=produit["type"],
+                             chapitres_offerts=getattr(args, "extrait", 0) or 0)
     for nom in kit["fichiers"]:
         ok(nom)
     print("  Dossier : " + kit["dossier"])
+    if kit.get("extrait"):
+        edition = kit["extrait"]
+        ok("Extrait offert : {} chapitre(s), {} fichiers".format(
+            edition["chapitres_offerts"], len(edition["fichiers"])))
+        print("  Dossier : " + edition["dossier"])
     return 0
 
 
@@ -1456,6 +2086,12 @@ def cmd_livrer(args: argparse.Namespace) -> int:
     produit = store.lire_produit(args.produit_id)
     if not produit:
         erreur("Produit inconnu : {}".format(args.produit_id))
+        return 1
+    from .pipelines import apres
+
+    refus = apres.pas_encore_vendable(produit)
+    if refus:
+        erreur("Pas d'archive pour l'acheteur : " + refus)
         return 1
     dossier = Path(produit["dossier"])
     if not dossier.exists():
@@ -1468,9 +2104,116 @@ def cmd_livrer(args: argparse.Namespace) -> int:
         dossier, slug(produit["titre"], 46), produit["titre"],
         meta.get("auteur", "Usine-IA"),
         promesse=str(meta.get("promesse") or ""),
-        contact=args.contact or "votre adresse e-mail",
+        contact=args.contact or "",
+        livres=meta.get("fichiers"),
+        langue=code_langue(produit.get("langue") or ""),
     )
     ok("Archive : {} ({} Ko)".format(archive, archive.stat().st_size // 1024))
+    return 0
+
+
+def _produit_vise(reference: str, statut: str = "") -> Optional[Dict[str, Any]]:
+    """Le produit designe, ou le dernier du genre demande.
+
+    Taper un identifiant de quarante caracteres sur un clavier de telephone
+    est le genre de detail qui fait abandonner une fonction. « dernier » — ou
+    rien du tout — designe le plus recent.
+    """
+    reference = (reference or "").strip()
+    if reference and reference != "dernier":
+        produit = store.lire_produit(reference)
+        if produit:
+            return produit
+        # Un identifiant partiel suffit : la fin d'un identifiant est ce qu'on
+        # lit a l'ecran, et c'est la partie qui distingue deux produits.
+        candidats = [p for p in store.lister_produits(200)
+                     if reference in p["id"]]
+        return candidats[0] if len(candidats) == 1 else None
+    for produit in store.lister_produits(200):
+        if not statut or produit["statut"] == statut:
+            return produit
+    return None
+
+
+def cmd_reprendre(args: argparse.Namespace) -> int:
+    """Refait les sections manquantes d'un produit, et elles seules.
+
+    Ce qui rendait cette commande necessaire : une fabrication coupee — quota,
+    reseau, batterie — laissait le travail deja paye sur le disque sans aucun
+    moyen de le reprendre. La seule issue etait de tout relancer, donc de tout
+    repayer.
+    """
+    produit = _produit_vise(getattr(args, "produit_id", ""), statut="en_cours")
+    if not produit:
+        erreur("Aucun produit inachevé à reprendre.")
+        print("  Liste : " + _c("usine liste", "1"))
+        return 1
+    dossier = Path(produit["dossier"] or "")
+    from .pipelines import carnet
+    from .pipelines import reprise as module_reprise
+
+    manquants = (produit.get("meta") or {}).get("manquants") or []
+    if module_reprise.par_le_catalogue(produit["id"]):
+        # Fabrique depuis le tableau de bord ou l'usine continue : il n'y a
+        # pas de ligne de commande a rejouer, et il n'en faut pas.
+        titre_console("Reprise — {}".format(produit["titre"]))
+        _annoncer_ce_qui_manque(manquants, dossier)
+        return _resume_console(module_reprise.reprendre(
+            produit["id"], journal=lambda message: print("  " + message)))
+    commande = carnet.commande(dossier)
+    if not commande:
+        erreur("Ce produit n'a pas garde la commande qui l'a fabrique.")
+        print("  Il date d'avant le carnet de reprise. Relancez la commande "
+              "d'origine : les réponses déjà obtenues sont en cache.")
+        return 1
+    titre_console("Reprise — {}".format(produit["titre"]))
+    _annoncer_ce_qui_manque(manquants, dossier)
+    print("  Commande : usine " + " ".join(commande))
+    return principal(list(commande) + ["--reprendre-id", produit["id"]])
+
+
+def cmd_supprimer(args: argparse.Namespace) -> int:
+    """Efface un produit : sa fiche au catalogue ET son dossier.
+
+    Effacer la fiche seule laissait des megaoctets sur un telephone sans que
+    rien ne les montre ; effacer le dossier seul laissait une fiche qui
+    pointait vers le vide, et « usine livrer » echouait dessus.
+    """
+    produit = _produit_vise(getattr(args, "produit_id", ""))
+    if not produit:
+        erreur("Produit inconnu : {}".format(
+            getattr(args, "produit_id", "") or "(aucun)"))
+        print("  Liste des produits : " + _c("usine liste", "1"))
+        return 1
+    dossier = Path(produit["dossier"] or "")
+    poids = 0
+    if dossier.exists():
+        poids = sum(f.stat().st_size for f in dossier.rglob("*") if f.is_file())
+    print("  {} — {} ({})".format(
+        produit["titre"], produit["type"], produit["id"]))
+    print("  Dossier : {} ({} Ko)".format(dossier, poids // 1024))
+    if not getattr(args, "oui", False):
+        # Une suppression ne se devine pas : on la fait confirmer, sauf
+        # demande explicite. Le produit n'est pas recuperable ensuite.
+        reponse = input("  Effacer definitivement ? [o/N] ").strip().lower()
+        if reponse not in ("o", "oui", "y", "yes"):
+            print("  Annule.")
+            return 0
+    import shutil
+
+    if dossier.exists() and dossier.is_dir():
+        # Garde-fou : on n'efface que sous le dossier des produits. Une fiche
+        # dont le chemin a ete modifie a la main ne doit pas pouvoir faire
+        # effacer autre chose.
+        try:
+            dossier.resolve().relative_to(config.PRODUITS_DIR.resolve())
+        except ValueError:
+            erreur("Dossier hors de l'atelier, rien n'a été effacé : {}"
+                   .format(dossier))
+            return 1
+        shutil.rmtree(dossier, ignore_errors=True)
+    store.supprimer_produit(produit["id"])
+    ok("Produit effacé ({} Ko libérés).".format(poids // 1024))
     return 0
 
 
@@ -1480,10 +2223,18 @@ def cmd_liste(args: argparse.Namespace) -> int:
         print("  Aucun produit pour l'instant. Essayez : "
               + _c('usine ebook "votre sujet"', "1"))
         return 0
-    titre_console("Produits fabriques")
+    titre_console("Produits fabriqués")
+    inacheves = 0
     for produit in produits:
         meta = produit.get("meta") or {}
-        marque = "pret" if produit["statut"] == "pret" else produit["statut"]
+        # « en_cours » ne veut dire qu'une chose : la fabrication s'est
+        # arretee en chemin — coupure de reseau, quota, processus tue par
+        # Android. Le mot seul ne le disait pas, et la ligne s'affichait sous
+        # « Produits fabriques » comme les autres.
+        inacheve = produit["statut"] == "en_cours"
+        inacheves += int(inacheve)
+        marque = _c("inachevé", "33") if inacheve else STATUTS_LISIBLES.get(
+            produit["statut"], produit["statut"])
         print("  {}  {}".format(
             _c(time.strftime("%d/%m %H:%M", time.localtime(produit["cree_le"])), "2"),
             _c(produit["titre"][:58], "1"),
@@ -1491,6 +2242,9 @@ def cmd_liste(args: argparse.Namespace) -> int:
         print("     {} | {} | {}".format(produit["type"], marque, produit["id"]))
         if meta.get("mots"):
             print("     {} mots".format(meta["mots"]))
+    if inacheves:
+        print("\n  {} produit(s) inachevé(s). {}".format(
+            inacheves, _explique_le_cache()))
     return 0
 
 
@@ -1502,7 +2256,8 @@ def cmd_docteur(args: argparse.Namespace) -> int:
     """
     from .core import diagnostic as module_diagnostic
 
-    etat = module_diagnostic.etat_installation()
+    etat = module_diagnostic.etat_installation(
+        avec_modeles=getattr(args, "modeles", False))
     print(BANNIERE.format(version=__version__))
     titre_console("Environnement")
     ok("Python {}".format(etat["python"]))
@@ -1514,53 +2269,275 @@ def cmd_docteur(args: argparse.Namespace) -> int:
         (ok if espace["libre_mo"] > 200 else alerte)(
             "Espace libre : {} Mo".format(espace["libre_mo"]))
     (ok if etat["reseau"] else alerte)(
-        "Reseau : {}".format("disponible" if etat["reseau"] else
+        "Réseau : {}".format("disponible" if etat["reseau"] else
                              "indisponible — seule l'IA locale fonctionnera")
     )
+
+    # Le telephone n'est un sujet que sur un telephone : sur un PC, ces
+    # lignes n'apprendraient rien a personne.
+    tel = etat["telephone"]
+    if tel["termux"]:
+        if tel["api"]:
+            ok("termux-api present : notifications et garde batterie actives")
+        else:
+            alerte("termux-api absent : ni notification de fin, ni arrêt sur "
+                   "batterie faible (pkg install termux-api)")
+        if tel["batterie"]:
+            niveau = tel["batterie"]["niveau"]
+            (ok if niveau > 20 or tel["batterie"]["en_charge"] else alerte)(
+                "Batterie : {} %{}".format(
+                    niveau, " (en charge)" if tel["batterie"]["en_charge"] else ""))
 
     # Node n'est pas requis pour produire, mais son absence affaiblit la
     # verification du JavaScript genere : le repli structurel ne voit pas une
     # erreur de syntaxe fine.
     if etat["node"]:
-        ok("Node.js present : verification complete du JavaScript genere")
+        ok("Node.js présent : vérification complète du JavaScript généré")
     else:
-        alerte("Node.js absent : le JavaScript genere sera verifie en mode "
+        alerte("Node.js absent : le JavaScript généré sera vérifié en mode "
                "degrade (pkg install nodejs-lts)")
 
     titre_console("Fournisseurs IA")
     lignes = etat["fournisseurs"]
+    serveurs = {s["nom"]: s for s in etat.get("serveurs_locaux", [])}
     for ligne in lignes:
-        genre = "local" if ligne["local"] else ("sans cle" if ligne["sans_cle"] else "cle API")
-        if ligne["disponible"]:
+        genre = "local" if ligne["local"] else ("sans clé" if ligne["sans_cle"] else "clé API")
+        if ligne["local"] and ligne["nom"] in serveurs:
+            # Un fournisseur local est toujours « disponible » : c'est une
+            # adresse, pas une preuve. La coche verte s'affichait pour un
+            # ollama jamais installe ; ce qui compte est ce qu'il sert.
+            _afficher_local(serveurs[ligne["nom"]])
+        elif ligne["disponible"]:
             nb = ligne.get("nb_cles", 0)
             suffixe = " [{} cles]".format(nb) if nb > 1 else ""
-            print("  {} {:<13} {:<9} {:<28} {}/{} aujourd'hui{}".format(
+            # Le plafond en jetons est souvent celui qui s'epuise le premier :
+            # Groq accorde mille requetes par jour mais deux cent mille
+            # jetons, soit un livre. L'afficher evite de chercher ailleurs.
+            budget = ""
+            if ligne.get("tpd"):
+                budget = " · {}/{} jetons".format(
+                    _compte(ligne.get("jetons_aujourdhui")),
+                    _milliers(ligne["tpd"]))
+            print("  {} {:<13} {:<9} {:<28} {}/{} aujourd'hui{}{}".format(
                 _c("v", "32"), ligne["nom"], genre, ligne["modele"],
-                ligne["aujourdhui"], ligne["rpd"], _c(suffixe, "36")))
+                _compte(ligne["aujourdhui"]), ligne["rpd"], _c(budget, "90"),
+                _c(suffixe, "36")))
         else:
-            print("  {} {:<13} {:<9} definir {} — {}".format(
+            print("  {} {:<13} {:<9} définir {} — {}".format(
                 _c("-", "90"), ligne["nom"], genre, ligne["cle_env"], ligne["inscription"]))
+
+    controle = etat.get("modeles")
+    if controle is not None:
+        titre_console("Catalogues des fournisseurs")
+        for ecart in controle["ecarts"]:
+            alerte("{} ne sert plus : {}".format(
+                ecart["fournisseur"], ", ".join(ecart["manquants"])))
+            if ecart["proposes"]:
+                print("      proposé à la place : " +
+                      ", ".join(ecart["proposes"][:6]))
+        if controle["ecarts"]:
+            print("      Corrigez les identifiants dans usine/core/config.py.")
+        intacts = [n for n in controle["consultes"]
+                   if n not in {e["fournisseur"] for e in controle["ecarts"]}]
+        if intacts:
+            ok("Modèles confirmés chez : " + ", ".join(intacts))
+        # « Personne n'a repondu » ne doit pas se lire « tout va bien » :
+        # c'est precisement la confusion qui a laisse Groq mourir en silence.
+        if controle["injoignables"]:
+            alerte("Non vérifié (pas de clé, ou service injoignable) : "
+                   + ", ".join(controle["injoignables"]))
+        if not controle["consultes"]:
+            alerte("Aucun fournisseur n'a pu être interrogé : ce contrôle ne "
+                   "dit rien, ni dans un sens ni dans l'autre.")
+
+    if getattr(args, "essai", False):
+        from .core import diagnostic as _d
+
+        titre_console("Essai réel de chaque modèle")
+        print("  Un appel minimal par identifiant déclaré. Un modèle peut "
+              "figurer\n  au catalogue et refuser de servir : c'est "
+              "precisement ce qu'un\n  catalogue ne peut pas dire.\n")
+        essais = _d.essayer_modeles()
+        for ligne in essais["essais"]:
+            marque = _c("v", "32") if ligne["etat"] == "repond" else _c("x", "31")
+            print("  {} {:12} {:40} {:14} {:>6}s".format(
+                marque, ligne["fournisseur"], ligne["modele"][:40],
+                ligne["etat"], ligne["latence"]))
+            if ligne["etat"] != "repond" and ligne["detail"]:
+                print("      {}".format(_c(ligne["detail"][:86], "90")))
+        print()
+        if not essais["essais"]:
+            alerte("Aucun fournisseur disponible : rien n'a pu être essayé.")
+        elif essais["muets"]:
+            alerte("{} modèle(s) sur {} ne répondent pas.".format(
+                len(essais["muets"]), len(essais["essais"])))
+            # Un identifiant perime se corrige dans config.py ; un credit
+            # epuise ou un quota atteint ne se corrigent pas la, et envoyer
+            # tout le monde au meme endroit ferait perdre du temps.
+            inconnus = [l for l in essais["muets"] if l["etat"] == "inconnu"]
+            if inconnus:
+                print("      Identifiants à corriger dans usine/core/config.py :")
+                for ligne in inconnus:
+                    print("        {} : {}".format(ligne["fournisseur"],
+                                                   ligne["modele"]))
+        else:
+            ok("Les {} modèles déclarés répondent.".format(len(essais["essais"])))
+
+    if getattr(args, "quotas", False):
+        from .core import diagnostic as _d
+
+        titre_console("Quotas écrits contre quotas annoncés")
+        print("  Les chiffres de config.py sont recopies d'une page de\n"
+              "  documentation. La plupart des services annoncent les leurs\n"
+              "  dans les en-têtes de chaque réponse : un appel suffit.\n")
+        audit = _d.auditer_quotas()
+        muets = []
+        for ligne in audit["lignes"]:
+            entete = "  {:12}".format(ligne["fournisseur"])
+            if ligne["erreur"] and not any(
+                    m.get("annonce") for m in ligne["mesures"]):
+                alerte("{} : {} — aucun quota lisible.".format(
+                    ligne["fournisseur"], ligne["erreur"]))
+                if ligne.get("detail"):
+                    # Le code seul ne dit pas quoi faire ; le message, si —
+                    # a condition de le montrer en entier. Tronque a cent
+                    # cinquante signes, celui de Pollinations perdait le lien
+                    # qui permet de relever le budget, donc le seul geste a
+                    # faire. On plie, on ne tranche pas.
+                    # Ni sur un trait d'union, ni au milieu d'un mot : le
+                    # premier essai a coupe « edit-key?id=... » en deux et a
+                    # rendu le lien inutilisable — le defaut meme qu'on
+                    # corrigeait, deplace d'un cran.
+                    for bout in textwrap.wrap(
+                            ligne["detail"], 68, break_on_hyphens=False,
+                            break_long_words=False) or [""]:
+                        print("      " + _c(bout, "90"))
+                continue
+            for mesure in ligne["mesures"]:
+                if mesure["verdict"] == "non publie":
+                    muets.append("{}/{}".format(ligne["fournisseur"],
+                                                mesure["genre"]))
+                    continue
+                marque = _c("v", "32") if mesure["verdict"] == "accorde" \
+                    else _c("?", "33")
+                if mesure["correspond"]:
+                    print("{} {} {:9} : {:>9} annonce — c'est le quota "
+                          "« {} » écrit".format(
+                              entete, marque, mesure["genre"],
+                              mesure["annonce"], mesure["correspond"]))
+                else:
+                    print("{} {} {:9} : {:>9} annoncé — ne correspond à aucun "
+                          "quota écrit".format(entete, marque, mesure["genre"],
+                                               mesure["annonce"]))
+                    if mesure["fenetre"]:
+                        print("               (remise à zéro : {})".format(
+                            mesure["fenetre"]))
+                if mesure.get("reste") is not None:
+                    print("               il en reste {} pour cette fenêtre"
+                          .format(mesure["reste"]))
+                service = mesure.get("consomme_service")
+                usine = mesure.get("compte_usine")
+                if service is not None and usine is not None:
+                    # Le compteur de l'usine sert a s'arreter AVANT le 429.
+                    # S'il derive, un quota exact ne protege de rien.
+                    accord = "concorde" if abs(service - usine) <= max(
+                        1, service // 10) else _c("ECART", "33")
+                    print("               consomme : {} selon le service, "
+                          "{} selon l'usine — {}".format(service, usine, accord))
+            for nom, valeur in sorted(ligne["inconnus"].items()):
+                print("               {} {} : {}".format(
+                    _c("?", "90"), nom, str(valeur)[:44]))
+        if muets:
+            print()
+            # « Non publie » n'est pas « tout va bien » : c'est « on ne sait
+            # pas ». Les confondre, c'est prendre un silence pour un accord.
+            alerte("Aucun chiffre publie par : " + ", ".join(sorted(muets)))
+            print("      Ce n'est pas un accord, c'est une absence de "
+                  "réponse : ces quotas-là restent invérifiés.")
+
+    if getattr(args, "reparer", False):
+        from .core import diagnostic as _d
+
+        titre_console("Reparation des identifiants morts")
+        print("  Chaque remplacant est APPELE avant d'etre retenu : sinon on\n"
+              "  remplacerait un identifiant mort par un autre, et cela ne se\n"
+              "  verrait qu'a la fabrication suivante.\n")
+        bilan = _d.reparer_modeles()
+        for ligne in bilan["repares"]:
+            ok("{} / {} : « {} » -> « {} »{}".format(
+                ligne["fournisseur"], ligne["role"],
+                ligne["avant"], ligne["apres"],
+                # Un repli n'est pas le meilleur modele pour ce role : c'en
+                # est un qui marche. Le taire donnerait a croire que le
+                # catalogue a rendu l'equivalent.
+                "  (repli : aucun modele de ce rang ne repond)"
+                if ligne.get("repli") else ""))
+        for ligne in bilan["sans_recours"]:
+            alerte("{} / {} : « {} » ne répond pas, et rien dans son "
+                   "catalogue ne le remplace.".format(
+                       ligne["fournisseur"], ligne["role"], ligne["modele"]))
+        # Ce qui a ete ECARTE : ce n'est pas reparable ici, mais le taire
+        # ferait lire « rien a reparer » comme « tout va bien ».
+        par_cause = {}
+        for ligne in bilan.get("ecartes", []):
+            par_cause.setdefault((ligne["fournisseur"], ligne["cause"]),
+                                 []).append(ligne["role"])
+        if par_cause:
+            print()
+            for (fournisseur, cause), roles in sorted(par_cause.items()):
+                alerte("{} : {} — {} rôle(s) non vérifiable(s) ici."
+                       .format(fournisseur, cause, len(roles)))
+            print("      Ces pannes-la ne se reparent pas en changeant de "
+                  "modèle :")
+            print("      un quota se recharge, un credit s'achete, un service "
+                  "retire ne revient pas.")
+        vivants = bilan.get("vivants", [])
+        if vivants:
+            noms = sorted({l["fournisseur"] for l in vivants})
+            print()
+            ok("{} modèle(s) répondent, chez : {}".format(
+                len(vivants), ", ".join(noms)))
+        if not bilan["repares"] and not bilan["sans_recours"]:
+            if par_cause and not vivants:
+                # Le cas qui ne doit surtout pas se lire « tout va bien ».
+                alerte("Aucun identifiant mort — mais aucun modèle n'a "
+                       "répondu non plus. Ce contrôle ne dit rien.")
+            else:
+                ok("Aucun identifiant mort : rien à réparer.")
+        elif bilan["repares"]:
+            print("\n      Ces choix sont gardes pour les prochaines "
+                  "fabrications.")
+            print("      Pour les oublier : "
+                  + _c("usine cache --catalogues", "1"))
 
     titre_console("Verdict")
     verdict = etat["verdict"]
-    (alerte if verdict["etat"] == "bloque" else ok)(verdict["message"])
+    (ok if verdict["etat"] in ("pret", "local") else alerte)(verdict["message"])
     if verdict["etat"] == "local":
-        print("      Comptez plusieurs minutes par chapitre : un modele de 3")
-        print("      milliards de parametres produit 3 a 10 jetons par seconde")
-        print("      sur un telephone. Le delai d'attente est regle en")
+        print("      Comptez plusieurs minutes par chapitre : un modèle de 3")
+        print("      milliards de paramètres produit 3 à 10 jetons par seconde")
+        print("      sur un téléphone. Le délai d'attente est réglé en")
         print("      consequence ({} s par appel).".format(
             config.PROVIDERS_BY_NAME["ollama"].timeout))
-    elif verdict["etat"] == "bloque":
-        print("      " + _c("usine cles", "1"))
+    elif verdict.get("remede"):
+        print("      " + _c(verdict["remede"], "1"))
 
     details = etat["pool"]
     if details:
-        titre_console("Pool de cles — rotation automatique")
+        titre_console("Pool de clés — rotation automatique")
         for detail in details:
-            etat = (_c("disponible", "32") if detail["disponible"]
-                    else _c("repos {}s".format(detail["repos_restant"]), "33"))
+            # Surtout pas « etat » : cette boucle ecrasait le dictionnaire du
+            # diagnostic par une chaine de couleur, et la section suivante
+            # mourait sur « string indices must be integers ». Le defaut ne
+            # sortait que chez qui possede une cle — le pool est vide sans cle,
+            # donc la boucle ne tournait jamais dans la suite de tests. Autrement
+            # dit : « usine docteur » plantait pour tous les vrais utilisateurs,
+            # et pour eux seuls.
+            repos = (_c("disponible", "32") if detail["disponible"]
+                     else _c("repos {}s".format(detail["repos_restant"]), "33"))
             print("  {:<13} {:<14} {:>4} appels aujourd'hui   {}".format(
-                detail["fournisseur"], detail["cle"], detail["appels_jour"], etat))
+                detail["fournisseur"], detail["cle"], detail["appels_jour"],
+                repos))
 
     stats = etat["consommation"]
     if stats:
@@ -1572,38 +2549,46 @@ def cmd_docteur(args: argparse.Namespace) -> int:
     return 0
 
 
-def _detailler_local(fournisseur, corps: bytes) -> None:
-    """Dit si le modele attendu est REELLEMENT present sur le serveur.
+def _afficher_local(serveur: Dict[str, Any]) -> None:
+    """Ce que sert un serveur local, ou le geste qui lui manque.
 
-    Un serveur qui repond n'est pas un serveur pret : ollama demarre sans
-    aucun modele. « ollama serve » lance, « ollama pull » oublie, et la
-    production echouait au premier chapitre avec un 404 que rien
-    n'expliquait.
+    L'ancienne version etait restee sans appelant depuis que les controles
+    ont demenage dans « core.diagnostic » ; elle se taisait de toute facon
+    sur le seul cas qu'elle decrivait — un ollama sans aucun modele — et
+    prenait « qwen2.5:0.5b » pour « qwen2.5:3b », a cause d'un prefixe.
     """
-    attendu = fournisseur.model_for("standard")
-    try:
-        charge = json.loads(corps.decode("utf-8", "replace"))
-        presents = [str(m.get("id") or "") for m in (charge.get("data") or [])]
-    except (ValueError, AttributeError):
-        presents = []
-    if not presents:
+    nom, attendu = serveur["nom"], serveur["attendu"]
+    tete = "  {} {:<13} {:<9} "
+    if not serveur["repond"]:
+        print(tete.format(_c("-", "90"), nom, "local") + "ne répond pas — "
+              + config.PROVIDERS_BY_NAME[nom].signup)
         return
-    if any(attendu == m or m.startswith(attendu.split(":")[0])
-           for m in presents):
-        ok("  {} : modele « {} » present".format(fournisseur.name, attendu))
-    else:
-        alerte("  {} repond, mais « {} » n'y est pas.".format(
-            fournisseur.name, attendu))
-        print("      Presents : {}".format(", ".join(presents[:4]) or "aucun"))
-        if fournisseur.name == "ollama":
+    if serveur["modeles"] is None:
+        print(tete.format(_c("v", "32"), nom, "local") + attendu
+              + _c("  (liste des modèles illisible)", "90"))
+        return
+    if not serveur["utilisable"]:
+        servis = ", ".join(serveur["modeles"][:3])
+        print(tete.format(_c("!", "33"), nom, "local")
+              + ("répond, mais ne sert aucun modèle qui écrit ({})".format(servis)
+                 if servis else "répond, mais ne sert aucun modèle"))
+        if nom == "ollama":
             print("      " + _c("ollama pull " + attendu, "1"))
+        return
+    remarque = ""
+    if serveur["utilisable"] != attendu:
+        # Le routeur prendra celui-la : autant le dire avant qu'il le fasse.
+        remarque = _c("  (« {} » absent : celui-ci le remplacera)".format(
+            attendu), "90")
+    print(tete.format(_c("v", "32"), nom, "local") + serveur["utilisable"]
+          + remarque)
 
 
 def cmd_cles(args: argparse.Namespace) -> int:
     print(BANNIERE.format(version=__version__))
     print("""
-  L'usine marche avec n'importe quelle cle gratuite. Une seule suffit pour
-  demarrer ; avec deux ou trois, elle bascule automatiquement quand un quota
+  L'usine marche avec n'importe quelle clé gratuite. Une seule suffit pour
+  démarrer ; avec deux ou trois, elle bascule automatiquement quand un quota
   est atteint et ne s'arrete jamais en plein milieu d'un livre.
 
   {rec}
@@ -1616,38 +2601,38 @@ def cmd_cles(args: argparse.Namespace) -> int:
      https://aistudio.google.com/apikey
      GEMINI_API_KEY=AIza...
 
-  3. CEREBRAS — tres rapide, quota journalier genereux
+  3. CEREBRAS — très rapide, quota journalier généreux
      https://cloud.cerebras.ai/
      CEREBRAS_API_KEY=csk-...
 
-  4. MISTRAL — excellent en francais
+  4. MISTRAL — excellent en français
      https://console.mistral.ai/api-keys/
      MISTRAL_API_KEY=...
 
-  5. OPENROUTER — beaucoup de modeles :free (environ 50 requetes/jour)
+  5. OPENROUTER — beaucoup de modèles :free (environ 50 requêtes/jour)
      https://openrouter.ai/keys
      OPENROUTER_API_KEY=sk-or-...
 
   {aucune}
 
   Pollinations fonctionne sans aucune inscription : l'usine l'utilise
-  automatiquement en dernier recours, et pour generer les couvertures.
+  automatiquement en dernier recours, et pour générer les couvertures.
 
   {local}
 
-  Sans reseau, installez une IA locale :
+  Sans réseau, installez une IA locale :
      pkg install ollama && ollama serve
      ollama pull qwen2.5:3b        (environ 2 Go, correct des 4 Go de RAM)
-  Puis relancez l'usine : elle detecte le serveur toute seule.
+  Puis relancez l'usine : elle détecte le serveur toute seule.
 
   {miseenplace}
 
      cp .env.exemple .env
-     nano .env            (collez vos cles, une par ligne)
-     usine docteur        (verifie que tout repond)
+     nano .env            (collez vos clés, une par ligne)
+     usine docteur        (vérifie que tout répond)
 """.format(
-        rec=_c("-- LES CLES GRATUITES, PAR ORDRE DE PRIORITE --", "1;36"),
-        aucune=_c("-- SANS AUCUNE CLE --", "1;36"),
+        rec=_c("-- LES CLÉS GRATUITES, PAR ORDRE DE PRIORITÉ --", "1;36"),
+        aucune=_c("-- SANS AUCUNE CLÉ --", "1;36"),
         local=_c("-- HORS LIGNE, IA LOCALE --", "1;36"),
         miseenplace=_c("-- MISE EN PLACE --", "1;36"),
     ))
@@ -1655,14 +2640,161 @@ def cmd_cles(args: argparse.Namespace) -> int:
 
 
 def cmd_cache(args: argparse.Namespace) -> int:
+    from .core import modeles as module_modeles
+
+    if getattr(args, "catalogues", False):
+        # Le catalogue des fournisseurs est garde a part du cache des
+        # reponses : le premier vieillit en quelques semaines, le second vaut
+        # de l'argent. Les jeter ensemble ferait repayer une fabrication
+        # entiere pour rafraichir une liste de modeles.
+        module_modeles.oublier()
+        ok("Catalogues et substitutions oublies : ils seront redemandes aux "
+           "fournisseurs au prochain appel.")
+        return 0
     if args.vider:
         nombre = store.cache_vider()
-        ok("{} reponses supprimees du cache".format(nombre))
+        module_modeles.oublier()
+        ok("{} réponses supprimées du cache".format(nombre))
     else:
-        with store.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM cache")
-            print("  {} reponses en cache".format(cur.fetchone()[0]))
-        print("  Vider : usine cache --vider")
+        print("  {} réponses en cache".format(store.compter_reponses_cachees()))
+        remplaces = module_modeles.substitutions()
+        if remplaces:
+            # Une substitution silencieuse est le genre de reparation qui fait
+            # perdre une journee le jour ou elle cesse de suffire.
+            print("\n  Modèles remplacés (l'identifiant configuré n'est plus servi) :")
+            for ou, modele in sorted(remplaces.items()):
+                print("    {:26} -> {}".format(ou, modele))
+        print("\n  Vider les réponses : " + _c("usine cache --vider", "1"))
+        print("  Rafraichir les catalogues : "
+              + _c("usine cache --catalogues", "1"))
+    return 0
+
+
+def cmd_specs(args: argparse.Namespace) -> int:
+    """Ecrit la fiche technique de l'appareil, prete a etre poussee.
+
+    « usine docteur » dit si l'usine peut produire maintenant. Cette
+    fiche-la repond a l'autre question : ce qui devrait etre dans install.sh
+    pour que CET appareil marche sans bricolage. Aucune cle n'y figure.
+    """
+    from .core import maj as module_maj
+    from .core import specs as module_specs
+
+    titre_console("Fiche technique de l'appareil")
+    releve = module_specs.relever()
+    texte = module_specs.en_markdown(releve)
+
+    # A la racine du depot par defaut : c'est de la que la fiche part sur
+    # GitHub, et la chercher ailleurs ferait perdre du temps a chaque fois.
+    #
+    # Mais seulement sur le telephone. Cette fiche-la decrit l'appareil pour
+    # lequel le depot est ecrit ; lancee sur un ordinateur ou dans un
+    # conteneur, la commande la remplacait par celle de la machine du moment.
+    # C'est arrive deux fois : le 14/09/2026 (un test) puis le 24/09/2026 (un
+    # balayage des commandes), la fiche d'un telephone Android devenant celle
+    # d'un serveur x86_64 — sans erreur, a un « git add » pres d'etre poussee.
+    sur_le_telephone = bool((releve.get("termux") or {}).get("termux"))
+    if args.vers:
+        cible = Path(args.vers)
+    elif sur_le_telephone:
+        cible = module_maj.racine() / "SPECS-APPAREIL.md"
+    else:
+        cible = config.WORKDIR / "SPECS-APPAREIL.md"
+        alerte("Cet appareil n'est pas un téléphone sous Termux : la fiche du "
+               "dépôt, qui décrit le téléphone, n'est pas remplacée.")
+        print("      Pour l'ecrire ailleurs : " + _c("usine specs --vers FICHIER", "1"))
+    try:
+        cible.write_text(texte, encoding="utf-8")
+    except OSError as exc:
+        erreur(_expliquer_ecriture(exc) or str(exc))
+        return 1
+
+    manques = [m for m in module_specs._manques(releve)]
+    bloquants = [m for m in manques if m["gravite"] == "bloquant"]
+    for manque in manques:
+        (erreur if manque["gravite"] == "bloquant" else alerte)(
+            "{} — {}".format(manque["quoi"], manque["pourquoi"]))
+        print("      " + _c(manque["commande"], "1"))
+    if not manques:
+        ok("Rien ne manque sur cet appareil.")
+    ok("Fiche écrite : {}".format(cible))
+
+    if module_maj.est_un_clone() and (sur_le_telephone or args.vers):
+        print("\n  La pousser sur le dépôt :")
+        print("    " + _c("git add {} && git commit -m \"fiche technique\""
+                          " && git push".format(cible.name), "1"))
+    return 1 if bloquants else 0
+
+
+def cmd_maj(args: argparse.Namespace) -> int:
+    """Met a jour le code depuis le depot, sans toucher a l'atelier."""
+    from .core import maj as module_maj
+
+    titre_console("Mise à jour de l'usine")
+    dossier = module_maj.racine()
+    print("  Installation : {}".format(dossier))
+    print("  Version      : {}".format(module_maj.version_installee()))
+    print("  L'atelier et le fichier .env ne sont jamais touches.")
+
+    par_git = module_maj.est_un_clone() and module_maj.git_disponible()
+    if getattr(args, "archive", False):
+        par_git = False
+    sales = module_maj.modifications_locales() if par_git else []
+    if sales and not getattr(args, "oui", False):
+        alerte("{} fichier(s) modifie(s) ici seraient perdus :".format(len(sales)))
+        for nom in sales[:8]:
+            print("      " + nom)
+        print("  Relancez avec " + _c("--oui", "1") + " si vous les abandonnez.")
+        return 1
+
+    if par_git:
+        print("\n  Dépôt git détecté : mise à jour par « git pull --ff-only ».")
+        resultat = module_maj.par_git(getattr(args, "branche", "") or "")
+    else:
+        branche = getattr(args, "branche", "") or module_maj.BRANCHE_DEFAUT
+        print("\n  Pas de dépôt git ici : téléchargement de l'archive « {} »."
+              .format(branche))
+        resultat = module_maj.par_archive(branche)
+
+    if not resultat.get("ok"):
+        erreur(str(resultat.get("erreur") or "mise a jour impossible"))
+        if par_git:
+            # « ff-only » refuse quand l'historique local a diverge. Le dire
+            # evite de chercher une panne de reseau la ou il y a un commit
+            # local.
+            print("  Si votre dépôt a divergé, l'archive ignore l'historique : "
+                  + _c("usine maj --archive", "1"))
+        return 1
+
+    if not resultat.get("change"):
+        ok("Déjà à jour ({}).".format(resultat.get("apres") or ""))
+        return 0
+
+    # On verifie dans un processus NEUF : les modules deja charges ici sont
+    # l'ancienne version et repondraient « tout va bien » quoi qu'on installe.
+    controle = module_maj.verifier()
+    if not controle.get("ok"):
+        erreur("L'usine mise à jour ne démarre pas : {}".format(
+            controle.get("erreur")))
+        if par_git:
+            print("  Revenir en arriere : "
+                  + _c("git -C {} reset --hard {}".format(
+                      dossier, resultat.get("avant", "HEAD@{1}")), "1"))
+        return 1
+    ok("Mise à jour faite — {}".format(controle.get("version") or ""))
+    # Les fournisseurs apparus depuis l'installation n'existent pas dans le
+    # « .env » de quelqu'un qui a deja installe : « install.sh » ne le cree
+    # qu'une fois, et la mise a jour n'y touche pas. Il ouvre « nano .env », ne
+    # voit pas la variable, et conclut que l'integration n'existe pas.
+    ajoutees = module_maj.completer_env(dossier)
+    if ajoutees:
+        ok("{} fournisseur(s) ajouté(s) à votre .env : {}".format(
+            len(ajoutees), ", ".join(ajoutees)))
+        print("  Vos clés existantes n'ont pas été touchées. Pour coller les "
+              "nouvelles : " + _c("nano {}/.env".format(dossier), "1"))
+    if resultat.get("remplaces"):
+        print("  Remplacés : " + ", ".join(str(n) for n in resultat["remplaces"]))
+    print("\n  Vérifier l'installation : " + _c("usine docteur", "1"))
     return 0
 
 
@@ -1677,46 +2809,110 @@ def cmd_web(args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------
 
 
+def _options_du_type(sous: argparse.ArgumentParser, cle: str) -> None:
+    """Ajoute les options que CE type de produit comprend, et lui seul.
+
+    Elles sont declarees dans le catalogue, pas ici. Ecrites a la main dans
+    trois endroits — l'analyseur, le gabarit du tableau de bord et son script —
+    huit d'entre elles sur dix-sept avaient fini par ne plus exister que dans
+    l'analyseur : on ne pouvait pas choisir, depuis le navigateur, si un outil
+    logiciel etait une ligne de commande ou une application web.
+    """
+    from .pipelines.catalogue import obtenir
+
+    fiche = obtenir(cle)
+    if fiche is None:
+        return
+    for champ in fiche.champs:
+        if champ.genre == "booleen":
+            sous.add_argument(*champ.drapeaux, action="store_true",
+                              help=champ.aide or champ.libelle)
+            continue
+        genre = {"entier": int, "decimal": float}.get(champ.genre, str)
+        extra = {}
+        if champ.choix:
+            extra["choices"] = list(champ.choix)
+        if champ.unite:
+            extra["metavar"] = champ.unite.upper()
+        # None, et pas la valeur du catalogue, pour ce que l'usine decide :
+        # un « 50 » par defaut ne se distingue pas d'un « -n 50 » tape, et le
+        # reglage n'etait donc jamais laisse a l'usine en ligne de commande.
+        sous.add_argument(*champ.drapeaux, type=genre,
+                          default=None if champ.decide_par_l_usine else champ.defaut,
+                          help=champ.aide or champ.libelle, **extra)
+
+
 def _options_communes(sous: argparse.ArgumentParser, avec_sujet: bool = True) -> None:
     if avec_sujet:
-        sous.add_argument("sujet", help="le sujet du produit, entre guillemets")
+        # « nargs="?" » et non un positionnel obligatoire : sans sujet,
+        # l'usine en choisit un. Le rendre obligatoire faisait que la seule
+        # facon de ne pas dicter la niche etait de ne pas produire — alors
+        # que choisir la niche est precisement ce qu'on lui demande.
+        sous.add_argument("sujet", nargs="?", default="",
+                          help="le sujet du produit, entre guillemets. "
+                               "Omettez-le et l'usine choisit la niche "
+                               "elle-meme.")
     # Les valeurs par defaut sont vides : elles sont reprises des reglages
     # (usine reglages), ce qui evite de retaper --auteur a chaque commande.
     sous.add_argument("-a", "--audience", default="",
-                      help="a qui s'adresse le produit")
+                      help="à qui s'adresse le produit")
     # Pas de « choices » : les cinq tons sont des raccourcis, pas une liste
     # fermee. Imposer cinq voix a tout un catalogue est precisement ce qui
     # fait que les produits se ressemblent.
     sous.add_argument("-t", "--ton", default="",
                       help="raccourci ({}) ou description libre, ex : "
-                           "-t \"comme un menuisier a son apprenti\""
+                           "-t \"comme un menuisier à son apprenti\""
                            .format("|".join(sorted(TONS))))
     sous.add_argument("-T", "--taille", default="",
                       help="raccourci ({}) ou nombre de sections, ex : -T 15"
                            .format("|".join(sorted(TAILLES))))
     sous.add_argument("--chapitres", type=int, default=0,
-                      help="nombre exact de sections ({} a {})".format(
+                      help="nombre exact de sections ({} à {})".format(
                           CHAPITRES_MIN, CHAPITRES_MAX))
     sous.add_argument("--mots", type=int, default=0,
-                      help="mots visés par section ({} a {})".format(
+                      help="mots visés par section ({} à {})".format(
                           MOTS_MIN, MOTS_MAX))
     sous.add_argument("--auteur", default="", help="nom affiche comme auteur")
-    sous.add_argument("--langue", default="", help="langue de redaction")
+    sous.add_argument("--langue", default="", help="langue de rédaction")
     sous.add_argument("--marque", default="", help="nom de votre marque")
     sous.add_argument("--prix", default="", help="prix affiche, ex: 29 EUR")
+    sous.add_argument("--dedicace", default="",
+                      help="page de dedicace de l'EPUB, ex: \"Pour Julie\"")
     sous.add_argument("--contact", default="", help="e-mail de support dans la notice")
+    # Pose par « usine reprendre », jamais tapee a la main : elle fait ecrire
+    # la fabrication dans le dossier d'un produit existant.
+    sous.add_argument("--reprendre-id", dest="reprendre_id", default="",
+                      help=argparse.SUPPRESS)
     sous.add_argument("-q", "--qualite", default="",
                       choices=["", "rapide", "standard", "exigeant"],
                       help="rapide (sans relecture) | standard (1) | exigeant (2)")
+    # « action="store_true" » et defaut None : on distingue « non demande »
+    # de « refuse », sans quoi le reglage ne pourrait jamais etre actif.
+    sous.add_argument("--sans-marketing", dest="sans_marketing",
+                      action="store_true",
+                      help="ne pas produire le kit de vente, même si le "
+                           "réglage « marketing_auto » le demande")
+    sous.add_argument("--sans-zip", dest="sans_zip", action="store_true",
+                      help="ne pas écrire l'archive, même si le réglage "
+                           "« archive_auto » la demande")
     sous.add_argument("--marketing", action="store_true",
-                      help="generer aussi le kit de vente")
-    sous.add_argument("--plateforme", default="gumroad",
+                      help="générer aussi le kit de vente")
+    sous.add_argument("--extrait", type=int, default=0, metavar="N",
+                      help="chapitres de l'edition courte offerte "
+                           "(défaut : un quart du livre)")
+    # Le defaut vient du REGLAGE, pas d'une constante. « gumroad » etait ecrit
+    # en dur ici : le reglage « plateforme » etait affiche dans les trois
+    # interfaces, enregistre sur disque, et lu par personne. Un reglage
+    # orphelin est un mensonge fait a l'utilisateur — il croit avoir regle
+    # quelque chose.
+    sous.add_argument("--plateforme",
+                      default=str(reglages.lire("plateforme", "gumroad")),
                       choices=sorted(vente.PLATEFORMES), help="plateforme de vente visee")
     sous.add_argument("--zip", action="store_true", help="produire l'archive livrable")
     sous.add_argument("--hors-ligne", dest="hors_ligne", action="store_true",
-                      help="ne rien telecharger (IA locale, couverture generee sur place)")
+                      help="aucune connexion hors de l'appareil (IA locale seulement, couverture générée sur place)")
     sous.add_argument("--sans-image", dest="sans_image", action="store_true",
-                      help="ne pas generer d'images")
+                      help="ne pas générer d'images")
 
 
 def construire_parseur() -> argparse.ArgumentParser:
@@ -1731,84 +2927,189 @@ def construire_parseur() -> argparse.ArgumentParser:
 
     p = sous_parseurs.add_parser("ebook", help="fabriquer un ebook complet")
     _options_communes(p)
+    _options_du_type(p, "ebook")
+    p.add_argument("--relecture-ensemble", action="store_true",
+                   help="une lecture du livre entier à la recherche des "
+                        "contradictions entre chapitres (1 appel IA de plus)")
     p.set_defaults(fonction=cmd_ebook)
+
+    p = sous_parseurs.add_parser(
+        "nouvelle", help="fabriquer une nouvelle (fiction courte)")
+    _options_communes(p)
+    # Lus du catalogue, pas ecrits ici. « --serie » y etait declare a la
+    # main, et le jour ou la fiction a recu neuf reglages de plus,
+    # l'analyseur n'en a vu aucun : ils etaient saisissables depuis le
+    # navigateur et introuvables en ligne de commande.
+    _options_du_type(p, "nouvelle")
+    p.set_defaults(fonction=cmd_nouvelle)
+
+    p = sous_parseurs.add_parser(
+        "roman", help="un roman : fiction longue, en parties, continuité tenue")
+    _options_communes(p)
+    _options_du_type(p, "roman")
+    p.set_defaults(fonction=cmd_roman)
+
+    p = sous_parseurs.add_parser(
+        "interactive",
+        help="un livre dont le lecteur est le héros (carte vérifiée)")
+    _options_communes(p)
+    _options_du_type(p, "interactive")
+    p.set_defaults(fonction=cmd_interactive, _type="interactive")
+
+    p = sous_parseurs.add_parser(
+        "recueil", help="un recueil de nouvelles liées par un fil")
+    _options_communes(p)
+    _options_du_type(p, "recueil")
+    p.set_defaults(fonction=cmd_recueil, _type="recueil")
+
+    p = sous_parseurs.add_parser(
+        "feuilleton", help="un feuilleton : des épisodes qui se lisent seuls")
+    _options_communes(p)
+    _options_du_type(p, "feuilleton")
+    p.set_defaults(fonction=cmd_feuilleton, _type="feuilleton")
+
+    p = sous_parseurs.add_parser(
+        "conte", help="un conte jeunesse illustre, en doubles-pages")
+    _options_communes(p)
+    _options_du_type(p, "conte")
+    p.set_defaults(fonction=cmd_conte, _type="conte")
+
+    p = sous_parseurs.add_parser(
+        "journal", help="ce que l'usine a fait pendant qu'on ne regardait pas")
+    p.add_argument("jour", nargs="?", default="",
+                   help="jour au format AAAA-MM-JJ (défaut : le plus récent)")
+    p.add_argument("-n", "--lignes", type=int, default=40,
+                   help="nombre de lignes à afficher")
+    p.set_defaults(fonction=cmd_journal)
+
+    p = sous_parseurs.add_parser(
+        "series", help="lister les séries et leurs tomes")
+    p.add_argument("nom", nargs="?", default="",
+                   help="détail d'une série : sa distribution et ses faits")
+    p.add_argument("--rafraichir", action="store_true",
+                   help="refaire la dernière page des tomes antérieurs pour "
+                        "qu'elle annonce les tomes parus depuis")
+    p.set_defaults(fonction=cmd_series)
 
     p = sous_parseurs.add_parser("prompts", help="fabriquer un pack de prompts")
     _options_communes(p)
-    p.add_argument("-n", "--nombre", type=int, default=50, help="nombre de prompts")
+    _options_du_type(p, "prompts")
     p.set_defaults(fonction=cmd_prompts)
 
     p = sous_parseurs.add_parser("formation", help="fabriquer une mini-formation")
     _options_communes(p)
-    p.add_argument("-m", "--modules", type=int, default=0, help="nombre de modules")
+    _options_du_type(p, "formation")
     p.set_defaults(fonction=cmd_formation)
 
-    p = sous_parseurs.add_parser("outils", help="fabriquer une boite a outils")
+    p = sous_parseurs.add_parser("outils", help="fabriquer une boîte à outils")
     _options_communes(p)
-    p.add_argument("-n", "--nombre", type=int, default=10, help="nombre d'outils")
+    _options_du_type(p, "outils")
     p.set_defaults(fonction=cmd_outils)
 
     p = sous_parseurs.add_parser("modeles",
-                                 help="fabriquer des modeles Notion / tableur")
+                                 help="fabriquer des modèles Notion / tableur")
     _options_communes(p)
-    p.add_argument("-n", "--nombre", type=int, default=4, help="nombre de bases")
+    _options_du_type(p, "modeles")
     p.set_defaults(fonction=cmd_modeles)
 
     p = sous_parseurs.add_parser("impression",
                                  help="fabriquer un cahier imprimable")
     _options_communes(p)
-    p.add_argument("-n", "--nombre", type=int, default=12, help="nombre de fiches")
+    _options_du_type(p, "impression")
     p.set_defaults(fonction=cmd_impression)
 
     p = sous_parseurs.add_parser("social", help="fabriquer un pack de publications")
     _options_communes(p)
-    p.add_argument("-n", "--nombre", type=int, default=30, help="nombre de publications")
-    p.add_argument("-r", "--reseau", default="linkedin",
-                   choices=sorted(social.RESEAUX), help="reseau vise")
-    p.add_argument("--visuels", type=int, default=0,
-                   help="nombre de visuels a generer")
+    _options_du_type(p, "social")
     p.set_defaults(fonction=cmd_social)
 
-    p = sous_parseurs.add_parser("logiciel",
-                                 help="fabriquer un outil logiciel verifie")
+    p = sous_parseurs.add_parser(
+        "emails", help="fabriquer une séquence e-mail")
     _options_communes(p)
-    p.add_argument("-c", "--cible", default="cli", choices=sorted(logiciel.CIBLES),
-                   help="cli (outil en ligne de commande), web (page autonome), "
-                        "extension (Chrome Manifest V3)")
-    p.add_argument("--sans-essai", dest="sans_essai", action="store_true",
-                   help="analyser le code sans jamais l'executer")
+    _options_du_type(p, "emails")
+    p.set_defaults(fonction=cmd_emails, _type="emails")
+
+    p = sous_parseurs.add_parser(
+        "memo", help="fabriquer un mémo / une antisèche")
+    _options_communes(p)
+    _options_du_type(p, "memo")
+    p.set_defaults(fonction=cmd_memo, _type="memo")
+
+    p = sous_parseurs.add_parser(
+        "quiz", help="fabriquer un quiz avec corrigé")
+    _options_communes(p)
+    _options_du_type(p, "quiz")
+    p.set_defaults(fonction=cmd_quiz, _type="quiz")
+
+    p = sous_parseurs.add_parser(
+        "cartes", help="fabriquer des cartes de revision (planches, Anki)")
+    _options_communes(p)
+    _options_du_type(p, "cartes")
+    p.set_defaults(fonction=cmd_cartes, _type="cartes")
+
+    p = sous_parseurs.add_parser(
+        "mots-meles", help="fabriquer un cahier de mots mêlés (A4, Lettre US)")
+    _options_communes(p)
+    _options_du_type(p, "mots-meles")
+    p.set_defaults(fonction=cmd_mots_meles, _type="mots-meles")
+
+    p = sous_parseurs.add_parser("logiciel",
+                                 help="fabriquer un outil logiciel vérifié")
+    _options_communes(p)
+    _options_du_type(p, "logiciel")
     p.set_defaults(fonction=cmd_logiciel)
 
     p = sous_parseurs.add_parser("complet",
-                                 help="offre complete : ebook + bonus + kit de vente + zip")
+                                 help="offre complète : ebook + bonus + kit de vente + zip")
     _options_communes(p)
-    p.add_argument("-r", "--reseau", default="linkedin", choices=sorted(social.RESEAUX))
+    p.add_argument("-r", "--reseau", default="", choices=[""] + sorted(social.RESEAUX),
+                   help="réseau du pack bonus (décidé par l'usine si absent)")
     p.set_defaults(fonction=cmd_complet)
+
+    p = sous_parseurs.add_parser(
+        "auto", help="l'usine choisit la niche ET le type de produit")
+    _options_communes(p)
+    p.set_defaults(fonction=cmd_auto, _type="auto")
 
     p = sous_parseurs.add_parser("idees", help="trouver quoi vendre dans une niche")
     _options_communes(p)
-    p.add_argument("-n", "--nombre", type=int, default=12, help="nombre d'idees")
-    p.add_argument("--sans-veille", dest="sans_veille", action="store_true",
-                   help="ne pas aller lire les discussions (Reddit limite le "
-                        "debit : deux appels espaces, parfois une attente)")
-    p.add_argument("--sans-marche", dest="sans_marche", action="store_true",
-                   help="ne pas interroger les sources de marche")
+    # Lues au catalogue, comme pour les autres types : ecrites a la main ici,
+    # « --nombre » valait 12 en dur, et l'usine ne le decidait jamais.
+    _options_du_type(p, "idees")
     p.set_defaults(fonction=cmd_idees)
 
     p = sous_parseurs.add_parser("marketing", help="kit de vente d'un produit existant")
     p.add_argument("produit_id", help="identifiant du produit (voir : usine liste)")
-    p.add_argument("--plateforme", default="gumroad", choices=sorted(vente.PLATEFORMES))
+    p.add_argument("--plateforme",
+                   default=str(reglages.lire("plateforme", "gumroad")),
+                   choices=sorted(vente.PLATEFORMES))
     p.add_argument("--prix", default="", help="prix affiche")
+    p.add_argument("--extrait", type=int, default=0, metavar="N",
+                   help="chapitres de l'edition courte offerte")
     p.set_defaults(fonction=cmd_marketing)
 
-    p = sous_parseurs.add_parser("livrer", help="creer l'archive ZIP d'un produit")
+    p = sous_parseurs.add_parser("livrer", help="créer l'archive ZIP d'un produit")
     p.add_argument("produit_id", help="identifiant du produit")
     p.add_argument("--contact", default="", help="e-mail de support")
     p.set_defaults(fonction=cmd_livrer)
 
-    p = sous_parseurs.add_parser("liste", help="lister les produits fabriques")
+    p = sous_parseurs.add_parser("liste", help="lister les produits fabriqués")
     p.add_argument("-n", "--nombre", type=int, default=25)
     p.set_defaults(fonction=cmd_liste)
+
+    p = sous_parseurs.add_parser(
+        "reprendre", help="finir un produit interrompu, sans repayer le reste")
+    p.add_argument("produit_id", nargs="?", default="dernier",
+                   help="identifiant, fin d'identifiant, ou « dernier »")
+    p.set_defaults(fonction=cmd_reprendre)
+
+    p = sous_parseurs.add_parser(
+        "supprimer", help="effacer un produit et son dossier")
+    p.add_argument("produit_id", nargs="?", default="dernier",
+                   help="identifiant, fin d'identifiant, ou « dernier »")
+    p.add_argument("--oui", action="store_true",
+                   help="ne pas demander confirmation")
+    p.set_defaults(fonction=cmd_supprimer)
 
     p = sous_parseurs.add_parser("ab", help="tester des titres et des couvertures")
     p.add_argument("action",
@@ -1816,9 +3117,9 @@ def construire_parseur() -> argparse.ArgumentParser:
                             "rythme", "verdict", "planche", "clore",
                             "supprimer"])
     p.add_argument("identifiant", nargs="?", type=int, default=0,
-                   help="numero du test, ou de la variante pour « observer »")
+                   help="numéro du test, ou de la variante pour « observer »")
     p.add_argument("--produit", default="", help="partir d'un produit existant")
-    p.add_argument("--titre", default="", help="titre actuel a ameliorer")
+    p.add_argument("--titre", default="", help="titre actuel à améliorer")
     p.add_argument("--sur", default="titre",
                    choices=["titre", "couverture", "accroche", "prix"],
                    help="ce que le test compare")
@@ -1829,9 +3130,9 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.add_argument("--actions", type=int,
                    help="clics ou ventes observes, pour « observer »")
     p.add_argument("--du", default="", metavar="AAAA-MM-JJ",
-                   help="debut de mise en ligne, pour « periode »")
+                   help="début de mise en ligne, pour « période »")
     p.add_argument("--au", default="", metavar="AAAA-MM-JJ",
-                   help="fin de mise en ligne (defaut : toujours en ligne)")
+                   help="fin de mise en ligne (défaut : toujours en ligne)")
     p.add_argument("--note", default="", help="commentaire libre")
     p.add_argument("--gagnante", type=int, default=0,
                    help="variante retenue, pour « clore »")
@@ -1841,7 +3142,7 @@ def construire_parseur() -> argparse.ArgumentParser:
 
     p = sous_parseurs.add_parser(
         "file",
-        help="gerer la file des niches a produire",
+        help="gérer la file des niches à produire",
         epilog="Types disponibles :\n" + "\n".join(
             "  {:<12} {} — {}".format(t.cle, t.resume, t.duree)
             for t in catalogue.tous(en_file=True)),
@@ -1854,8 +3155,14 @@ def construire_parseur() -> argparse.ArgumentParser:
                         "(sans argument : part de ce qui a le mieux rapporte)")
     p.add_argument("--sans-veille", dest="sans_veille", action="store_true",
                    help="explorer sans aller lire les discussions")
+    p.add_argument("--fiction", nargs="?", const="", default=None,
+                   metavar="DEPART",
+                   help="chercher des PROMESSES DE LECTURE au lieu de niches : "
+                        "sous-genre, tropes, ambiance, chaleur, fin. Un "
+                        "lecteur de roman n'achète pas la solution d'un "
+                        "problème (sans argument : l'usine choisit)")
     p.add_argument("--type", default="ebook", choices=catalogue.cles(en_file=True),
-                   help="type de produit a fabriquer")
+                   help="type de produit à fabriquer")
     p.add_argument("-n", "--nombre", type=int, default=0,
                    help="quantite (prompts, fiches, modules...)")
     p.add_argument("-a", "--audience", default="")
@@ -1867,9 +3174,9 @@ def construire_parseur() -> argparse.ArgumentParser:
                    choices=["", "en_attente", "en_cours", "fait", "echec", "annule"])
     p.add_argument("--retirer", nargs="+", type=int, metavar="ID")
     p.add_argument("--rejouer", nargs="?", type=int, const=0, metavar="ID",
-                   help="remettre en file les echecs (tous si aucun ID)")
+                   help="remettre en file les échecs (tous si aucun ID)")
     p.add_argument("--vider", action="store_true",
-                   help="supprimer les entrees livrees et annulees")
+                   help="supprimer les entrées livrées et annulées")
     p.add_argument("--tout-vider", dest="tout_vider", action="store_true")
     p.set_defaults(fonction=cmd_file)
 
@@ -1880,7 +3187,7 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.add_argument("--auto", action="store_true",
                    help="remplir la file automatiquement quand elle se vide")
     p.add_argument("--max", type=int, default=0,
-                   help="s'arreter apres N produits")
+                   help="s'arrêter après N produits")
     p.add_argument("--pause", type=int, default=None,
                    help="secondes entre deux produits")
     p.add_argument("--budget", nargs="+", metavar="NOM=VALEUR",
@@ -1889,7 +3196,7 @@ def construire_parseur() -> argparse.ArgumentParser:
 
     p = sous_parseurs.add_parser(
         "marche", help="mesurer un marche depuis des sources publiques")
-    p.add_argument("sujet", help="le sujet ou la niche a mesurer")
+    p.add_argument("sujet", help="le sujet ou la niche à mesurer")
     p.add_argument("--json", action="store_true", help="enregistrer le rapport complet")
     p.set_defaults(fonction=cmd_marche)
 
@@ -1901,54 +3208,56 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.set_defaults(fonction=cmd_menu)
 
     p = sous_parseurs.add_parser(
-        "ventes", help="enregistrer et lire les ventes reelles")
+        "ventes", help="enregistrer et lire les ventes réelles")
     p.add_argument("--importer", default="", metavar="FICHIER.csv",
                    help="importer un export de place de marche")
     p.add_argument("--sur", dest="plateforme_vente", default="gumroad",
                    help="plateforme d'origine (gumroad, etsy, payhip, site...)")
     p.add_argument("--ajouter", default="", metavar="PRODUIT_ID",
-                   help="saisir une vente a la main")
+                   help="saisir une vente à la main")
     p.add_argument("--brut", type=float, default=None, help="montant encaisse")
     p.add_argument("--net", type=float, default=None,
-                   help="ce qui reste apres commission, si vous le connaissez")
+                   help="ce qui reste après commission, si vous le connaissez")
     p.add_argument("--unites", type=int, default=1)
-    p.add_argument("--devise", default="EUR")
-    p.add_argument("--date", default="", help="AAAA-MM-JJ (defaut : aujourd'hui)")
+    # Meme defaut orphelin que « plateforme » : qui vend en francs suisses
+    # reglait sa devise et voyait « EUR » a chaque import.
+    p.add_argument("--devise", default=str(reglages.lire("devise", "EUR")))
+    p.add_argument("--date", default="", help="AAAA-MM-JJ (défaut : aujourd'hui)")
     p.add_argument("--reference", default="",
                    help="nom du produit tel qu'il apparait sur la plateforme")
     p.add_argument("--remboursement", action="store_true")
     p.add_argument("--lier", nargs=2, metavar=("REFERENCE", "PRODUIT_ID"),
-                   help="rattacher une reference a un produit")
+                   help="rattacher une référence à un produit")
     p.add_argument("--rattacher", action="store_true",
-                   help="rattacher automatiquement ce qui peut l'etre")
+                   help="rattacher automatiquement ce qui peut l'être")
     p.add_argument("--depuis", default="", help="ne compter qu'a partir de AAAA-MM-JJ")
     p.add_argument("-n", "--nombre", type=int, default=15)
     p.set_defaults(fonction=cmd_ventes)
 
     p = sous_parseurs.add_parser(
         "veille", help="ce que les gens disent vraiment d'une niche")
-    p.add_argument("sujet", help="la niche a explorer, entre guillemets")
+    p.add_argument("sujet", help="la niche à explorer, entre guillemets")
     p.add_argument("-n", "--nombre", type=int, default=12,
                    help="discussions affichees")
     p.add_argument("-c", "--communautes", type=int, default=2,
                    help="communautes lues (chacune coute un appel)")
     p.add_argument("--periode", default="year",
                    choices=["day", "week", "month", "year", "all"],
-                   help="fenetre de temps")
+                   help="fenêtre de temps")
     p.set_defaults(fonction=cmd_veille)
 
     p = sous_parseurs.add_parser(
-        "sauvegarde", help="mettre l'atelier a l'abri, ou le remettre en place")
+        "sauvegarde", help="mettre l'atelier à l'abri, ou le remettre en place")
     p.add_argument("--vers", default="", metavar="FICHIER.zip",
-                   help="ou ecrire l'archive")
+                   help="où écrire l'archive")
     p.add_argument("--avec-produits", dest="avec_produits",
                    action="store_true",
                    help="inclure les fichiers des produits (volumineux)")
     p.add_argument("--restaurer", default="", metavar="FICHIER.zip",
-                   help="remettre l'atelier dans l'etat de cette archive")
+                   help="remettre l'atelier dans l'état de cette archive")
     p.add_argument("--sans-produits", dest="sans_produits",
                    action="store_true",
-                   help="a la restauration, ne pas reecrire les produits")
+                   help="à la restauration, ne pas réécrire les produits")
     p.add_argument("--inspecter", default="", metavar="FICHIER.zip",
                    help="voir ce que contient une archive, sans rien changer")
     p.add_argument("--oui", action="store_true",
@@ -1962,10 +3271,10 @@ def construire_parseur() -> argparse.ArgumentParser:
     p.add_argument("-n", "--nombre", type=int, default=12,
                    help="nombre de paires affichees")
     p.add_argument("--reconstruire", action="store_true",
-                   help="calculer les empreintes des produits deja fabriques")
+                   help="calculer les empreintes des produits déjà fabriqués")
     p.set_defaults(fonction=cmd_doublons)
 
-    p = sous_parseurs.add_parser("reglages", help="consulter ou modifier vos reglages")
+    p = sous_parseurs.add_parser("reglages", help="consulter ou modifier vos réglages")
     p.add_argument("--definir", nargs="+", metavar="NOM=VALEUR",
                    help='ex : --definir auteur="Votre Nom" qualite=exigeant')
     p.add_argument("--reinitialiser", action="store_true")
@@ -1975,20 +3284,55 @@ def construire_parseur() -> argparse.ArgumentParser:
         "prompts-systeme",
         help="consulter ou personnaliser les prompts et les agents")
     p.add_argument("--exporter", action="store_true",
-                   help="ecrire les prompts par defaut dans atelier/prompts/")
+                   help="écrire les prompts par défaut dans atelier/prompts/")
     p.add_argument("--reinitialiser", action="store_true",
                    help="supprimer toutes les personnalisations")
     p.set_defaults(fonction=cmd_prompts_systeme)
 
     p = sous_parseurs.add_parser("docteur", help="diagnostiquer l'installation")
+    p.add_argument("--modeles", action="store_true",
+                   help="vérifier que les modèles configurés existent encore "
+                        "chez leur fournisseur (une requête par fournisseur)")
+    p.add_argument("--essai", action="store_true",
+                   help="appeler vraiment chaque modèle déclaré et dire "
+                        "lequel répond (un appel par modèle, consomme du quota)")
+    p.add_argument("--quotas", action="store_true",
+                   help="confronter les quotas écrits à ceux que chaque "
+                        "service annonce dans ses en-tetes (un appel par "
+                        "fournisseur)")
+    p.add_argument("--reparer", action="store_true",
+                   help="remplacer chaque identifiant mort par un qui répond "
+                        "chez VOTRE compte, et le retenir")
     p.set_defaults(fonction=cmd_docteur)
 
-    p = sous_parseurs.add_parser("cles", help="obtenir des cles API gratuites")
+    p = sous_parseurs.add_parser("cles", help="obtenir des clés API gratuites")
     p.set_defaults(fonction=cmd_cles)
 
     p = sous_parseurs.add_parser("cache", help="consulter ou vider le cache IA")
-    p.add_argument("--vider", action="store_true")
+    p.add_argument("--vider", action="store_true",
+                   help="supprimer les réponses gardées (elles seront repayées)")
+    p.add_argument("--catalogues", action="store_true",
+                   help="oublier la liste des modèles servis par chaque "
+                        "fournisseur, sans toucher aux réponses")
     p.set_defaults(fonction=cmd_cache)
+
+    p = sous_parseurs.add_parser(
+        "specs", help="fiche technique de l'appareil, à pousser sur le dépôt")
+    p.add_argument("--vers", default="",
+                   help="où écrire la fiche (défaut : SPECS-APPAREIL.md à la "
+                        "racine de l'installation)")
+    p.set_defaults(fonction=cmd_specs)
+
+    p = sous_parseurs.add_parser(
+        "maj", help="mettre à jour l'usine depuis le dépôt")
+    p.add_argument("--branche", default="",
+                   help="branche à suivre (défaut : celle du clone, ou « {} »)"
+                        .format("main"))
+    p.add_argument("--archive", action="store_true",
+                   help="télécharger l'archive même si git est disponible")
+    p.add_argument("--oui", action="store_true",
+                   help="accepter de perdre les modifications locales")
+    p.set_defaults(fonction=cmd_maj)
 
     p = sous_parseurs.add_parser("web", help="tableau de bord dans le navigateur")
     p.add_argument("-p", "--port", type=int, default=8777)
@@ -1998,9 +3342,140 @@ def construire_parseur() -> argparse.ArgumentParser:
     return parseur
 
 
+def _fabrication(commande: str) -> bool:
+    """Cette commande fabrique-t-elle un produit (donc : longue) ?
+
+    Lu du catalogue plutot que recopie : un type ajoute demain prendra le
+    verrou de veille sans qu'on y pense.
+    """
+    if not reglages.lire("verrou_veille", True):
+        return False
+    return commande in set(catalogue.cles()) | {"complet"}
+
+
+def _annoncer_ce_qui_manque(manquants: List[Any], dossier: Path) -> None:
+    """L'en-tete d'une reprise.
+
+    Un produit coupe avant son export n'a pas de liste de sections
+    manquantes : la chaine s'est arretee avant de la dresser. L'en-tete
+    annoncait alors « 0 section(s) a refaire : inconnues » — zero, pour un
+    produit a qui il manque tout ce qui suit la coupure.
+    """
+    from .pipelines import carnet
+
+    if manquants:
+        print("  {} section(s) à refaire : {}".format(
+            len(manquants), ", ".join(str(m) for m in manquants[:8])))
+    else:
+        print("  Coupe avant la fin de sa fabrication : elle reprend la ou "
+              "elle s'est arrêtée.")
+    print("  {} déjà au carnet, elles ne seront pas repayées."
+          .format(carnet.compte(dossier)))
+
+
+def _explique_le_cache() -> str:
+    """Ce que l'utilisateur ignore et qui change tout : relancer ne repart pas de zero.
+
+    Chaque reponse du modele est gardee en cache par empreinte de l'invite.
+    Relancer la meme commande rejoue donc gratuitement tout ce qui avait deja
+    ete paye, et ne facture que la suite. Sans cette phrase, l'utilisateur
+    croit avoir brule sa journee de quota pour rien, et n'essaie pas.
+
+    Mesure du 13/09/2026, ebook de 8 chapitres via le simulateur : 27 appels
+    d'un trait ; coupe apres 6, la relance en a coute 21. La difference est
+    exactement ce que le cache a rendu. On ne promet donc PAS une relance
+    gratuite — ce serait faux des la premiere interruption precoce — mais une
+    relance qui ne repaie pas ce qui est fait.
+    """
+    return ("Les reponses deja obtenues sont en cache : relancer la MEME "
+            "commande reprend ou vous en etiez, sans repayer ce qui est fait.")
+
+
+def _expliquer_ecriture(exc: OSError) -> str:
+    """Traduit un echec d'ecriture en geste a faire — ou rend "" si ce n'en est pas un.
+
+    Rendre "" plutot que deviner. « OSError » ne parle pas que du disque :
+    « Address already in use » (tableau de bord deja lance) en est une, et
+    annoncer un disque plein a qui a simplement lance « usine web » deux fois
+    est exactement le garde-fou qui crie a tort. Le message generique, lui,
+    reste juste. On ne parle donc que des trois errno qu'on sait traduire.
+    """
+    import errno
+
+    if exc.errno == errno.ENOSPC:
+        from .core import diagnostic as module_diagnostic
+
+        espace = module_diagnostic.espace_libre()
+        reste = (" Il reste {} Mo.".format(espace["libre_mo"])
+                 if espace["connu"] else "")
+        return ("Plus de place sur l'appareil.{} Faites de la place, puis "
+                "relancez. {}".format(reste, _explique_le_cache()))
+    if exc.errno in (errno.EACCES, errno.EPERM):
+        return ("Ecriture refusee dans {}. Sur Android, un dossier de /sdcard "
+                "demande l'autorisation de stockage : « termux-setup-storage ». "
+                "{}".format(config.WORKDIR, _explique_le_cache()))
+    if exc.errno == errno.EROFS:
+        return ("Le dossier de travail est en lecture seule ({}). Choisissez-en "
+                "un autre : USINE_HOME=~/Usine-IA. {}".format(
+                    config.WORKDIR, _explique_le_cache()))
+    return ""
+
+
+def _expliquer_base(defaut: str) -> str:
+    """Ce qu'on dit quand le fichier de base ne se lit plus.
+
+    La panne rend l'usine ENTIEREMENT muette : toutes les commandes passent
+    par la base, « docteur » et « sauvegarde » compris. L'utilisateur voyait
+    « DatabaseError : file is not a database » sur chacune, sans savoir quel
+    fichier, ni que ses produits, eux, sont intacts.
+
+    Ce dernier point est le seul qui compte vraiment : les produits sont des
+    FICHIERS dans produits/, et les reglages un JSON a cote. Ce que la base
+    garde et qu'on perdrait, c'est l'historique, les ventes, les bibles de
+    serie et le cache des reponses. On le dit tel quel plutot que de
+    rassurer : une bible de serie perdue, c'est du contenu perdu.
+
+    On n'efface rien : deplacer soi-meme la base de quelqu'un serait decider
+    a sa place que son historique ne vaut rien.
+    """
+    return (
+        "La base de l'atelier est illisible : {defaut}.\n"
+        "  Fichier : {base}\n"
+        "  Vos produits sont intacts : ce sont des fichiers dans {produits},\n"
+        "  et vos reglages sont dans reglages.json. La base contient\n"
+        "  l'historique, les ventes, les bibles de serie et le cache.\n"
+        "\n"
+        "  Si vous avez une sauvegarde :\n"
+        "    usine sauvegarde --restaurer archive.zip --oui\n"
+        "  Sinon, mettez la base de cote — l'usine en recreera une vide :\n"
+        "    mv {base} {base}.casse"
+    ).format(defaut=defaut, base=config.DB_PATH, produits=config.PRODUITS_DIR)
+
+
+def _produit_commence(depuis: float) -> Optional[Dict[str, Any]]:
+    """Le produit que cette commande a eu le temps de creer, s'il est inacheve.
+
+    Coupee par le silence des fournisseurs, la commande conseillait de se
+    relancer telle quelle. Mais une fois le dossier cree, la relancer en
+    fabrique un SECOND : le premier restait « inacheve » dans la liste, et
+    « usine reprendre » finissait par le refaire a cote de l'autre. La boucle
+    et le tableau de bord le reprennent ; la ligne de commande doit le dire.
+    """
+    for produit in store.lister_produits(5):
+        if (float(produit.get("cree_le") or 0) >= depuis
+                and produit.get("statut") == "en_cours"):
+            return produit
+    return None
+
+
 def principal(argv: Optional[List[str]] = None) -> int:
     config.load_env()
     config.ensure_dirs()
+    # Retenue avant tout le reste : c'est ici, et seulement ici, qu'on connait
+    # la commande telle qu'elle a ete tapee. « usine reprendre » la rejouera.
+    from .pipelines import carnet
+
+    carnet.retenir_commande(list(argv) if argv is not None else sys.argv[1:])
     parseur = construire_parseur()
     args = parseur.parse_args(argv)
     if not getattr(args, "commande", None):
@@ -2013,25 +3488,98 @@ def principal(argv: Optional[List[str]] = None) -> int:
         print(BANNIERE.format(version=__version__))
         parseur.print_help()
         return 0
+    debut = time.time()
+    # Branche pour la duree de la commande seulement : reste branche, il
+    # parlerait aussi pendant ce qui suit dans le meme processus.
+    evenements.ecouter(_dire_l_attente)
     try:
-        return args.fonction(args)
+        # Android suspend Termux quelques minutes apres l'extinction de
+        # l'ecran. Une fabrication de 15 minutes n'y survit pas : le verrou
+        # de veille est pris pour elle seule, et relache a la sortie.
+        # « --hors-ligne » vaut pour toute la commande : le brief, la
+        # fabrication, le kit de vente. Le routeur ne le savait pas.
+        with telephone.veille_maintenue(_fabrication(args.commande)), \
+                http_hors_ligne(bool(getattr(args, "hors_ligne", False))):
+            return args.fonction(args)
     except KeyboardInterrupt:
         print()
-        alerte("Interrompu. Le travail deja produit est conserve dans " +
+        alerte("Interrompu. Le travail déjà produit est conservé dans " +
                str(config.PRODUITS_DIR))
         return 130
+    except SujetIntrouvable as exc:
+        erreur(str(exc))
+        # La cause est presque toujours la meme, et elle est verifiable : sans
+        # fournisseur joignable, le prospecteur ne peut rien proposer. Le dire
+        # ici evite de renvoyer vers « usine cles » quelqu'un dont le wifi est
+        # simplement coupe.
+        print()
+        if not config.active_providers():
+            print("  Aucun fournisseur n'est configuré.")
+            print("  Obtenir une clé gratuite : " + _c("usine cles", "1"))
+        else:
+            print("  Les fournisseurs configurés n'ont pas répondu.")
+            print("  Diagnostic : " + _c("usine docteur", "1"))
+        print("\n  Vous pouvez aussi donner la niche vous-meme :")
+        print("    " + _c('usine {} "votre sujet"'.format(
+            getattr(args, "commande", "ebook")), "1"))
+        return 3
     except llm.PlusDeFournisseur as exc:
         erreur(str(exc))
-        print("\n  Diagnostic : " + _c("usine docteur", "1"))
-        print("  Nouvelle cle : " + _c("usine cles", "1"))
+        # Le geste depend de la cause, et la cause se mesure : « usine cles »
+        # est un conseil absurde quand le telephone est simplement sorti du
+        # wifi. On demande donc au reseau, une fois, avant de conseiller.
+        from .core.http import en_ligne
+
+        commence = _produit_commence(debut)
+        if commence:
+            print("\n  Le produit « {} » est commence et garde au carnet. "
+                  "Pour le finir sans repayer ce qui est fait :".format(
+                      commence.get("titre") or commence["id"]))
+            print("    " + _c("usine reprendre " + commence["id"], "1"))
+        else:
+            print("\n  " + _explique_le_cache())
+        if getattr(args, "hors_ligne", False):
+            # Pas de sonde du reseau ici : « hors ligne » veut dire aucune
+            # connexion, meme pour savoir pourquoi.
+            print("\n  Hors ligne, seule l'IA locale est appelee. "
+                  "Diagnostic : " + _c("usine docteur", "1"))
+        elif not en_ligne():
+            print("  Le réseau est coupé. Rebranchez le wifi ou les données "
+                  "mobiles, puis relancez la même commande.")
+        else:
+            print("\n  Diagnostic : " + _c("usine docteur", "1"))
+            print("  Nouvelle clé : " + _c("usine cles", "1"))
         return 3
+    except sqlite3.DatabaseError as exc:
+        # On ne croit pas l'exception sur parole : « DatabaseError » couvre
+        # aussi les defauts de requete. On rouvre le fichier et on demande a
+        # SQLite. Sans base cassee, on retombe sur le message generique.
+        defaut = store.diagnostic_base()
+        erreur(_expliquer_base(defaut) if defaut
+               else "{} : {}".format(type(exc).__name__, exc))
+        if config.env_bool("USINE_DEBUG"):
+            raise
+        return 1
+    except OSError as exc:
+        # La panne la plus previsible sur un telephone, et celle que le
+        # message brut expliquait le moins : « [Errno 28] No space left on
+        # device » ne dit ni ou, ni quoi faire, ni — surtout — que le travail
+        # deja fait n'est pas perdu.
+        explication = _expliquer_ecriture(exc)
+        erreur(explication or "{} : {}".format(type(exc).__name__, exc))
+        if config.env_bool("USINE_DEBUG"):
+            raise
+        if not explication:
+            print("  Détails complets : USINE_DEBUG=1 usine ...")
+        return 1
     except Exception as exc:
         erreur("{} : {}".format(type(exc).__name__, exc))
         if config.env_bool("USINE_DEBUG"):
             raise
-        print("  Details complets : USINE_DEBUG=1 usine ...")
+        print("  Détails complets : USINE_DEBUG=1 usine ...")
         return 1
     finally:
+        evenements.ne_plus_ecouter(_dire_l_attente)
         store.close()
 
 

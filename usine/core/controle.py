@@ -54,6 +54,49 @@ TICS = [
     r"le monde (fascinant|passionnant) de",
 ]
 
+# Ce qu'un modele laisse quand il n'a pas fini : une consigne a l'AUTEUR,
+# jamais une phrase pour le lecteur. « [Inserer un exemple concret ici] » dans
+# un livre vendu le fait paraitre inacheve, et rien ne le signalait. La
+# chaine « ebook-factory », comparee le 23/09/2026, verifie l'absence de
+# « TODO » et « LOREM » avant de livrer ; nous non.
+#
+# Vocabulaire ferme, et volontairement etroit. « [a completer] » n'y est pas :
+# un guide pratique en met dans ses exercices, et c'est au lecteur qu'il
+# parle. « [VOTRE PRODUIT] » non plus : c'est la variable d'un modele. Ni un
+# « todo » nu : « ma todo list » est une phrase. On rate un marqueur plutot
+# que d'accuser un exercice. Lu sur le texte sans accents.
+_MARQUEURS_DE_TRAVAIL = re.compile(
+    r"\blorem ipsum\b"
+    r"|[\[(]\s*(?:inserer|todo|tbd|xxx+|placeholder|a rediger|a developper)"
+    r"\b[^\])\n]{0,120}[\])]",
+    re.IGNORECASE)
+
+
+def tics_lisibles() -> List[str]:
+    """Les tics de TICS, ecrits comme un auteur les lirait.
+
+    Une seule liste pour les deux usages. Le detecteur en connaissait
+    vingt-neuf ; la consigne envoyee aux agents en citait DEUX — « dans un
+    monde ou », « il est important de noter ». Les vingt-sept autres n'etaient
+    appris qu'apres coup, au prix d'une passe de correction par section : un
+    appel de modele complet pour retirer « plongeons dans ». Les deux listes
+    etaient tenues a la main, separement, et divergeaient deja.
+
+    Chaque motif donne sa premiere variante : « (noter|souligner) » devient
+    « noter », un groupe facultatif est garde (« il ne faut pas oublier »), et
+    un intervalle libre devient « … ». Un test verifie qu'aucune syntaxe de
+    motif ne passe dans la consigne quand on ajoute un tic.
+    """
+    rendus = []
+    for motif in TICS:
+        m = re.sub(r"\(([^()|]+)\)\?", r"\1", motif)            # facultatif garde
+        m = re.sub(r"\(([^()|]+)(?:\|[^()]+)?\)", r"\1", m)      # 1re variante
+        m = m.replace(".{3,40}", "…").replace(r"\b", "").replace(r"\s?", " ")
+        m = m.replace("game.changer", "game changer")
+        rendus.append(re.sub(r"\s+", " ", m).strip(" ,"))
+    return rendus
+
+
 # Promesses de resultat : risque commercial et juridique pour le vendeur.
 PROMESSES = [
     r"garanti(e|s|es)?\b",
@@ -70,9 +113,19 @@ PROMESSES = [
 # Un chiffre precis sans source est la premiere cause de produit non credible.
 CHIFFRE_PRECIS = re.compile(
     r"\b\d{1,3}(?:[.,]\d+)?\s?%|\b\d+\s?(?:fois plus|x plus)\b", re.IGNORECASE)
+# Les memes marqueurs en anglais. Le modele ecrit dans la langue du produit,
+# et seuls les marqueurs francais etaient reconnus : mesure du 24/09/2026,
+# quatre chiffres anglais correctement introduits sur quatre — « According
+# to a 2023 Gallup survey », « For example », « A McKinsey report »,
+# « Imagine » — signales comme inventes, la note baissee, et chaque
+# correction demandait au modele de retirer des chiffres bien sources.
+# Ajouter des marqueurs ne peut que taire le controle, jamais le faire crier.
 MARQUEUR_SOURCE = re.compile(
     r"\b(selon|d'apres|source\s*:|etude|sondage|rapport|enquete|par exemple|"
-    r"exemple|imaginons|supposons|admettons|fictif|illustrat)", re.IGNORECASE)
+    r"exemple|imaginons|supposons|admettons|fictif|illustrat|"
+    r"according to|sources?\s*:|stud(?:y|ies)|survey|report|poll|research|"
+    r"for example|for instance|e\.g\.|imagine|suppose|let's say|"
+    r"hypothetical|fictional)", re.IGNORECASE)
 
 _COMPILES_TICS = [re.compile(m, re.IGNORECASE) for m in TICS]
 _COMPILES_PROMESSES = [re.compile(m, re.IGNORECASE) for m in PROMESSES]
@@ -270,6 +323,19 @@ def controler(
         anomalies.append(Anomalie(
             "tics", "mineur", "{} tic(s) d'ecriture".format(len(trouves)),
             consigne="Retirer les quelques formules de transition generiques restantes."))
+
+    # --- marqueurs de travail laisses par le modele --------------------------
+    marqueurs = [m.group(0) for m in _MARQUEURS_DE_TRAVAIL.finditer(normalise)]
+    if marqueurs:
+        anomalies.append(Anomalie(
+            "marqueur", "bloquant",
+            "{} marqueur(s) de travail laisse(s) dans le texte".format(len(marqueurs)),
+            extrait=marqueurs[0][:160],
+            consigne="Remplacer chaque marqueur provisoire ([Inserer ...], "
+                     "[TODO], lorem ipsum) par le contenu qu'il annonce, ecrit "
+                     "en entier. Si ce contenu n'existe pas, supprimer la phrase.",
+            poids=min(6.0, 3.0 + len(marqueurs)),
+        ))
 
     # --- promesses de resultat ---------------------------------------------
     promesses = []

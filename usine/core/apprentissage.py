@@ -42,23 +42,9 @@ CREATE INDEX IF NOT EXISTS idx_productions_type ON productions(type);
 CREATE INDEX IF NOT EXISTS idx_productions_ts ON productions(ts);
 """
 
-_pret = False
+_assurer = store.tables_a_la_demande(SCHEMA)
 
 
-def _assurer() -> None:
-    global _pret
-    if not _pret:
-        store.connect().executescript(SCHEMA)
-        _pret = True
-
-
-def _oublier() -> None:
-    """La base a change : les tables de ce module sont a recreer."""
-    global _pret
-    _pret = False
-
-
-store.oublier_avec_la_base(_oublier)
 
 
 def enregistrer(
@@ -184,7 +170,7 @@ def bilan() -> Dict[str, Any]:
     _assurer()
     lignes = historique(500)
     if not lignes:
-        return {"productions": 0, "message": "Aucune production enregistree."}
+        return {"productions": 0, "message": "Aucune production enregistrée."}
 
     reussies = [l for l in lignes if l["reussi"]]
     notes = [l["note"] for l in reussies if l["note"] is not None]
@@ -206,6 +192,12 @@ def bilan() -> Dict[str, Any]:
         "note_moyenne": _moyenne(notes),
         "note_meilleure": max(notes) if notes else None,
         "note_pire": min(notes) if notes else None,
+        # Sur combien de produits cette moyenne repose. Tous les types ne sont
+        # pas notables : le controle mesure de la prose, et une liste de
+        # prompts ou du code n'en sont pas. Sans ce compte, « 4 production(s) »
+        # suivi de « Note moyenne : 8.5 » se lit comme la moyenne des quatre —
+        # alors qu'une seule etait mesurable.
+        "productions_notees": len(notes),
         "gain_moyen_relecture": _moyenne(progression),
         "mots_totaux": sum(l["mots"] or 0 for l in reussies),
         "appels_totaux": sum(l["appels"] or 0 for l in reussies),
@@ -243,7 +235,7 @@ def conseils() -> List[Dict[str, str]]:
         })
 
     for critere, libelle in (("par_ton", "ton"), ("par_taille", "volume"),
-                             ("par_qualite", "niveau de qualite")):
+                             ("par_qualite", "niveau de qualité")):
         groupes = donnees[critere]
         if len(groupes) >= 2:
             meilleur, pire = groupes[0], groupes[-1]
@@ -266,7 +258,7 @@ def conseils() -> List[Dict[str, str]]:
             recommandations.append({
                 "sujet": "relecture",
                 "conseil": "La relecture ne fait gagner que {} point en moyenne. "
-                           "Passez en qualite « rapide » pour economiser vos "
+                           "Passez en qualité « rapide » pour économiser vos "
                            "quotas.".format(round(gain, 2)),
                 "appui": "{} productions relues".format(donnees["reussites"]),
             })
@@ -274,7 +266,7 @@ def conseils() -> List[Dict[str, str]]:
             recommandations.append({
                 "sujet": "relecture",
                 "conseil": "La relecture fait gagner {} points en moyenne : le "
-                           "niveau « exigeant » vaut son cout ici.".format(
+                           "niveau « exigeant » vaut son coût ici.".format(
                                round(gain, 2)),
                 "appui": "{} productions relues".format(donnees["reussites"]),
             })
@@ -283,8 +275,8 @@ def conseils() -> List[Dict[str, str]]:
         principal = donnees["defauts_frequents"][0]
         if principal["occurrences"] >= 3:
             recommandations.append({
-                "sujet": "defaut recurrent",
-                "conseil": "« {} » revient {} fois. Ajoutez une regle a l'agent "
+                "sujet": "défaut récurrent",
+                "conseil": "« {} » revient {} fois. Ajoutez une règle à l'agent "
                            "redacteur : usine prompts-systeme --exporter".format(
                                principal["defaut"], principal["occurrences"]),
                 "appui": "{} occurrences".format(principal["occurrences"]),
@@ -306,8 +298,8 @@ def conseils() -> List[Dict[str, str]]:
     if not recommandations:
         recommandations.append({
             "sujet": "stable",
-            "conseil": "Aucun ecart significatif entre vos reglages. Continuez, "
-                       "et variez un parametre a la fois pour pouvoir comparer.",
+            "conseil": "Aucun écart significatif entre vos réglages. Continuez, "
+                       "et variez un paramètre à la fois pour pouvoir comparer.",
             "appui": "{} productions".format(donnees["productions"]),
         })
     return recommandations

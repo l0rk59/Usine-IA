@@ -5,14 +5,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from ..core import images, llm
-from ..render import livraison
+from ..agents import equipe
+from ..core import images
+from ..render import libelles, livraison, narration, quiz
 from ..render.pdf import DocumentPDF
-from .base import Contexte, elaguer_markdown, nettoyer_titre, preparer, slug, terminer
-
-ROLE = "un concepteur pedagogique qui cree des formations en ligne actionnables"
+from .base import (Contexte, elaguer_markdown, jetons_pour, nettoyer_titre,
+                   preparer, slug, terminer)
 
 
 def _programme(ctx: Contexte, modules: int) -> Dict[str, Any]:
@@ -29,7 +29,8 @@ def _programme(ctx: Contexte, modules: int) -> Dict[str, Any]:
         '"livrable": "ce que l\'apprenant produit", '
         '"notions": ["...", "..."], "exercice": "consigne de l\'exercice"}}]}}'
     ).format(n=modules, sujet=ctx.sujet, audience=ctx.audience)
-    programme = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="costaud",
+    programme = equipe.FORMATEUR.travailler_json(
+        ctx, invite, role_modele="costaud",
                                  temperature=0.65, max_tokens=3000)
     if not isinstance(programme, dict) or not programme.get("modules"):
         raise ValueError("Programme de formation invalide")
@@ -77,13 +78,136 @@ def _rediger_module(ctx: Contexte, programme: Dict[str, Any], index: int,
         mots=ctx.mots_par_chapitre,
         exercice=module["exercice"] or "a definir",
     )
-    reponse = llm.generer(invite, systeme=ctx.systeme(ROLE), role="standard",
-                          temperature=0.75, max_tokens=min(4096, ctx.mots_par_chapitre * 3))
+    reponse = equipe.FORMATEUR.travailler(
+        ctx, invite, role_modele="standard",
+                          temperature=0.75,
+                          max_tokens=jetons_pour(ctx.mots_par_chapitre))
     texte = elaguer_markdown(reponse.texte)
     lignes = texte.split("\n")
     if lignes and lignes[0].startswith("# "):
         lignes.pop(0)
     return "\n".join(lignes).strip()
+
+
+def _quiz(ctx: Contexte, programme: Dict[str, Any],
+          par_module: int = 2) -> List[Dict[str, Any]]:
+    """Questions a choix unique, deux par module, en un seul appel.
+
+    Un seul appel plutot qu'un par module : le modele voit alors toute la
+    progression et evite de poser deux fois la meme question sous deux
+    formes. Sur une formation de huit modules, c'est sept appels economises.
+    """
+    modules = "\n".join(
+        "- {} — objectif : {} ; notions : {}".format(
+            module["titre"], module["objectif"],
+            ", ".join(module["notions"]) or "libres")
+        for module in programme["modules"])
+    invite = (
+        "Redige le quiz d'auto-evaluation de cette mini-formation.\n"
+        "FORMATION : {titre}\n"
+        "PROMESSE : {promesse}\n"
+        "MODULES :\n{modules}\n\n"
+        "{n} question(s) par module, dans l'ordre des modules.\n"
+        "Contraintes :\n"
+        "- Chaque question porte sur ce que l'apprenant doit SAVOIR FAIRE, "
+        "pas sur une definition a reciter.\n"
+        "- Trois ou quatre propositions, dont UNE SEULE est juste.\n"
+        "- Les mauvaises propositions sont plausibles : ce sont les erreurs "
+        "que fait vraiment un debutant, pas des absurdites.\n"
+        "- « reponse » est l'INDICE de la bonne proposition, a partir de 0.\n"
+        "- L'explication dit pourquoi la bonne reponse est bonne, en une ou "
+        "deux phrases.\n\n"
+        "Schema JSON exact :\n"
+        '{{"quiz": [{{"module": "titre du module", "question": "...", '
+        '"propositions": ["...", "...", "..."], "reponse": 0, '
+        '"explication": "..."}}]}}'
+    ).format(titre=programme["titre"], promesse=programme.get("promesse", ""),
+             modules=modules, n=par_module)
+
+    brut = equipe.FORMATEUR.travailler_json(
+        ctx, invite, role_modele="costaud",
+                            temperature=0.5, max_tokens=3200)
+    questions = brut.get("quiz") if isinstance(brut, dict) else None
+    if not isinstance(questions, list):
+        return []
+
+    titres = [module["titre"] for module in programme["modules"]]
+    propres: List[Dict[str, Any]] = []
+    for element in questions:
+        if not isinstance(element, dict):
+            continue
+        propositions = [str(p).strip() for p in element.get("propositions") or []
+                        if str(p).strip()]
+        # Une question a une seule proposition n'en est pas une, et une
+        # reponse hors des bornes designerait une proposition inexistante :
+        # le quiz afficherait alors « la bonne reponse etait undefined ».
+        if len(propositions) < 2:
+            continue
+        try:
+            reponse = int(element.get("reponse", 0))
+        except (TypeError, ValueError):
+            continue
+        if not 0 <= reponse < len(propositions):
+            continue
+        intitule = str(element.get("question") or "").strip()
+        if not intitule:
+            continue
+        module = str(element.get("module") or "").strip()
+        propres.append({
+            "module": module if module in titres else "",
+            "question": intitule,
+            "propositions": propositions,
+            "reponse": reponse,
+            "explication": str(element.get("explication") or "").strip(),
+        })
+    return propres
+
+
+def _narration(ctx: Contexte, programme: Dict[str, Any],
+               contenus: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
+    """Reecrit chaque module pour qu'il se DISE, pas qu'il se lise.
+
+    Un appel par module, contrairement au quiz : convertir huit modules en
+    une fois depasserait le budget de jetons d'une reponse, et une narration
+    tronquee au module six ne vaut rien. C'est pourquoi elle est en option —
+    elle double le cout d'une formation, et l'utilisateur doit le decider.
+    """
+    scripts: List[Tuple[str, str]] = []
+    for index, (nom, corps) in enumerate(contenus):
+        module = programme["modules"][index] if index < len(
+            programme["modules"]) else {}
+        invite = (
+            "Reecris ce module de formation en SCRIPT DE NARRATION, destine a "
+            "etre lu a voix haute devant un micro.\n\n"
+            "FORMATION : {formation}\n"
+            "MODULE {num}/{total} : {titre}\n"
+            "OBJECTIF : {objectif}\n\n"
+            "--- TEXTE ECRIT ---\n{corps}\n--- FIN ---\n\n"
+            "Ce qui change a l'oral :\n"
+            "- Aucun sous-titre, aucune puce, aucune numerotation : ce qui "
+            "etait une liste devient une enumeration parlee "
+            "(« Premier point : ... Deuxieme : ... »).\n"
+            "- Des phrases COURTES. On ne relit pas une phrase entendue.\n"
+            "- Aucune reference visuelle : ni « ci-dessus », ni « le schema "
+            "suivant », ni « comme on l'a vu plus haut ».\n"
+            "- Commence par une accroche de deux phrases qui donne envie "
+            "d'ecouter la suite, et termine par une transition vers le "
+            "module suivant.\n"
+            "- Place « [PAUSE] » aux respirations, et « [INSISTER] » devant "
+            "ce qui doit etre appuye. Rien d'autre entre crochets.\n"
+            "- Garde les exemples chiffres : ce sont eux qui tiennent "
+            "l'attention.\n\n"
+            "Reponds uniquement par le texte a dire."
+        ).format(formation=programme["titre"], num=index + 1,
+                 total=len(contenus), titre=module.get("titre", nom),
+                 objectif=module.get("objectif", ""), corps=corps[:9000])
+        reponse = equipe.FORMATEUR.travailler(
+        ctx, invite, role_modele="standard",
+                              temperature=0.7,
+                              max_tokens=jetons_pour(ctx.mots_par_chapitre))
+        scripts.append((nom, elaguer_markdown(reponse.texte)))
+        ctx.journal("  [{}/{}] {}".format(index + 1, len(contenus), nom))
+    return scripts
 
 
 def _sequence_email(ctx: Contexte, programme: Dict[str, Any]) -> List[Dict[str, str]]:
@@ -102,7 +226,8 @@ def _sequence_email(ctx: Contexte, programme: Dict[str, Any]) -> List[Dict[str, 
         promesse=programme.get("promesse", ""),
         modules="\n".join("- " + m["titre"] for m in programme["modules"]),
     )
-    donnees = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="standard",
+    donnees = equipe.FORMATEUR.travailler_json(
+        ctx, invite, role_modele="standard",
                                temperature=0.7, max_tokens=4096)
     emails = donnees.get("emails") if isinstance(donnees, dict) else donnees
     return [
@@ -117,50 +242,87 @@ def _sequence_email(ctx: Contexte, programme: Dict[str, Any]) -> List[Dict[str, 
     ]
 
 
-def produire(ctx: Contexte, modules: int = 0) -> Dict[str, Any]:
+def produire(ctx: Contexte, modules: int = 0,
+             narration: bool = False) -> Dict[str, Any]:
     modules = modules or max(5, min(ctx.nb_chapitres, 10))
-    ctx.journal("Etape 1/4 — programme pedagogique ({} modules)...".format(modules))
+    ctx.journal("Étape 1/5 — programme pédagogique ({} modules)...".format(modules))
     programme = _programme(ctx, modules)
     titre = programme["titre"]
     dossier = preparer(ctx, "formation", titre)
     ctx.etape("programme", "ok", "{} modules".format(len(programme["modules"])))
     ctx.journal('  Formation : « {} »'.format(titre))
 
-    ctx.journal("Etape 2/4 — redaction des modules...")
+    ctx.journal("Étape 2/5 — rédaction des modules...")
     contenus: List[Tuple[str, str]] = []
     for index, module in enumerate(programme["modules"]):
         ctx.journal("  [{}/{}] {}".format(index + 1, len(programme["modules"]),
                                           module["titre"]))
+        perdu = ""
         try:
             corps = _rediger_module(ctx, programme, index, module)
         except Exception as exc:
-            ctx.journal("     echec : {}".format(exc))
-            ctx.etape("module-{}".format(index + 1), "echec", str(exc))
-            corps = "## Objectif\n\n{}\n\n## Notions\n\n{}".format(
-                module["objectif"], "\n".join("- " + n for n in module["notions"])
-            )
-        contenus.append(("Module {} — {}".format(index + 1, module["titre"]), corps))
-        ctx.etape("module-{}".format(index + 1), "ok")
+            perdu = str(exc)
+            ctx.journal("     échec : {}".format(exc))
+            # Le module est remplace par son PLAN : quelques puces la ou
+            # l'acheteur attend une lecon. C'est un trou, pas un module.
+            corps = libelles.libelle(
+                ctx.langue_iso, "module_plan", objectif=module["objectif"],
+                notions="\n".join("- " + n for n in module["notions"]))
+        contenus.append((libelles.libelle(ctx.langue_iso, "module_titre",
+                                          numero=index + 1, titre=module["titre"]),
+                         corps))
+        # Un seul appel, et apres coup. La version d'avant notait « echec »
+        # dans la branche d'erreur puis « ok » deux lignes plus bas, hors du
+        # « else » : le dernier statut ecrasait le premier, et le module
+        # remplace par son plan passait pour un module ecrit.
+        ctx.etape("module-{}".format(index + 1),
+                  "echec" if perdu else "ok", perdu)
 
-    ctx.journal("Etape 3/4 — sequence e-mail de livraison...")
+    ctx.journal("Étape 3/5 — quiz d'auto-évaluation...")
+    try:
+        questions = _quiz(ctx, programme)
+    except Exception as exc:
+        # Le quiz est un plus : son echec ne doit pas emporter la formation.
+        ctx.journal("  quiz indisponible : {}".format(exc))
+        questions = []
+    ctx.etape("quiz", "ok" if questions else "echec",
+              "{} question(s)".format(len(questions)), essentiel=False)
+
+    scripts: List[Tuple[str, str]] = []
+    if narration:
+        ctx.journal("Étape 4/6 — script de narration (un appel par module)...")
+        try:
+            scripts = _narration(ctx, programme, contenus)
+        except Exception as exc:
+            ctx.journal("  narration indisponible : {}".format(exc))
+            scripts = []
+        ctx.etape("narration", "ok" if scripts else "echec",
+                  "{} script(s)".format(len(scripts)), essentiel=False)
+
+    ctx.journal("Étape {} — séquence e-mail de livraison...".format(
+        "5/6" if narration else "4/5"))
     try:
         emails = _sequence_email(ctx, programme)
     except Exception as exc:
-        ctx.journal("  sequence e-mail indisponible : {}".format(exc))
+        ctx.journal("  séquence e-mail indisponible : {}".format(exc))
         emails = []
-    ctx.etape("emails", "ok" if emails else "echec", "{} e-mails".format(len(emails)))
+    ctx.etape("emails", "ok" if emails else "echec",
+              "{} e-mails".format(len(emails)), essentiel=False)
 
-    ctx.journal("Etape 4/4 — export...")
-    fichiers = _exporter(ctx, programme, contenus, emails)
+    ctx.journal("Étape {} — export...".format("6/6" if narration else "5/5"))
+    fichiers = _exporter(ctx, programme, contenus, emails, questions, scripts)
     resume = {
         "produit_id": ctx.produit_id,
         "titre": titre,
         "dossier": str(dossier),
         "modules": len(contenus),
         "emails": len(emails),
+        "questions": len(questions),
+        "narration": ctx.meta.get("narration"),
         "fichiers": [f.name for f in fichiers],
     }
-    terminer(ctx, fichiers, {"modules": len(contenus), "emails": len(emails)})
+    terminer(ctx, fichiers, {"modules": len(contenus), "emails": len(emails),
+                             "questions": len(questions)})
     (dossier / "produit.json").write_text(
         json.dumps(resume, ensure_ascii=False, indent=2), encoding="utf-8"
     )
@@ -168,7 +330,9 @@ def produire(ctx: Contexte, modules: int = 0) -> Dict[str, Any]:
 
 
 def _exporter(ctx: Contexte, programme: Dict[str, Any], contenus: List[Tuple[str, str]],
-              emails: List[Dict[str, str]]) -> List[Path]:
+              emails: List[Dict[str, str]],
+              questions: Optional[List[Dict[str, Any]]] = None,
+              scripts: Optional[List[Tuple[str, str]]] = None) -> List[Path]:
     """Confie la formation a l'assemblage commun.
 
     Deux specificites : un cahier d'exercices qui est un second document PDF,
@@ -176,17 +340,15 @@ def _exporter(ctx: Contexte, programme: Dict[str, Any], contenus: List[Tuple[str
     """
     titre = programme["titre"]
     prerequis = str(programme.get("prerequis") or "")
+    t = libelles.textes(ctx.langue_iso)
 
     def avant_propos(doc) -> None:
         doc.paragraphe(programme.get("promesse", ""), justifier=True)
         if prerequis:
-            doc.encadre("Prerequis", prerequis)
-        doc.paragraphe(
-            "Traitez un module par session de travail. Ne passez au suivant qu'apres "
-            "avoir produit le livrable demande : c'est lui qui transforme la lecture "
-            "en resultat.", justifier=True)
+            doc.encadre(t["formation_prerequis"], prerequis)
+        doc.paragraphe(t["formation_methode"], justifier=True)
 
-    blocs = [livraison.Bloc(titre="Avant de commencer", rendu_pdf=avant_propos)]
+    blocs = [livraison.Bloc(titre=t["formation_avant"], rendu_pdf=avant_propos)]
     blocs += livraison.blocs_depuis_sections(contenus)
 
     produit = livraison.Produit(
@@ -198,19 +360,38 @@ def _exporter(ctx: Contexte, programme: Dict[str, Any], contenus: List[Tuple[str
         formats=("md", "pdf", "html"),
         style_couverture="online course cover, educational, clean geometric",
         nom_fichier=slug(titre, 40),
-        suffixe_pdf="-manuel",
-        libelle_sections="modules",
-        documents=[("cahier-exercices", _cahier(ctx, programme, titre))],
+        suffixe_pdf=t["fichier_manuel"],
+        libelle_sections=t["unite_modules"],
+        documents=[(t["fichier_cahier"], _cahier(ctx, programme, titre))],
     )
     fichiers = livraison.livrer(ctx, produit)
 
+    if questions:
+        # Page autonome : l'apprenant l'ouvre depuis le dossier, hors ligne,
+        # et la correction se fait dans son navigateur. Rien n'est envoye.
+        fichiers.append(quiz.ecrire(
+            ctx.dossier / "quiz.html", titre, questions,
+            promesse=programme.get("promesse", ""), langue=ctx.langue_iso))
+
+    if scripts:
+        document, mesures = narration.assembler(titre, scripts)
+        chemin = ctx.dossier / "narration.md"
+        chemin.write_text(document, encoding="utf-8")
+        fichiers.append(chemin)
+        ctx.meta["narration"] = mesures
+        ctx.journal("  narration : {} mots — {}".format(
+            mesures["mots"], narration.minutes_lisibles(mesures)))
+
     if emails:
-        lignes = ["# Sequence e-mail — {}\n".format(titre)]
+        lignes = ["# {}\n".format(t["sequence_titre"].format(titre=titre))]
         for email in emails:
-            lignes.append("\n## Jour {} — {}\n".format(email["jour"], email["objet"]))
+            lignes.append("\n## {}\n".format(t["sequence_jour"].format(
+                jour=email["jour"], objet=email["objet"])))
             lignes.append(email["corps"])
             if email["action"]:
-                lignes.append("\n**Action demandee :** {}\n".format(email["action"]))
+                lignes.append("\n{}\n".format(t["deux_points"].format(
+                    libelle="**{}**".format(t["sequence_action"]),
+                    texte=email["action"])))
         chemin = ctx.dossier / "sequence-emails.md"
         chemin.write_text("\n".join(lignes), encoding="utf-8")
         fichiers.append(chemin)
@@ -220,27 +401,31 @@ def _exporter(ctx: Contexte, programme: Dict[str, Any], contenus: List[Tuple[str
 def _cahier(ctx: Contexte, programme: Dict[str, Any], titre: str):
     """Construit le cahier d'exercices, second document du produit."""
 
+    t = libelles.textes(ctx.langue_iso)
+
     def construire(_couverture):
         # Le cahier compose la sienne plutot que de reprendre celle du manuel :
         # c'est un document distinct, que l'acheteur ouvre separement.
-        doc = DocumentPDF(titre_courant="{} — cahier d'exercices".format(titre),
-                          police_corps="Helvetica")
+        doc = DocumentPDF(titre_courant=t["cahier_titre_courant"].format(titre=titre),
+                          police_corps="Helvetica", langue=ctx.langue_iso)
         if ctx.sans_image:
-            doc.page_couverture("Cahier d'exercices", titre, ctx.auteur)
+            doc.page_couverture(t["cahier_titre"], titre, ctx.auteur)
         else:
             doc.page_couverture_image(*images.couverture_pleine_page(
-                "Cahier d'exercices", titre, ctx.auteur,
+                t["cahier_titre"], titre, ctx.auteur,
                 getattr(ctx, "marque", "") or ""))
         for index, module in enumerate(programme["modules"], 1):
-            doc.titre("Module {} — {}".format(index, module["titre"]), 1)
+            doc.titre(t["module_titre"].format(numero=index, titre=module["titre"]), 1)
             if module["objectif"]:
-                doc.paragraphe("Objectif : " + module["objectif"], taille=10.5)
+                doc.paragraphe(t["deux_points"].format(
+                    libelle=t["cahier_objectif"], texte=module["objectif"]),
+                    taille=10.5)
             if module["livrable"]:
-                doc.encadre("Livrable attendu", module["livrable"])
+                doc.encadre(t["cahier_livrable"], module["livrable"])
             if module["exercice"]:
-                doc.titre("Consigne", 2)
+                doc.titre(t["cahier_consigne"], 2)
                 doc.paragraphe(module["exercice"], justifier=True)
-            doc.titre("Vos notes", 2)
+            doc.titre(t["cahier_notes"], 2)
             doc.lignes_a_remplir(9)
         return doc
 

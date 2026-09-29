@@ -6,18 +6,35 @@ name: tests
 
 on:
   push:
-    branches: ["**"]
+    # « main » seul. Chaque poussee alimentait DEUX executions identiques :
+    # la branche miroir de session porte toujours le meme commit que main,
+    # et les cinq jobs tournaient deux fois pour la meme information. Sur un
+    # depot prive, les minutes Actions sont comptees — le 26/09/2026, le
+    # plafond du mois est tombe en fin de journee, et toute la CI avec.
+    branches: ["main"]
   pull_request:
+  # Relancer a la main, sans commit. Le 26/09/2026, les cinq jobs d'une
+  # poussee sont morts en deux secondes, sans etape ni journal — les
+  # coureurs n'ont jamais demarre. Sans ce declencheur, la seule relance
+  # possible etait un commit vide, que ce depot s'interdit.
+  workflow_dispatch:
 
 jobs:
   suite:
     runs-on: ubuntu-latest
+    # La suite tient en trois minutes ; sans borne, un fil qui ne meurt pas
+    # (c'est arrive : un travail du tableau de bord survivait a son module)
+    # tiendrait le coureur six heures, le defaut GitHub (verifie le
+    # 26/09/2026), et la CI semblerait juste lente.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         # Termux livre la version courante ; les anciennes restent en place
-        # longtemps sur un telephone qu'on ne met pas a jour.
-        python: ["3.9", "3.11", "3.13"]
+        # longtemps sur un telephone qu'on ne met pas a jour. 3.14 est celle
+        # du telephone (SPECS-APPAREIL.md, releve du 14/09/2026 : 3.14.6) :
+        # elle manquait, et c'etait la seule qui compte vraiment.
+        python: ["3.9", "3.11", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -41,25 +58,22 @@ jobs:
 
   hygiene:
     runs-on: ubuntu-latest
+    # La suite tient en trois minutes ; sans borne, un fil qui ne meurt pas
+    # (c'est arrive : un travail du tableau de bord survivait a son module)
+    # tiendrait le coureur six heures, le defaut GitHub (verifie le
+    # 26/09/2026), et la CI semblerait juste lente.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      # Les motifs sont ceux qui masquent les cles dans le journal : un prefixe
+      # seul (« gsk_ ») signalait la documentation et les cles factices des
+      # tests, et ce job fut rouge du 12 au 23/09/2026 sans une seule vraie cle.
       - name: Aucun secret dans le depot
-        run: |
-          if git ls-files | grep -qx '.env'; then
-            echo "::error::.env est suivi par git"
-            exit 1
-          fi
-          # Les cles des fournisseurs ont des prefixes reconnaissables.
-          if git grep -nE '\b(gsk_|sk-[A-Za-z0-9]{20}|AIza[0-9A-Za-z_-]{30})' \
-               -- . ':!.github/workflows' > /tmp/fuites.txt; then
-            echo "::error::cle API apparente dans le depot"
-            cat /tmp/fuites.txt
-            exit 1
-          fi
+        run: python scripts/fuites.py
 
       - name: Tout le code doit se compiler
         run: python -m compileall -q usine tests

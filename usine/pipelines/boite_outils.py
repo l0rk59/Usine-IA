@@ -10,31 +10,78 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from ..core import images, llm
+from ..agents import equipe
+from ..core import images
 from ..render import document as D
 from ..render import tableur
-from ..render import livraison
+from ..render import libelles, livraison
 from ..render.page import ecrire_page
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
 
-ROLE = "un consultant operationnel qui transforme des methodes en outils utilisables"
+
+# Ce qu'on vend. Mesure du 26/09/2026 : l'invite imposait TOUJOURS un
+# melange des trois genres d'outil. Or un pack de trente checklists, un pack
+# de modeles a completer et un classeur de tableaux de suivi sont trois
+# produits distincts sur une place de marche, cherches avec des mots
+# differents (« checklist pack », « templates », « tracker »). Le melange
+# n'en etait qu'un, choisi pour tous.
+COMPOSITIONS: Dict[str, Dict[str, str]] = {
+    "melange": {
+        "nom": "Un mélange des trois",
+        "consigne": "Chaque outil est soit une checklist, soit un modele a "
+                    "completer, soit un tableau de suivi : choisis pour "
+                    "chacun le genre qui sert le mieux la situation.",
+    },
+    "checklists": {
+        "nom": "Un pack de checklists",
+        "consigne": "Tous les outils sont des checklists (type « checklist ») : "
+                    "une par moment ou par situation ou l'on risque d'oublier "
+                    "quelque chose.",
+    },
+    "modeles": {
+        "nom": "Un pack de modèles à compléter",
+        "consigne": "Tous les outils sont des modeles a completer (type "
+                    "« modele ») : les documents que l'utilisateur ecrirait "
+                    "sinon a partir d'une page blanche.",
+    },
+    "tableaux": {
+        "nom": "Un classeur de tableaux de suivi",
+        "consigne": "Tous les outils sont des tableaux de suivi (type "
+                    "« tableau ») : ce que l'utilisateur doit mesurer, dater ou "
+                    "comparer semaine apres semaine.",
+    },
+}
+COMPOSITION_PAR_DEFAUT = "melange"
+_GENRE_IMPOSE = {"checklists": "checklist", "modeles": "modele",
+                 "tableaux": "tableau"}
 
 
-def _sommaire(ctx: Contexte, nombre: int) -> Dict[str, Any]:
+def _composition(ctx: Contexte, composition: str) -> str:
+    """La composition retenue, et le journal dit quand personne ne l'a choisie."""
+    if composition in COMPOSITIONS:
+        return composition
+    ctx.journal("  composition : {} (personne ne l'a choisie)".format(
+        COMPOSITIONS[COMPOSITION_PAR_DEFAUT]["nom"]))
+    return COMPOSITION_PAR_DEFAUT
+
+
+def _sommaire(ctx: Contexte, nombre: int,
+              composition: str = COMPOSITION_PAR_DEFAUT) -> Dict[str, Any]:
     invite = (
         "Concois une boite a outils de {n} documents pratiques sur : {sujet}\n"
         "UTILISATEUR : {audience}\n\n"
-        "Chaque outil est soit une checklist, soit un modele a completer, soit un "
-        "tableau de suivi. Il doit s'utiliser en moins de 20 minutes et produire une "
-        "decision ou un document.\n\n"
+        "{composition} Chaque outil doit s'utiliser en moins de 20 minutes et "
+        "produire une decision ou un document.\n\n"
         "Schema JSON exact :\n"
         '{{"titre": "titre commercial de la boite a outils", '
         '"promesse": "...", '
         '"outils": [{{"nom": "...", "type": "checklist|modele|tableau", '
         '"quand": "dans quelle situation l\'utiliser", '
         '"resultat": "ce que l\'utilisateur obtient"}}]}}'
-    ).format(n=nombre, sujet=ctx.sujet, audience=ctx.audience)
-    donnees = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="costaud",
+    ).format(n=nombre, sujet=ctx.sujet, audience=ctx.audience,
+             composition=COMPOSITIONS[composition]["consigne"])
+    donnees = equipe.OUTILLEUR.travailler_json(
+        ctx, invite, role_modele="costaud",
                                temperature=0.68, max_tokens=2600)
     if not isinstance(donnees, dict) or not donnees.get("outils"):
         raise ValueError("Sommaire de boite a outils invalide")
@@ -46,6 +93,9 @@ def _sommaire(ctx: Contexte, nombre: int) -> Dict[str, Any]:
         type_outil = str(outil.get("type") or "checklist").lower()
         if type_outil not in ("checklist", "modele", "tableau"):
             type_outil = "checklist"
+        # Un pack de checklists ne livre pas un tableau parce que le modele
+        # a derive : ce qui a ete choisi est ce qui est vendu.
+        type_outil = _GENRE_IMPOSE.get(composition, type_outil)
         outils.append(
             {
                 "nom": nettoyer_titre(str(outil.get("nom") or "Outil")),
@@ -89,20 +139,23 @@ def _remplir(ctx: Contexte, boite: Dict[str, Any], outil: Dict[str, Any]) -> Dic
         quand=outil["quand"], resultat=outil["resultat"],
         sujet=ctx.sujet, audience=ctx.audience, consigne=consigne,
     )
-    contenu = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="standard",
+    contenu = equipe.OUTILLEUR.travailler_json(
+        ctx, invite, role_modele="standard",
                                temperature=0.7, max_tokens=3000)
     return contenu if isinstance(contenu, dict) else {"intro": "", "points": []}
 
 
-def produire(ctx: Contexte, nombre: int = 10) -> Dict[str, Any]:
-    ctx.journal("Etape 1/3 — sommaire de la boite a outils ({} outils)...".format(nombre))
-    boite = _sommaire(ctx, nombre)
+def produire(ctx: Contexte, nombre: int = 10,
+             composition: str = "") -> Dict[str, Any]:
+    retenue = _composition(ctx, composition)
+    ctx.journal("Étape 1/3 — sommaire de la boîte à outils ({} outils)...".format(nombre))
+    boite = _sommaire(ctx, nombre, retenue)
     titre = boite["titre"]
     dossier = preparer(ctx, "boite-outils", titre)
     ctx.etape("sommaire", "ok", "{} outils".format(len(boite["outils"])))
-    ctx.journal('  Boite : « {} »'.format(titre))
+    ctx.journal('  Boîte : « {} »'.format(titre))
 
-    ctx.journal("Etape 2/3 — redaction des outils...")
+    ctx.journal("Étape 2/3 — rédaction des outils...")
     for index, outil in enumerate(boite["outils"], 1):
         ctx.journal("  [{}/{}] {} ({})".format(index, len(boite["outils"]),
                                                outil["nom"], outil["type"]))
@@ -110,11 +163,11 @@ def produire(ctx: Contexte, nombre: int = 10) -> Dict[str, Any]:
             outil["contenu"] = _remplir(ctx, boite, outil)
             ctx.etape("outil-{}".format(index), "ok", outil["nom"])
         except Exception as exc:
-            ctx.journal("     echec : {}".format(exc))
+            ctx.journal("     échec : {}".format(exc))
             ctx.etape("outil-{}".format(index), "echec", str(exc))
             outil["contenu"] = {"intro": outil["resultat"], "points": []}
 
-    ctx.journal("Etape 3/3 — export...")
+    ctx.journal("Étape 3/3 — export...")
     fichiers = _exporter(ctx, boite)
     resume = {
         "produit_id": ctx.produit_id,
@@ -130,7 +183,7 @@ def produire(ctx: Contexte, nombre: int = 10) -> Dict[str, Any]:
     return resume
 
 
-def _markdown_outil(outil: Dict[str, Any]) -> str:
+def _markdown_outil(outil: Dict[str, Any], t: Dict[str, Any]) -> str:
     contenu = outil.get("contenu") or {}
     morceaux = []
     if contenu.get("intro"):
@@ -152,7 +205,9 @@ def _markdown_outil(outil: Dict[str, Any]) -> str:
             lignes.append("| " + " | ".join(cellules) + " |")
         morceaux.append("\n".join(lignes))
     if contenu.get("conseils"):
-        morceaux.append("**Astuce :** " + " ".join(str(c) for c in contenu["conseils"]))
+        morceaux.append(t["deux_points"].format(
+            libelle="**{}**".format(t["prompts_astuce"]),
+            texte=" ".join(str(c) for c in contenu["conseils"])))
     return "\n\n".join(morceaux)
 
 
@@ -165,12 +220,14 @@ def _exporter(ctx: Contexte, boite: Dict[str, Any]) -> List[Path]:
         json.dumps(boite, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
+    t = libelles.textes(ctx.langue_iso)
     lignes = ["# {}\n".format(titre), "*{}*\n".format(boite.get("promesse", ""))]
     for outil in boite["outils"]:
         lignes.append("\n# {}\n".format(outil["nom"]))
         if outil["quand"]:
-            lignes.append("*Quand : {}*\n".format(outil["quand"]))
-        lignes.append(_markdown_outil(outil))
+            lignes.append("*{}*\n".format(t["deux_points"].format(
+                libelle=t["outils_quand_court"], texte=outil["quand"])))
+        lignes.append(_markdown_outil(outil, t))
     chemin_md = dossier / "boite-outils.md"
     chemin_md.write_text("\n".join(lignes), encoding="utf-8")
     fichiers.append(chemin_md)
@@ -180,7 +237,8 @@ def _exporter(ctx: Contexte, boite: Dict[str, Any]) -> List[Path]:
         contenu = outil.get("contenu") or {}
         if outil["type"] != "tableau" or not contenu.get("colonnes"):
             continue
-        chemin = dossier / "tableau-{:02d}-{}.csv".format(index, slug(outil["nom"], 30))
+        chemin = dossier / t["fichier_tableau"].format(rang=index,
+                                                       nom=slug(outil["nom"], 30))
         with chemin.open("w", encoding="utf-8", newline="") as flux:
             auteur = csv.writer(flux)
             auteur.writerow(tableur.ligne(contenu["colonnes"]))
@@ -199,43 +257,44 @@ def _exporter(ctx: Contexte, boite: Dict[str, Any]) -> List[Path]:
 
     doc = livraison.document(ctx, titre, boite.get("promesse", ""),
                              couverture, police_corps="Helvetica")
-    doc.titre("Comment utiliser cette boite a outils", 1)
-    doc.paragraphe(
-        "Ces documents sont faits pour etre imprimes ou remplis a l'ecran. Choisissez "
-        "l'outil correspondant a votre situation du moment : chacun produit un resultat "
-        "en une seule session de travail.",
-        justifier=True,
-    )
+    doc.titre(t["outils_mode_emploi_titre"], 1)
+    doc.paragraphe(t["outils_mode_emploi"], justifier=True)
     for outil in boite["outils"]:
         doc.titre(outil["nom"], 1)
         if outil["quand"]:
-            doc.citation("Quand l'utiliser : " + outil["quand"])
+            doc.citation(t["deux_points"].format(libelle=t["outils_quand"],
+                                                 texte=outil["quand"]))
         contenu = outil.get("contenu") or {}
         if contenu.get("intro"):
             doc.paragraphe(str(contenu["intro"]), justifier=True)
         if contenu.get("points"):
-            doc.titre("A verifier", 2)
+            doc.titre(t["outils_a_verifier"], 2)
             doc.cases_a_cocher([str(p) for p in contenu["points"]])
         for section in contenu.get("sections") or []:
             if isinstance(section, dict):
                 doc.titre(str(section.get("titre", "")), 2)
                 doc.paragraphe(str(section.get("contenu", "")), justifier=True)
         if contenu.get("colonnes"):
-            doc.titre("Colonnes du tableau", 2)
+            doc.titre(t["outils_colonnes"], 2)
             doc.liste([str(c) for c in contenu["colonnes"]])
-            doc.titre("A completer", 2)
+            doc.titre(t["outils_a_completer"], 2)
             doc.lignes_a_remplir(10)
         if contenu.get("conseils"):
-            doc.encadre("Astuce", " ".join(str(c) for c in contenu["conseils"]))
-    doc.inserer_sommaire(apres=1)
+            doc.encadre(t["prompts_astuce"],
+                        " ".join(str(c) for c in contenu["conseils"]))
+    doc.inserer_sommaire(t["sommaire"], apres=1)
     chemin_pdf = dossier / "{}.pdf".format(slug(titre, 46))
     doc.enregistrer(chemin_pdf)
     fichiers.append(chemin_pdf)
 
+    # Le texte du modele entrait ici sans echappement. Mesure du 24/09/2026 :
+    # un gabarit du genre « <VOTRE NOM> » etait avale comme une balise
+    # inconnue, donc invisible pour l'acheteur. « inline_html » echappe, et
+    # rend le gras au passage.
     corps = []
     for outil in boite["outils"]:
-        corps.append("<h2>{}</h2>".format(outil["nom"]))
-        corps.append(D.vers_html(D.analyser(_markdown_outil(outil)), niveau_depart=3))
+        corps.append("<h2>{}</h2>".format(D.inline_html(outil["nom"])))
+        corps.append(D.vers_html(D.analyser(_markdown_outil(outil, t)), niveau_depart=3))
     chemin_html = dossier / "lire.html"
     ecrire_page(chemin_html, titre, "\n".join(corps), boite.get("promesse", ""), ctx.auteur,
                 langue=ctx.langue_iso,

@@ -27,7 +27,6 @@ import math
 import random
 import re
 import time
-from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from . import store
@@ -79,29 +78,15 @@ CERTITUDE_TENDANCE = 0.80
 PERTE_ACCEPTABLE = 0.005      # 0,5 point de taux de conversion
 MINIMUM_ACTIONS = 25          # en dessous, aucune conclusion n'est publiee
 
-_pret = False
+def _colonnes_de_periode(connexion) -> None:
+    """Les tables d'experience naissent a la demande : si elles existaient
+    deja avant l'ajout des colonnes de periode, le schema ne les a pas
+    touchees."""
+    store._ajouter_colonnes(connexion, "variantes",
+                            (("debut", "TEXT"), ("fin", "TEXT")))
 
 
-def _assurer() -> None:
-    global _pret
-    if not _pret:
-        connexion = store.connect()
-        connexion.executescript(SCHEMA)
-        # Les tables d'experience naissent a la demande : si elles existaient
-        # deja avant l'ajout des colonnes de periode, le script ci-dessus ne
-        # les a pas touchees.
-        store._ajouter_colonnes(connexion, "variantes",
-                                (("debut", "TEXT"), ("fin", "TEXT")))
-        _pret = True
-
-
-def _oublier() -> None:
-    """La base a change : les tables de ce module sont a recreer."""
-    global _pret
-    _pret = False
-
-
-store.oublier_avec_la_base(_oublier)
+_assurer = store.tables_a_la_demande(SCHEMA, _colonnes_de_periode)
 
 
 # --------------------------------------------------------------------------
@@ -331,7 +316,7 @@ def verdict_rythme(comparaison: Dict[str, Any],
 
     if total_jours <= 0:
         return {"etat": "sans_donnees",
-                "message": "Aucune periode de mise en ligne renseignee. "
+                "message": "Aucune période de mise en ligne renseignée. "
                            "« usine ab periode <variante> --du ... --au ... »"}
     if total_ventes < minimum_ventes:
         return {
@@ -361,7 +346,7 @@ def verdict_rythme(comparaison: Dict[str, Any],
         return {
             "etat": "tendance", "tete": meilleure["index"],
             "certitude": meilleure["probabilite_meilleure"],
-            "message": "Variante {} en tete ({:.0f} %), sans certitude. "
+            "message": "Variante {} en tête ({:.0f} %), sans certitude. "
                        "Laissez tourner.".format(
                            meilleure.get("etiquette")
                            or _etiquette(meilleure["index"]),
@@ -392,7 +377,7 @@ def verdict(comparaison: Dict[str, Any],
     if total_vues == 0:
         return {
             "etat": "sans_donnees",
-            "message": "Aucune observation enregistree. Publiez les variantes, "
+            "message": "Aucune observation enregistrée. Publiez les variantes, "
                        "puis reportez les chiffres avec « usine ab observer ».",
             "besoin_par_variante": besoin,
         }
@@ -428,7 +413,7 @@ def verdict(comparaison: Dict[str, Any],
             "tete": meilleure["index"],
             "certitude": meilleure["probabilite_meilleure"],
             "besoin_par_variante": besoin,
-            "message": "Variante {} en tete ({:.0f} %), mais pas assez pour "
+            "message": "Variante {} en tête ({:.0f} %), mais pas assez pour "
                        "trancher. Continuez : il faudrait de l'ordre de {} vues "
                        "par variante.".format(
                            _etiquette(meilleure["index"]),
@@ -441,7 +426,7 @@ def verdict(comparaison: Dict[str, Any],
         "certitude": meilleure["probabilite_meilleure"],
         "besoin_par_variante": besoin,
         "message": "Aucune variante ne se detache ({:.0f} % pour la mieux "
-                   "placee). Gardez celle que vous preferez : sur ces donnees, "
+                   "placée). Gardez celle que vous préférez : sur ces données, "
                    "le choix n'a pas d'effet mesurable.".format(
                        meilleure["probabilite_meilleure"] * 100),
     }
@@ -494,10 +479,10 @@ def observer(variante_id: int, vues: int = 0, actions: int = 0,
     """Ajoute une observation. Les chiffres s'additionnent aux precedents."""
     _assurer()
     if vues < 0 or actions < 0:
-        raise ValueError("les chiffres ne peuvent pas etre negatifs")
+        raise ValueError("les chiffres ne peuvent pas être négatifs")
     if actions > vues:
         raise ValueError(
-            "plus d'actions ({}) que de vues ({}) : verifiez la saisie".format(
+            "plus d'actions ({}) que de vues ({}) : vérifiez la saisie".format(
                 actions, vues))
     with store.cursor() as cur:
         cur.execute(
@@ -512,12 +497,12 @@ def fixer_periode(variante_id: int, debut: str, fin: str = "") -> bool:
     peut lui etre attribuee."""
     _assurer()
     if not debut:
-        raise ValueError("une periode a besoin d'une date de debut (--du)")
+        raise ValueError("une période a besoin d'une date de début (--du)")
     for valeur in (debut, fin):
         if valeur and not re.match(r"^\d{4}-\d{2}-\d{2}$", valeur):
             raise ValueError("date attendue au format AAAA-MM-JJ : " + valeur)
     if fin and debut and fin < debut:
-        raise ValueError("la fin precede le debut")
+        raise ValueError("la fin précède le début")
     with store.cursor() as cur:
         cur.execute("UPDATE variantes SET debut=?, fin=? WHERE id=?",
                     (debut or None, fin or None, variante_id))

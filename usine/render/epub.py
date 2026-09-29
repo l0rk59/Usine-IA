@@ -12,6 +12,8 @@ import zipfile
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
+from . import libelles
+
 STYLE = """\
 @page { margin: 1.1em; }
 body { font-family: Georgia, 'Times New Roman', serif; line-height: 1.62;
@@ -45,6 +47,13 @@ code { font-family: 'Courier New', monospace; font-size: .9em; }
 .page-titre .sous-titre { font-size: 1.15em; color: #475569; font-style: italic; }
 .page-titre .auteur { margin-top: 3.2em; color: #64748b; letter-spacing: .06em; }
 img.couverture { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+.droits { font-size: .88em; color: #3f4653; text-align: left; margin-top: 12%;
+          page-break-after: always; }
+.droits p { margin: 0 0 .7em; }
+.droits .oeuvre { font-weight: bold; color: #16181d; }
+.droits .identifiant { font-size: .82em; color: #64748b; word-wrap: break-word; }
+.dedicace { text-align: center; margin-top: 32%; font-style: italic;
+            color: #3f4653; page-break-after: always; }
 """
 
 GABARIT_XHTML = """<?xml version="1.0" encoding="utf-8"?>
@@ -68,17 +77,7 @@ def _xml(texte: str) -> str:
 # Accessibilite
 # --------------------------------------------------------------------------
 
-RESUME_ACCESSIBILITE = (
-    "Publication textuelle. Ordre de lecture logique, titres hierarchises, "
-    "table des matieres navigable, texte redimensionnable sans perte "
-    "d'information. Contraste verifie a 4,5:1 au minimum sur l'ensemble de la "
-    "feuille de style. Aucun contenu clignotant ni sonore. La couverture porte "
-    "un texte de remplacement ; elle est decorative et ne porte aucune "
-    "information absente du texte."
-)
-
-
-def metadonnees_accessibilite(avec_image: bool) -> str:
+def metadonnees_accessibilite(avec_image: bool, langue: str = "fr") -> str:
     """Metadonnees EPUB Accessibility 1.1, exigees pour vendre dans l'Union.
 
     Elles ne sont pas decoratives : depuis le 28 juin 2025, l'European
@@ -106,12 +105,69 @@ def metadonnees_accessibilite(avec_image: bool) -> str:
     morceaux.append('<meta property="schema:accessibilityHazard">none</meta>')
     morceaux.append(
         '<meta property="schema:accessibilitySummary">{}</meta>'.format(
-            _xml(RESUME_ACCESSIBILITE)))
+            _xml(libelles.libelle(langue, "resume_accessibilite"))))
     morceaux.append(
         '<meta property="dcterms:conformsTo">'
         "EPUB Accessibility 1.1 - WCAG 2.1 Level AA</meta>")
     morceaux.append('<meta property="a11y:certifiedBy">Usine-IA</meta>')
     return "".join(morceaux)
+
+
+def page_droits(titre: str, auteur: str, editeur: str, identifiant: str,
+                horodatage: str, mentions: Sequence[str] = (),
+                langue: str = "fr") -> str:
+    """Page de copyright — ce qui manque le plus visiblement a un livre fait maison.
+
+    Amazon KDP attend un appareil liminaire dans cet ordre : page de titre,
+    page de copyright, dedicace eventuelle, table des matieres. Un livre sans
+    page de copyright se repere au premier coup d'oeil, et c'est la premiere
+    chose qu'un lecteur habitue regarde apres le titre.
+
+    Elle suit la langue du livre, comme « Sommaire » : elle etait en
+    francais pour tout livre, y compris ecrit en anglais — la page que
+    l'acheteur regarde juste apres le titre. Voir « render/libelles.py ».
+    """
+    t = libelles.textes(langue)
+    annee = horodatage[:4]
+    try:
+        mois = t["mois"][int(horodatage[5:7]) - 1]
+    except (ValueError, IndexError):
+        mois = ""
+    lignes = ['<p class="oeuvre">{}</p>'.format(_xml(titre))]
+    lignes.append("<p>&#169; {} {}</p>".format(annee, _xml(auteur or "Usine-IA")))
+    lignes.append("<p>{}</p>".format(_xml(t["droits_reserves"])))
+    if editeur and editeur != auteur:
+        lignes.append("<p>{}</p>".format(
+            _xml(t["edite_par"].format(editeur=editeur))))
+    lignes.append("<p>{}</p>".format(_xml(t["premiere_edition"].format(
+        date="{} {}".format(mois, annee) if mois else annee))))
+    for mention in mentions:
+        if mention:
+            lignes.append("<p>{}</p>".format(_xml(mention)))
+    lignes.append('<p class="identifiant">{}</p>'.format(_xml(
+        t["identifiant_publication"].format(identifiant=identifiant))))
+    return '<div class="droits">{}</div>'.format("".join(lignes))
+
+
+def _type_image(nom: str) -> str:
+    """Type mime d'apres l'extension.
+
+    Deduit du NOM, pas des octets : c'est ce que le manifeste declare, et un
+    manifeste qui ment sur le type fait rejeter le livre par le distributeur
+    avant meme qu'un lecteur l'ouvre. Les quatre formats connus sont ceux
+    qu'EPUB 3 accepte comme images de base ; tout le reste passe pour du PNG,
+    ce qui est faux mais visible — le controle de conformite le dira.
+    """
+    bas = nom.lower()
+    if bas.endswith((".jpg", ".jpeg")):
+        return "image/jpeg"
+    if bas.endswith(".svg"):
+        return "image/svg+xml"
+    if bas.endswith(".gif"):
+        return "image/gif"
+    if bas.endswith(".webp"):
+        return "image/webp"
+    return "image/png"
 
 
 def construire_epub(
@@ -124,11 +180,26 @@ def construire_epub(
     description: str = "",
     couverture: Optional[Tuple[str, bytes]] = None,
     editeur: str = "",
+    mentions: Sequence[str] = (),
+    dedicace: str = "",
+    ressources: Sequence[Tuple[str, bytes]] = (),
 ) -> Path:
     """Assemble un EPUB.
 
     chapitres : suite de (titre, fragment HTML deja rendu).
     couverture : (nom de fichier, octets) — JPEG ou PNG.
+    ressources : (chemin dans le livre, octets) — images citees par les
+                 chapitres. Un EPUB est une archive FERMEE : une image
+                 referencee mais absente du conteneur ne s'affiche pas chez
+                 le lecteur, et le distributeur refuse le fichier.
+    mentions   : lignes ajoutees a la page de copyright (mention d'assistance
+                 IA, contact, numero d'edition...).
+    dedicace   : texte de la page de dedicace, omise si vide.
+
+    L'ordre des pages liminaires est celui qu'attend Amazon KDP : couverture,
+    page de titre, page de copyright, dedicace, table des matieres, puis le
+    texte. Ce n'est pas un detail de presentation — c'est a cet ordre qu'un
+    lecteur reconnait un livre edite d'un fichier bricole.
     """
     identifiant = "urn:uuid:{}".format(uuid.uuid4())
     # Horodatage reel. Il etait fige a « 2026-01-01T00:00:00Z » pour tous les
@@ -159,9 +230,7 @@ def construire_epub(
         if couverture:
             nom_couverture, octets = couverture
             z.writestr("OEBPS/" + nom_couverture, octets)
-            mime = "image/jpeg" if nom_couverture.lower().endswith(("jpg", "jpeg")) else (
-                "image/svg+xml" if nom_couverture.lower().endswith("svg") else "image/png"
-            )
+            mime = _type_image(nom_couverture)
             fichiers.append(("cover-image", nom_couverture, mime))
             z.writestr(
                 "OEBPS/couverture.xhtml",
@@ -187,6 +256,36 @@ def construire_epub(
         )
         fichiers.append(("titre", "titre.xhtml", "application/xhtml+xml"))
 
+        # Page de copyright : attendue par les plateformes, et absente de
+        # tout livre fait maison. Elle porte l'identifiant unique de la
+        # publication, qui n'apparaissait jusqu'ici que dans les metadonnees.
+        z.writestr(
+            "OEBPS/droits.xhtml",
+            GABARIT_XHTML.format(
+                langue=langue, titre=_xml(titre),
+                corps=page_droits(titre, auteur, editeur, identifiant,
+                                  horodatage, mentions, langue)),
+        )
+        fichiers.append(("droits", "droits.xhtml", "application/xhtml+xml"))
+
+        if dedicace:
+            z.writestr(
+                "OEBPS/dedicace.xhtml",
+                GABARIT_XHTML.format(
+                    langue=langue, titre=_xml(titre),
+                    corps='<div class="dedicace">{}</div>'.format(
+                        _xml(dedicace))),
+            )
+            fichiers.append(("dedicace", "dedicace.xhtml",
+                             "application/xhtml+xml"))
+
+        for rang, (nom_ressource, octets) in enumerate(ressources, 1):
+            if not octets:
+                continue
+            z.writestr("OEBPS/" + nom_ressource, octets)
+            fichiers.append(("res{:03d}".format(rang), nom_ressource,
+                             _type_image(nom_ressource)))
+
         entrees_nav: List[Tuple[str, str]] = []
         for index, (titre_chapitre, corps_html) in enumerate(chapitres, 1):
             nom = "ch{:03d}.xhtml".format(index)
@@ -209,9 +308,10 @@ def construire_epub(
             "OEBPS/nav.xhtml",
             GABARIT_XHTML.format(
                 langue=langue,
-                titre="Sommaire",
-                corps='<nav epub:type="toc" id="toc"><h1 class="premier">Sommaire</h1>'
-                      "<ol>{}</ol></nav>".format(liens),
+                titre=_xml(libelles.libelle(langue, "sommaire")),
+                corps='<nav epub:type="toc" id="toc"><h1 class="premier">{}</h1>'
+                      "<ol>{}</ol></nav>".format(
+                          _xml(libelles.libelle(langue, "sommaire")), liens),
             ),
         )
 
@@ -246,6 +346,9 @@ def construire_epub(
         if nom_couverture:
             colonne.append('<itemref idref="couverture"/>')
         colonne.append('<itemref idref="titre"/>')
+        colonne.append('<itemref idref="droits"/>')
+        if dedicace:
+            colonne.append('<itemref idref="dedicace"/>')
         colonne.append('<itemref idref="nav"/>')
         colonne.extend(
             '<itemref idref="{}"/>'.format(ident)
@@ -282,7 +385,7 @@ def construire_epub(
                 editeur=_xml(editeur or auteur or "Usine-IA"),
                 horodatage=horodatage,
                 annee=horodatage[:4],
-                acces=metadonnees_accessibilite(bool(couverture)),
+                acces=metadonnees_accessibilite(bool(couverture), langue),
                 metacouv=meta_couverture,
                 manifeste="".join(manifeste),
                 colonne="".join(colonne),

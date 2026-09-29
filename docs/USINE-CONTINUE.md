@@ -1,5 +1,39 @@
 # L'usine continue
 
+## Le journal sur disque
+
+Une production continue tourne des heures sur un téléphone dont Android
+réclame le tampon du terminal. Une niche qui échoue à trois heures du matin ne
+laissait donc **aucune trace lisible** : la base retient bien les étapes de
+chaque produit, mais pas ce qui s'est passé *entre* eux — la niche sautée, le
+fournisseur tombé, l'arrêt sur batterie faible.
+
+`config.LOG_DIR` était créé à chaque démarrage et n'avait jamais rien reçu.
+
+```bash
+usine journal                # les 40 dernières lignes du jour
+usine journal 2026-09-10 -n 200
+```
+
+Sur un téléphone : « Usine continue » → « Journal ».
+
+Trois contraintes de l'appareil ont dicté la forme du module
+(`core/trace.py`) :
+
+| Contrainte | Décision |
+|---|---|
+| le processus meurt sans préavis | le fichier est **ouvert et refermé à chaque ligne** — plus coûteux qu'une poignée gardée ouverte, et c'est le but : un tampon emporterait précisément les lignes qui expliquent l'arrêt |
+| le disque est fini | un fichier par jour, les plus anciens effacés au-delà de 14 jours. Un journal qui remplit le téléphone fait échouer la fabrication qu'il était censé documenter |
+| une clé ne doit jamais toucher le disque | chaque ligne passe par `securite.expurger` |
+
+Sur ce dernier point, le journal **dit** que le masquage a eu lieu, une seule
+fois par session : masquer en silence laisserait l'utilisateur avec une clé
+exposée quelque part et aucune raison de la renouveler. Répétée à chaque
+ligne, l'alerte deviendrait invisible — et c'est une alerte qu'il faut lire.
+
+Le journal est une trace, pas une fonction métier : toute erreur d'écriture
+est avalée. Un journal qui empêche de produire est pire qu'un journal absent.
+
 Vous remplissez une file de niches, vous fixez un budget, vous lancez. L'usine
 produit en boucle et s'arrête toute seule — sur la fin de la file, sur le
 budget, ou sur votre demande.
@@ -100,7 +134,161 @@ servie par le cache n'est jamais refusée : elle ne coûte rien.
 **Pendant un produit.** Si un plafond tombe au dixième chapitre, **le livre
 sort quand même** : les chapitres déjà rédigés sont conservés, les suivants
 sont réduits à leur plan, le PDF et l'EPUB sont générés. Perdre neuf chapitres
-parce que le dixième a dépassé n'aurait aucun sens. L'usine s'arrête ensuite.
+parce que le dixième a dépassé n'aurait aucun sens. L'usine s'arrête ensuite :
+c'est **votre** plafond, c'est à vous de le lever.
+
+**Le plafond de la boucle n'est que le sien.** Le tableau de bord fait tourner
+l'usine continue dans un fil, et l'on peut appuyer sur « Générer » pendant ce
+temps. Mesure du 24/09/2026, plafond de douze appels par produit, deux ebooks
+qui en demandent dix chacun : seuls, ils passaient ; ensemble, **les deux**
+sortaient inachevés et l'usine s'arrêtait sur « budget épuisé ». La garde était
+globale au processus — le produit du tableau de bord, qui n'a aucun plafond,
+se faisait couper par celui de la boucle — et le compte par produit relisait
+en base les appels de tous les fils. La garde est maintenant propre au fil qui
+l'a branchée, et le compteur tient lui-même le compte de son produit. Le
+plafond **du jour**, lui, reste global : il compte tout ce qui a été dépensé,
+d'où que ce soit parti.
+
+Le même mélange faussait ce que coûte un produit. Chaque fiche comptait tout ce
+que la base avait reçu pendant sa fabrication : deux ebooks faits en même temps
+en inscrivaient dix-huit appels chacun, pour neuf chacun en réalité — et
+`usine conseils` en tirait le type « le plus économique ». Le routeur tient
+maintenant le journal des appels de chaque fil, et un produit ne compte que
+les siens.
+
+## Quand les fournisseurs se taisent : attendre, puis finir
+
+Les quotas gratuits des fournisseurs ne sont pas votre budget. Ils se vident
+en pleine fabrication, et ils se remplissent seuls — au bout d'une minute pour
+un 429, à minuit UTC pour un quota du jour.
+
+Journal réel du 16/09/2026, roman de dix-huit scènes : tous les fournisseurs
+épuisés à la huitième, dix scènes à écrire. L'usine marquait alors la niche
+**« faite »** et s'arrêtait. Le roman attendait sur le disque, inachevé, qu'on
+pense à appuyer sur « Reprendre ». Pour une usine dont la promesse est
+« appuyer sur Générer et rien d'autre », c'était la panne la plus probable,
+et la plus silencieuse.
+
+Désormais, un produit resté inachevé **repart en tête de file**, avec de quoi
+reprendre *ce* produit plutôt qu'en fabriquer un autre. L'usine demande au
+routeur quand un fournisseur rouvrira (`llm.prochaine_ouverture`) — il le sait
+sans rien deviner : ce sont les repos qu'il a lui-même posés, par fournisseur
+et par clé, et les quotas du jour — puis elle attend, et finit le produit
+depuis son carnet :
+
+```
+[1] ebook — « la facturation des independants »
+    [!] 1 section(s) non ecrites : conclusion. Le produit reste inacheve — ...
+  inacheve : 1 section(s) a ecrire — il repart en tete de file et sera fini automatiquement.
+  plus rien a demander aux fournisseurs : reprise automatique vers 22:59 (5 min).
+[1] ebook — « la facturation des independants »
+  reprise du produit inacheve, depuis son carnet (1 section(s) a ecrire)
+  livre : « Le systeme du freelance rentable » — note 3.79/10 en 0 s
+```
+
+(Journal du scénario de `tests/test_reprise_auto.py`, fournisseurs coupés au
+neuvième appel, routeur annonçant une réouverture dans cinq minutes.)
+
+Trois garde-fous :
+
+- **Un plancher.** Le routeur ne voit ni un réseau coupé ni un crédit épuisé
+  sans repos posé : pour lui, le fournisseur paraît ouvert. « Tout de suite »
+  n'est donc pas une promesse, et l'attente vaut au moins une minute, puis
+  cinq, quinze, trente, une heure tant que les reprises ne font rien avancer.
+- **Le verrou de veille est relâché pendant l'attente.** Elle peut durer
+  jusqu'à minuit UTC ; garder le téléphone éveillé pour ne rien calculer
+  viderait la batterie. Android peut endormir Termux, et l'attente se termine
+  au premier réveil après l'heure.
+- **Renoncer, mais seulement quand rien ne s'épuisait.** Une section qui
+  échoue trois reprises de suite alors que les fournisseurs répondent ne
+  réussira pas à la quatrième : la niche sort de la file, le produit reste
+  inachevé, et le journal dit d'essayer `usine reprendre` à la main. Un quota
+  vide, lui, se remplit — attendre est la bonne réponse, aussi longtemps qu'il
+  le faut.
+
+Et si aucun fournisseur ne peut revenir — aucune clé, aucun serveur local qui
+écoute — l'usine le dit et s'arrête ; la niche attend en tête de file la
+prochaine session.
+
+### Coupé avant la fin du produit : la niche ne perd rien
+
+Tout ce qui précède ne couvrait qu'un cas : le produit coupé **après** son
+export, qui rend la main avec des sections manquantes. Un produit coupé plus
+tôt — sur son plan, sur sa bible, ou n'importe où dans une chaîne sans boucle
+comme le mémo ou le quiz — ne rend rien : il lève. Et la boucle traitait cette
+erreur comme les autres : une faute de la niche, un essai compté.
+
+Mesure du 24/09/2026 : trois niches en file, quotas déjà vides au moment où
+l'usine démarre.
+
+```
+[1] ebook — « sujet numero 2 du matin »
+    Etape 1/5 — construction du plan...
+  echec : Tous les fournisseurs ont echoue (echec)
+File vide — l'usine s'arrete.
+
+quiz   echec  2 essais
+memo   echec  2 essais
+ebook  echec  2 essais        16 appels, 0 attente
+```
+
+Deux essais font un échec définitif. Les trois niches étaient jetées **en moins
+d'une seconde, sans une minute d'attente**, et l'usine s'arrêtait sur « file
+vide ». La boucle faite pour attendre les quotas vidait sa file au premier
+quota vide — typiquement le matin, quand on la relance avant minuit UTC.
+
+C'est maintenant la même règle que pour le produit coupé en route : ce n'est
+pas un échec de la niche. Elle **garde sa place et son essai** (`file.reporter`),
+et l'usine attend, avec les mêmes paliers. Si le produit a eu le temps
+d'exister — son dossier, son carnet — c'est **lui** que la niche reprendra :
+en fabriquer un second laissait le premier inachevé sur le disque, sans rien
+pour le finir. Le bouton « Générer » confie de même à la boucle un produit
+coupé avant son export ; seul celui coupé après l'était.
+
+Le mode automatique avait le même défaut, un cran plus tôt. File vide, il
+cherche lui-même des niches — ce qui demande le modèle. Quotas épuisés à ce
+moment-là, il s'arrêtait sur « file vide » après **un** appel, en conseillant
+de lui donner un domaine, ce qui n'aurait rien changé. La recherche dit
+maintenant quand c'est le silence des fournisseurs qui l'a arrêtée, et l'usine
+attend qu'ils rouvrent ; quand ils répondent sans rien d'exploitable, elle
+s'arrête comme avant. Le tableau de bord, lui, nomme la cause au lieu
+d'afficher « aucune niche trouvée ».
+
+Ce que cette règle ne sait pas faire, et qu'elle ne prétend pas faire : une
+niche dont *tous* les fournisseurs refuseraient *chaque fois* la demande
+attendrait indéfiniment, une heure entre deux essais. Le routeur ne distingue
+pas ce refus d'une panne, et la boucle ne l'invente pas.
+
+Ce cas avait une cause que l'usine fabriquait elle-même, en anglais : le
+routeur prenait pour un message de facturation toute réponse anglaise courte
+qui disait « billing » ou « quota », mettait les fournisseurs au repos l'un
+après l'autre, et la boucle attendait des quotas pleins. Corrigé le
+24/09/2026 : voir [LANGUE-LIVREE.md](LANGUE-LIVREE.md).
+
+Et le cas le plus probable — des modèles qui refusent *en toutes lettres*
+(« Je suis désolé, mais je ne peux pas… ») — n'arrive plus ici : quand tous
+les fournisseurs ont refusé, le routeur le dit par une erreur ordinaire, que
+la niche compte comme un essai. Seul un refus rendu comme une erreur HTTP de
+modération reste confondu avec une panne. Voir [ROUTEUR.md](ROUTEUR.md).
+
+Les six mutations de cette correction sont vues.
+
+## Ce que la boucle oubliait de faire
+
+Le tableau de bord et l'usine continue reçoivent la même chose — un type, un
+sujet, des options — et fabriquaient chacun à sa façon. Mesure du 23/09/2026,
+mêmes réglages activés des deux côtés :
+
+| Réglage « à chaque produit » | tableau de bord | usine continue |
+|---|---|---|
+| `relecture_ensemble` | 1 | **0** |
+| `archive_auto` | 1 | **0** |
+| `marketing_auto` | 1 | **0** |
+
+La boucle — précisément là où l'on fabrique sans surveiller — ignorait aussi
+les chapitres, les mots et l'auteur passés en options. Les deux portes passent
+maintenant par `pipelines/porte.py`, qui n'invente rien : c'est ce que faisait
+le tableau de bord, sorti de son fichier.
 
 ## Piloter
 
@@ -130,14 +318,14 @@ s'arrête plutôt que d'inventer.
 
 ## Sur Termux
 
-Android suspend les applications en arrière-plan. Pour une session longue :
+Android suspend les applications en arrière-plan. L'usine prend donc
+elle-même le **verrou de veille** au démarrage de la session et le relâche à
+la fin — y compris après un `Ctrl+C`. Il n'y a plus rien à taper autour :
 
 ```bash
-termux-wake-lock
 nohup usine usine demarrer --max 5 > ~/usine.log 2>&1 &
 usine usine statut          # suivre depuis un autre onglet
 tail -f ~/usine.log
-termux-wake-unlock          # une fois terminé
 ```
 
 Ajoutez aussi Termux aux applications non optimisées :
@@ -146,15 +334,34 @@ Ajoutez aussi Termux aux applications non optimisées :
 Si l'usine est tuée malgré tout, relancez la même commande : la file reprend,
 et le cache restitue ce qui avait déjà été généré sans reconsommer un appel.
 
+### La batterie, et savoir que c'est prêt
+
+Avec `termux-api` installé (paquet **et** application Termux:API — voir
+[TERMUX.md](TERMUX.md)), deux choses changent pour une session qui dure :
+
+- **l'usine s'arrête sous 20 % de batterie**, entre deux produits, la file
+  intacte. Une usine qui tourne jusqu'à l'extinction laisse un produit à
+  moitié écrit et un téléphone mort. Un téléphone **en charge** ne déclenche
+  rien : son niveau monte ;
+- **une notification** annonce chaque produit livré, puis la fin de session.
+  La taper ouvre le PDF. Les notifications se remplacent l'une l'autre :
+  dix produits laissent une ligne dans le volet, pas dix.
+
+Sans `termux-api`, aucune des deux ne se produit et rien ne casse.
+
 ## Réglages utiles
 
 | Réglage | Défaut | Effet |
 |---|---|---|
 | `budget_appels_jour` | 250 | plafond global sur 24 h |
 | `budget_appels_produit` | 80 | plafond par produit |
-| `budget_produits_jour` | 4 | nombre de produits par jour |
+| `budget_produits_jour` | 3 | nombre de produits par jour |
 | `budget_minutes_produit` | 45 | durée maximum d'un produit |
+| `budget_jetons_jour` | 0 | jetons IA par jour, tous fournisseurs confondus — plusieurs paliers gratuits comptent ainsi plutôt qu'en requêtes |
 | `pause_entre_produits` | 60 | secondes entre deux produits, pour laisser respirer les quotas par minute |
+| `batterie_minimum` | 20 | % de batterie sous lequel la session s'arrête (0 = jamais) |
+| `notifications` | oui | notification Android à chaque produit livré |
+| `verrou_veille` | oui | empêche Android d'endormir la fabrication |
 
 ## Depuis le téléphone
 
@@ -164,3 +371,21 @@ arrêter, régler le budget.
 
 Le tableau de bord (`usine web`) affiche la file en direct, permet d'ajouter
 ou retirer une niche, et de démarrer ou arrêter l'usine depuis le navigateur.
+
+## Deux usines ne tournent jamais ensemble
+
+Le verrou était pris en deux temps — vérifier qu'il est libre, puis l'écrire —
+avec un intervalle entre les deux. **Deux `usine usine demarrer` lancées dans
+la même seconde le voyaient toutes deux libre**, et la seconde écrasait le PID
+de la première.
+
+Le dégât n'est pas théorique : `usine usine arreter` ne visait plus qu'un des
+deux processus, et l'autre continuait à consommer le budget d'appels et à
+tirer sur la même file — deux produits pour la même niche, et un plafond
+d'appels franchi sans que personne l'ait demandé.
+
+La prise est maintenant une **création exclusive** : c'est le système de
+fichiers qui tranche, pas nous. Un verrou orphelin — Android tue les processus
+sans préavis — est toujours repris, sinon la moindre coupure interdirait toute
+production jusqu'au prochain redémarrage.
+

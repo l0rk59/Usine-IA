@@ -6,11 +6,12 @@ est souvent deplacee (~/Usine-IA, /sdcard/Usine-IA, etc.).
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Tuple, Dict, List, Optional
 
 # --------------------------------------------------------------------------
 # Chemins
@@ -73,13 +74,6 @@ def env(key: str, default: str = "") -> str:
     return os.environ.get(key, default).strip()
 
 
-def env_int(key: str, default: int) -> int:
-    try:
-        return int(env(key, str(default)))
-    except ValueError:
-        return default
-
-
 def env_bool(key: str, default: bool = False) -> bool:
     value = env(key, "1" if default else "0").lower()
     return value in ("1", "true", "yes", "oui", "on")
@@ -88,6 +82,35 @@ def env_bool(key: str, default: bool = False) -> bool:
 # --------------------------------------------------------------------------
 # Catalogue des fournisseurs IA (tous compatibles API OpenAI /chat/completions)
 # --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Quota:
+    """Ce qu'un palier gratuit autorise vraiment.
+
+    Compter les requetes ne suffit pas. Groq annonce 30 requetes par minute
+    sur son palier gratuit, mais 8 000 JETONS par minute : une seule demande
+    de chapitre (une invite de trois mille jetons et huit mille de sortie)
+    depasse a elle seule le budget de la minute. Le routeur qui ne compte que
+    les requetes croit avoir droit a trente appels, en tente un, recolte un
+    429, met le fournisseur au repos — et recommence la minute suivante.
+    Meme ecart chez Cerebras : 5 requetes par minute annoncees, la ou l'usine
+    en supposait 25.
+
+    Un plafond a zero signifie « non publie par le fournisseur », donc non
+    modelise : on ne l'invente pas.
+
+    « portee » dit a quoi le quota s'applique. Chez Google il est compte PAR
+    MODELE (flash et flash-lite ont chacun le sien) ; ailleurs il vaut pour
+    tout le fournisseur. Le distinguer evite de s'interdire flash-lite parce
+    que flash a consomme sa journee.
+    """
+
+    rpm: int = 20                   # requetes / minute
+    rpd: int = 500                  # requetes / jour
+    tpm: int = 0                    # jetons / minute (0 = non publie)
+    tpd: int = 0                    # jetons / jour   (0 = non publie)
+    portee: str = "fournisseur"     # ou "modele"
 
 
 @dataclass
@@ -105,6 +128,16 @@ class Provider:
     signup: str = ""                # ou obtenir une cle gratuite
     notes: str = ""
     extra_headers: Dict[str, str] = field(default_factory=dict)
+    # Variables d'environnement qui, en plus de la cle, doivent etre
+    # renseignees pour que le fournisseur fonctionne. Cloudflare met
+    # l'identifiant de compte dans l'URL : avec la cle seule, chaque appel
+    # partait vers une adresse fausse, et le routeur l'aurait mis au repos
+    # comme une panne — au lieu de dire qu'il manque un reglage.
+    autres_variables: Tuple[str, ...] = ()
+    # En-tete de session exige par le service, s'il en exige un. Sa valeur ne
+    # peut pas etre ecrite ici : elle se derive de la cle, et la cle n'est
+    # connue qu'a l'appel. « entetes_appel » s'en charge.
+    entete_session: str = ""
     # Secondes avant d'abandonner un appel. Un service distant repond en
     # quelques secondes ; un modele de 3 milliards de parametres sur le
     # processeur d'un telephone produit entre trois et dix jetons par
@@ -113,11 +146,20 @@ class Provider:
     # cablee, annoncee dans le diagnostic — et incapable de terminer un
     # chapitre : chaque appel expirait avant la fin de la generation.
     timeout: int = 150
+    # Jetons de SORTIE que le fournisseur accepte pour une seule reponse. Le
+    # routeur y ramene la demande de l'appelant : demander plus ne produit pas
+    # plus, cela produit une erreur chez certains et un silence chez d'autres.
+    max_sortie: int = 8192
+    # Plafonds detailles, par identifiant de modele. Ce qui n'y figure pas
+    # retombe sur rpm/rpd ci-dessus, valables pour le fournisseur entier.
+    quotas: Dict[str, Quota] = field(default_factory=dict)
 
-    @property
-    def api_key(self) -> str:
-        """Premiere cle declaree. Le routeur utilise le pool, pas cette propriete."""
-        return env(self.api_key_env) if self.api_key_env else ""
+    def quota(self, role: str = "standard") -> Quota:
+        """Plafonds applicables au modele qui servira ce role."""
+        precis = self.quotas.get(self.model_for(role))
+        if precis is not None:
+            return precis
+        return Quota(rpm=self.rpm, rpd=self.rpd)
 
     def nb_cles(self) -> int:
         if not self.api_key_env:
@@ -127,6 +169,8 @@ class Provider:
         return len(pool_cles.pool(self.name, self.api_key_env))
 
     def available(self) -> bool:
+        if any(not env(nom) for nom in self.autres_variables):
+            return False
         if self.local or self.keyless:
             return True
         return self.nb_cles() > 0
@@ -135,53 +179,135 @@ class Provider:
         return self.models.get(role) or self.models.get("standard") or ""
 
 
-# Roles logiques :
-#   rapide   -> brouillons, titres, variations (petit modele, gros quota)
-#   standard -> redaction courante
-#   costaud  -> plan detaille, revision finale (meilleur modele dispo)
+# Roles logiques. L'usine ne demande jamais un modele par son nom : elle
+# demande un role, et « core.modeles » le resout sur le catalogue que le
+# fournisseur sert REELLEMENT ce jour-la.
+#
+#   rapide       -> titres, JSON courts, classement (petit modele, gros quota)
+#   standard     -> redaction courante
+#   costaud      -> plan detaille, edition, controle (le meilleur disponible)
+#   long         -> condenser beaucoup de texte d'un coup (relecture d'ensemble,
+#                   fermeture d'une partie de roman) : c'est le contexte qui
+#                   compte, pas la finesse
+#   creatif      -> fiction. Un modele entraine pour ecrire, pas pour resumer ;
+#                   NVIDIA sert « writer/palmyra-creative-122b », qui existe
+#                   exactement pour cela, et le roman le demande
+#   code         -> la chaine logicielle, dont le code doit compiler
+#   raisonnement -> structure et arbitrage entre agents. Reflechir coute des
+#                   jetons, donc on ne le demande que la ou cela se justifie —
+#                   et le brouillon est retire par « core.texte »
+#
+# « model_for » retombe sur « standard » quand un fournisseur n'a rien de mieux
+# a offrir : declarer un role ne coute rien la ou il n'apporte rien.
 
 PROVIDERS: List[Provider] = [
     Provider(
         name="groq",
         base_url="https://api.groq.com/openai/v1",
         api_key_env="GROQ_API_KEY",
+        # Les deux modeles Llama configures ici jusqu'au 16 aout 2026 ont ete
+        # retires du palier gratuit ce jour-la (console.groq.com/docs/
+        # deprecations). L'usine a donc appele pendant des semaines un modele
+        # inexistant : chaque tentative renvoyait 404, le routeur mettait Groq
+        # au repos une demi-heure et passait au suivant, sans que rien ne le
+        # dise. « usine docteur --modeles » existe pour que cela ne puisse
+        # plus arriver en silence.
         models={
-            "rapide": "llama-3.1-8b-instant",
-            "standard": "llama-3.3-70b-versatile",
-            "costaud": "llama-3.3-70b-versatile",
+            "rapide": "openai/gpt-oss-20b",
+            "standard": "openai/gpt-oss-120b",
+            "costaud": "openai/gpt-oss-120b",
         },
-        rpm=28,
-        rpd=900,
+        # Releves le 12/09/2026 sur console.groq.com/docs/rate-limits. La date
+        # racontee plus haut est celle d'une depreciation passee, pas celle
+        # d'un releve : elle dit pourquoi ces modeles-ci sont configures, elle
+        # ne dit pas quand ces quotas-la ont ete verifies. Le garde-fou de
+        # tests/test_fournisseurs_declares.py ne fait pas la difference — et
+        # c'est voulu, un lecteur non plus.
+        rpm=30,
+        rpd=1000,
+        quotas={
+            # 8 000 jetons par minute : c'est LA contrainte, pas les 30
+            # requetes. Une demande de chapitre n'y entre pas — le routeur
+            # confiera donc les gros travaux a un autre fournisseur et
+            # gardera Groq pour ce qui est court, ce qu'il fait tres vite.
+            "openai/gpt-oss-20b": Quota(rpm=30, rpd=1000, tpm=8000, tpd=200000),
+            "openai/gpt-oss-120b": Quota(rpm=30, rpd=1000, tpm=8000, tpd=200000),
+        },
         signup="https://console.groq.com/keys",
-        notes="Le plus rapide. Gratuit, sans carte bancaire.",
+        notes="Le plus rapide. Gratuit, sans carte bancaire. Budget serre en "
+              "jetons (8 000/min, 200 000/jour) : ideal pour les appels courts.",
     ),
     Provider(
         name="cerebras",
         base_url="https://api.cerebras.ai/v1",
         api_key_env="CEREBRAS_API_KEY",
+        # Le catalogue gratuit s'est reduit a deux modeles ; les Llama
+        # configures ici n'y figurent plus (inference-docs.cerebras.ai).
         models={
-            "rapide": "llama3.1-8b",
-            "standard": "llama-3.3-70b",
-            "costaud": "llama-3.3-70b",
+            "rapide": "qwen-3.8-27b",
+            "standard": "gpt-oss-120b",
+            "costaud": "gpt-oss-120b",
         },
-        rpm=25,
-        rpd=800,
-        signup="https://cloud.cerebras.ai/",
-        notes="Tres rapide, quota journalier genereux en tokens.",
+        # 5 requetes par minute, pas 25 : l'usine en supposait cinq fois trop
+        # et s'attirait des 429 a chaque enchainement de chapitres.
+        # Releve le 12/09/2026 sur inference-docs.cerebras.ai.
+        rpm=5,
+        rpd=200,
+        quotas={
+            "gpt-oss-120b": Quota(rpm=5, rpd=200, tpm=30000, tpd=1000000),
+            "qwen-3.8-27b": Quota(rpm=5, rpd=200, tpm=30000, tpd=1000000),
+        },
+        signup="https://cloud.cerebras.ai/ (carte bancaire exigée)",
+        # Le palier gratuit SANS CARTE a pris fin : Cerebras l'a remplace par un
+        # essai de 5 dollars qui exige une carte bancaire, et une cle sans
+        # credit repond 402. Releve du 11/09/2026 (klymentiev.com/blog/free-llm-
+        # api), qui recoupe exactement nos propres chiffres Groq — c'est ce qui
+        # permet de s'y fier.
+        #
+        # Le fournisseur reste declare : une cle creditee fonctionne, et la
+        # vitesse est reelle. Mais il n'est plus « gratuit », et le dire
+        # ailleurs serait envoyer quelqu'un creer un compte pour un 402.
+        notes="PAYANT depuis septembre 2026 : essai de 5 $ avec carte. Tres "
+              "rapide, 5 requetes par minute.",
     ),
     Provider(
         name="gemini",
         base_url="https://generativelanguage.googleapis.com/v1beta/openai",
         api_key_env="GEMINI_API_KEY",
         models={
-            "rapide": "gemini-2.5-flash-lite",
-            "standard": "gemini-2.5-flash",
-            "costaud": "gemini-2.5-flash",
+            # Les « 2.5 » ont ete retires : 404 sur les deux, mesure deux
+            # fois a un jour d'intervalle sur un compte reel (15/09/2026).
+            # Les remplacants ci-dessous ont ete APPELES sur ce compte-la et
+            # ont repondu. Le prefixe « models/ » est celui que le catalogue
+            # de Google emploie, et l'endpoint compatible OpenAI l'accepte.
+            #
+            # Source : un seul compte, une seule date. Un autre palier peut
+            # ne pas servir les memes : c'est « usine docteur --reparer » qui
+            # tranche pour chaque installation.
+            "rapide": "models/gemini-3.1-flash-lite",
+            "standard": "models/gemini-3.5-flash",
+            "costaud": "models/gemini-3.5-flash",
+            "long": "models/gemini-3.5-flash",
         },
-        rpm=12,
-        rpd=400,
+        rpm=10,
+        rpd=250,
+        max_sortie=8192,
+        # Google compte PAR MODELE. Un seul couple rpm/rpd pour tout le
+        # fournisseur interdisait flash-lite — mille requetes par jour — des
+        # que flash avait epuise les siennes, quatre fois moins nombreuses.
+        # Google ne publie plus ces chiffres dans sa documentation (ils sont
+        # renvoyes vers AI Studio, derriere une authentification) : les
+        # valeurs ci-dessous sont les plus basses rapportees, parce qu'une
+        # sous-estimation coute une attente et une surestimation coute un 429.
+        quotas={
+            "models/gemini-3.5-flash": Quota(rpm=10, rpd=250, tpm=250000,
+                                      portee="modele"),
+            "models/gemini-3.1-flash-lite": Quota(rpm=15, rpd=1000, tpm=250000,
+                                           portee="modele"),
+        },
         signup="https://aistudio.google.com/apikey",
-        notes="Contexte 1M tokens. Ideal pour les longs manuscrits.",
+        notes="Contexte 1M tokens. Ideal pour les longs manuscrits. "
+              "Quotas comptes par modele : flash-lite est le plus genereux.",
     ),
     Provider(
         name="mistral",
@@ -192,6 +318,11 @@ PROVIDERS: List[Provider] = [
             "standard": "mistral-small-latest",
             "costaud": "mistral-medium-latest",
         },
+        # Poses le 11/09/2026 et JAMAIS confrontes a la documentation du
+        # fournisseur : le depot n'en porte aucune trace. Ce sont donc des
+        # bornes prudentes, pas un releve — a revalider sur
+        # docs.mistral.ai/deployment/laplateforme/tier/, ou avec
+        # « usine docteur --modeles » qui interroge le service lui-meme.
         rpm=20,
         rpd=500,
         signup="https://console.mistral.ai/api-keys/",
@@ -201,47 +332,157 @@ PROVIDERS: List[Provider] = [
         name="openrouter",
         base_url="https://openrouter.ai/api/v1",
         api_key_env="OPENROUTER_API_KEY",
+        # Releve sur « GET /api/v1/models » le 26/09/2026 : 17 modeles « :free »
+        # sur 458 — ils etaient 19 le 13/09/2026, et « nex-agi/nex-n2.5-mini »
+        # est sorti du palier entre les deux. Les identifiants « :free » sont
+        # les plus volatils du depot — un modele y passe payant du jour au
+        # lendemain. « gemma-4-26b-a4b » le remplace pour « rapide » : quatre
+        # milliards de parametres actifs, generaliste — le selecteur
+        # automatique proposait un modele de code, piege par le mot « mini ».
         models={
-            "rapide": "meta-llama/llama-3.3-70b-instruct:free",
-            "standard": "meta-llama/llama-3.3-70b-instruct:free",
-            "costaud": "deepseek/deepseek-chat-v3-0324:free",
+            "rapide": "google/gemma-4-26b-a4b-it:free",
+            "standard": "google/gemma-4-31b-it:free",
+            "costaud": "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "long": "nvidia/nemotron-3.5-lightning:free",
+            "creatif": "google/gemma-4-31b-it:free",
+            "code": "cohere/north-mini-code:free",
+            "raisonnement": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
         },
-        rpm=18,
-        rpd=45,
+        rpm=20,
+        rpd=50,
         signup="https://openrouter.ai/keys",
-        notes="Beaucoup de modeles :free mais seulement ~50 requetes/jour.",
+        notes="17 modeles « :free » (26/09/2026), 20 requetes/minute et 50 par jour "
+              "(1000 apres un rechargement unique de 10 USD).",
         extra_headers={
             "HTTP-Referer": "https://github.com/l0rk59/usine-ia",
             "X-Title": "Usine-IA",
         },
     ),
     Provider(
-        name="github",
-        base_url="https://models.github.ai/inference",
-        api_key_env="GITHUB_MODELS_TOKEN",
+        name="cloudflare",
+        # L'identifiant de compte fait partie de l'URL : sans lui, l'adresse
+        # est fausse. D'ou « autres_variables » plus bas — le fournisseur ne se
+        # dit disponible que si le jeton ET le compte sont renseignes.
+        base_url="https://api.cloudflare.com/client/v4/accounts/{}/ai/v1".format(
+            env("CLOUDFLARE_ACCOUNT_ID")),
+        api_key_env="CLOUDFLARE_API_TOKEN",
+        autres_variables=("CLOUDFLARE_ACCOUNT_ID",),
+        # Identifiants et tarifs releves le 23/09/2026 sur la documentation
+        # officielle (developers.cloudflare.com/workers-ai/models/ et
+        # /platform/pricing/). Les trois sont servis par /v1/chat/completions.
         models={
-            "rapide": "openai/gpt-4o-mini",
-            "standard": "openai/gpt-4o-mini",
-            "costaud": "openai/gpt-4o",
+            "rapide": "@cf/openai/gpt-oss-20b",
+            "standard": "@cf/openai/gpt-oss-120b",
+            "costaud": "@cf/openai/gpt-oss-120b",
+            "long": "@cf/openai/gpt-oss-120b",
         },
-        rpm=14,
-        rpd=140,
-        signup="https://github.com/settings/tokens (token classique, scope models:read)",
-        notes="GitHub Models : gratuit avec un simple token GitHub.",
+        # 10 000 « neurones » par jour, gratuits, sans carte, remis a zero a
+        # 00:00 UTC. gpt-oss-120b coute 68 182 neurones par million de jetons
+        # de sortie et 31 818 par million en entree : un appel typique de
+        # l'usine (3 000 jetons lus, 3 000 ecrits) en consomme environ 300,
+        # soit une trentaine d'appels par jour — un roman court, a peu pres.
+        #
+        # Le plafond par minute publie est 300 ; on declare le quotidien que
+        # le budget en neurones permet vraiment, pour que le routeur ne brule
+        # pas la reserve du jour sur les premiers appels.
+        rpm=60,
+        rpd=33,
+        quotas={
+            "@cf/openai/gpt-oss-120b": Quota(rpm=60, rpd=33),
+            # 27 273 neurones par million en sortie : quatre fois moins cher.
+            "@cf/openai/gpt-oss-20b": Quota(rpm=60, rpd=140),
+        },
+        signup="https://dash.cloudflare.com/ : Workers AI, puis « Use REST "
+               "API » pour le jeton et l'identifiant de compte",
+        notes="Gratuit sans carte : 10 000 neurones par jour, soit environ "
+              "trente appels a gpt-oss-120b. Demande DEUX valeurs : le jeton "
+              "et l'identifiant de compte.",
+    ),
+    Provider(
+        name="opencode",
+        base_url="https://opencode.ai/zen/go/v1",
+        api_key_env="OPENCODE_API_KEY",
+        # Ce service refuse tout appel sans en-tete de session. Releve le
+        # 15/09/2026, en clair dans le corps de son HTTP 400 :
+        #
+        #   MissingSessionID — « Request is missing x-opencode-session
+        #   and cannot be routed »
+        #
+        # Six modeles, six cents requetes par jour, un abonnement paye, et
+        # pas un seul appel n'aboutissait. Le code seul (400) n'en disait
+        # rien ; c'est le CORPS de la reponse qui l'a nomme, et c'est pour
+        # cela que le rapport de quotas le rend desormais.
+        entete_session="x-opencode-session",
+        # ATTENTION — ce fournisseur n'expose AUCUN endpoint « /v1/models ».
+        # (Demande faite puis fermee : anomalyco/opencode, issue 2901.)
+        #
+        # C'est la seule entree de cette liste dans ce cas, et cela change
+        # quelque chose d'important : « core/modeles.py » relit le catalogue
+        # vivant de chaque fournisseur pour rattraper un identifiant renomme.
+        # Ici il n'y a rien a relire. Un modele renomme se verra donc en 404
+        # nomme par le routeur — ce qui reste le bon comportement, mieux vaut
+        # une panne nommee qu'un chapitre ecrit par un modele d'embeddings —
+        # mais sans correction automatique. C'est exactement le defaut qui
+        # avait rendu une cle NVIDIA valide inutilisable pendant des jours.
+        #
+        # Identifiants RELEVES DE LA DOCUMENTATION le 14/09/2026, et non
+        # d'un catalogue interroge : donnee perissable au carre. Le premier
+        # appel reel dira s'ils sont justes.
+        models={
+            "rapide": "glm-5.3-flash",
+            "standard": "glm-5.3",
+            "costaud": "kimi-k3",
+            "long": "minimax-m3",
+            "creatif": "kimi-k3",
+            "code": "qwen3.8-max",
+            "raisonnement": "deepseek-v4-pro",
+        },
+        # Les plafonds d'OpenCode Go ne se comptent pas en requetes mais en
+        # DOLLARS : 20 % du mensuel par tranche de cinq heures, 50 % par
+        # semaine, 100 % par mois (documentation du 14/09/2026). Le routeur,
+        # lui, compte des requetes. Les valeurs ci-dessous sont donc une
+        # prudence, pas une transcription : elles evitent de vider une
+        # tranche de cinq heures en quelques minutes de fabrication continue.
+        # Le vrai garde-fou reste le compteur d'OpenCode, et le routeur
+        # basculera sur un autre fournisseur des le premier refus.
+        rpm=20,
+        rpd=600,
+        signup="https://opencode.ai/go (abonnement payant, ~10 $/mois)",
+        notes="OpenCode Go : une trentaine de modeles ouverts derriere une "
+              "seule cle, compatible OpenAI. Plafonds en dollars, pas en "
+              "requetes — et pas de catalogue interrogeable.",
     ),
     Provider(
         name="nvidia",
         base_url="https://integrate.api.nvidia.com/v1",
         api_key_env="NVIDIA_API_KEY",
+        # Releve sur « GET /v1/models » le 13/09/2026 : 82 modeles servis, et
+        # AUCUN des deux « meta/llama » configures jusque-la. Chaque appel
+        # rendait 404, le routeur mettait NVIDIA au repos une demi-heure, et
+        # une cle valide ne servait a rien sans que rien ne le dise. C'est le
+        # catalogue le plus fourni des fournisseurs gratuits : un modele par
+        # role y a un sens, et « core.modeles » rattrape le prochain
+        # renommage tout seul.
         models={
-            "rapide": "meta/llama-3.1-8b-instruct",
-            "standard": "meta/llama-3.3-70b-instruct",
-            "costaud": "meta/llama-3.3-70b-instruct",
+            # 404 sur le compte mesure le 15/09/2026. Celui-ci a repondu.
+            "rapide": "nvidia/nemotron-3.5-lightning-30b-a3b",
+            "standard": "nvidia/nemotron-3-super-120b-a12b",
+            "costaud": "nvidia/nemotron-3-ultra-550b-a55b",
+            "long": "nvidia/nemotron-3.5-lightning-30b-a3b",
+            # « writer/palmyra-creative-122b » FIGURE au catalogue public de
+            # NVIDIA — verifie, parmi 81 — et rend 404 sur le compte mesure,
+            # deux fois a un jour d'intervalle. Listé ne veut pas dire
+            # appelable : le catalogue public et ce qu'un palier sert sont
+            # deux choses differentes.
+            "creatif": "meta/muse-glimmer-30b",
+            "code": "nvidia/nemotron-3-super-120b-a12b",
+            "raisonnement": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
         },
-        rpm=20,
+        rpm=40,
         rpd=800,
         signup="https://build.nvidia.com/",
-        notes="NVIDIA NIM, credits gratuits renouveles.",
+        notes="NVIDIA NIM : 82 modeles, 40 requetes/minute. Le catalogue le "
+              "plus fourni du palier gratuit — un modele par role.",
     ),
     Provider(
         name="pollinations",
@@ -250,8 +491,13 @@ PROVIDERS: List[Provider] = [
         # Seul « openai-fast » est ouvert au palier anonyme : les autres renvoient 402.
         models={"rapide": "openai-fast", "standard": "openai-fast",
                 "costaud": "openai-fast"},
+        # Poses le 11/09/2026 au juge : le palier anonyme de Pollinations ne
+        # publie aucun chiffre. Trois par minute est ce qui passait sans 429
+        # lors de l'integration ; ce n'est pas un quota annonce, et le service
+        # peut le changer sans prevenir.
         rpm=3,
         rpd=60,
+        max_sortie=4096,
         keyless=True,
         signup="aucune inscription requise",
         notes="Filet de securite sans cle API. Quota anonyme etroit et partage par "
@@ -270,6 +516,8 @@ PROVIDERS: List[Provider] = [
         rpm=600,
         rpd=100000,
         timeout=1200,
+        # Un telephone n'a pas la memoire d'un long contexte de sortie.
+        max_sortie=4096,
         local=True,
         signup="pkg install ollama && ollama serve",
         notes="IA locale, 100%% hors ligne.",
@@ -286,6 +534,7 @@ PROVIDERS: List[Provider] = [
         rpm=600,
         rpd=100000,
         timeout=1200,
+        max_sortie=4096,
         local=True,
         signup="llama-server -m modele.gguf --port 8080",
         notes="IA locale via llama.cpp (serveur compatible OpenAI).",
@@ -296,12 +545,20 @@ PROVIDERS_BY_NAME: Dict[str, Provider] = {p.name: p for p in PROVIDERS}
 
 DEFAULT_ORDER = [
     "groq",
-    "cerebras",
     "gemini",
     "mistral",
     "nvidia",
-    "github",
+    # Paye et genereux : 600 requetes par jour. Il passe avant les paliers
+    # gratuits, qui s'epuisent en une fabrication.
+    "opencode",
+    # Une trentaine d'appels par jour, pas davantage : en tete de liste, il
+    # s'epuiserait sur les titres et les reglages avant la premiere scene. Il
+    # sert de reserve quand les gros quotas sont tombes.
+    "cloudflare",
     "openrouter",
+    # Payant depuis septembre 2026 : n'est appele que si une cle creditee
+    # est posee, et alors tard, parce qu'il coute.
+    "cerebras",
     "pollinations",
     "ollama",
     "llamacpp",
@@ -316,7 +573,71 @@ def provider_order() -> List[str]:
         known = [n for n in names if n in PROVIDERS_BY_NAME]
         if known:
             return known
-    return list(DEFAULT_ORDER)
+    # Tout fournisseur DECLARE qui ne figure pas dans l'ordre est ajoute a la
+    # fin plutot que perdu. Sans cela, « opencode » — declare, dote d'une cle,
+    # affiche « disponible » par le diagnostic, et absent de cette liste —
+    # n'a jamais ete appele une seule fois. Le journal du 15/09/2026 le
+    # montre : sur vingt-sept modeles essayes, aucun n'etait le sien.
+    #
+    # C'est le defaut que ce depot appelle un reglage orphelin, deplace d'un
+    # cran : une chose declaree, visible, et que rien ne lit. Deriver l'ordre
+    # du catalogue rend l'oubli impossible au lieu de le corriger une fois.
+    # Et l'inverse : un nom de l'ordre qui n'est plus DECLARE est ignore
+    # plutot que de faire tomber l'usine. Le retrait de GitHub Models, le
+    # 23/09/2026, a laisse son nom dans cette liste le temps d'une
+    # modification — et « active_providers » levait KeyError, c'est-a-dire que
+    # plus aucune fabrication ne demarrait. Retirer un fournisseur ferme ne
+    # doit jamais couter la production entiere.
+    connus = [n for n in DEFAULT_ORDER if n in PROVIDERS_BY_NAME]
+    return connus + [p.name for p in PROVIDERS if p.name not in connus]
+
+
+def _identifiant_de_session(nom: str, cle: str) -> str:
+    """Un identifiant de session stable, derive de la cle.
+
+    Stable, parce qu'une session qui change a chaque appel n'est pas une
+    session. Derive de la CLE plutot que tire au sort et range quelque part,
+    pour trois raisons : deux installations du meme compte partagent la meme
+    session, ce qui est le comportement attendu ; il n'y a rien a persister,
+    donc rien a migrer ni a perdre ; et une cle changee change la session
+    sans qu'on ait a y penser.
+
+    Le condensat ne laisse pas remonter a la cle, ce qui compte : cet
+    identifiant part sur le reseau a chaque appel.
+    """
+    brut = hashlib.sha256("usine-ia:{}:{}".format(nom, cle).encode("utf-8"))
+    h = brut.hexdigest()
+    # Forme d'un UUID. Aucun service n'a dit l'exiger — mais c'est la forme
+    # que prend un identifiant de session partout, et un condensat brut de
+    # soixante-quatre caracteres est ce qui a le plus de chances d'etre
+    # refuse par un controle de format.
+    return "{}-{}-{}-{}-{}".format(h[:8], h[8:12], h[12:16], h[16:20], h[20:32])
+
+
+def entetes_appel(p: Provider, cle: str = "",
+                  corps_json: bool = True) -> Dict[str, str]:
+    """Les en-tetes d'UN appel a ce fournisseur, cle comprise.
+
+    Quatre endroits construisaient ces en-tetes, chacun a sa facon : le
+    routeur, la sonde directe, et les deux lecteurs de catalogue. Tant qu'il
+    n'y avait que « Content-Type » et « Authorization », la repetition ne
+    coutait rien.
+
+    Elle a commence a couter le jour ou un fournisseur a exige un en-tete de
+    plus. Corriger un appelant sur quatre aurait donne le defaut favori de ce
+    depot : la chose marche a un endroit, echoue ailleurs, et l'ecart ne se
+    voit qu'a l'usage. Un test verifie qu'aucun autre endroit ne pose
+    « Authorization » lui-meme.
+    """
+    entetes: Dict[str, str] = {}
+    if corps_json:
+        entetes["Content-Type"] = "application/json"
+    entetes.update(p.extra_headers)
+    if cle:
+        entetes["Authorization"] = "Bearer {}".format(cle)
+        if p.entete_session:
+            entetes[p.entete_session] = _identifiant_de_session(p.name, cle)
+    return entetes
 
 
 def active_providers(include_unavailable: bool = False) -> List[Provider]:

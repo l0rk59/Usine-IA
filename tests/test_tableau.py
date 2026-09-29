@@ -107,6 +107,78 @@ class BaseServeur(unittest.TestCase):
         return statut, json.loads(brut)
 
 
+class LesFichiersLivresNOntPasLOrigineDeLUsine(BaseServeur):
+    """Un produit « logiciel » est du code ecrit par le modele, index.html
+    compris. Servi tel quel sous /fichier/, il partageait l'origine du
+    tableau de bord : un script dedans parlait a /api/usine et /api/fabriquer
+    en meme-origine, sans jeton. Mesure du 26/09/2026 dans Chromium : une
+    page deposee dans un dossier de produit lisait /api/etat et posait une
+    demande d'arret. Le bac a sable CSP coupe cela sans casser le quiz, qui
+    garde ses scripts (allow-scripts, origine opaque).
+    """
+
+    def entetes(self, chemin):
+        requete = urllib.request.Request(self.base + chemin)
+        try:
+            with urllib.request.urlopen(requete, timeout=20) as reponse:
+                return reponse.status, dict(reponse.headers)
+        except urllib.error.HTTPError as exc:
+            return exc.code, dict(exc.headers)
+
+    def _poser(self, nom, contenu=b"<html><script>1</script></html>"):
+        dossier = config.PRODUITS_DIR / "essai-origine"
+        dossier.mkdir(parents=True, exist_ok=True)
+        (dossier / nom).write_bytes(contenu)
+        return "/fichier/essai-origine/" + nom
+
+    def test_un_document_scriptable_part_en_bac_a_sable(self):
+        for nom in ("lire.html", "couverture.svg", "page.xml"):
+            with self.subTest(fichier=nom):
+                statut, entetes = self.entetes(self._poser(nom))
+                self.assertEqual(statut, 200)
+                self.assertEqual(entetes.get("Content-Security-Policy"),
+                                 "sandbox allow-scripts")
+
+    def test_un_pdf_ou_une_image_s_ouvrent_sans_bac_a_sable(self):
+        """L'autre sens : un PDF en bac a sable ne s'affiche plus dans
+        certains navigateurs, et une image n'execute rien."""
+        for nom in ("livre.pdf", "couverture.png"):
+            with self.subTest(fichier=nom):
+                statut, entetes = self.entetes(self._poser(nom, b"%PDF-1.4"))
+                self.assertEqual(statut, 200)
+                self.assertNotIn("Content-Security-Policy", entetes)
+
+    def test_la_page_de_l_usine_ne_charge_qu_elle_meme(self):
+        """La CSP du tableau de bord : rien d'exterieur, jamais encadree.
+
+        Encadree dans une page tierce, la commande de fabrication se
+        cliquerait a travers un calque invisible.
+        """
+        statut, entetes = self.entetes("/")
+        self.assertEqual(statut, 200)
+        csp = entetes.get("Content-Security-Policy") or ""
+        self.assertIn("default-src 'self'", csp)
+        self.assertIn("frame-ancestors 'none'", csp)
+        self.assertNotIn("sandbox", csp)  # la page garde son origine
+        self.assertEqual(entetes.get("X-Frame-Options"), "DENY")
+
+    def test_le_dernier_constructeur_de_la_page_echappe_aussi(self):
+        """« remplirListe » etait le dernier gabarit sans echappement du
+        fichier. Tons et tailles sont des constantes du depot aujourd'hui ;
+        le jour ou une valeur libre y arrive, il serait le seul trou."""
+        source = (RACINE / "usine" / "web" / "statique" / "app.js").read_text(
+            encoding="utf-8")
+        debut = source.index("function remplirListe")
+        gabarit = source[debut:source.index("}", source.index("join", debut))]
+        self.assertIn("${echapper(valeur)}", gabarit)
+        self.assertIn("${echapper(libelle)}", gabarit)
+
+    def test_le_script_de_la_page_n_est_pas_mis_en_bac_a_sable(self):
+        statut, entetes = self.entetes("/statique/app.js")
+        self.assertEqual(statut, 200)
+        self.assertNotIn("Content-Security-Policy", entetes)
+
+
 class TestVeille(BaseServeur):
 
     def _consulter(self, sujet="meal planning", periode="year"):
@@ -186,7 +258,7 @@ class TestVeille(BaseServeur):
                                {"x": {"id": "x", "statut": "en_cours"}}):
             statut, corps = self.json("/api/veille", {"sujet": "autre chose"})
         self.assertEqual(statut, 429)
-        self.assertIn("deja en cours", corps["erreur"])
+        self.assertIn("déjà en cours", corps["erreur"])
 
 
 class TestEmpreintesManquantes(BaseServeur):
@@ -497,13 +569,41 @@ class TestTeleversement(BaseServeur):
         avant = self._archives()
         statut, refus = self._envoyer(octets, "bombe.zip")
         self.assertEqual(statut, 400)
-        self.assertIn("refuse de la charger en memoire", refus["erreur"])
+        self.assertIn("refuse de la charger en mémoire", refus["erreur"])
         self.assertEqual(self._archives(), avant)
 
     def test_un_corps_vide_est_refuse(self):
         statut, refus = self._envoyer(b"", "vide.zip")
         self.assertEqual(statut, 400)
         self.assertIn("vide", refus["erreur"])
+
+    @staticmethod
+    def _lire_reponse(prise) -> str:
+        """Lit la reponse ENTIERE, corps compris.
+
+        Un seul recv() rend ce que la pile TCP a sous la main : souvent les
+        en-tetes seuls, le corps arrivant dans le segment suivant. Le test
+        qui affirmait sur le corps passait donc la plupart du temps et
+        echouait au hasard — le pire des tests, parce qu'on finit par le
+        croire casse alors qu'il dit vrai.
+        """
+        prise.settimeout(5)
+        donnees = b""
+        while True:
+            try:
+                morceau = prise.recv(4096)
+            except socket.timeout:
+                break
+            if not morceau:
+                break
+            donnees += morceau
+            entetes, separateur, corps = donnees.partition(b"\r\n\r\n")
+            if not separateur:
+                continue
+            annonce = re.search(rb"[Cc]ontent-[Ll]ength:\s*(\d+)", entetes)
+            if annonce is None or len(corps) >= int(annonce.group(1)):
+                break
+        return donnees.decode("utf-8", "replace")
 
     def test_une_taille_annoncee_hors_limite_est_refusee_sans_rien_lire(self):
         """Le plafond est verifie AVANT de lire le corps.
@@ -520,7 +620,7 @@ class TestTeleversement(BaseServeur):
                 "Content-Type: application/zip\r\n"
                 "Content-Length: {}\r\n\r\n".format(annonce)).encode())
             # Pas un seul octet de corps : la reponse doit venir quand meme.
-            reponse = prise.recv(4096).decode("utf-8", "replace")
+            reponse = self._lire_reponse(prise)
         finally:
             prise.close()
         self.assertIn("413", reponse.splitlines()[0])
@@ -538,7 +638,7 @@ class TestTeleversement(BaseServeur):
                 "Content-Length: {}\r\n\r\n".format(len(octets)).encode()))
             prise.sendall(octets[:len(octets) // 3])
             prise.shutdown(socket.SHUT_WR)
-            reponse = prise.recv(4096).decode("utf-8", "replace")
+            reponse = self._lire_reponse(prise)
         finally:
             prise.close()
         self.assertIn("400", reponse.splitlines()[0])
@@ -782,7 +882,28 @@ class TestActionsProduit(BaseServeur):
             encoding="utf-8")
         store.creer_produit("tab-act", "ebook", "Un livre a empaqueter",
                             sujet="un sujet", dossier=str(dossier))
+        # Un produit FINI : un produit cree reste « en_cours » tant que sa
+        # chaine ne l'a pas termine, et on n'empaquette ni ne vend un produit
+        # inacheve (voir « apres.pas_encore_vendable »).
+        store.maj_produit("tab-act", statut="pret")
         return "tab-act"
+
+    def test_un_produit_inacheve_ne_s_empaquette_ni_ne_se_vend(self):
+        """L'archive d'un produit inacheve livrait ses sections perdues
+        reduites a leur plan, et le kit de vente promettait le tout."""
+        identifiant = self._un_produit()
+        store.maj_produit(identifiant, statut="en_cours",
+                          meta={"manquants": ["chapitre-2"]})
+        # Les autres tests de la classe empaquettent le meme produit.
+        for ancienne in config.PRODUITS_DIR.glob("*.zip"):
+            ancienne.unlink()
+        for action in ("livrer", "marketing"):
+            with self.subTest(action=action):
+                statut, refus = self.json("/api/produit",
+                                          {"action": action, "id": identifiant})
+                self.assertEqual(statut, 409)
+                self.assertIn("usine reprendre " + identifiant, refus["erreur"])
+        self.assertFalse(list(config.PRODUITS_DIR.glob("*.zip")))
 
     def test_un_produit_inconnu_est_refuse(self):
         statut, refus = self.json("/api/produit",
@@ -797,10 +918,13 @@ class TestActionsProduit(BaseServeur):
         self.assertEqual(statut, 400)
 
     def test_livrer_ecrit_une_archive_telechargeable(self):
-        """L'archive est ecrite A COTE du dossier du produit, pas dedans.
+        """L'archive est ecrite DANS le dossier du produit, et la page la
+        retrouve plus tard dans la liste de ses fichiers.
 
-        La liste de fichiers ne la voit donc jamais : c'est la reponse qui
-        doit porter son lien, sinon elle est introuvable depuis la page.
+        Elle etait ecrite a cote, nommee par le seul titre : la liste ne la
+        voyait jamais — seul le lien de la reponse y menait, le temps de
+        l'afficher — et deux produits de meme titre partageaient la meme
+        archive. Voir « test_archive_livree ».
         """
         identifiant = self._un_produit()
         statut, fait = self.json("/api/produit",
@@ -816,8 +940,8 @@ class TestActionsProduit(BaseServeur):
         _, produits = self.json("/api/produits")
         fichiers = [f["nom"] for p in produits["produits"]
                     if p["id"] == identifiant for f in p["fichiers"]]
-        self.assertFalse([f for f in fichiers if f.endswith(".zip")],
-                         "l'archive n'est pas dans le dossier du produit")
+        self.assertTrue([f for f in fichiers if f.endswith(".zip")],
+                        "l'archive doit figurer parmi les fichiers du produit")
 
     def test_le_kit_de_vente_part_en_tache_de_fond(self):
         identifiant = self._un_produit()
@@ -837,6 +961,95 @@ class TestActionsProduit(BaseServeur):
             self.assertEqual(self.appeler(lien)[0], 200, lien)
 
 
+class TestSectionsDuTableau(unittest.TestCase):
+    """Le tableau de bord empilait treize cartes sur une seule page.
+
+    Il fallait faire defiler tout « Veille de niche » pour atteindre ses
+    produits, et rien n'y disait ce qui allait avec quoi. Ces controles
+    gardent trois choses : qu'aucune carte ne se retrouve hors section (elle
+    serait invisible, ce qui est pire qu'une page trop longue), qu'aucun
+    onglet ne pointe vers rien, et que les sections restent les MEMES que
+    celles du menu Termux.
+
+    Cette derniere regle est la moins evidente et la plus utile : deux
+    interfaces qui rangent les memes choses differemment obligent a apprendre
+    deux fois.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.page = (RACINE / "usine" / "web" / "statique"
+                    / "tableau.html").read_text(encoding="utf-8")
+        cls.script = (RACINE / "usine" / "web" / "statique"
+                      / "app.js").read_text(encoding="utf-8")
+
+    def _sections(self):
+        import re
+
+        return re.findall(r'<section class="onglet"[^>]*data-section="(\w+)"',
+                          self.page)
+
+    def _onglets(self):
+        import re
+
+        return re.findall(r'<button role="tab" data-onglet="(\w+)"', self.page)
+
+    def test_chaque_onglet_a_sa_section_et_reciproquement(self):
+        """Un onglet sans section n'affiche rien et ne dit pas pourquoi."""
+        self.assertEqual(self._onglets(), self._sections())
+        self.assertTrue(self._sections())
+
+    def test_aucune_carte_ne_reste_hors_section(self):
+        """Une carte hors section est CACHEE, pas mal rangee.
+
+        C'est le defaut que cette refonte pouvait introduire, et il est pire
+        que celui qu'elle corrige : une page trop longue se parcourt, une
+        fonction invisible n'existe pas.
+        """
+        import re
+
+        corps = self.page.split("<main>")[1].split("</main>")[0]
+        dehors = re.sub(r'<section class="onglet".*?</section>', "", corps,
+                        flags=re.DOTALL)
+        self.assertNotIn('<div class="carte">', dehors)
+
+    def test_toutes_les_cartes_sont_rangees(self):
+        """Le compte, pour que supprimer une carte se voie."""
+        self.assertEqual(self.page.count('<div class="carte">'), 15)
+
+    def test_une_seule_section_s_affiche_a_la_fois(self):
+        """Toutes portent « hidden » dans le HTML : si le script ne tourne
+        pas, on retombe sur une page vide plutot que sur les quatre sections
+        empilees — c'est-a-dire exactement l'etat qu'on vient de corriger."""
+        import re
+
+        for section in re.findall(r'<section class="onglet"[^>]*>', self.page):
+            with self.subTest(section=section[:60]):
+                self.assertIn("hidden", section)
+        self.assertIn("montrerSection", self.script)
+
+    def test_les_sections_du_web_et_du_menu_termux_se_correspondent(self):
+        """Deux interfaces qui rangent differemment obligent a apprendre deux fois.
+
+        Le menu Termux et le tableau de bord partent du meme critere : le
+        moment ou l'on s'en sert. Ce test ne compare pas les libelles mot pour
+        mot, mais le fait que chaque section du web ait son equivalent.
+        """
+        source_menu = (RACINE / "usine" / "menu.py").read_text(encoding="utf-8")
+        bloc = source_menu.split('choisir("Menu principal", [')[1].split("], defaut=")[0]
+        libelles = [ligne.split('("')[1].split('"')[0]
+                    for ligne in bloc.splitlines() if '("' in ligne]
+        attendus = {"fabriquer": "Fabriquer", "produits": "Mes produits",
+                    "continue": "Produire en boucle",
+                    "marche": "Comprendre le marché", "reglages": "Réglages",
+                    "machine": "La machine"}
+        for section in self._sections():
+            with self.subTest(section=section):
+                self.assertIn(attendus.get(section, "?"), libelles,
+                              "la section « {} » du tableau de bord n'a pas "
+                              "d'equivalent dans le menu Termux".format(section))
+
+
 class TestDocteur(BaseServeur):
     """Le bouton « pourquoi ca ne marche pas », dans le navigateur."""
 
@@ -846,12 +1059,12 @@ class TestDocteur(BaseServeur):
         # Les deux controles reseau sont neutralises : la suite ne doit
         # dependre d'aucune connexion.
         with mock.patch.object(diagnostic, "_reseau", lambda: True), \
-                mock.patch.object(diagnostic, "locaux_actifs", lambda **k: []):
+                mock.patch.object(diagnostic, "serveurs_locaux", lambda **k: []):
             _, etat = self.json("/api/docteur")
         for cle in ("python", "workdir", "env_present", "node", "espace",
                     "fournisseurs", "verdict", "reseau", "locaux"):
             self.assertIn(cle, etat)
-        self.assertIn(etat["verdict"]["etat"], ("pret", "local", "bloque"))
+        self.assertIn(etat["verdict"]["etat"], ("pret", "local", "essai", "bloque"))
         self.assertTrue(etat["verdict"]["message"])
 
     def test_le_verdict_dit_quoi_faire_quand_rien_n_est_pret(self):
@@ -868,7 +1081,165 @@ class TestDocteur(BaseServeur):
         """Recopier les controles cote web en aurait fait deux jeux qui
         divergent : « docteur » lit desormais le meme module."""
         source = (RACINE / "usine" / "cli.py").read_text(encoding="utf-8")
-        self.assertIn("module_diagnostic.etat_installation()", source)
+        self.assertIn("module_diagnostic.etat_installation(", source)
+        # Ce que le garde-fou surveille vraiment : que « docteur » n'aille pas
+        # refaire lui-meme un controle que le module porte deja.
+        for refait in ("shutil.disk_usage", "def _reseau", "locaux_actifs()",
+                       "serveurs_locaux()"):
+            self.assertNotIn(refait, source)
+
+    def _faux_catalogue(self, servis, statut=200):
+        """Remplace la reponse de /models par un catalogue choisi."""
+        from unittest import mock
+
+        charge = json.dumps({"data": [{"id": m} for m in servis]}).encode()
+        return mock.patch("usine.core.http.requete",
+                          return_value=(statut, charge))
+
+    def _fournisseur(self, modeles):
+        from usine.core import config
+
+        return config.Provider(
+            name="essai", base_url="https://exemple.invalide/v1",
+            api_key_env="", models=modeles, keyless=True)
+
+    def test_un_modele_retire_du_catalogue_est_signale(self):
+        """La panne reelle : Groq a retire ses modeles Llama du palier
+        gratuit, chaque appel a repondu 404, et rien ne l'a jamais dit."""
+        from unittest import mock
+        from usine.core import config, diagnostic
+
+        faux = self._fournisseur({"rapide": "vivant", "standard": "mort"})
+        with mock.patch.object(config, "active_providers", return_value=[faux]):
+            with self._faux_catalogue(["vivant", "autre"]):
+                rapport = diagnostic.modeles_disparus()
+        self.assertEqual(len(rapport["ecarts"]), 1)
+        self.assertEqual(rapport["ecarts"][0]["manquants"], ["mort"])
+        self.assertIn("autre", rapport["ecarts"][0]["proposes"])
+        self.assertEqual(rapport["consultes"], ["essai"])
+
+    def test_un_catalogue_complet_ne_signale_rien(self):
+        from unittest import mock
+        from usine.core import config, diagnostic
+
+        faux = self._fournisseur({"rapide": "a", "standard": "b"})
+        with mock.patch.object(config, "active_providers", return_value=[faux]):
+            with self._faux_catalogue(["a", "b", "c"]):
+                rapport = diagnostic.modeles_disparus()
+        self.assertEqual(rapport["ecarts"], [])
+        self.assertEqual(rapport["consultes"], ["essai"])
+
+    def test_un_service_injoignable_n_accuse_personne(self):
+        """« Je ne sais pas » ne doit pas se lire « aucun modele » : un reseau
+        coupe declarerait toute la configuration morte."""
+        from unittest import mock
+        from usine.core import config, diagnostic
+
+        faux = self._fournisseur({"standard": "mort"})
+        with mock.patch.object(config, "active_providers", return_value=[faux]):
+            with mock.patch("usine.core.http.requete", side_effect=OSError("hs")):
+                rapport = diagnostic.modeles_disparus()
+            self.assertEqual(rapport["ecarts"], [])
+            # Et surtout : le rapport dit que personne n'a repondu. Une liste
+            # d'ecarts vide ne doit pas pouvoir se lire « tout va bien ».
+            self.assertEqual(rapport["consultes"], [])
+            self.assertEqual(rapport["injoignables"], ["essai"])
+            with self._faux_catalogue([], statut=403):
+                rapport = diagnostic.modeles_disparus()
+            self.assertEqual(rapport["injoignables"], ["essai"])
+
+    def test_l_etat_annonce_les_series_connues(self):
+        """Le tableau de bord doit proposer les suites en cours plutot que de
+        faire retaper leur nom : une faute de frappe cree une seconde serie
+        vide, et le tome repartirait de zero sans rien dire."""
+        from usine.core import serie as module_serie
+
+        module_serie.enregistrer_tome(
+            "Les rails", {"cadre": {}, "personnages": []}, "T1", "...")
+        _, corps = self.appeler("/api/etat")
+        etat = json.loads(corps)
+        self.assertIn("series", etat)
+        self.assertIn("Les rails", etat["series"])
+
+    def test_les_reglages_peuvent_etre_enregistres_depuis_la_page(self):
+        """La route existait et personne ne l'appelait : le tableau de bord
+        affichait les reglages sans pouvoir les changer, et il fallait
+        ressortir vers la ligne de commande pour retaper un nom d'auteur."""
+        _, corps = self.appeler(
+            "/api/reglages",
+            corps={"auteur": "Une autrice", "qualite": "exigeant"})
+        retour = json.loads(corps)
+        self.assertEqual(retour["reglages"]["auteur"], "Une autrice")
+        self.assertEqual(retour["reglages"]["qualite"], "exigeant")
+
+        page = self.appeler("/")[1].decode("utf-8")
+        self.assertIn('id="retenir"', page)
+        script = (RACINE / "usine" / "web" / "statique" / "app.js").read_text(
+            encoding="utf-8")
+        self.assertIn("'/api/reglages'", script)
+
+    def test_le_mot_de_passe_du_tableau_ne_se_change_pas_depuis_le_tableau(self):
+        """Un identifiant ne se change jamais par la surface qu'il garde.
+
+        « jeton_web » protege ce tableau de bord. Le rendre modifiable par lui
+        revenait a laisser la porte decider de sa propre serrure : qui atteint
+        la page pouvait s'y enfermer en posant un jeton, ou l'ouvrir a tous en
+        l'effacant.
+        """
+        from usine.core import reglages
+
+        avant = reglages.lire("jeton_web", "")
+        _, corps = self.appeler(
+            "/api/reglages",
+            corps={"jeton_web": "vole", "auteur": "Passe quand meme"})
+        retour = json.loads(corps)
+        self.assertEqual(reglages.lire("jeton_web", ""), avant)
+        # Le reste de la requete passe : on ecarte un reglage, pas l'appel.
+        self.assertEqual(retour["reglages"]["auteur"], "Passe quand meme")
+
+    def test_le_formulaire_porte_le_champ_serie(self):
+        """Une option qui n'est pas dans la page n'existe pas pour qui
+        produit depuis un navigateur.
+
+        Le controle a change de cible le 14/09/2026, pas de sens. Le champ
+        n'est plus ecrit dans le gabarit : il est DECLARE au catalogue et le
+        formulaire se batit a partir de la. Chercher « id="serie" » dans la
+        page reviendrait desormais a exiger le retour du defaut — c'est
+        precisement le HTML ecrit a la main qui avait laissé huit reglages
+        sur dix-sept hors du navigateur.
+        """
+        from usine.pipelines import catalogue
+
+        _, corps = self.appeler("/")
+        page = corps.decode("utf-8")
+        # La liste des series connues, elle, reste dans le gabarit : c'est un
+        # « datalist » que le script remplit.
+        self.assertIn("series-connues", page)
+        for cle in ("nouvelle", "roman"):
+            with self.subTest(type=cle):
+                noms = [c.nom for c in catalogue.obtenir(cle).champs]
+                self.assertIn("serie", noms,
+                              "la fiction ne peut plus etre rangee en serie")
+        import json
+
+        _, brut = self.appeler("/api/etat")
+        servis = {t["cle"]: [c["nom"] for c in t["champs"]]
+                  for t in json.loads(brut.decode("utf-8"))["types"]}
+        self.assertIn("serie", servis["nouvelle"],
+                      "le serveur ne sert pas le champ au navigateur")
+
+    def test_le_controle_des_modeles_ne_sort_que_si_on_le_demande(self):
+        """Une requete par fournisseur : trop lent pour un rafraichissement.
+
+        Mais le defaut inverse est pire — un modele retire du catalogue tue
+        un fournisseur en silence — donc le controle existe, sous un drapeau.
+        """
+        from usine.core import diagnostic
+
+        etat = diagnostic.etat_installation(avec_reseau=False, avec_locaux=False)
+        self.assertIsNone(etat["modeles"])
+        source = (RACINE / "usine" / "cli.py").read_text(encoding="utf-8")
+        self.assertIn("--modeles", source)
 
 
 class TestPageServie(BaseServeur):

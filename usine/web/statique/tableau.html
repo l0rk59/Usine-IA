@@ -18,7 +18,10 @@
     <span class="version" id="version">chargement...</span>
   </div>
   <div class="droite">
-    <button class="discret" id="theme" title="Changer de theme">Jour</button>
+    <label class="peau" for="theme">
+      <span class="sr">Peau du tableau de bord</span>
+      <select id="theme" title="Changer de peau"></select>
+    </label>
   </div>
 </header>
 
@@ -45,13 +48,16 @@
 </div>
 
 <main>
+<nav class="onglets" id="onglets" role="tablist" aria-label="Sections du tableau de bord">
+  <button role="tab" data-onglet="fabriquer" aria-selected="false">Fabriquer</button>
+  <button role="tab" data-onglet="continue" aria-selected="false">Produire en boucle</button>
+  <button role="tab" data-onglet="produits" aria-selected="false">Mes produits</button>
+  <button role="tab" data-onglet="marche" aria-selected="false">Marché</button>
+  <button role="tab" data-onglet="reglages" aria-selected="false">Réglages</button>
+  <button role="tab" data-onglet="machine" aria-selected="false">La machine</button>
+</nav>
 
-<div class="carte">
-  <h2>Equipe d'agents</h2>
-  <div class="agents" id="agents"></div>
-  <p class="aide" id="qualite-resume"></p>
-</div>
-
+<section class="onglet" id="onglet-fabriquer" data-section="fabriquer" role="tabpanel" aria-label="Fabriquer" hidden>
 <div class="carte">
   <h2>Fabriquer</h2>
   <label for="type">Type de produit</label>
@@ -59,19 +65,37 @@
        liste ici la ferait diverger, comme c'est deja arrive. -->
   <select id="type"></select>
   <p class="aide" id="type-detail"></p>
+  <!-- La phrase qui dit que le formulaire est fini. Sans elle, sept champs
+       vides se lisent comme sept questions auxquelles il faut repondre : on
+       cherche quoi ecrire dans « Audience » au lieu d'appuyer. -->
+  <p class="aide accent">C'est tout : appuyez sur <b>Lancer la fabrication</b>.
+    L'usine cherche la niche, choisit l'audience, le ton et le volume, puis
+    fabrique.</p>
+</div>
 
-  <label for="sujet">Sujet</label>
-  <textarea id="sujet" placeholder="ex : la prospection pour freelances debutants"></textarea>
+<!-- Tout ce qui suit est facultatif — ca l'a toujours ete, un champ vide
+     voulant deja dire « decide pour moi ». Mais deplie, ca ne se voyait pas :
+     le formulaire faisait deux ecrans de cases a remplir avant le bouton,
+     pour une usine dont la promesse est qu'on choisit un type et qu'on
+     appuie. Replie, la promesse se lit ; le choix reste, a un clic. -->
+<details class="carte repli" id="reglages-fins">
+  <summary>Choisir moi-même <span class="facultatif">facultatif</span></summary>
+
+  <label for="sujet">Sujet <span class="facultatif">facultatif</span></label>
+  <textarea id="sujet" placeholder="ex : la prospection pour freelances débutants"></textarea>
+  <p class="aide">Laissez vide et l'usine cherche la niche elle-même : elle
+    propose des domaines, les mesure sur des sources publiques, et garde ceux
+    où la demande se voit.</p>
   <div class="alerte" id="alerte-sujet" hidden></div>
 
   <label for="audience">Audience</label>
-  <input id="audience" placeholder="ex : freelances qui demarrent"/>
+  <input id="audience" placeholder="ex : freelances qui démarrent"/>
 
   <div class="duo">
     <div><label for="ton">Ton</label><select id="ton"></select></div>
     <div><label for="taille">Volume</label><select id="taille"></select></div>
   </div>
-  <input id="ton-libre" hidden placeholder="ex : comme un artisan a son apprenti"/>
+  <input id="ton-libre" hidden placeholder="ex : comme un artisan à son apprenti"/>
   <div class="duo" id="bloc-sur-mesure" hidden>
     <div><label for="chapitres">Sections</label>
       <input id="chapitres" type="number" min="2" max="60" placeholder="12"/></div>
@@ -79,20 +103,115 @@
       <input id="mots" type="number" min="300" max="4000" placeholder="auto"/></div>
   </div>
   <div class="duo">
-    <div><label for="qualite">Qualite</label><select id="qualite"></select></div>
-    <div><label for="nombre">Quantite</label>
-      <input id="nombre" type="number" min="0" placeholder="auto"/></div>
-  </div>
-  <div class="duo">
+    <div><label for="qualite">Qualité</label><select id="qualite"></select></div>
     <div><label for="auteur">Auteur</label><input id="auteur"/></div>
-    <div id="bloc-reseau" hidden><label for="reseau">Reseau</label>
-      <select id="reseau"></select></div>
   </div>
 
-  <button class="principal" id="lancer">Lancer la fabrication</button>
-  <p class="aide">La fabrication continue meme si vous fermez cette page.</p>
+<!-- Les reglages propres au type choisi. Cette carte est VIDE dans le
+     gabarit : elle se remplit depuis le catalogue, qui declare ce que chaque
+     type comprend. Ecrits a la main ici, huit reglages sur dix-sept avaient
+     fini par n'exister que dans la ligne de commande — on ne pouvait pas
+     choisir, depuis le navigateur, si un outil logiciel etait une ligne de
+     commande ou une application web. -->
+<div id="carte-type" hidden>
+  <h3 id="titre-type">Réglages du type</h3>
+  <p class="aide" id="aide-type"></p>
+  <div id="champs-type"></div>
+  <datalist id="series-connues"></datalist>
 </div>
+</details>
 
+<!-- Le bouton reste a portee sans qu'on remonte : le formulaire fait deux
+     ecrans une fois les reglages du type deplies, et un bouton qu'on doit
+     aller chercher se lit comme une etape de plus. -->
+<div class="barre-lancer">
+  <button class="principal" id="lancer">Lancer la fabrication</button>
+  <p class="aide">La fabrication continue même si vous fermez cette page.
+    <button id="retenir" class="discret">Retenir ces choix</button>
+    <span id="retenu" hidden>enregistré</span>
+  </p>
+</div>
+<div class="carte">
+  <h2>Équipe d'agents</h2>
+  <div class="agents" id="agents"></div>
+  <p class="aide" id="qualite-resume"></p>
+</div>
+<div class="carte">
+  <h2>Journal en direct</h2>
+  <pre class="journal" id="journal" role="log" aria-live="polite"><span class="ligne vide">En attente d'activité...</span></pre>
+</div>
+</section>
+
+<section class="onglet" id="onglet-continue" data-section="continue" role="tabpanel" aria-label="Produire en boucle" hidden>
+<div class="carte">
+  <h2>Produire en boucle</h2>
+  <p class="aide">L'usine enchaîne les produits toute seule, sous budget,
+    jusqu'à ce que vous l'arrêtiez ou que le plafond du jour soit atteint.</p>
+  <p class="etat" id="usine-etat" role="status">chargement...</p>
+  <div class="rangee">
+    <button class="principal" id="usine-demarrer">Démarrer</button>
+    <button class="discret" id="usine-arreter">Arrêter</button>
+  </div>
+  <label class="case" for="usine-auto">
+    <input type="checkbox" id="usine-auto"/>
+    <span><span class="nom-reglage">Trouver les niches toute seule</span>
+      <small>Quand la file se vide, l'usine explore autour de ce qui a le mieux
+        marché — et, si vous n'avez encore rien produit, elle propose des
+        domaines de départ puis les mesure avant d'en retenir un.</small></span>
+  </label>
+  <p class="aide" id="usine-budget"></p>
+</div>
+<div class="carte">
+  <h2>File d'attente</h2>
+  <div id="file-liste" class="file"></div>
+  <div class="rangee">
+    <button class="discret" id="file-prospecter">Trouver des niches maintenant</button>
+    <button class="discret" id="file-prospecter-fiction">Trouver des idées de fiction</button>
+    <button class="discret" id="file-ajouter">Mettre en file le sujet saisi dans « Fabriquer »</button>
+    <button class="discret" id="file-rejouer">Relancer les échecs</button>
+  </div>
+</div>
+</section>
+
+<section class="onglet" id="onglet-produits" data-section="produits" role="tabpanel" aria-label="Mes produits" hidden>
+<div class="carte">
+  <h2>Produits</h2>
+  <div id="produits"><span class="vide">chargement...</span></div>
+</div>
+<div class="carte">
+  <h2>Tests A/B</h2>
+  <p class="aide">Comparer des titres, ou des couvertures. Les couvertures
+    sont des images : c'est ici qu'on peut enfin les regarder côte à côte.</p>
+  <div class="duo">
+    <div><label for="ab-sur">Comparer</label>
+      <select id="ab-sur">
+        <option value="titre">des titres</option>
+        <option value="couverture">des couvertures</option>
+        <option value="accroche">des accroches</option>
+        <option value="prix">des prix</option>
+      </select></div>
+    <div><label for="ab-produit">À partir de</label>
+      <select id="ab-produit"></select></div>
+  </div>
+  <div class="rangee">
+    <button class="discret" id="ab-creer">Créer le test</button>
+    <span class="aide" id="ab-etat" role="status"></span>
+  </div>
+  <div id="ab-liste"><span class="vide">chargement...</span></div>
+  <div id="ab-detail" hidden></div>
+</div>
+<div class="carte">
+  <h2>Produits qui se recouvrent</h2>
+  <div class="alerte" id="doublons-manquants" hidden></div>
+  <div id="doublons"><span class="vide">chargement...</span></div>
+  <div class="rangee">
+    <button class="discret" id="doublons-reconstruire">Reconstruire les empreintes</button>
+    <span class="aide" id="doublons-etat" role="status"></span>
+  </div>
+</div>
+</section>
+
+<section class="onglet" id="onglet-marche" data-section="marche" role="tabpanel" aria-label="Marché" hidden>
 <div class="carte">
   <h2>Veille de niche</h2>
   <p class="aide">Ce que les gens disent d'un sujet, sur Reddit. Un signal de
@@ -101,16 +220,16 @@
   <div class="duo">
     <div><label for="veille-niche">Niche</label>
       <input id="veille-niche" placeholder="ex : meal planning for busy parents"/></div>
-    <div><label for="veille-periode">Periode</label>
+    <div><label for="veille-periode">Période</label>
       <select id="veille-periode">
         <option value="month">le mois</option>
-        <option value="year" selected>l'annee</option>
+        <option value="year" selected>l'année</option>
         <option value="all">depuis toujours</option>
       </select></div>
   </div>
   <div class="rangee">
     <button class="discret" id="veille-lancer">Consulter</button>
-    <button class="discret" id="marche-lancer">Mesurer le marche</button>
+    <button class="discret" id="marche-lancer">Mesurer le marché</button>
     <span class="aide" id="veille-etat" role="status"></span>
   </div>
   <div id="marche-resultat" hidden>
@@ -122,47 +241,19 @@
   <div id="veille-resultat" hidden>
     <div class="etiquettes" id="veille-communautes"></div>
     <div class="etiquettes doux" id="veille-mots"></div>
-    <h3 class="sous" id="veille-titre-douleurs" hidden>Formulations de probleme</h3>
+    <h3 class="sous" id="veille-titre-douleurs" hidden>Formulations de problème</h3>
     <div id="veille-douleurs"></div>
     <h3 class="sous">Discussions les plus suivies</h3>
     <div id="veille-discussions"></div>
     <p class="aide">Reddit est anglophone et technophile : une niche
-      francaise peut n'y laisser aucune trace sans que cela dise rien de son
-      marche.</p>
+      française peut n'y laisser aucune trace sans que cela dise rien de son
+      marché.</p>
   </div>
 </div>
-
-<div class="carte">
-  <h2>Usine continue</h2>
-  <p class="etat" id="usine-etat" role="status">chargement...</p>
-  <div class="rangee">
-    <button class="discret" id="usine-demarrer">Demarrer</button>
-    <button class="discret" id="usine-arreter">Arreter</button>
-    <label class="case"><input type="checkbox" id="usine-auto"/> remplir seule</label>
-  </div>
-  <div id="file-liste" class="file"></div>
-  <div class="rangee">
-    <button class="discret" id="file-ajouter">Mettre le sujet ci-dessus en file</button>
-    <button class="discret" id="file-rejouer">Relancer les echecs</button>
-  </div>
-  <p class="aide" id="usine-budget"></p>
-</div>
-
-<div class="carte">
-  <h2>Journal en direct</h2>
-  <pre class="journal" id="journal" role="log" aria-live="polite"><span class="ligne vide">En attente d'activite...</span></pre>
-</div>
-
-<div class="carte">
-  <h2>Fournisseurs et quotas</h2>
-  <div class="jauges" id="jauges"></div>
-  <p class="aide" id="conseil"></p>
-</div>
-
 <div class="carte">
   <h2>Ce qui rapporte</h2>
   <div id="commerce-vide" class="vide">
-    Aucune vente enregistree. Le tableau de bord montre la production ;
+    Aucune vente enregistrée. Le tableau de bord montre la production ;
     sans vos ventes, il ne peut rien dire de ce qui se vend.
     <code>usine ventes --importer export.csv</code>
   </div>
@@ -170,66 +261,47 @@
   <div id="commerce-produits" class="barres" hidden></div>
   <p class="aide" id="commerce-prix" hidden></p>
 </div>
-
-<div class="carte">
-  <h2>Tests A/B</h2>
-  <p class="aide">Comparer des titres, ou des couvertures. Les couvertures
-    sont des images : c'est ici qu'on peut enfin les regarder cote a cote.</p>
-  <div class="duo">
-    <div><label for="ab-sur">Comparer</label>
-      <select id="ab-sur">
-        <option value="titre">des titres</option>
-        <option value="couverture">des couvertures</option>
-        <option value="accroche">des accroches</option>
-        <option value="prix">des prix</option>
-      </select></div>
-    <div><label for="ab-produit">A partir de</label>
-      <select id="ab-produit"></select></div>
-  </div>
-  <div class="rangee">
-    <button class="discret" id="ab-creer">Creer le test</button>
-    <span class="aide" id="ab-etat" role="status"></span>
-  </div>
-  <div id="ab-liste"><span class="vide">chargement...</span></div>
-  <div id="ab-detail" hidden></div>
-</div>
-
 <div class="carte">
   <h2>Ce que l'usine a appris</h2>
   <div id="bilan"><span class="vide">chargement...</span></div>
 </div>
+</section>
 
+<section class="onglet" id="onglet-reglages" data-section="reglages" role="tabpanel" aria-label="Réglages" hidden>
 <div class="carte">
-  <h2>Produits qui se recouvrent</h2>
-  <div class="alerte" id="doublons-manquants" hidden></div>
-  <div id="doublons"><span class="vide">chargement...</span></div>
-  <div class="rangee">
-    <button class="discret" id="doublons-reconstruire">Reconstruire les empreintes</button>
-    <span class="aide" id="doublons-etat" role="status"></span>
+  <h2>Réglages</h2>
+  <p class="aide">Ce qui s'applique à chaque fabrication, sans avoir à le
+    retaper. Les options de la ligne de commande l'emportent, produit par
+    produit.</p>
+  <div id="reglages-groupes"><span class="vide">chargement...</span></div>
+  <div class="rangee barre-enregistrer">
+    <button id="reglages-enregistrer">Enregistrer</button>
+    <span class="aide" id="reglages-etat" role="status"></span>
   </div>
 </div>
+</section>
 
+<section class="onglet" id="onglet-machine" data-section="machine" role="tabpanel" aria-label="La machine" hidden>
 <div class="carte">
-  <h2>Produits</h2>
-  <div id="produits"><span class="vide">chargement...</span></div>
+  <h2>Fournisseurs et quotas</h2>
+  <div class="jauges" id="jauges"></div>
+  <p class="aide" id="conseil"></p>
 </div>
-
 <div class="carte">
   <h2>Diagnostic</h2>
-  <p class="aide">Le bouton « pourquoi ca ne marche pas ». Les memes controles
-    que <code>usine docteur</code> — ils vivent au meme endroit.</p>
+  <p class="aide">Le bouton « pourquoi ça ne marche pas ». Les mêmes contrôles
+    que <code>usine docteur</code> — ils vivent au même endroit.</p>
   <div class="rangee">
-    <button class="discret" id="docteur-lancer">Verifier l'installation</button>
+    <button class="discret" id="docteur-lancer">Vérifier l'installation</button>
   </div>
-  <div id="docteur"><span class="vide">non verifie.</span></div>
+  <div id="docteur"><span class="vide">non vérifié.</span></div>
 </div>
-
 <div class="carte">
   <h2>Sauvegarder l'atelier</h2>
-  <p class="aide">Les produits se refabriquent. Une annee de ventes importees,
-    non. Les cles API ne sont jamais dans l'archive.</p>
+  <p class="aide">Les produits se refabriquent. Une année de ventes importées,
+    non. Les clés API ne sont jamais dans l'archive.</p>
   <div class="rangee">
-    <button class="discret" id="sauvegarde-creer">Creer une archive</button>
+    <button class="discret" id="sauvegarde-creer">Créer une archive</button>
     <label class="case"><input type="checkbox" id="sauvegarde-produits"/>
       avec les fichiers des produits</label>
   </div>
@@ -239,7 +311,7 @@
     <!-- Le cas de la reinstallation : le telephone a ete efface, et
          l'archive est sur un ordinateur ou dans un nuage. -->
     <label class="discret fichier" for="archive-fichier"
-      >Televerser une archive...</label>
+      >Téléverser une archive...</label>
     <input id="archive-fichier" type="file" accept=".zip,application/zip" hidden/>
     <span class="aide" id="televersement-etat" role="status"></span>
   </div>
@@ -251,23 +323,24 @@
     <p class="fiche" id="restauration-fiche"></p>
     <ul class="consequences">
       <li>Les ventes, l'historique, les tests A/B et les empreintes
-        d'aujourd'hui laissent la place a ceux de l'archive.</li>
-      <li>La base actuelle est <strong>mise de cote</strong>, pas supprimee.</li>
-      <li>Les fichiers de produits contenus dans l'archive ecrasent les
-        votres, s'ils portent le meme nom.</li>
+        d'aujourd'hui laissent la place à ceux de l'archive.</li>
+      <li>La base actuelle est <strong>mise de côté</strong>, pas supprimée.</li>
+      <li>Les fichiers de produits contenus dans l'archive écrasent les
+        vôtres, s'ils portent le même nom.</li>
     </ul>
     <label class="case"><input type="checkbox" id="restauration-compris"/>
-      J'ai compris que l'atelier actuel sera remplace</label>
+      J'ai compris que l'atelier actuel sera remplacé</label>
     <div class="rangee">
       <button class="danger" id="restauration-faire" disabled>Remplacer l'atelier</button>
       <button class="discret" id="restauration-annuler">Annuler</button>
     </div>
   </div>
 
-  <p class="aide">Telechargez-la hors du telephone : une sauvegarde restee sur
-    l'appareil ne protege de rien. La restauration est refusee tant qu'une
+  <p class="aide">Téléchargez-la hors du téléphone : une sauvegarde restée sur
+    l'appareil ne protège de rien. La restauration est refusée tant qu'une
     fabrication, une veille ou l'usine continue tourne.</p>
 </div>
+</section>
 
 </main>
 

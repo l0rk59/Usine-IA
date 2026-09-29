@@ -23,11 +23,11 @@ import json
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from ..agents import equipe
 from ..core import evenements, verification
-from ..render import livraison
+from ..render import libelles, livraison
 from .base import Contexte, elaguer_markdown, nettoyer_titre, preparer, slug, terminer
 
 CIBLES = {
@@ -130,8 +130,13 @@ def _generer_fichier(ctx: Contexte, specification: Dict[str, Any], cible: str,
              contrainte=fiche["contrainte"], existant=contexte_existant,
              chemin=chemin, role=role)
 
+    # Role « code » : ce texte-la doit compiler, pas se lire agreablement.
+    # Chez NVIDIA, cela envoie sur Codestral plutot que sur un modele de
+    # redaction ; chez un fournisseur qui n'a rien de tel, « model_for »
+    # retombe sur « standard » et rien ne change.
     reponse = equipe.REDACTEUR.travailler(ctx, invite, max_tokens=4096,
-                                          temperature=0.35)
+                                          temperature=0.35,
+                                          role_modele="code")
     return _nettoyer_code(reponse.texte)
 
 
@@ -225,16 +230,19 @@ def _essai_reel(ctx: Contexte, fichiers: Dict[str, str],
                 "reussi": execution.reussi,
                 "code_retour": execution.code_retour,
                 "refus": execution.refus,
+                "motif": execution.motif,
+                "valeur": execution.valeur,
+                "tests": chemin.startswith("test_"),
                 "erreur": execution.erreur[:600],
                 "sortie": execution.sortie[:600],
             })
             if execution.refus:
-                ctx.journal("      {} : non execute ({})".format(
+                ctx.journal("      {} : non exécuté ({})".format(
                     intitule, execution.refus[:60]))
             elif execution.reussi:
-                ctx.journal("      {} : demarre correctement".format(intitule))
+                ctx.journal("      {} : démarre correctement".format(intitule))
             else:
-                ctx.journal("      {} : ECHEC — {}".format(
+                ctx.journal("      {} : ÉCHEC — {}".format(
                     intitule, (execution.erreur or "code {}".format(
                         execution.code_retour))[:70]))
     finally:
@@ -248,25 +256,28 @@ def produire(ctx: Contexte, cible: str = "cli",
     cible = cible if cible in CIBLES else "cli"
     fiche = CIBLES[cible]
 
-    ctx.journal("Etape 1/4 — specification ({})...".format(fiche["nom"]))
+    ctx.journal("Étape 1/4 — spécification ({})...".format(fiche["nom"]))
     specification = _specification(ctx, cible)
     titre = specification["titre"]
     dossier = preparer(ctx, "logiciel", titre)
     ctx.etape("specification", "ok", cible)
     ctx.journal('  « {} » — {}'.format(titre, specification.get("promesse", "")))
 
-    ctx.journal("Etape 2/4 — generation et verification du code...")
+    ctx.journal("Étape 2/4 — génération et vérification du code...")
     fichiers, rapports = _ecrire_et_verifier(ctx, specification, cible)
     synthese = verification.synthese(rapports)
-    ctx.etape("code", "ok" if synthese["tout_valide"] else "echec",
+    # Le verificateur a tourne : c'est une anomalie, pas une etape perdue. La
+    # relancer ne regenererait pas le code — elle refait la meme verification
+    # sur les memes fichiers.
+    ctx.etape("code", "ok" if synthese["tout_valide"] else "anomalie",
               "{}/{} fichiers valides".format(synthese["valides"],
                                               synthese["fichiers"]))
 
-    ctx.journal("Etape 3/4 — essai reel...")
+    ctx.journal("Étape 3/4 — essai réel...")
     essais = _essai_reel(ctx, fichiers, rapports) if (
         executer and cible == "cli") else {"essais": [], "tout_demarre": None}
 
-    ctx.journal("Etape 4/4 — mise en carton...")
+    ctx.journal("Étape 4/4 — mise en carton...")
     chemins = _ecrire_sources(dossier, fichiers)
     livrables = _livrer(ctx, specification, cible, fichiers, synthese, essais)
 
@@ -311,14 +322,22 @@ def _livrer(ctx: Contexte, specification: Dict[str, Any], cible: str,
             essais: Dict[str, Any]) -> List[Path]:
     """Documentation du produit, via l'assemblage commun."""
     fiche = CIBLES[cible]
+    t = libelles.textes(ctx.langue_iso)
     blocs = [
-        livraison.Bloc("Ce que fait cet outil", _markdown_presentation(specification)),
-        livraison.Bloc("Installation et utilisation",
-                       _markdown_installation(specification, cible)),
-        livraison.Bloc("Verification du code", _markdown_verification(synthese, essais)),
+        livraison.Bloc(t["logiciel_ce_que_fait"],
+                       _markdown_presentation(specification, t)),
+        livraison.Bloc(t["logiciel_installation"],
+                       _markdown_installation(specification, cible, t)),
+        livraison.Bloc(t["logiciel_verification"],
+                       _markdown_verification(synthese, essais, t)),
     ]
     produit = livraison.Produit(
         type="logiciel", titre=specification["titre"],
+        # Une notice d'outil se lit a l'ecran, comme un fichier « LISEZ-MOI » :
+        # ses trois sections s'enchainent. Chacune sur sa page donnait cinq
+        # pages dont trois aux deux tiers blanches, et un sommaire de trois
+        # entrees par-dessus.
+        sections_enchainees=True, sommaire=False,
         sous_titre=specification.get("promesse", ""),
         promesse=specification.get("promesse", ""),
         blocs=blocs,
@@ -326,80 +345,88 @@ def _livrer(ctx: Contexte, specification: Dict[str, Any], cible: str,
         police_corps="Helvetica",
         style_couverture="developer tool cover, technical, monospace aesthetic",
         nom_fichier=specification["nom"],
-        libelle_sections="sections",
+        libelle_sections=t["unite_sections_simple"],
     )
     return livraison.livrer(ctx, produit)
 
 
-def _markdown_presentation(specification: Dict[str, Any]) -> str:
+def _markdown_presentation(specification: Dict[str, Any],
+                           t: Dict[str, Any]) -> str:
     lignes = []
     if specification.get("probleme"):
         lignes.append(specification["probleme"] + "\n")
     if specification.get("fonctionnalites"):
-        lignes.append("## Fonctions\n")
+        lignes.append("## {}\n".format(t["logiciel_fonctions"]))
         lignes += ["- " + f for f in specification["fonctionnalites"]]
     if specification.get("limites"):
-        lignes.append("\n## Ce que cet outil ne fait pas\n")
+        lignes.append("\n## {}\n".format(t["logiciel_limites"]))
         lignes += ["- " + l for l in specification["limites"]]
-        lignes.append("\nLe dire evite les deceptions, et les demandes de "
-                      "remboursement qui vont avec.")
+        lignes.append("\n" + t["logiciel_limites_pourquoi"])
     return "\n".join(lignes)
 
 
-def _markdown_installation(specification: Dict[str, Any], cible: str) -> str:
+def _markdown_installation(specification: Dict[str, Any], cible: str,
+                           t: Dict[str, Any]) -> str:
     if cible == "cli":
-        return (
-            "Aucune installation : le script n'utilise que la bibliotheque "
-            "standard de Python.\n\n"
-            "```\npython3 source/outil.py --help\n```\n\n"
-            "Utilisation type :\n\n```\n{}\n```\n\n"
-            "Les tests se lancent avec :\n\n```\npython3 source/test_outil.py\n```"
-        ).format(specification.get("utilisation", "python3 source/outil.py"))
+        return t["logiciel_cli"].format(
+            utilisation=specification.get("utilisation", "python3 source/outil.py"))
     if cible == "web":
-        return (
-            "Ouvrez `source/index.html` dans n'importe quel navigateur. Il n'y a "
-            "rien a installer et rien a configurer : tout le code est dans ce "
-            "fichier, il fonctionne hors connexion.\n\n"
-            "Pour le mettre en ligne, deposez ce seul fichier chez n'importe quel "
-            "hebergeur statique."
-        )
-    return (
-        "1. Ouvrez `chrome://extensions` dans Chrome.\n"
-        "2. Activez le « mode developpeur » en haut a droite.\n"
-        "3. Cliquez sur « Charger l'extension non empaquetee ».\n"
-        "4. Choisissez le dossier `source/`.\n\n"
-        "Pour la publier, compressez le dossier `source/` et deposez l'archive "
-        "sur le Chrome Web Store."
-    )
+        return t["logiciel_web"]
+    return t["logiciel_extension"]
+
+
+def _refus_lisible(essai: Dict[str, Any], t: Dict[str, Any]) -> str:
+    """Le refus d'executer, dans la langue du produit.
+
+    L'entete (« analyse statique ») et le motif du souci se traduisent ; la
+    valeur — un nom de module, le message de Python — reste telle quelle. Un
+    motif inconnu garde son texte : mieux vaut un detail en francais qu'un
+    detail perdu.
+    """
+    refus = essai["refus"]
+    tete, separateur, reste = refus.partition(" : ")
+    traduit = t["logiciel_refus"].get(tete)
+    if not traduit or not separateur:
+        return refus
+    gabarit = t["logiciel_soucis"].get(essai.get("motif") or "")
+    if gabarit:
+        reste = gabarit.format(valeur=essai.get("valeur", ""))
+    return t["deux_points"].format(libelle=traduit, texte=reste)
 
 
 def _markdown_verification(synthese: Dict[str, Any],
-                           essais: Dict[str, Any]) -> str:
+                           essais: Dict[str, Any], t: Dict[str, Any]) -> str:
     lignes = [
-        "Ce code a ete verifie avant livraison. Voici exactement ce qui a ete "
-        "controle.\n",
-        "| Fichier | Verification | Resultat |",
+        t["logiciel_verifie"],
+        "| {} |".format(" | ".join(t["logiciel_colonnes"])),
         "| --- | --- | --- |",
     ]
     for detail in synthese["detail"]:
-        etat = "correct" if detail["valide"] else "**a corriger**"
+        etat = t["logiciel_correct"] if detail["valide"] else t["logiciel_a_corriger"]
         lignes.append("| `{}` | {} | {} |".format(
-            detail["fichier"], detail["verifie_par"], etat))
+            detail["fichier"],
+            t["logiciel_verifie_par"].get(detail["verifie_par"],
+                                          detail["verifie_par"]), etat))
 
     for essai in essais.get("essais", []):
         if essai["refus"]:
-            resultat = "non execute : {}".format(essai["refus"])
+            resultat = t["logiciel_non_execute"].format(
+                refus=_refus_lisible(essai, t))
         elif essai["reussi"]:
-            resultat = "demarre correctement"
+            resultat = t["logiciel_demarre"]
         else:
-            resultat = "**echec**"
-        lignes.append("| `{}` | execution reelle | {} |".format(
-            essai["quoi"], resultat))
+            resultat = t["logiciel_echec"]
+        quoi = (t["logiciel_tests_unitaires"] if essai.get("tests")
+                else essai["quoi"])
+        lignes.append("| `{}` | {} | {} |".format(
+            quoi, t["logiciel_execution"], resultat))
 
+    # Le fichier ou ces remarques sont detaillees reste a l'atelier : la
+    # notice y renvoyait l'acheteur, qui ne l'a jamais recu.
     if synthese["avertissements"]:
-        lignes.append("\n{} remarque(s) sans gravite figurent dans "
-                      "`verification.json`.".format(synthese["avertissements"]))
+        # Au moins une remarque ici : les deux langues accordent pareil.
+        lignes.append("\n" + libelles.accorder(t["logiciel_remarques"].format(
+            nombre=synthese["avertissements"])))
     if not synthese["tout_valide"]:
-        lignes.append("\n**Attention :** un ou plusieurs fichiers n'ont pas passe "
-                      "la verification. Relisez-les avant toute mise en vente.")
+        lignes.append("\n" + t["logiciel_attention"])
     return "\n".join(lignes)

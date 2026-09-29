@@ -312,6 +312,13 @@ class TestChaineComplete(unittest.TestCase):
         (self.dossier / "marketing" / "page-de-vente.html").write_text(
             "prix plancher", encoding="utf-8"
         )
+        # L'edition courte offerte est DANS le kit, un cran plus bas.
+        # L'exclusion doit donc porter sur tout le sous-arbre, pas sur le
+        # seul premier niveau : livrer un extrait a qui vient d'acheter le
+        # livre entier serait au mieux ridicule.
+        (self.dossier / "marketing" / "extrait").mkdir(exist_ok=True)
+        (self.dossier / "marketing" / "extrait" / "livre-extrait.pdf").write_bytes(
+            b"%PDF-1.4 extrait offert")
         archive = livraison.empaqueter(self.dossier, "test-livrable",
                                        self.resume["titre"], "Tests")
         self.assertTrue(archive.exists())
@@ -324,6 +331,8 @@ class TestChaineComplete(unittest.TestCase):
                              "les fichiers de travail ne doivent pas etre livres")
             self.assertFalse(any("marketing" in n for n in noms),
                              "le kit de vente ne doit pas etre livre a l'acheteur")
+            self.assertFalse(any("extrait" in n for n in noms),
+                             "l'edition courte offerte non plus")
 
 
 class TestServeurWeb(unittest.TestCase):
@@ -396,14 +405,42 @@ class TestServeurWeb(unittest.TestCase):
             self.assertNotIn(b"NE DOIT PAS FUIR", corps,
                              "fuite de fichier via : " + tentative)
 
-    def test_fabrication_refusee_sans_sujet(self):
+    def test_fabrication_acceptee_sans_sujet(self):
+        """Ce test gardait le refus jusqu'au 14/09/2026 : sans sujet, le
+        serveur rendait 400 « sujet manquant » et le bouton du tableau de
+        bord ne faisait rien, sans rien dire.
+
+        Un sujet vide veut dire « trouve-la ». Le choix coute un appel de
+        modele et un sondage de marche, donc il a lieu dans le fil de
+        fabrication : la requete, elle, repond tout de suite avec un numero
+        de travail. Ce qui est verifie ici, c'est precisement cela — que le
+        serveur ne bloque pas la requete le temps du sondage.
+        """
+        import json
+        import urllib.request
+
+        requete = urllib.request.Request(
+            self.base + "/api/fabriquer",
+            data=json.dumps({"type": "ebook"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(requete, timeout=10) as reponse:
+            donnees = json.loads(reponse.read().decode("utf-8"))
+        self.assertTrue(donnees.get("travail"),
+                        "le tableau de bord refuse encore de chercher")
+
+    def test_fabrication_refusee_sur_un_type_inconnu(self):
+        """Un sujet vide est une demande ; un type inconnu reste une faute.
+        Sans ce cas, le test ci-dessus passerait aussi le jour ou le serveur
+        accepterait n'importe quoi."""
         import json
         import urllib.error
         import urllib.request
 
         requete = urllib.request.Request(
             self.base + "/api/fabriquer",
-            data=json.dumps({"type": "ebook"}).encode("utf-8"),
+            data=json.dumps({"type": "grimoire", "sujet": "x"}).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
         )

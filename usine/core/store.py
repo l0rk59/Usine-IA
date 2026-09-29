@@ -60,6 +60,19 @@ CREATE TABLE IF NOT EXISTS produits (
     statut TEXT NOT NULL DEFAULT 'en_cours',
     dossier TEXT,
     meta TEXT,
+    serie TEXT,
+    rang INTEGER,
+    cree_le REAL NOT NULL,
+    maj_le REAL NOT NULL
+);
+
+-- Une serie : le monde et la distribution qu'un tome transmet au suivant.
+-- La bible y est stockee en JSON parce que sa forme suit celle de la fiction
+-- et changera avec elle ; la normaliser en colonnes obligerait a une
+-- migration a chaque champ ajoute a une bible.
+CREATE TABLE IF NOT EXISTS series (
+    nom TEXT PRIMARY KEY,
+    bible TEXT NOT NULL,
     cree_le REAL NOT NULL,
     maj_le REAL NOT NULL
 );
@@ -110,7 +123,7 @@ CREATE INDEX IF NOT EXISTS idx_ventes_date ON ventes(date);
 # plus tard ne serait jamais creee chez qui a deja produit, et l'erreur SQL
 # tomberait des semaines apres, sur un telephone, avec tout l'historique
 # dedans. Chaque evolution s'inscrit donc ici.
-VERSION_SCHEMA = 4
+VERSION_SCHEMA = 5
 
 MIGRATIONS = {
     # v1 -> v2 : empreintes des produits, pour detecter les doublons.
@@ -136,7 +149,31 @@ MIGRATIONS = {
     # d'ou une fonction plutot qu'une suite d'ordres SQL.
     4: [lambda conn: _ajouter_colonnes(
         conn, "variantes", (("debut", "TEXT"), ("fin", "TEXT")))],
+    # v4 -> v5 : les series. Un tome doit savoir de quel monde il est le
+    # suivant, et « produits » doit pouvoir le dire sans jointure — c'est ce
+    # que listent la CLI, le menu et le tableau de bord.
+    5: ["""CREATE TABLE IF NOT EXISTS series (
+             nom TEXT PRIMARY KEY, bible TEXT NOT NULL,
+             cree_le REAL NOT NULL, maj_le REAL NOT NULL)""",
+        lambda conn: _ajouter_colonnes(
+            conn, "produits", (("serie", "TEXT"), ("rang", "INTEGER")))],
 }
+
+
+# Index portant sur des colonnes que l'echelle de migrations ajoute.
+#
+# Ils ne peuvent pas vivre dans SCHEMA, et la raison merite d'etre dite :
+# SCHEMA s'execute AVANT « _migrer », et « CREATE TABLE IF NOT EXISTS » ne
+# touche pas une table deja creee. Sur une base existante, l'index tombait
+# donc sur une colonne qui n'existait pas encore, et « connect() » levait
+# « no such column: serie » — avant meme d'avoir eu la chance de migrer.
+# Autrement dit : l'usine ne demarrait plus du tout chez quiconque avait deja
+# produit un seul fichier, tandis qu'elle marchait parfaitement chez qui
+# developpe. C'est le defaut de migration type, et il a ete attrape par le
+# test qui part d'une base au palier 1.
+INDEX_APRES_MIGRATION = """
+CREATE INDEX IF NOT EXISTS idx_produits_serie ON produits(serie, rang);
+"""
 
 
 def _ajouter_colonnes(conn: sqlite3.Connection, table: str,
@@ -189,7 +226,9 @@ def _migrer(conn: sqlite3.Connection, base_neuve: bool) -> None:
 # thread plutot qu'une connexion globale.
 _local = threading.local()
 _verrou_schema = threading.Lock()
-_schema_pret = False
+# La base pour laquelle le schema a ete pose : (generation, chemin), et non un
+# simple « c'est fait ». Voir « cle_de_base ».
+_schema_pour: Optional[Tuple[int, str]] = None
 
 # Une connexion appartient a son thread, et « close() » ne ferme que celle du
 # thread qui appelle. Or une restauration DEPLACE le fichier de base : les
@@ -200,7 +239,7 @@ _schema_pret = False
 # change.
 _generation = 0
 
-# « _schema_pret » n'est pas le seul drapeau de ce genre. La file, les
+# « _schema_pour » n'est pas le seul drapeau de ce genre. La file, les
 # experiences et l'apprentissage creent leurs tables a la demande et
 # retiennent « c'est fait » dans un drapeau de module. Ce drapeau ne vaut
 # que pour la base ouverte a ce moment-la : quand le fichier change sous
@@ -214,11 +253,74 @@ def oublier_avec_la_base(rappel: Callable[[], None]) -> None:
     _oublis.append(rappel)
 
 
+def cle_de_base() -> Tuple[int, str]:
+    """La base ouverte en ce moment : sa generation ET son chemin.
+
+    Un drapeau « c'est fait » remis a zero quand la base change ne suffit
+    pas des qu'il y a plusieurs fils. Deux courses, mesurees le 24/09/2026 en
+    integration continue — « no such table: productions », puis zero produit
+    fabrique dans tout un module de tests :
+
+    - un fil pose le drapeau APRES avoir cree ses tables ; si la base change
+      entre les deux, il le pose pour une base ou elles n'existent pas, et
+      toutes les ecritures suivantes echouent ;
+    - « close() » avance la generation AVANT que les chemins changent (la
+      bascule d'atelier, la restauration) : un fil qui se reconnecte dans
+      l'intervalle ouvre l'ancien fichier sous la nouvelle generation, et le
+      garde.
+
+    Chaque drapeau et chaque connexion retiennent donc la cle de la base pour
+    laquelle ils valent, lue AVANT d'agir. Si elle a change pendant, ils ne
+    valent plus rien, et le travail est refait — il est idempotent.
+    """
+    return (_generation, str(config.DB_PATH))
+
+
+def tables_a_la_demande(schema: str,
+                        complement: Optional[Callable[[Any], None]] = None
+                        ) -> Callable[[], None]:
+    """Rend la fonction « assurer » d'un module qui cree ses tables au besoin.
+
+    Trois modules — la file, les experiences, l'apprentissage — repetaient
+    mot pour mot le meme couple : un drapeau de module, une fonction qui
+    execute le schema une fois, et une autre qui remet le drapeau a zero
+    quand la base change. Mesure du 15/09/2026 : les corps etaient
+    IDENTIQUES a l'octet pres.
+
+    Trois copies d'un mecanisme de remise a zero, c'est trois endroits ou
+    corriger le jour ou il se trompe, et deux qu'on oubliera — or ce
+    mecanisme existe precisement parce qu'un drapeau qui ment sur une base
+    restauree est un defaut invisible.
+
+    « complement » sert au seul module qui fait plus que son schema : les
+    experiences ajoutent des colonnes a une table deja creee. Le prevoir ici
+    evite qu'il reste a l'ecart et diverge a son tour.
+    """
+    etat: Dict[str, Optional[Tuple[int, str]]] = {"pour": None}
+
+    def assurer() -> None:
+        cle = cle_de_base()
+        if etat["pour"] == cle:
+            return
+        connexion = connect()
+        connexion.executescript(schema)
+        if complement is not None:
+            complement(connexion)
+        etat["pour"] = cle
+
+    def oublier() -> None:
+        etat["pour"] = None
+
+    oublier_avec_la_base(oublier)
+    return assurer
+
+
 def connect() -> sqlite3.Connection:
-    global _schema_pret
+    global _schema_pour
+    cle = cle_de_base()
     conn = getattr(_local, "conn", None)
     if conn is not None:
-        if getattr(_local, "generation", -1) == _generation:
+        if getattr(_local, "cle", None) == cle:
             return conn
         try:
             conn.close()
@@ -226,7 +328,7 @@ def connect() -> sqlite3.Connection:
             pass  # le fichier a pu disparaitre sous la connexion
         _local.conn = None
     config.ensure_dirs()
-    conn = sqlite3.connect(str(config.DB_PATH), timeout=30, isolation_level=None)
+    conn = sqlite3.connect(cle[1], timeout=30, isolation_level=None)
     conn.row_factory = sqlite3.Row
     try:
         conn.execute("PRAGMA journal_mode=WAL")
@@ -234,15 +336,16 @@ def connect() -> sqlite3.Connection:
         pass  # /sdcard ne supporte pas toujours WAL
     conn.execute("PRAGMA synchronous=NORMAL")
     with _verrou_schema:
-        if not _schema_pret:
+        if _schema_pour != cle:
             neuve = conn.execute(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table'"
                 " AND name='produits'").fetchone()[0] == 0
             conn.executescript(SCHEMA)
             _migrer(conn, neuve)
-            _schema_pret = True
+            conn.executescript(INDEX_APRES_MIGRATION)
+            _schema_pour = cle
     _local.conn = conn
-    _local.generation = _generation
+    _local.cle = cle
     return conn
 
 
@@ -259,7 +362,7 @@ def cursor() -> Iterator[sqlite3.Cursor]:
 def close() -> None:
     """Ferme la connexion du thread courant et oublie l'etat du schema.
 
-    Oublier le schema importe : « _schema_pret » est un drapeau de module
+    Oublier le schema importe : « _schema_pour » est un drapeau de module
     qui survivait a la fermeture. Apres une restauration de sauvegarde, le
     fichier de base a change sous nos pieds — sans cet oubli, la reconnexion
     sautait la creation des tables ET l'echelle de migrations, et une
@@ -272,15 +375,63 @@ def close() -> None:
     une connexion SQLite appartient a son thread. On avance la generation :
     chacune se refera d'elle-meme au prochain usage.
     """
-    global _schema_pret, _generation
+    global _schema_pour, _generation
     conn = getattr(_local, "conn", None)
     if conn is not None:
         conn.close()
         _local.conn = None
-    _schema_pret = False
+    _schema_pour = None
     _generation += 1
     for rappel in _oublis:
         rappel()
+
+
+def diagnostic_base() -> str:
+    """Rend le defaut constate sur le fichier de base, ou "" si elle est saine.
+
+    On MESURE au lieu de deduire. « sqlite3.DatabaseError » couvre aussi bien
+    un fichier illisible qu'une colonne mal nommee : conseiller une
+    restauration de sauvegarde a qui vient de croiser un defaut de requete
+    serait le garde-fou qui crie a tort, et on lui ferait detruire son atelier
+    pour rien. Le seul moyen de trancher est de rouvrir le fichier et de le
+    faire verifier par SQLite lui-meme.
+
+    Trois formes de casse existent, et elles ne se voient pas au meme moment
+    (mesure du 13/09/2026, Python 3.11) :
+
+    - entete detruite ou fichier remplace par du texte : « file is not a
+      database », des la premiere lecture ;
+    - fichier tronque : « database disk image is malformed », des la premiere
+      lecture ;
+    - page interieure ecrasee : AUCUNE erreur a l'ouverture. Le defaut ne
+      sort que le jour ou l'on lit cette page-la. C'est la forme la plus
+      couteuse, et « PRAGMA integrity_check » est ce qui la trouve.
+
+    Un fichier VIDE n'est pas une base cassee : SQLite y ecrit son schema.
+    Rien a signaler, donc, et c'est voulu.
+
+    On ouvre une connexion a part, qu'on ferme aussitot : celle du thread
+    peut etre justement celle qui vient d'echouer.
+    """
+    if not config.DB_PATH.exists():
+        return ""
+    try:
+        conn = sqlite3.connect(str(config.DB_PATH), timeout=5)
+    except sqlite3.Error as exc:
+        return str(exc)
+    try:
+        lignes = conn.execute("PRAGMA integrity_check").fetchall()
+    except sqlite3.DatabaseError as exc:
+        return str(exc)
+    finally:
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+    # SQLite rend exactement une ligne « ok » quand tout va bien.
+    if len(lignes) == 1 and str(lignes[0][0]).lower() == "ok":
+        return ""
+    return " ; ".join(str(ligne[0]) for ligne in lignes[:3])
 
 
 # --------------------------------------------------------------------------
@@ -330,7 +481,23 @@ def lister_empreintes(type_produit: str = "", sauf: str = "",
 
 
 def _jour(ts: Optional[float] = None) -> str:
-    return time.strftime("%Y-%m-%d", time.localtime(ts or time.time()))
+    """Le jour DU FOURNISSEUR, pas celui de l'utilisateur.
+
+    Cette colonne ne sert qu'a compter les quotas quotidiens des services, et
+    ils se remettent a zero a heure fixe en temps universel — « All limits
+    reset daily at 00:00 UTC » pour Cloudflare Workers AI (documentation
+    officielle, relevee le 23/09/2026). Compter en heure locale decalait le
+    jour de l'usine de celui du service : en France l'ete, notre compteur
+    repartait a zero deux heures AVANT le fournisseur. Pendant ces deux
+    heures, l'usine croyait disposer d'un quota neuf que le service lui
+    refusait ; puis, les appels de la nuit restant imputes au mauvais jour,
+    elle s'arretait avant d'avoir utilise ce qui restait.
+
+    Le budget que l'utilisateur se fixe, lui, reste en heure locale : il le
+    calcule a partir d'horodatages dans « budget.py », pas de cette colonne.
+    Ce sont deux journees differentes, et c'est voulu.
+    """
+    return time.strftime("%Y-%m-%d", time.gmtime(ts or time.time()))
 
 
 def enregistrer_appel(
@@ -353,21 +520,26 @@ def enregistrer_appel(
         )
 
 
-def compteur_jour_cle(fournisseur: str, cle_id: str) -> int:
-    """Appels du jour imputes a une cle precise du pool."""
-    with cursor() as cur:
-        cur.execute(
-            "SELECT COUNT(*) FROM appels WHERE fournisseur=? AND cle_id=? AND jour=?",
-            (fournisseur, cle_id, _jour()),
-        )
-        return int(cur.fetchone()[0])
+# Un appel compte dans le quota d'un fournisseur s'il l'a REELLEMENT traite :
+# une reponse servie, ou un refus pour cause de debit (429), que tous les
+# services decomptent. Une coupure reseau ou un 500 ne consomment rien chez
+# eux — les compter revenait a s'interdire un fournisseur pour des pannes dont
+# il n'est pas responsable, ce qui arrive sans cesse sur un reseau mobile.
+_TRAITE = "(ok=1 OR erreur LIKE 'HTTP 429%')"
 
 
-def compteur_minute_cle(fournisseur: str, cle_id: str) -> int:
+def compteur_jour_cle(fournisseur: str, cle_id: str, modele: str = "") -> int:
+    """Appels du jour imputes a une cle precise du pool.
+
+    « modele » sert aux fournisseurs dont le quota se compte par modele : une
+    cle qui a epuise les requetes de gemini-2.5-flash garde entieres celles de
+    gemini-2.5-flash-lite, et ne doit pas etre ecartee pour autant.
+    """
     with cursor() as cur:
         cur.execute(
-            "SELECT COUNT(*) FROM appels WHERE fournisseur=? AND cle_id=? AND ts > ?",
-            (fournisseur, cle_id, time.time() - 60),
+            "SELECT COUNT(*) FROM appels WHERE fournisseur=? AND cle_id=? "
+            "AND jour=? AND " + _TRAITE + _et_modele(modele),
+            (fournisseur, cle_id, _jour()) + ((modele,) if modele else ()),
         )
         return int(cur.fetchone()[0])
 
@@ -381,20 +553,136 @@ def journal_cle(fournisseur: str, cle_id: str, raison: str, repos: float) -> Non
         )
 
 
-def compteur_minute(fournisseur: str) -> int:
+def tokens_intervalle(depuis: float, jusqu_a: Optional[float] = None) -> int:
+    """Jetons consommes dans une fenetre, tous fournisseurs confondus.
+
+    Plusieurs paliers gratuits comptent en JETONS, pas en requetes : Cerebras
+    et Gemini l'annoncent dans leurs propres notes. Un budget qui ne compte
+    que les appels laisse donc passer le plafond qui compte vraiment.
+    """
+    fin = time.time() if jusqu_a is None else jusqu_a
     with cursor() as cur:
         cur.execute(
-            "SELECT COUNT(*) FROM appels WHERE fournisseur=? AND ts > ?",
-            (fournisseur, time.time() - 60),
+            "SELECT COALESCE(SUM(tokens), 0) FROM appels"
+            " WHERE ts >= ? AND ts <= ? AND ok=1",
+            (depuis, fin),
         )
         return int(cur.fetchone()[0])
 
 
-def compteur_jour(fournisseur: str) -> int:
+def repos_actifs() -> Dict[Tuple[str, str], float]:
+    """Mises au repos encore valables, par (fournisseur, cle).
+
+    Android tue le processus sans preavis. Sans relecture, un fournisseur qui
+    venait de repondre 429 etait resollicite dans la seconde au redemarrage —
+    et repondait 429. La donnee etait deja la, dans « cles_journal » ; il ne
+    manquait que de la lire.
+    """
+    maintenant = time.time()
+    actifs: Dict[Tuple[str, str], float] = {}
     with cursor() as cur:
         cur.execute(
-            "SELECT COUNT(*) FROM appels WHERE fournisseur=? AND jour=?",
-            (fournisseur, _jour()),
+            "SELECT fournisseur, cle_id, MAX(ts + repos) AS fin FROM cles_journal"
+            " WHERE ts + repos > ? GROUP BY fournisseur, cle_id",
+            (maintenant,),
+        )
+        for ligne in cur.fetchall():
+            actifs[(ligne["fournisseur"], ligne["cle_id"] or "")] = float(ligne["fin"])
+    return actifs
+
+
+def raison_du_repos(fournisseur: str, cle_id: str = "") -> str:
+    """Pourquoi ce fournisseur (ou cette cle) est au repos, s'il l'est.
+
+    Le message d'echec disait « en repos », sans heure ni cause : on ne
+    savait pas s'il fallait attendre une minute, changer de cle ou retirer le
+    service. La cause etait deja ecrite ici par « journal_cle ».
+    """
+    with cursor() as cur:
+        cur.execute(
+            "SELECT raison FROM cles_journal WHERE fournisseur=? AND cle_id=?"
+            " AND ts + repos > ? ORDER BY ts + repos DESC LIMIT 1",
+            (fournisseur, cle_id or "", time.time()),
+        )
+        ligne = cur.fetchone()
+    return str(ligne["raison"]) if ligne else ""
+
+
+# Certains fournisseurs comptent leur quota par modele plutot que pour tout le
+# service (c'est le cas de Google). Passer « modele » restreint le decompte a
+# ce modele ; le laisser vide compte tout le fournisseur, comme avant.
+def _et_modele(modele: str) -> str:
+    return " AND modele=?" if modele else ""
+
+
+# Les quotas d'un fournisseur s'appliquent a un COMPTE, donc a une cle. Les
+# compter pour tout le fournisseur revenait a additionner les consommations de
+# cles independantes : deux cles donnaient un seul quota, et le pool — dont
+# toute la raison d'etre est de ne jamais s'arreter faute de quota — ne
+# multipliait rien du tout.
+def _et_cle(cle_id: str) -> str:
+    return " AND cle_id=?" if cle_id else ""
+
+
+def _filtres(modele: str, cle_id: str) -> Tuple[str, Tuple[Any, ...]]:
+    """Clause SQL et parametres pour restreindre a un modele et/ou une cle."""
+    clause = _et_modele(modele) + _et_cle(cle_id)
+    valeurs = tuple(v for v in (modele, cle_id) if v)
+    return clause, valeurs
+
+
+def compteur_minute(fournisseur: str, modele: str = "",
+                    cle_id: str = "") -> int:
+    clause, valeurs = _filtres(modele, cle_id)
+    with cursor() as cur:
+        cur.execute(
+            "SELECT COUNT(*) FROM appels WHERE fournisseur=? AND ts > ?" + clause,
+            (fournisseur, time.time() - 60) + valeurs,
+        )
+        return int(cur.fetchone()[0])
+
+
+def compteur_jour(fournisseur: str, modele: str = "",
+                  cle_id: str = "") -> int:
+    clause, valeurs = _filtres(modele, cle_id)
+    with cursor() as cur:
+        cur.execute(
+            "SELECT COUNT(*) FROM appels WHERE fournisseur=? AND jour=? AND "
+            + _TRAITE + clause,
+            (fournisseur, _jour()) + valeurs,
+        )
+        return int(cur.fetchone()[0])
+
+
+def jetons_minute(fournisseur: str, modele: str = "",
+                  cle_id: str = "") -> Tuple[int, float]:
+    """Jetons consommes dans la derniere minute, et date du plus ancien.
+
+    Le plafond par minute est une fenetre GLISSANTE : la place ne se libere
+    pas a la minute ronde, elle se libere quand le plus vieil appel de la
+    fenetre en sort. Rendre cette date permet d'attendre exactement ce qu'il
+    faut au lieu d'attendre une minute entiere a chaque fois.
+    """
+    debut = time.time() - 60
+    clause, valeurs = _filtres(modele, cle_id)
+    with cursor() as cur:
+        cur.execute(
+            "SELECT COALESCE(SUM(tokens), 0), COALESCE(MIN(ts), 0) FROM appels"
+            " WHERE fournisseur=? AND ts > ? AND ok=1 AND tokens > 0" + clause,
+            (fournisseur, debut) + valeurs,
+        )
+        ligne = cur.fetchone()
+        return int(ligne[0]), float(ligne[1])
+
+
+def jetons_jour(fournisseur: str, modele: str = "", cle_id: str = "") -> int:
+    """Jetons consommes aujourd'hui chez un fournisseur."""
+    clause, valeurs = _filtres(modele, cle_id)
+    with cursor() as cur:
+        cur.execute(
+            "SELECT COALESCE(SUM(tokens), 0) FROM appels"
+            " WHERE fournisseur=? AND jour=? AND ok=1" + clause,
+            (fournisseur, _jour()) + valeurs,
         )
         return int(cur.fetchone()[0])
 
@@ -411,17 +699,6 @@ def compteur_intervalle(depuis: float, jusqu_a: Optional[float] = None) -> int:
             (depuis, jusqu_a if jusqu_a is not None else time.time()),
         )
         return int(cur.fetchone()[0])
-
-
-def fournisseurs_intervalle(depuis: float, jusqu_a: Optional[float] = None) -> List[str]:
-    """Fournisseurs ayant effectivement repondu pendant la fenetre."""
-    with cursor() as cur:
-        cur.execute(
-            "SELECT DISTINCT fournisseur FROM appels"
-            " WHERE ts >= ? AND ts <= ? AND ok=1",
-            (depuis, jusqu_a if jusqu_a is not None else time.time()),
-        )
-        return [row[0] for row in cur.fetchall()]
 
 
 def stats_fournisseurs() -> List[Dict[str, Any]]:
@@ -457,6 +734,43 @@ def cache_set(cle: str, contenu: str, fournisseur: str = "", modele: str = "") -
             " VALUES (?,?,?,?,?)",
             (cle, contenu, fournisseur, modele, time.time()),
         )
+
+
+def cache_par_prefixe(prefixe: str) -> Dict[str, str]:
+    """Les entrees de cache dont la cle commence par « prefixe »."""
+    with cursor() as cur:
+        cur.execute("SELECT cle, contenu FROM cache WHERE cle LIKE ?",
+                    (prefixe + "%",))
+        return {row["cle"]: row["contenu"] for row in cur.fetchall()}
+
+
+def compter_reponses_cachees() -> int:
+    """Reponses de modele en cache — sans ce qui n'en est pas.
+
+    La table sert aussi a garder le catalogue des fournisseurs et les
+    substitutions de modeles. Les compter comme des reponses faisait annoncer
+    un cache non vide a qui n'avait encore rien fabrique.
+    """
+    with cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM cache WHERE cle NOT LIKE ?"
+                    " AND cle NOT LIKE ?",
+                    ("catalogue-modeles:%", "substitution:%"))
+        return int(cur.fetchone()[0])
+
+
+def cache_oublier_prefixe(prefixe: str) -> int:
+    """Efface les entrees de cache dont la cle commence par « prefixe ».
+
+    Le cache sert a deux choses qui n'ont rien a voir : garder les reponses du
+    modele, et garder le catalogue des fournisseurs. Oublier le second sans
+    jeter le premier evite de faire repayer une fabrication entiere parce
+    qu'on a change de cle API.
+    """
+    with cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM cache WHERE cle LIKE ?", (prefixe + "%",))
+        n = int(cur.fetchone()[0])
+        cur.execute("DELETE FROM cache WHERE cle LIKE ?", (prefixe + "%",))
+        return n
 
 
 def cache_vider() -> int:
@@ -544,6 +858,20 @@ def lire_produit(produit_id: str) -> Optional[Dict[str, Any]]:
         cur.execute("SELECT * FROM produits WHERE id=?", (produit_id,))
         row = cur.fetchone()
         return _produit(row) if row else None
+
+
+def supprimer_produit(produit_id: str) -> None:
+    """Efface la fiche d'un produit et ce qui y renvoie.
+
+    Les etapes et l'empreinte partent avec. Les laisser derriere faisait deux
+    degats invisibles : le journal d'etapes gonflait sans jamais etre lu, et
+    l'empreinte d'un produit efface faisait refuser un nouveau produit sur le
+    meme sujet comme un doublon de quelque chose qui n'existe plus.
+    """
+    with cursor() as cur:
+        cur.execute("DELETE FROM etapes WHERE produit_id=?", (produit_id,))
+        cur.execute("DELETE FROM empreintes WHERE produit_id=?", (produit_id,))
+        cur.execute("DELETE FROM produits WHERE id=?", (produit_id,))
 
 
 def lister_produits(limite: int = 50) -> List[Dict[str, Any]]:

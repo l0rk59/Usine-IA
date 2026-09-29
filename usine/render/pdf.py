@@ -7,12 +7,15 @@ Aucune compilation requise : installable sur Termux en une seconde.
 
 from __future__ import annotations
 
+import re
 import time
+import unicodedata
 import zlib
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from .metriques import largeur_texte
+from .document import nettoyer_inline
+from .metriques import REMPLACEMENTS, largeur_texte
 
 A4 = (595.28, 841.89)
 LETTRE = (612.0, 792.0)
@@ -28,14 +31,23 @@ POLICES_PDF = {
 
 
 def _chaine_pdf(texte: str) -> str:
-    """Chaine litterale PDF : parentheses et antislashs echappes.
+    """Chaine de texte PDF, pour les metadonnees et la langue du document.
 
-    Encodee en PDFDocEncoding via latin-1, qui couvre les accents francais.
-    Un titre non echappe contenant une parenthese cassait la structure du
-    fichier sans qu'aucun lecteur ne dise pourquoi.
+    En ASCII : litterale, parentheses et antislashs echappes. Un titre non
+    echappe contenant une parenthese cassait la structure du fichier sans
+    qu'aucun lecteur ne dise pourquoi.
+
+    Au-dela : UTF-16BE precede de sa marque, comme la norme le prevoit pour
+    les chaines de texte. L'encodage latin-1 d'avant n'a pas « — » : tout
+    titre qui en porte un (quiz, memo, cartes, mots meles...) s'affichait
+    « Quiz ? la paie » dans la barre de la visionneuse et dans la
+    bibliotheque de la liseuse — la ou l'acheteur voit le fichier.
     """
-    propre = (texte or "").replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)")
-    return "({})".format(propre.encode("latin-1", "replace").decode("latin-1"))
+    texte = texte or ""
+    if texte.isascii():
+        propre = texte.replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)")
+        return "({})".format(propre)
+    return "<FEFF{}>".format(texte.encode("utf-16-be").hex().upper())
 
 
 def _dictionnaire_info(titre: str, auteur: str, sujet: str) -> bytes:
@@ -54,16 +66,65 @@ def _dictionnaire_info(titre: str, auteur: str, sujet: str) -> bytes:
     return ("<< {} >>".format(corps)).encode("latin-1", "replace")
 
 
+def _sans_symbole(texte: str) -> str:
+    """Retire les symboles que la police ne porte pas, sans laisser de trace.
+
+    Un emoji encode en WinAnsi devient « ? ». Dans un titre de couverture, ce
+    point d'interrogation se lit comme un defaut du fichier — alors qu'une
+    absence se lit comme un choix. Un emoji ne porte d'ailleurs aucune
+    information textuelle : le retirer ne perd rien, le remplacer par « ? »
+    perd la confiance du lecteur.
+
+    Les LETTRES, elles, ne sont jamais retirees : un mot russe ou japonais
+    efface en silence serait pire qu'un mot illisible. Elles deviennent « ? »,
+    et « caracteres_absents » les signale a la chaine, qui le dit.
+    """
+    garde = []
+    for caractere in texte:
+        if ord(caractere) < 128:
+            garde.append(caractere)
+            continue
+        symbole = unicodedata.category(caractere).startswith("S")
+        if symbole and caractere.encode("cp1252", "replace") == b"?":
+            continue
+        garde.append(caractere)
+    return re.sub(r"  +", " ", "".join(garde))
+
+
+def caracteres_absents(texte: str) -> List[str]:
+    """Les LETTRES et CHIFFRES que le PDF ne saura pas ecrire.
+
+    Le moteur est ecrit a la main et n'embarque aucune police : il utilise les
+    quatorze polices standard du format, en WinAnsi. Cela couvre le francais
+    entier — accents, « guillemets », tiret cadratin, ligature oe — et rien
+    au-dela de l'alphabet latin.
+
+    Mesure du 14/09/2026 : un livre intitule « la cuisine japonaise <deux
+    ideogrammes> » sortait avec « ?? » sur sa couverture et sa page de titre,
+    livre marque « pret », alors que l'EPUB du meme produit etait parfait.
+    Rien ne le disait nulle part.
+
+    On ne signale QUE les lettres et les chiffres. Les symboles sont retires
+    proprement par « _sans_symbole », et les signaler ferait crier ce controle
+    sur n'importe quel texte contenant une fleche — un garde-fou qui signale a
+    tort finit ignore.
+    """
+    perdus = []
+    for caractere in dict.fromkeys(texte):
+        if ord(caractere) < 128 or caractere in REMPLACEMENTS:
+            continue
+        if unicodedata.category(caractere)[0] not in ("L", "N"):
+            continue
+        if caractere.encode("cp1252", "replace") == b"?":
+            perdus.append(caractere)
+    return perdus
+
+
 def _echapper(texte: str) -> bytes:
     """Encode en WinAnsi et protege les caracteres speciaux PDF."""
-    remplacements = {
-        "’": "'", "‘": "'", "“": '"', "”": '"',
-        "–": "-", "—": "-", "…": "...", " ": " ",
-        "•": "-", "→": "->", "≥": ">=", "≤": "<=", "×": "x",
-    }
-    for source, cible in remplacements.items():
+    for source, cible in REMPLACEMENTS.items():
         texte = texte.replace(source, cible)
-    brut = texte.encode("cp1252", "replace")
+    brut = _sans_symbole(texte).encode("cp1252", "replace")
     return brut.replace(b"\\", b"\\\\").replace(b"(", b"\\(").replace(b")", b"\\)")
 
 
@@ -92,6 +153,26 @@ def dimensions_jpeg(brut: bytes) -> Optional[Tuple[int, int, int]]:
     return None
 
 
+
+# La typographie francaise separe « », :, ; ! et ? du mot par une espace,
+# que le modele ecrit ordinaire. Coupee comme les autres, elle laissait un
+# « » » ou un « : » seul en tete de ligne, et un « « » seul en fin : 1,5 %
+# des retours a la ligne sur les notes de docs/ (mesure du 27/09/2026),
+# environ une fois toutes les deux pages de livre. Ces signes restent donc
+# colles a leur mot ; l'anglais, qui ne met pas d'espace, n'est pas touche.
+_COLLES_AU_PRECEDENT = (":", ";", "!", "?", "!?", "?!")
+
+
+def _mots_insecables(bloc: str) -> List[str]:
+    mots: List[str] = []
+    for mot in bloc.split():
+        if mots and (mot.startswith("»") or mot in _COLLES_AU_PRECEDENT
+                     or mots[-1].endswith("«")):
+            mots[-1] += " " + mot
+        else:
+            mots.append(mot)
+    return mots
+
 class DocumentPDF:
     """Construction sequentielle d'un PDF, page apres page."""
 
@@ -99,6 +180,7 @@ class DocumentPDF:
         self,
         format_page: Tuple[float, float] = A4,
         marge: float = 62.0,
+        reliure: float = 0.0,
         police_corps: str = "Times-Roman",
         police_titre: str = "Helvetica-Bold",
         titre_courant: str = "",
@@ -109,6 +191,12 @@ class DocumentPDF:
     ):
         self.largeur, self.hauteur = format_page
         self.marge = marge
+        # Marge de reliure : largeur avalee par la pliure d'un livre broche.
+        # Elle s'ajoute du cote INTERIEUR, qui change de bord a chaque page —
+        # a gauche sur une page impaire, a droite sur une paire. Zero par
+        # defaut : une impression a domicile n'en a pas besoin, et tout ce que
+        # l'usine produisait jusqu'ici doit sortir a l'identique.
+        self.reliure = max(0.0, reliure)
         self.police_corps = police_corps
         self.police_titre = police_titre
         self.titre_courant = titre_courant
@@ -127,8 +215,37 @@ class DocumentPDF:
 
     # -- geometrie -------------------------------------------------------
     @property
+    def marge_gauche(self) -> float:
+        """Origine horizontale du contenu de la page courante.
+
+        C'est elle, et non « marge », qui sert d'abscisse partout : sur une
+        page paire d'un document relie, le contenu part de la marge nue, la
+        reliure etant mangee a droite.
+        """
+        if not self.reliure:
+            return self.marge
+        return self.marge + (self.reliure if self.page_courante % 2 else 0.0)
+
+    @property
+    def bord_droit(self) -> float:
+        """Abscisse ou le contenu doit s'arreter."""
+        return self.marge_gauche + self.largeur_utile
+
+    @property
     def largeur_utile(self) -> float:
-        return self.largeur - 2 * self.marge
+        return self.largeur - 2 * self.marge - self.reliure
+
+    @property
+    def hauteur_restante(self) -> float:
+        """Hauteur libre sous le curseur, sur la page courante.
+
+        Le seul moyen, pour une mise en page appelante, de savoir combien de
+        blanc il reste sans lire le curseur interne. Un album s'en sert pour
+        centrer son texte dans le vide laisse par l'illustration : sans cela,
+        le texte se colle sous l'image et laisse la moitie basse de la page
+        deserte — ce qui ressemble a une page ratee plutot qu'a un album.
+        """
+        return max(0.0, self._y - (self.marge + 26))
 
     @property
     def page_courante(self) -> int:
@@ -202,6 +319,34 @@ class DocumentPDF:
             )
         )
 
+    def texte_a(self, contenu: str, x: float, y: float, police: str,
+                taille: float,
+                couleur: Tuple[float, float, float] = (0, 0, 0)) -> None:
+        """Une ligne de texte posee a un endroit precis de la page.
+
+        Pour les mises en page qui ne s'ecoulent pas de haut en bas — les
+        planches de cartes a decouper, ou chaque texte est centre dans son
+        rectangle. Le curseur de la page n'avance pas.
+        """
+        self._texte(contenu, x, y, police, taille, couleur)
+
+    def trait(self, x1: float, y1: float, x2: float, y2: float,
+              couleur: Tuple[float, float, float], epaisseur: float = 1.0,
+              arrondi: bool = False) -> None:
+        """Un segment. « arrondi » termine le trait en demi-cercle : c'est le
+        surligneur des solutions d'une grille, dont les mots partent dans
+        toutes les directions et qu'un rectangle ne suivrait pas en diagonale.
+
+        Entre « q » et « Q » : l'epaisseur et la terminaison ne fuient pas
+        sur ce que la page dessine ensuite.
+        """
+        self._ouvrir_page()
+        r, v, b = couleur
+        self._flux.append(
+            "q {:.3f} {:.3f} {:.3f} RG {:.2f} w {} J {:.2f} {:.2f} m "
+            "{:.2f} {:.2f} l S Q".format(r, v, b, epaisseur, 1 if arrondi else 0,
+                                         x1, y1, x2, y2))
+
     def rectangle(
         self,
         x: float,
@@ -232,7 +377,7 @@ class DocumentPDF:
         lignes: List[str] = []
         for bloc in texte.split("\n"):
             courante = ""
-            for mot in bloc.split():
+            for mot in _mots_insecables(bloc):
                 essai = mot if not courante else courante + " " + mot
                 if largeur_texte(essai, police, taille) <= largeur:
                     courante = essai
@@ -261,9 +406,24 @@ class DocumentPDF:
         retrait: float = 0.0,
         couleur: Tuple[float, float, float] = (0.12, 0.12, 0.14),
         justifier: bool = False,
+        brut: bool = False,
     ) -> None:
+        """Un paragraphe de texte, sans balisage.
+
+        Mesure du 24/09/2026, avec un modele qui met du gras dans ses
+        reponses — ce que font couramment les modeles : des « ** » en clair
+        dans les PDF de douze types sur dix-huit. Une trentaine d'appels
+        passaient ici le texte de l'IA tel quel ; seul le chemin markdown
+        (« document.vers_pdf ») le nettoyait. Le PDF n'a pas de gras en ligne :
+        on retire le balisage ici, une fois, pour tous les appelants.
+
+        « brut » pour un bloc de code, qui doit rester litteral : « *.txt » n'y
+        est pas de l'italique.
+        """
         if not texte.strip():
             return
+        if not brut:
+            texte = nettoyer_inline(texte)
         police = police or self.police_corps
         self._ouvrir_page()
         largeur = self.largeur_utile - retrait
@@ -273,10 +433,10 @@ class DocumentPDF:
             self._place(pas)
             derniere = index == len(lignes) - 1
             if justifier and not derniere and len(ligne.split()) > 1:
-                self._ligne_justifiee(ligne, self.marge + retrait, self._y, police,
+                self._ligne_justifiee(ligne, self.marge_gauche + retrait, self._y, police,
                                       taille, largeur, couleur)
             else:
-                self._texte(ligne, self.marge + retrait, self._y, police, taille, couleur)
+                self._texte(ligne, self.marge_gauche + retrait, self._y, police, taille, couleur)
             self._y -= pas
         self._y -= espace_apres
 
@@ -304,6 +464,7 @@ class DocumentPDF:
                 curseur += largeur_texte(" ", police, taille) + supplement
 
     def titre(self, texte: str, niveau: int = 1, sommaire: bool = True) -> None:
+        texte = nettoyer_inline(texte)
         tailles = {1: 24.0, 2: 16.0, 3: 13.0}
         taille = tailles.get(niveau, 12.0)
         if niveau == 1:
@@ -317,12 +478,12 @@ class DocumentPDF:
         lignes = self.couper(texte, self.police_titre, taille, self.largeur_utile)
         for ligne in lignes:
             self._place(taille * 1.35)
-            self._texte(ligne, self.marge, self._y, self.police_titre, taille,
+            self._texte(ligne, self.marge_gauche, self._y, self.police_titre, taille,
                         (0.06, 0.09, 0.16))
             self._y -= taille * 1.3
         if niveau == 1:
             self._y -= 4
-            self.rectangle(self.marge, self._y, 78, 3, (0.15, 0.5, 0.85))
+            self.rectangle(self.marge_gauche, self._y, 78, 3, (0.15, 0.5, 0.85))
             self._y -= 22
         else:
             self._y -= 8
@@ -330,56 +491,101 @@ class DocumentPDF:
     def liste(self, elements: List[str], taille: float = 11.0, puce: str = "-") -> None:
         police = self.police_corps
         for element in elements:
-            if not str(element).strip():
+            element = nettoyer_inline(str(element))
+            if not element:
                 continue
-            lignes = self.couper(str(element).strip(), police, taille, self.largeur_utile - 20)
+            lignes = self.couper(element, police, taille, self.largeur_utile - 20)
             pas = taille * 1.42
             for index, ligne in enumerate(lignes):
                 self._place(pas)
                 if index == 0:
-                    self._texte(puce, self.marge + 2, self._y, self.police_titre, taille,
+                    self._texte(puce, self.marge_gauche + 2, self._y, self.police_titre, taille,
                                 (0.15, 0.5, 0.85))
-                self._texte(ligne, self.marge + 20, self._y, police, taille, (0.12, 0.12, 0.14))
+                self._texte(ligne, self.marge_gauche + 20, self._y, police, taille, (0.12, 0.12, 0.14))
                 self._y -= pas
             self._y -= 3
         self._y -= 7
 
     def citation(self, texte: str, taille: float = 11.0) -> None:
         police = "Times-Italic" if self.police_corps.startswith("Times") else "Helvetica-Oblique"
-        lignes = self.couper(texte.strip(), police, taille, self.largeur_utile - 34)
+        lignes = self.couper(nettoyer_inline(texte), police, taille, self.largeur_utile - 34)
         pas = taille * 1.45
         self._place(pas * len(lignes) + 12)
         haut = self._y + taille
         for ligne in lignes:
             self._place(pas)
-            self._texte(ligne, self.marge + 26, self._y, police, taille, (0.25, 0.25, 0.3))
+            self._texte(ligne, self.marge_gauche + 26, self._y, police, taille, (0.25, 0.25, 0.3))
             self._y -= pas
-        self.rectangle(self.marge + 6, self._y + pas - 4, 3, haut - self._y - pas + 4,
+        self.rectangle(self.marge_gauche + 6, self._y + pas - 4, 3, haut - self._y - pas + 4,
                        (0.15, 0.5, 0.85))
         self._y -= 10
 
     def encadre(self, titre_bloc: str, texte: str, taille: float = 10.5) -> None:
-        lignes = self.couper(texte.strip(), self.police_corps, taille, self.largeur_utile - 40)
+        titre_bloc, texte = nettoyer_inline(titre_bloc), nettoyer_inline(texte)
+        lignes = self.couper(texte, self.police_corps, taille, self.largeur_utile - 40)
         hauteur = 34 + len(lignes) * taille * 1.42
         self._place(hauteur + 10)
         haut = self._y + 8
-        self.rectangle(self.marge, haut - hauteur, self.largeur_utile, hauteur,
+        self.rectangle(self.marge_gauche, haut - hauteur, self.largeur_utile, hauteur,
                        (0.95, 0.965, 1.0))
-        self.rectangle(self.marge, haut - hauteur, 4, hauteur, (0.15, 0.5, 0.85))
+        self.rectangle(self.marge_gauche, haut - hauteur, 4, hauteur, (0.15, 0.5, 0.85))
         self._y = haut - 22
-        self._texte(titre_bloc, self.marge + 18, self._y, self.police_titre, taille + 0.5,
+        self._texte(titre_bloc, self.marge_gauche + 18, self._y, self.police_titre, taille + 0.5,
                     (0.08, 0.32, 0.6))
         self._y -= taille * 1.7
         for ligne in lignes:
-            self._texte(ligne, self.marge + 18, self._y, self.police_corps, taille,
+            self._texte(ligne, self.marge_gauche + 18, self._y, self.police_corps, taille,
                         (0.15, 0.17, 0.2))
             self._y -= taille * 1.42
         self._y -= 16
 
+    def image(self, brut: bytes, largeur_max: float = 0.0,
+              hauteur_max: float = 0.0, espace_apres: float = 14.0) -> bool:
+        """Place une image dans le fil du texte. Faux si elle n'a pas pu entrer.
+
+        Deux formats entrent dans un PDF sans decodeur : le JPEG tel quel
+        (« DCTDecode ») et des pixels bruts (« FlateDecode »). Une image
+        rapportee du reseau n'est ni l'un ni l'autre des qu'elle arrive en PNG
+        ou en WebP, et ecrire un decodeur PNG a la main couterait ici plus
+        cher que ce qu'il rapporte.
+
+        D'ou le FAUX plutot qu'une exception : l'appelant ecrit sa note
+        d'illustration a la place, et le livre sort. Un album avec une note
+        « a dessiner » se vend ; un album qui leve une exception au moment de
+        l'export n'existe pas.
+        """
+        infos = dimensions_jpeg(brut) if brut else None
+        if not infos or infos[0] <= 0 or infos[1] <= 0:
+            return False
+        largeur_px, hauteur_px = infos[0], infos[1]
+        large = min(largeur_max or self.largeur_utile, self.largeur_utile)
+        haut = large * hauteur_px / largeur_px
+        # Hauteur disponible sur une page NEUVE, pas sur la page courante :
+        # au-dela, l'image ne tiendrait nulle part et « _place » bouclerait
+        # en ouvrant des pages vides.
+        plafond = min(hauteur_max or self.hauteur,
+                      self.hauteur - self.marge - (self.marge + 26) - espace_apres)
+        if haut > plafond:
+            haut = plafond
+            large = haut * largeur_px / hauteur_px
+        if haut <= 0 or large <= 0:
+            return False
+        self._ouvrir_page()
+        self._place(haut + espace_apres)
+        nom = self._ajouter_image(brut, infos)
+        self._y -= haut
+        self._flux.append(
+            "q {w:.2f} 0 0 {h:.2f} {x:.2f} {y:.2f} cm /{n} Do Q".format(
+                w=large, h=haut,
+                x=self.marge_gauche + (self.largeur_utile - large) / 2,
+                y=self._y, n=nom))
+        self._y -= espace_apres
+        return True
+
     def separateur(self) -> None:
         self._place(24)
         self._y -= 8
-        self.rectangle(self.marge + self.largeur_utile / 2 - 28, self._y, 56, 1,
+        self.rectangle(self.marge_gauche + self.largeur_utile / 2 - 28, self._y, 56, 1,
                        (0.75, 0.78, 0.82))
         self._y -= 16
 
@@ -391,7 +597,7 @@ class DocumentPDF:
         for _ in range(nombre):
             self._place(ecart)
             self._y -= ecart * 0.72
-            self.rectangle(self.marge, self._y, self.largeur_utile, 0.6,
+            self.rectangle(self.marge_gauche, self._y, self.largeur_utile, 0.6,
                            (0.82, 0.85, 0.9))
             self._y -= ecart * 0.28
 
@@ -404,11 +610,11 @@ class DocumentPDF:
             lignes = self.couper(texte, self.police_corps, taille, self.largeur_utile - 30)
             pas = taille * 1.45
             self._place(pas * len(lignes) + 6)
-            self.rectangle(self.marge + 1, self._y - 1, 10.5, 10.5,
+            self.rectangle(self.marge_gauche + 1, self._y - 1, 10.5, 10.5,
                            (0.35, 0.42, 0.55), plein=False, epaisseur=0.9)
             for index, ligne in enumerate(lignes):
                 self._place(pas)
-                self._texte(ligne, self.marge + 22, self._y, self.police_corps, taille,
+                self._texte(ligne, self.marge_gauche + 22, self._y, self.police_corps, taille,
                             (0.12, 0.12, 0.14))
                 self._y -= pas
             self._y -= 4
@@ -428,12 +634,12 @@ class DocumentPDF:
 
         def dessiner_entete() -> None:
             self._place(hauteur_ligne * 2)
-            self.rectangle(self.marge, self._y - hauteur_ligne + taille,
+            self.rectangle(self.marge_gauche, self._y - hauteur_ligne + taille,
                            self.largeur_utile, hauteur_ligne, (0.09, 0.36, 0.72))
             for index, entete in enumerate(entetes):
                 libelle = self._tronquer(str(entete), self.police_titre, taille,
                                          largeur_col - 10)
-                self._texte(libelle, self.marge + index * largeur_col + 5, self._y,
+                self._texte(libelle, self.marge_gauche + index * largeur_col + 5, self._y,
                             self.police_titre, taille, (1, 1, 1))
             self._y -= hauteur_ligne
 
@@ -445,7 +651,7 @@ class DocumentPDF:
                 self.nouvelle_page()
                 dessiner_entete()
             if numero % 2 == 1:
-                self.rectangle(self.marge, self._y - hauteur_ligne + taille,
+                self.rectangle(self.marge_gauche, self._y - hauteur_ligne + taille,
                                self.largeur_utile, hauteur_ligne, (0.96, 0.97, 0.99))
             for index in range(colonnes):
                 cellule = ligne[index] if index < len(ligne) else ""
@@ -453,16 +659,16 @@ class DocumentPDF:
                     self._texte(
                         self._tronquer(cellule, self.police_corps, taille,
                                        largeur_col - 10),
-                        self.marge + index * largeur_col + 5, self._y,
+                        self.marge_gauche + index * largeur_col + 5, self._y,
                         self.police_corps, taille, (0.12, 0.12, 0.14),
                     )
-                self.rectangle(self.marge + index * largeur_col,
+                self.rectangle(self.marge_gauche + index * largeur_col,
                                self._y - hauteur_ligne + taille, 0.5, hauteur_ligne,
                                (0.85, 0.88, 0.92))
-            self.rectangle(self.marge, self._y - hauteur_ligne + taille,
+            self.rectangle(self.marge_gauche, self._y - hauteur_ligne + taille,
                            self.largeur_utile, 0.5, (0.85, 0.88, 0.92))
             self._y -= hauteur_ligne
-        self.rectangle(self.marge + self.largeur_utile - 0.5,
+        self.rectangle(self.marge_gauche + self.largeur_utile - 0.5,
                        self._y + taille, 0.5, 0, (0.85, 0.88, 0.92))
         self._y -= 14
 
@@ -489,17 +695,17 @@ class DocumentPDF:
                 if libelle:
                     largeur = largeur_texte(libelle, self.police_titre, 9)
                     self._texte(libelle,
-                                self.marge + index * largeur_col
+                                self.marge_gauche + index * largeur_col
                                 + (largeur_col - largeur) / 2,
                                 self._y, self.police_titre, 9, (0.25, 0.3, 0.4))
             self._y -= 16
         haut = self._y + 8
         bas = haut - hauteur * rangees
         for index in range(colonnes + 1):
-            self.rectangle(self.marge + index * largeur_col, bas, 0.6,
+            self.rectangle(self.marge_gauche + index * largeur_col, bas, 0.6,
                            hauteur * rangees, (0.8, 0.84, 0.9))
         for rangee in range(rangees + 1):
-            self.rectangle(self.marge, bas + rangee * hauteur, self.largeur_utile,
+            self.rectangle(self.marge_gauche, bas + rangee * hauteur, self.largeur_utile,
                            0.6, (0.8, 0.84, 0.9))
         self._y = bas - 16
 
@@ -511,8 +717,8 @@ class DocumentPDF:
         haut = self._y
         y = haut
         while y > haut - hauteur:
-            x = self.marge
-            while x < self.marge + self.largeur_utile:
+            x = self.marge_gauche
+            while x < self.marge_gauche + self.largeur_utile:
                 self.rectangle(x, y, 1.1, 1.1, (0.74, 0.78, 0.84))
                 x += espacement
             y -= espacement
@@ -527,6 +733,8 @@ class DocumentPDF:
         image_jpeg: Optional[bytes] = None,
         accent: Tuple[float, float, float] = (0.09, 0.36, 0.72),
     ) -> None:
+        titre_livre, sous_titre = nettoyer_inline(titre_livre), nettoyer_inline(sous_titre)
+        auteur = nettoyer_inline(auteur)
         self.nouvelle_page(numeroter=False)
         self.rectangle(0, 0, self.largeur, self.hauteur, (0.05, 0.07, 0.12))
         self.rectangle(0, self.hauteur - 14, self.largeur, 14, accent)
@@ -589,9 +797,9 @@ class DocumentPDF:
     def _rendre_sommaire(self, intitule: str, decalage: int) -> None:
         self.nouvelle_page()
         self._y -= 26
-        self._texte(intitule, self.marge, self._y, self.police_titre, 24, (0.06, 0.09, 0.16))
+        self._texte(intitule, self.marge_gauche, self._y, self.police_titre, 24, (0.06, 0.09, 0.16))
         self._y -= 12
-        self.rectangle(self.marge, self._y, 78, 3, (0.15, 0.5, 0.85))
+        self.rectangle(self.marge_gauche, self._y, 78, 3, (0.15, 0.5, 0.85))
         self._y -= 34
         for texte, niveau, page in self.sommaire:
             if niveau > 2:
@@ -601,11 +809,14 @@ class DocumentPDF:
             taille = 11.5 if niveau == 1 else 10.5
             retrait = 0 if niveau == 1 else 18
             libelle = texte if len(texte) < 66 else texte[:63] + "..."
-            self._texte(libelle, self.marge + retrait, self._y, police, taille,
+            self._texte(libelle, self.marge_gauche + retrait, self._y, police, taille,
                         (0.12, 0.12, 0.14))
             numero = str(page + decalage)
+            # Le numero se cale sur le BORD DROIT du contenu, pas sur la
+            # largeur moins la marge gauche : sur une page impaire reliee, les
+            # deux ne sont plus le meme point.
             self._texte(numero,
-                        self.largeur - self.marge - largeur_texte(numero, police, taille),
+                        self.bord_droit - largeur_texte(numero, police, taille),
                         self._y, police, taille, (0.35, 0.38, 0.45))
             self._y -= 19 if niveau == 1 else 17
         self._fermer_page()

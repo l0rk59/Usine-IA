@@ -13,7 +13,8 @@ from typing import Any, Dict, List
 
 from ..agents import equipe
 from ..core import evenements, images
-from ..render import livraison
+from ..render import document as D
+from ..render import libelles, livraison
 from ..render.page import ecrire_page
 from ..render.pdf import A4, LETTRE, DocumentPDF
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
@@ -68,29 +69,30 @@ def _cahier(ctx: Contexte, pages: int) -> Dict[str, Any]:
     return cahier
 
 
-def _dessiner_fiche(doc: DocumentPDF, fiche: Dict[str, Any]) -> None:
+def _dessiner_fiche(doc: DocumentPDF, fiche: Dict[str, Any],
+                    t: Dict[str, Any]) -> None:
     """Une fiche par page, adaptee a sa disposition."""
     doc.titre(fiche["titre"], 1)
     if fiche["consigne"]:
-        doc.encadre("Comment remplir cette fiche", fiche["consigne"])
+        doc.encadre(t["impression_comment_remplir"], fiche["consigne"])
 
     disposition = fiche["disposition"]
     if disposition == "checklist":
         doc.cases_a_cocher(fiche["elements"] or ["", "", "", "", "", ""])
-        doc.titre("Notes", 2)
+        doc.titre(t["impression_notes"], 2)
         doc.lignes_a_remplir(4)
     elif disposition == "planning":
-        jours = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
+        jours = list(t["impression_jours"])
         if fiche["elements"]:
-            doc.titre("Priorites de la semaine", 2)
+            doc.titre(t["impression_priorites"], 2)
             doc.cases_a_cocher(fiche["elements"][:4])
-        doc.titre("Semaine", 2)
+        doc.titre(t["impression_semaine"], 2)
         doc.grille(7, 4, titres=jours)
     elif disposition == "suivi":
-        colonnes = fiche["colonnes"] or ["Date", "Action", "Resultat", "Suite"]
+        colonnes = fiche["colonnes"] or list(t["impression_suivi_colonnes"])
         doc.tableau(colonnes, [], lignes_vides=14)
     elif disposition == "questions":
-        for question in (fiche["elements"] or ["Question"])[:6]:
+        for question in (fiche["elements"] or [t["impression_question"]])[:6]:
             doc.titre(question, 3)
             doc.lignes_a_remplir(3)
     elif disposition == "matrice":
@@ -102,8 +104,24 @@ def _dessiner_fiche(doc: DocumentPDF, fiche: Dict[str, Any]) -> None:
         doc.points()
 
 
-def produire(ctx: Contexte, pages: int = 12) -> Dict[str, Any]:
-    ctx.journal("Etape 1/3 — conception du cahier ({} fiches)...".format(pages))
+# Valeur de depart quand on demande une reliure sans preciser laquelle. Ce
+# n'est PAS une recommandation d'imprimeur : chaque service d'impression a la
+# demande publie la sienne, souvent fonction du nombre de pages, et c'est
+# celle-la qui fait foi. Dix millimetres tiennent pour un cahier mince.
+RELIURE_MM = 10.0
+
+# 1 mm = 72/25.4 points PostScript.
+POINTS_PAR_MM = 72.0 / 25.4
+
+
+def produire(ctx: Contexte, pages: int = 12,
+             reliure: float = 0.0) -> Dict[str, Any]:
+    """« reliure » est une marge interieure en MILLIMETRES, 0 pour aucune."""
+    reliure_mm = RELIURE_MM if reliure and reliure < 0 else float(reliure or 0)
+    reliure_points = round(reliure_mm * POINTS_PAR_MM, 2)
+    ctx.journal("Étape 1/3 — conception du cahier ({} fiches)...".format(pages))
+    if reliure_points:
+        ctx.journal("  marge de reliure : {:.0f} mm, alternee".format(reliure_mm))
     cahier = _cahier(ctx, pages)
     titre = cahier["titre"]
     dossier = preparer(ctx, "impression", titre)
@@ -112,7 +130,7 @@ def produire(ctx: Contexte, pages: int = 12) -> Dict[str, Any]:
     evenements.publier("section", etape="impression", titre=titre,
                        total=len(cahier["fiches"]))
 
-    ctx.journal("Etape 2/3 — couverture...")
+    ctx.journal("Étape 2/3 — couverture...")
     couverture = None
     if not ctx.sans_image:
         couverture = images.generer_couverture(
@@ -120,25 +138,27 @@ def produire(ctx: Contexte, pages: int = 12) -> Dict[str, Any]:
             style="printable planner cover, minimal stationery, soft paper texture",
             en_ligne=not ctx.hors_ligne)
 
-    ctx.journal("Etape 3/3 — generation des deux formats...")
+    ctx.journal("Étape 3/3 — génération des deux formats...")
     fichiers: List[Path] = []
+    t = libelles.textes(ctx.langue_iso)
     if couverture:
         fichiers.append(couverture)
-    for nom_format, format_page in (("A4", A4), ("Lettre-US", LETTRE)):
+    for nom_format, format_page in (("A4", A4), (t["fichier_lettre_us"], LETTRE)):
         doc = livraison.document(ctx, titre, cahier.get("sous_titre", ""),
                                  couverture, format_page=format_page,
-                                 marge=54, police_corps="Helvetica")
-        doc.titre("Mode d'emploi", 1)
-        doc.paragraphe(
-            "Imprimez ce cahier en recto simple, sur papier ordinaire. Chaque fiche "
-            "tient sur une page et se remplit a la main. Vous pouvez aussi le "
-            "completer a l'ecran avec une application d'annotation PDF.",
-            justifier=True)
+                                 marge=54, police_corps="Helvetica",
+                                 reliure=reliure_points)
+        doc.titre(t["impression_mode_emploi_titre"], 1)
+        doc.paragraphe(t["impression_mode_emploi"], justifier=True)
+        if reliure_points:
+            doc.encadre(t["impression_a_la_demande_titre"],
+                        t["impression_a_la_demande"].format(
+                            mm="{:.0f}".format(reliure_mm)))
         if cahier.get("promesse"):
-            doc.encadre("Ce que ce cahier vous apporte", str(cahier["promesse"]))
+            doc.encadre(t["impression_apporte"], str(cahier["promesse"]))
         for fiche in cahier["fiches"]:
-            _dessiner_fiche(doc, fiche)
-        doc.inserer_sommaire(apres=1)
+            _dessiner_fiche(doc, fiche, t)
+        doc.inserer_sommaire(t["sommaire"], apres=1)
         chemin = dossier / "{}-{}.pdf".format(slug(titre, 40), nom_format)
         doc.enregistrer(chemin)
         fichiers.append(chemin)
@@ -147,8 +167,17 @@ def produire(ctx: Contexte, pages: int = 12) -> Dict[str, Any]:
     (dossier / "cahier.json").write_text(
         json.dumps(cahier, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    corps = ["<h2>{}</h2><p>{}</p><p><em>Disposition : {}</em></p>".format(
-        f["titre"], f["consigne"], f["disposition"]) for f in cahier["fiches"]]
+    # Le texte du modele entrait dans la page SANS echappement : un « a < b »
+    # dans une consigne cassait la page, une balise y aurait ete interpretee
+    # chez l'acheteur, et un « **mot** » restait en clair (balayage du
+    # 24/09/2026). « inline_html » echappe et rend le gras, comme ailleurs.
+    corps = ["<h2>{}</h2><p>{}</p><p><em>{}</em></p>".format(
+        D.inline_html(f["titre"]), D.inline_html(f["consigne"]),
+        D.inline_html(t["deux_points"].format(
+            libelle=t["impression_disposition"],
+            texte=t["impression_dispositions"].get(f["disposition"],
+                                                   f["disposition"]))))
+        for f in cahier["fiches"]]
     chemin_html = dossier / "lire.html"
     ecrire_page(chemin_html, titre, "\n".join(corps), cahier.get("sous_titre", ""),
                 ctx.auteur, langue=ctx.langue_iso,

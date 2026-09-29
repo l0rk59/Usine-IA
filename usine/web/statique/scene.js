@@ -387,6 +387,41 @@ class SceneUsine {
     if (this.etat.particules.length > 70) this.etat.particules.shift();
   }
 
+  /* La palette de la scene, lue sur la peau en cours.
+
+     Les six couleurs etaient ecrites en dur, en bleu : la scene 3D restait
+     cyan sous « ambre » et sous « console », au milieu d'une page entierement
+     ambre ou verte. On croyait a une peau inachevee — c'etait une palette
+     qui n'avait jamais su qu'il existait autre chose que « nuit » et
+     « jour ». Elle se relit a chaque image : changer de peau la change.
+
+     WebGL veut des triplets 0..1 ; les variables CSS sont en hexa ou en
+     rgb(). La conversion evite une septieme liste de couleurs a tenir. */
+  _palette() {
+    const style = getComputedStyle(document.documentElement);
+    const lire = (nom, secours) => {
+      const v = String(style.getPropertyValue(nom) || '').trim();
+      let c = null;
+      if (v.startsWith('#')) {
+        const h = v.length < 7
+          ? v[1] + v[1] + v[2] + v[2] + v[3] + v[3] : v.slice(1, 7);
+        c = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
+      } else {
+        const m = v.match(/[\d.]+/g);
+        if (m && m.length >= 3) c = m.slice(0, 3).map((x) => +x / 255);
+      }
+      return c && c.every((x) => x >= 0 && x <= 1) ? c : secours;
+    };
+    const fondu = (c, f) => c.map((x) => x * f);
+    const accent = lire('--accent', [0.24, 0.55, 0.95]);
+    const vert = lire('--vert', [0.30, 0.95, 0.62]);
+    const doux = lire('--doux', [0.30, 0.40, 0.58]);
+    return { grille: fondu(doux, 0.75), socle: fondu(doux, 0.34),
+             dalle: accent, fantome: fondu(accent, 0.72),
+             actif: vert, dormant: doux, anneau: accent,
+             jeton: lire('--ambre', [1.0, 0.86, 0.42]) };
+  }
+
   rendre(maintenant) {
     if (!this.actif) return;
     const gl = this.gl;
@@ -425,10 +460,11 @@ class SceneUsine {
     gl.uniform3fv(this.u.uCamera, new Float32Array(oeil));
 
     /* Socle */
-    this._dessiner(this.maillages.grille, M4.identite(), [0.18, 0.28, 0.44], 0.1, 0.5);
+    const teintes = this._palette();
+    this._dessiner(this.maillages.grille, M4.identite(), teintes.grille, 0.1, 0.5);
     this._dessiner(this.maillages.cube,
       M4.multiplier(M4.echelle(2.1, 0.16, 2.1), M4.translation(0, -0.1, 0)),
-      [0.10, 0.15, 0.24], 0.02, 1);
+      teintes.socle, 0.02, 1);
 
     /* Colonne du produit : une dalle par section terminee */
     const dalles = Math.min(this.etat.dalles, 40);
@@ -441,7 +477,8 @@ class SceneUsine {
         M4.translation(0, y, 0));
       const chaud = i >= dalles - 1 ? 0.42 + this.etat.pulsation * 0.5 : 0.06;
       this._dessiner(this.maillages.cube, modele,
-        [0.24 + i * 0.012, 0.55, 0.95], chaud, Math.min(1, apparition + 0.35));
+        teintes.dalle.map((c, k) => (k === 0 ? Math.min(1, c + i * 0.012) : c)),
+        chaud, Math.min(1, apparition + 0.35));
     }
 
     /* Fantomes des sections restantes : une respiration lente les anime,
@@ -453,7 +490,7 @@ class SceneUsine {
         M4.multiplier(
           M4.multiplier(M4.echelle(1.42, 0.03, 1.0), M4.rotationY(temps * 0.12 + i * 0.3)),
           M4.translation(0, y + souffle * 0.05, 0)),
-        [0.32, 0.48, 0.72], souffle * 0.18, 0.12 + souffle * 0.16);
+        teintes.fantome, souffle * 0.18, 0.12 + souffle * 0.16);
     }
 
     /* Orbes des fournisseurs */
@@ -467,7 +504,7 @@ class SceneUsine {
       this._dessiner(this.maillages.sphere,
         M4.multiplier(M4.echelle(taille, taille, taille),
                       M4.translation(Math.sin(a) * r, y, Math.cos(a) * r)),
-        actif ? [0.30, 0.95, 0.62] : [0.30, 0.40, 0.58],
+        actif ? teintes.actif : teintes.dormant,
         actif ? 0.85 : 0.05, actif ? 1 : 0.55);
       this._positions = this._positions || {};
       this._positions[index] = [Math.sin(a) * r, y, Math.cos(a) * r];
@@ -492,7 +529,7 @@ class SceneUsine {
       this._dessiner(this.maillages.sphere,
         M4.multiplier(M4.echelle(taille, taille, taille),
                       M4.translation(p[0], p[1], p[2])),
-        [1.0, 0.86, 0.42], 1.0, 1 - t * 0.5);
+        teintes.jeton, 1.0, 1 - t * 0.5);
     }
     this.etat.particules = restantes;
 
@@ -505,7 +542,7 @@ class SceneUsine {
         this._dessiner(this.maillages.cube,
           M4.multiplier(M4.echelle(0.07, 0.07, 0.22),
                         M4.translation(Math.sin(a) * r, 0.45, Math.cos(a) * r)),
-          [0.42, 0.78, 1.0], 0.9, this.etat.pulsation * 0.8);
+          teintes.anneau, 0.9, this.etat.pulsation * 0.8);
       }
     }
   }

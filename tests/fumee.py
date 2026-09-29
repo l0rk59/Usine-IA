@@ -18,7 +18,10 @@ sys.path.insert(0, str(RACINE))
 
 ATELIER = tempfile.mkdtemp(prefix="usine-fumee-")
 os.environ["USINE_HOME"] = ATELIER
-os.environ["USINE_PROVIDERS"] = "pollinations"  # jamais appele : le simulateur intercepte
+# Jamais appeles : le simulateur intercepte. Ollama y figure parce que
+# « --hors-ligne » n'appelle que l'IA locale, et refuse de commencer sans
+# elle dans la liste.
+os.environ["USINE_PROVIDERS"] = "pollinations,ollama"
 
 from usine import cli  # noqa: E402
 from usine.core import llm, store  # noqa: E402
@@ -35,6 +38,34 @@ SCENARIOS = [
                     "--sans-image"]),
     ("ebook", ["ebook", "la prospection pour freelances", "-T", "mini",
                "--sans-image", "--marketing", "--zip"]),
+    # La fiction : la seule chaine qui porte une memoire d'une section a la
+    # suivante. Le scenario verifie que la bible et la continuite sortent.
+    ("nouvelle", ["nouvelle", "un gardien de phare et le dernier hiver",
+                  "-T", "mini", "--sans-image",
+                  "--dedicace", "Pour ceux qui restent"]),
+    # Le roman partage la chaine de la nouvelle, mais pas son echelle : c'est
+    # la seule qui declenche la memoire hierarchique (des parties closes, pas
+    # un resume plat). Huit scenes suffisent a la faire basculer sans que le
+    # test de fumee dure une heure.
+    ("roman", ["roman", "une disparition dans les Cevennes", "--chapitres", "8",
+               "--mots", "400", "--sans-image"]),
+    # Le livre-jeu est la seule chaine dont le produit est un GRAPHE. Son
+    # scenario compte, parce que ses defauts ne sont pas des defauts de texte
+    # mais de structure : un choix vers le vide, une section qu'aucun chemin
+    # n'atteint. Douze sections suffisent a ramifier sans allonger le test.
+    ("interactive", ["interactive", "un manoir sur la lande", "--chapitres",
+                     "12", "--mots", "150", "--sans-image"]),
+    # Le recueil : la seule chaine qui mesure un ECART entre ses propres
+    # sections. Trois recits suffisent a exercer la mesure sans que le test
+    # de fumee en fabrique sept.
+    ("recueil", ["recueil", "une ville du nord", "--chapitres", "3",
+                 "--mots", "150", "--sans-image"]),
+    ("feuilleton", ["feuilleton", "un depot de trains qui ferme",
+                    "--chapitres", "3", "--mots", "150", "--sans-image"]),
+    # Le conte : la seule chaine dont le controle compare la sortie a la
+    # CONSIGNE qui l'a produite, tranche d'age par tranche d'age.
+    ("conte", ["conte", "un ourson et la neige", "--chapitres", "6",
+               "--tranche", "3-5 ans", "--sans-image"]),
     ("prompts", ["prompts", "la gestion de projet", "-n", "8", "--sans-image"]),
     ("formation", ["formation", "le copywriting", "-m", "4", "--sans-image"]),
     ("outils", ["outils", "la facturation", "-n", "5", "--sans-image"]),
@@ -43,6 +74,19 @@ SCENARIOS = [
     ("modeles", ["modeles", "le suivi client", "-n", "3", "--sans-image"]),
     ("impression", ["impression", "la planification hebdomadaire", "-n", "6",
                     "--sans-image"]),
+    ("emails", ["emails", "la prospection pour freelances", "-n", "5",
+                "-o", "vente", "--rythme", "3", "--sans-image"]),
+    ("memo", ["memo", "les regles de TVA pour independants", "-n", "6",
+              "--recto-verso", "--sans-image"]),
+    ("quiz", ["quiz", "les bases de la comptabilite", "-n", "8",
+              "--niveau", "avance", "--sans-image"]),
+    # Vingt cartes : deux lots, donc le second recoit les rectos du premier,
+    # et trois planches dont la derniere est incomplete.
+    ("cartes", ["cartes", "le vocabulaire de la cuisine", "-n", "20",
+                "--niveau", "debutant", "--sans-image"]),
+    # Neuf grilles : deux lots, et une page de solutions incomplete.
+    ("mots-meles", ["mots-meles", "les fruits du verger", "-n", "9",
+                    "--difficulte", "difficile", "--sans-image"]),
     ("complet", ["complet", "la meditation au bureau", "-T", "mini", "--sans-image"]),
     ("logiciel-cli", ["logiciel", "le nettoyage de fichiers en double", "-c", "cli",
                       "--sans-image"]),
@@ -96,14 +140,36 @@ SCENARIOS = [
 
 ATTENDUS = {
     "ebook": [".pdf", ".epub", "lire.html", "livre.md", "livre.txt"],
+    "nouvelle": [".pdf", ".epub", "bible.json", "continuite.json",
+                 "nouvelle.md", "lire.html"],
+    # « carte.json » n'est pas un fichier de travail : c'est le graphe verifie,
+    # et c'est ce qui permet de rouvrir le livre pour en corriger un chemin.
+    "interactive": [".pdf", ".epub", "carte.json", "lire.html"],
+    "recueil": [".pdf", ".epub", "recueil.json", "lire.html"],
+    "feuilleton": [".pdf", ".epub", "saison.json", "lire.html"],
+    "conte": [".pdf", ".epub", "conte.json", "lire.html"],
     "prompts": [".pdf", "prompts.csv", "prompts.json", "lire.html"],
-    "formation": ["-manuel.pdf", "-cahier-exercices.pdf", "formation.md"],
+    "formation": ["-manuel.pdf", "-cahier-exercices.pdf", "formation.md",
+                  "quiz.html"],
     "outils": [".pdf", "boite-outils.md", "lire.html"],
     "social": [".pdf", "calendrier.csv", "posts.md"],
     "complet": [".pdf", ".epub", "marketing", "bonus-boite-outils",
                 "bonus-publications"],
     "modeles": [".pdf", "a-importer", "modeles.md", "systeme.json"],
     "impression": ["-A4.pdf", "-Lettre-US.pdf", "cahier.json"],
+    # Le CSV est ce qu'un vendeur importe dans son outil d'emailing : c'est
+    # la piece qui fait de cette sequence un produit utilisable, pas un texte.
+    "emails": [".pdf", "emails.md", "sequence.csv", "lire.html"],
+    "memo": [".pdf", "memo.md", "memo.csv", "lire.html"],
+    # « quiz.html » est la page qui se corrige seule, hors ligne : sans elle,
+    # l'acheteur a un corrige a lire, pas un quiz a passer.
+    "quiz": [".pdf", "quiz.md", "questions.csv", "quiz.html"],
+    # Les planches sont ce qu'on imprime, le fichier Anki ce qu'on importe :
+    # sans eux, le paquet n'est qu'une liste de questions.
+    "cartes": ["-planches-a-decouper.pdf", "cartes-anki.txt", "cartes.html",
+               "cartes.csv"],
+    # Deux formats de page : le marche anglophone imprime en Lettre US.
+    "mots-meles": ["-A4.pdf", "-Lettre-US.pdf", "grilles.json", "lire.html"],
     "qualite": ["rapport-qualite.json", ".pdf", ".epub"],
     "sur-mesure": [".pdf", ".epub", "livre.md"],
     "couverture-ebook": ["couverture.png", "couverture.svg", ".pdf", ".epub"],
@@ -154,8 +220,26 @@ def _resoudre(argument: str) -> str:
     return str(chemin)
 
 
+def types_non_exerces() -> list:
+    """Types du catalogue qu'aucun scenario ne fabrique.
+
+    Le catalogue est la source unique de verite ; cette liste-ci est ecrite a
+    la main. Sans ce controle, ajouter une chaine de fabrication la laisserait
+    hors du seul test qui passe par la VRAIE CLI, et personne ne le verrait.
+    """
+    from usine.pipelines import catalogue
+
+    lances = {scenario[1][0] for scenario in SCENARIOS}
+    return [cle for cle in catalogue.cles(fabricables=True)
+            if cle not in lances]
+
+
 def principal() -> int:
     echecs = []
+    oublies = types_non_exerces()
+    if oublies:
+        echecs.append(("catalogue", "type(s) jamais fabrique(s) par ce test : "
+                       + ", ".join(oublies)))
     for scenario in SCENARIOS:
         nom, arguments = scenario[0], list(scenario[1])
         arguments = [_resoudre(a) for a in arguments]

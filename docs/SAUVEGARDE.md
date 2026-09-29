@@ -37,6 +37,17 @@ problème ne se verrait qu'à la restauration.
 | **Le cache IA** | il se reconstruit, il pèse lourd, et il ne contient rien qu'on ne puisse régénérer. |
 | **Les produits** | optionnels : `--avec-produits`. Sans eux, une archive pèse quelques dizaines de kilo-octets. |
 
+## Les invites personnalisées ne revenaient pas
+
+La sauvegarde écrivait les invites personnalisées (`prompts/`) dans l'archive,
+et la restauration ne les remettait jamais en place. Sur un téléphone neuf,
+elles étaient perdues sans rien qui le dise, alors que l'archive les
+contenait. Elles reviennent désormais, et leur cache est vidé. Le dossier est
+plat et ne lit que du `.txt` et du `.json` : tout autre nom est refusé, comme
+une entrée qui voudrait sortir du dossier — une archive peut revenir modifiée.
+Les invites présentes sur l'appareil et absentes de l'archive restent en
+place.
+
 ## La restauration est réversible
 
 `--restaurer` remplace l'atelier, donc il exige `--oui`. **L'ancienne base
@@ -182,6 +193,32 @@ Chaque connexion retient désormais la génération où elle est née, et se ref
 quand elle a changé. Le test monte un second thread, lui fait ouvrir sa
 connexion *avant* la restauration, et vérifie qu'il voit ensuite le bon
 atelier. Sans le correctif, il voit l'ancien.
+
+La génération ne suffisait pas encore. Deux courses restaient ouvertes, et
+l'intégration continue les a trouvées le 24/09/2026 : « no such table:
+productions » au premier produit d'un module de tests, puis **zéro** produit
+fabriqué dans tout le module.
+
+- Un fil pose le drapeau « tables créées » *après* les avoir créées. Si la
+  base change entre les deux, il le pose pour une base où elles n'existent
+  pas, et toutes les écritures suivantes échouent.
+- `close()` avance la génération *avant* que les chemins changent. Un fil qui
+  se reconnecte dans l'intervalle ouvre l'ancien fichier sous la nouvelle
+  génération, et le garde.
+
+Chaque drapeau et chaque connexion retiennent maintenant la base pour laquelle
+ils valent — sa génération **et** son chemin, lus *avant* d'agir
+(`store.cle_de_base`). Si elle a changé pendant, le travail est refait : il
+est idempotent. Les deux courses sont rejouées sans fil, dans l'ordre exact où
+les fils les produisent, ce qui les rend reproductibles.
+
+La restauration avait sa propre version de la seconde course. Elle ferme la
+base, *puis* déplace l'ancien fichier et écrit le nouveau — au même chemin.
+Une connexion ouverte entre les deux (le fil de la boucle, qui écrit sans
+cesse) portait donc la bonne clé et pointait l'ancien fichier : ses écritures
+partaient dans la base mise de côté, et le drapeau du schéma, posé pour elle,
+faisait sauter les migrations de la base restaurée. Une seconde fermeture,
+une fois le nouveau fichier en place, les refait toutes.
 
 ### La route qui sert les archives ne sert qu'elles
 

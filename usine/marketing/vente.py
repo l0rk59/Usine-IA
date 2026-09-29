@@ -10,15 +10,14 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from ..core import llm
+from ..agents import equipe
+from ..pipelines import catalogue
 from ..render import document as D
+from ..render import libelles
 from ..render.page import ecrire_page
 from ..pipelines.base import Contexte, nettoyer_titre
+from . import extrait
 
-ROLE = (
-    "un redacteur publicitaire specialise dans les produits digitaux, "
-    "qui vend par la clarte et la preuve, jamais par la pression"
-)
 
 PLATEFORMES = {
     "gumroad": "Gumroad (description en markdown, 150-300 mots, titre court, "
@@ -52,7 +51,8 @@ def fiche_produit(ctx: Contexte, titre: str, description_produit: str,
         '"garantie": "formulation de la garantie"}}'
     ).format(titre=titre, contenu=description_produit[:2500],
              audience=ctx.audience, plateforme=PLATEFORMES.get(plateforme, plateforme))
-    fiche = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="costaud",
+    fiche = equipe.MARKETEUR.travailler_json(
+        ctx, invite, role_modele="costaud",
                              temperature=0.75, max_tokens=3500)
     if not isinstance(fiche, dict):
         raise ValueError("Fiche produit invalide")
@@ -76,7 +76,8 @@ def sequence_lancement(ctx: Contexte, titre: str, fiche: Dict[str, Any]) -> List
     ).format(titre=titre, accroche=fiche.get("accroche", ""),
              benefices=" ; ".join(str(b) for b in fiche.get("benefices", [])[:6]),
              audience=ctx.audience)
-    donnees = llm.generer_json(invite, systeme=ctx.systeme(ROLE), role="standard",
+    donnees = equipe.MARKETEUR.travailler_json(
+        ctx, invite, role_modele="standard",
                                temperature=0.78, max_tokens=4096)
     emails = donnees.get("emails") if isinstance(donnees, dict) else donnees
     return [
@@ -93,8 +94,13 @@ def sequence_lancement(ctx: Contexte, titre: str, fiche: Dict[str, Any]) -> List
 
 
 def page_de_vente(titre: str, fiche: Dict[str, Any], prix: str = "",
-                  couverture: str = "") -> str:
-    """Fragment HTML de page de vente, insere dans le gabarit standard."""
+                  couverture: str = "", langue: str = "fr") -> str:
+    """Fragment HTML de page de vente, insere dans le gabarit standard.
+
+    Dans la langue du produit : c'est l'acheteur qui la lit. Ses titres
+    etaient en francais au-dessus d'un argumentaire ecrit en anglais.
+    """
+    t = libelles.textes(langue)
     def liste(elements: List[Any]) -> str:
         return "<ul>{}</ul>".format(
             "".join("<li>{}</li>".format(D.inline_html(str(e))) for e in elements or [])
@@ -105,22 +111,24 @@ def page_de_vente(titre: str, fiche: Dict[str, Any], prix: str = "",
     )
     morceaux: List[str] = []
     if couverture:
-        morceaux.append('<p><img src="{}" alt="Couverture"/></p>'.format(couverture))
-    morceaux.append("<h2>Ce que ce produit change pour vous</h2>")
+        morceaux.append('<p><img src="{}" alt="{}"/></p>'.format(
+            couverture, D.inline_html(t["couverture"])))
+    morceaux.append("<h2>{}</h2>".format(D.inline_html(t["vente_change"])))
     morceaux.append(liste(fiche.get("benefices")))
     if fiche.get("description"):
         morceaux.append(D.vers_html(D.analyser(str(fiche["description"])), niveau_depart=2))
     if fiche.get("contenu_livre"):
-        morceaux.append("<h2>Ce que vous recevez</h2>")
+        morceaux.append("<h2>{}</h2>".format(D.inline_html(t["vente_recevez"])))
         morceaux.append(liste(fiche["contenu_livre"]))
     if fiche.get("pour_qui"):
-        morceaux.append("<h2>Pour qui c'est fait</h2>")
+        morceaux.append("<h2>{}</h2>".format(D.inline_html(t["vente_pour_qui"])))
         morceaux.append(liste(fiche["pour_qui"]))
     if fiche.get("pas_pour_qui"):
-        morceaux.append("<h2>Pour qui ce n'est pas fait</h2>")
+        morceaux.append("<h2>{}</h2>".format(
+            D.inline_html(t["vente_pas_pour_qui"])))
         morceaux.append(liste(fiche["pas_pour_qui"]))
     if fiche.get("objections"):
-        morceaux.append("<h2>Vos questions</h2>")
+        morceaux.append("<h2>{}</h2>".format(D.inline_html(t["vente_questions"])))
         for objection in fiche["objections"]:
             if isinstance(objection, dict):
                 morceaux.append(
@@ -130,25 +138,25 @@ def page_de_vente(titre: str, fiche: Dict[str, Any], prix: str = "",
                     )
                 )
     morceaux.append(
-        '<aside class="encadre"><p class="encadre-titre">Prix</p>'
-        "<p><strong>{}</strong> — acces immediat apres paiement, "
-        "telechargement direct.</p>{}</aside>".format(
-            D.inline_html(prix_affiche),
+        '<aside class="encadre"><p class="encadre-titre">{}</p>'
+        "<p>{}</p>{}</aside>".format(
+            D.inline_html(t["vente_prix"]),
+            t["vente_acces"].format(prix=D.inline_html(prix_affiche)),
             "<p>{}</p>".format(D.inline_html(str(fiche.get("garantie", ""))))
             if fiche.get("garantie") else "",
         )
     )
     morceaux.append(
-        '<p><a href="#acheter"><strong>Obtenir « {} »</strong></a></p>'.format(
-            D.inline_html(titre)
-        )
+        '<p><a href="#acheter"><strong>{}</strong></a></p>'.format(
+            t["vente_obtenir"].format(titre=D.inline_html(titre)))
     )
     return "\n".join(morceaux)
 
 
 def produire_kit(ctx: Contexte, titre: str, description_produit: str,
                  dossier: Path, plateforme: str = "gumroad",
-                 couverture: str = "") -> Dict[str, Any]:
+                 couverture: str = "", type_produit: str = "ebook",
+                 chapitres_offerts: int = 0) -> Dict[str, Any]:
     """Genere le kit de vente complet dans `dossier/marketing`."""
     cible = dossier / "marketing"
     cible.mkdir(parents=True, exist_ok=True)
@@ -164,19 +172,19 @@ def produire_kit(ctx: Contexte, titre: str, description_produit: str,
     # Fiche lisible, a copier-coller dans la boutique
     lignes = [
         "# Fiche de vente — {}\n".format(titre),
-        "## Titres a tester\n",
+        "## Titres à tester\n",
         "\n".join("- " + t for t in fiche.get("titres", [])),
         "\n## Accroche\n",
         str(fiche.get("accroche", "")),
         "\n## Description ({})\n".format(plateforme),
         str(fiche.get("description", "")),
-        "\n## Benefices\n",
+        "\n## Bénéfices\n",
         "\n".join("- " + str(b) for b in fiche.get("benefices", [])),
-        "\n## Ce que l'acheteur recoit\n",
+        "\n## Ce que l'acheteur reçoit\n",
         "\n".join("- " + str(c) for c in fiche.get("contenu_livre", [])),
-        "\n## Mots-cles / tags\n",
+        "\n## Mots-clés / tags\n",
         ", ".join(str(m) for m in fiche.get("mots_cles", [])),
-        "\n## Prix conseille\n",
+        "\n## Prix conseillé\n",
         json.dumps(fiche.get("prix_conseille", {}), ensure_ascii=False, indent=2),
     ]
     chemin_fiche = cible / "fiche-produit.md"
@@ -189,20 +197,21 @@ def produire_kit(ctx: Contexte, titre: str, description_produit: str,
     ecrire_page(
         chemin_page,
         fiche.get("titres", [titre])[0],
-        page_de_vente(titre, fiche, prix, couverture),
+        page_de_vente(titre, fiche, prix, couverture, ctx.langue_iso),
         sous_titre=str(fiche.get("accroche", "")),
         meta=ctx.marque or ctx.auteur,
+        langue=ctx.langue_iso,
     )
     fichiers.append(chemin_page)
 
-    ctx.journal("  sequence de lancement...")
+    ctx.journal("  séquence de lancement...")
     try:
         emails = sequence_lancement(ctx, titre, fiche)
     except Exception as exc:
-        ctx.journal("  sequence indisponible : {}".format(exc))
+        ctx.journal("  séquence indisponible : {}".format(exc))
         emails = []
     if emails:
-        lignes_email = ["# Sequence de lancement — {}\n".format(titre)]
+        lignes_email = ["# Séquence de lancement — {}\n".format(titre)]
         for email in emails:
             lignes_email.append("\n## Jour {} — {}\n".format(email["jour"], email["objet"]))
             if email["preheader"]:
@@ -214,9 +223,25 @@ def produire_kit(ctx: Contexte, titre: str, description_produit: str,
         chemin_emails.write_text("\n".join(lignes_email), encoding="utf-8")
         fichiers.append(chemin_emails)
 
+    # L'edition courte offerte : decoupee dans le livre deja produit, donc
+    # gratuite en quota et fidele a ce qu'on vend. Elle vit dans « marketing »,
+    # qui ne part pas dans l'archive de l'acheteur.
+    edition = None
+    if catalogue.accepte_extrait(type_produit):
+        try:
+            edition = extrait.produire(ctx, dossier, titre, type_produit,
+                                       chapitres_offerts)
+        except Exception as exc:
+            ctx.journal("  extrait non généré : {}".format(exc))
+        if edition:
+            ctx.journal("  extrait offert : {} chapitre(s) sur {}".format(
+                edition["chapitres_offerts"],
+                edition["chapitres_offerts"] + edition["chapitres_restants"]))
+
     return {
         "fiche": fiche,
         "emails": len(emails),
         "fichiers": [f.name for f in fichiers],
         "dossier": str(cible),
+        "extrait": edition,
     }

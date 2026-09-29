@@ -80,6 +80,23 @@ class TestMesures(unittest.TestCase):
         self.assertFalse(ctrl.chiffres_sans_source(
             "Selon une etude citee, 40% des projets derapent."))
 
+    def test_chiffres_sources_en_anglais(self):
+        """Le modele ecrit dans la langue du produit. Seuls les marqueurs
+        francais etaient reconnus : quatre chiffres anglais correctement
+        introduits sur quatre etaient declares inventes."""
+        for phrase in (
+                "According to a 2023 Gallup survey, 67% of remote workers "
+                "report better focus.",
+                "For example, a shop that converts 3% of visitors doubles "
+                "revenue at 6%.",
+                "A 2022 McKinsey report found that teams ship 30% faster.",
+                "Imagine a freelancer who raises prices by 20% this year."):
+            with self.subTest(phrase=phrase[:30]):
+                self.assertFalse(ctrl.chiffres_sans_source(phrase))
+        # Et un chiffre anglais sans rien reste signale.
+        self.assertTrue(ctrl.chiffres_sans_source(
+            "Most freelancers lose 40% of their revenue to late payments."))
+
     def test_continuite(self):
         a = "la prospection commerciale demande une methode reguliere et mesurable"
         proche = "la methode de prospection reguliere se mesure chaque semaine"
@@ -140,6 +157,41 @@ class TestControle(unittest.TestCase):
         b = ctrl.controler(TEXTE_IA, mots_cibles=60)
         self.assertEqual(a.note, b.note)
         self.assertEqual(a.mesures, b.mesures)
+
+
+class TestMarqueursDeTravail(unittest.TestCase):
+    """Une consigne a l'auteur laissee dans le livre : « [Inserer un exemple
+    concret ici] ». Comparee le 23/09/2026, la chaine ebook-factory verifie
+    TODO et LOREM avant de livrer ; notre controle ne le faisait pas."""
+
+    def _marqueurs(self, texte):
+        return [a for a in ctrl.controler(texte * 3, exiger_structure=False)
+                .anomalies if a.genre == "marqueur"]
+
+    def test_une_consigne_a_l_auteur_est_bloquante(self):
+        for texte in ("Voici un cas. [Insérer un exemple concret ici] La suite.",
+                      "Lorem ipsum dolor sit amet, la suite du chapitre.",
+                      "Le tarif moyen est de [TODO : chiffre] euros.",
+                      "Une idée forte (à développer : trois exemples).",
+                      "Le nombre exact reste [TBD] pour l'instant."):
+            with self.subTest(texte=texte):
+                trouves = self._marqueurs(texte)
+                self.assertEqual(len(trouves), 1)
+                self.assertEqual(trouves[0].gravite, "bloquant")
+                self.assertTrue(trouves[0].consigne)
+
+    def test_ce_qui_parle_au_lecteur_n_est_pas_un_marqueur(self):
+        """Le pendant, et c'est lui qui garde l'etroitesse du vocabulaire :
+        un exercice, une variable de modele, une indication de lecture a voix
+        haute, une liste de taches, un renvoi."""
+        for texte in ("Votre objectif pour ce mois : [à compléter].",
+                      "Remplacez [VOTRE PRODUIT] par ce que vous vendez.",
+                      "[PAUSE] Respirez. [INSISTER] C'est le point clé.",
+                      "Ouvrez votre todo list chaque matin, avant le café.",
+                      "Le mot lorem vient d'une coupure de Cicéron.",
+                      "Nous y reviendrons (voir le chapitre 3)."):
+            with self.subTest(texte=texte):
+                self.assertEqual(self._marqueurs(texte), [])
 
 
 class TestMarche(unittest.TestCase):

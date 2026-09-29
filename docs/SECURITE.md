@@ -58,6 +58,16 @@ Toute chaîne ressemblant à une clé (`gsk_`, `sk-or-v1-`, `AIza`, `nvapi-`,
 console, le fichier de log, le tableau de bord ou un message d'erreur. C'est
 ce qui évite qu'une capture d'écran du tableau de bord publie votre clé.
 
+Les mêmes motifs gardent le dépôt : `scripts/fuites.py`, lancé par la CI,
+cherche une clé dans les fichiers suivis par git. Ils exigent la **longueur**
+d'une clé après le préfixe. Le contrôle précédent cherchait `gsk_` seul : il
+signalait cette page, l'aide de la ligne de commande et les clés factices des
+tests, et fut rouge du 12 au 23/09/2026 sans une seule vraie clé — assez
+longtemps pour qu'on cesse de le lire, et qu'il cache un échec réel sous
+Python 3.9. Il affichait aussi ce qu'il trouvait : sur une vraie fuite, il
+aurait recopié la clé dans le journal public de la CI. Le nouveau ne donne que
+le fichier et la ligne.
+
 ## Le tableau de bord
 
 Par défaut il écoute sur `127.0.0.1` : inaccessible depuis le réseau.
@@ -73,6 +83,28 @@ usine reglages --definir jeton_web=votre-mot-de-passe   # jeton fixe
 
 Les chemins de fichiers sont résolus puis vérifiés comme descendant du dossier
 des produits : les formes `..`, `%2e%2e` et les chemins absolus sont refusées.
+
+### `127.0.0.1` n'est pas une protection
+
+C'était tenu pour une. Mais le navigateur du téléphone, lui, **est** sur
+`127.0.0.1`. Mesure du 23/09/2026 : un `POST` en `text/plain` envoyé depuis
+une page quelconque (`https://evil.example`) — une requête « simple », que le
+navigateur émet sans demander la permission à personne — a réécrit `marque` et
+`site` dans les réglages. Le jeton ne protégeait que le mode réseau local.
+
+Deux défenses, parce qu'il y a deux attaques :
+
+- **L'origine.** Une requête qui modifie doit venir du tableau de bord lui-même :
+  `Sec-Fetch-Site: cross-site`, un `Origin` étranger et `Origin: null` (iframe
+  isolée, fichier local) sont refusés. Une requête sans `Origin` passe : c'est
+  `curl` ou un script sur le téléphone, qui a déjà la main sur l'atelier.
+- **Le nom d'hôte.** Un domaine qu'on contrôle peut se faire résoudre vers
+  `127.0.0.1` (*DNS rebinding*) ; la page est alors de même origine pour le
+  navigateur, et le contrôle précédent ne voit rien. Seul l'en-tête `Host` la
+  trahit : il porte le nom de l'attaquant. Il doit être `127.0.0.1`,
+  `localhost`, `::1` ou l'adresse d'écoute.
+
+`tests/test_tableau_origine.py`, sept mutations vues.
 
 ## Les domaines sensibles
 
@@ -96,3 +128,79 @@ L'archive ZIP exclut le dossier `marketing/` (votre page de vente, vos e-mails
 de lancement, le prix plancher que vous étiez prêt à accepter) et les fichiers
 de travail (`plan.json`, `systeme.json`, `cahier.json`…). Un test de
 non-régression le vérifie à chaque exécution.
+
+## Revue de septembre 2026
+
+Quatre points relevés sur ce que la session venait d'ajouter — un journal sur
+disque, une table, des appels HTTP, une refabrication de fichiers.
+
+### Un identifiant ne se change pas par la surface qu'il garde
+
+`jeton_web` est le mot de passe du tableau de bord. `POST /api/reglages`
+acceptait tout réglage déclaré dans `DEFAUTS`, **y compris celui-là**. Qui
+atteignait la page pouvait donc s'y enfermer en posant un jeton, ou l'ouvrir à
+tous en l'effaçant.
+
+Le défaut préexistait ; le rendre appelable depuis la page l'a mis en lumière.
+`REGLAGES_HORS_WEB` l'écarte désormais. Le jeton se change depuis la machine —
+`usine reglages`, ou le menu.
+
+### Un jour est une date, pas une chaîne libre
+
+`usine journal <jour>` posait son argument directement dans un nom de
+fichier : `../../quelque-chose` désignait un fichier **hors** du dossier des
+journaux — que `nettoyer()` aurait ensuite pu effacer. Le format est vérifié,
+et tout le reste retombe sur aujourd'hui.
+
+### Un journal ne remplit pas le téléphone
+
+Quatorze fichiers gardés bornaient leur *nombre*, pas leur *taille*. Une
+production de plusieurs heures écrivait sans limite. Au-delà de 2 Mo, le
+fichier repart de zéro — et de zéro plutôt que coupé par le début : relire un
+fichier amputé en tête donnerait un journal qui commence au milieu d'une
+phrase, alors que c'est la fin qui intéresse.
+
+### Une refabrication n'écrit que dans l'atelier
+
+`usine series --rafraichir` **réécrit des fichiers déjà livrés**, dans un
+dossier lu en base. Le dossier est maintenant vérifié comme étant sous
+`PRODUITS_DIR` avant tout écrasement : une erreur ici détruirait des fichiers
+que l'utilisateur a peut-être déjà mis en vente.
+
+### Ce qui a été vérifié et n'a rien donné
+
+- Les requêtes SQL de `core/serie.py` sont toutes paramétrées, et le nom d'une
+  série est réduit à `[a-z0-9-]`.
+- `expurger` couvre les deux seuls endroits où un message quitte le processus.
+  La console n'y passe pas, et c'est un constat : le corps d'une réponse HTTP
+  en erreur — seul endroit où un service renverrait une clé — est porté par
+  `HttpErreur.corps` et n'est affiché nulle part.
+
+
+## Les fichiers livrés n'ont plus l'origine de l'usine
+
+Un produit « logiciel » est du code écrit par le modèle, `index.html`
+compris ; `lire.html` et `quiz.html` portent son texte. Le tableau de bord
+servait tout cela sous sa propre origine (`/fichier/…`), c'est-à-dire avec le
+droit de parler à `/api` sans jeton.
+
+Mesuré le 26/09/2026 dans Chromium : une page déposée dans un dossier de
+produit a lu `/api/etat` et réécrit le réglage `marque` — celui qui signe la
+notice et le kit de vente de chaque produit livré. Le modèle écrit ce qu'un
+fournisseur lui fait écrire ; ce chemin faisait d'une injection d'invite un
+accès à la commande de l'usine.
+
+Les documents capables de porter un script (HTML, XHTML, SVG, XML) partent
+maintenant avec `Content-Security-Policy: sandbox allow-scripts` : le quiz
+continue de se corriger, les images relatives se chargent, mais le document
+vit dans une origine opaque — la lecture de `/api` est bloquée par le
+navigateur, et l'écriture est refusée par la garde d'origine existante, qui
+rejette déjà `Origin: null` sur tout ce qui modifie. Rejoué après coup :
+`bloque|bloque`, marque intacte. Un PDF ou une image n'y passent pas — un PDF
+en bac à sable ne s'affiche plus dans certains navigateurs, et une image
+n'exécute rien.
+
+La page de l'usine, elle, déclare qu'elle ne charge rien d'extérieur
+(`default-src 'self'`) et refuse d'être encadrée (`frame-ancestors 'none'`,
+`X-Frame-Options: DENY`) : encadrée dans une page tierce, la commande de
+fabrication se cliquerait à travers un calque invisible.

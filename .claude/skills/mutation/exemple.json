@@ -1,0 +1,101 @@
+[
+  {
+    "titre": "le quota se compte par modele",
+    "fichier": "usine/core/llm.py",
+    "avant": "return (module_modeles.modele_effectif(p, role)\n            if p.quota(role).portee == \"modele\" else \"\")",
+    "apres": "return \"\"",
+    "tests": [
+      "tests.test_routeur"
+    ]
+  },
+  {
+    "titre": "le plafond de jetons par jour ferme le fournisseur",
+    "fichier": "usine/core/llm.py",
+    "avant": "if q.tpd and store.jetons_jour(p.name, modele, cle_id) >= q.tpd:\n        return False\n",
+    "apres": "",
+    "tests": [
+      "tests.test_routeur"
+    ]
+  },
+  {
+    "titre": "une demande trop grosse pour la minute ecarte le fournisseur",
+    "fichier": "usine/core/llm.py",
+    "avant": "if cout > q.tpm:\n            return None\n",
+    "apres": "",
+    "tests": [
+      "tests.test_routeur"
+    ]
+  },
+  {
+    "titre": "la fenetre par minute est glissante",
+    "fichier": "usine/core/llm.py",
+    "avant": "attente = max(attente, min(62.0, 61.0 - (time.time() - plus_ancien)))",
+    "apres": "attente = max(attente, 0.0)",
+    "tests": [
+      "tests.test_routeur"
+    ]
+  },
+  {
+    "titre": "le routeur ecarte le fournisseur au lieu d'appeler",
+    "fichier": "usine/core/llm.py",
+    "avant": "                if not passe:",
+    "apres": "                if False:",
+    "tests": [
+      "tests.test_routeur"
+    ]
+  },
+  {
+    "titre": "un modele inconnu n'est plus nomme dans le message",
+    "fichier": "usine/core/llm.py",
+    "avant": "if _modele_inconnu(exc):\n            return (\"le modèle",
+    "apres": "if False:\n            return (\"le modèle",
+    "tests": [
+      "tests.test_routeur"
+    ]
+  },
+  {
+    "titre": "aucun modele retire n'est encore configure",
+    "fichier": "usine/core/config.py",
+    "avant": "\"standard\": \"openai/gpt-oss-120b\",",
+    "apres": "\"standard\": \"llama-3.3-70b-versatile\",",
+    "tests": [
+      "tests.test_routeur"
+    ]
+  },
+  {
+    "titre": "le catalogue distant est relu",
+    "fichier": "usine/core/diagnostic.py",
+    "avant": "manquants = sorted({m for m in fournisseur.models.values()\n                            if m and m not in connus})",
+    "apres": "manquants = []",
+    "tests": [
+      "tests.test_tableau"
+    ]
+  },
+  {
+    "titre": "qui a repondu est distingue de « tout va bien »",
+    "fichier": "usine/core/diagnostic.py",
+    "avant": "            injoignables.append(fournisseur.name)\n            continue",
+    "apres": "            continue",
+    "tests": [
+      "tests.test_tableau"
+    ]
+  },
+  {
+    "titre": "un service injoignable n'accuse personne",
+    "fichier": "usine/core/diagnostic.py",
+    "avant": "    if statut != 200:\n        return None\n",
+    "apres": "    if statut != 200:\n        return []\n",
+    "tests": [
+      "tests.test_tableau"
+    ]
+  },
+  {
+    "titre": "le compteur par modele existe en base",
+    "fichier": "usine/core/store.py",
+    "avant": "def _et_modele(modele: str) -> str:\n    return \" AND modele=?\" if modele else \"\"",
+    "apres": "def _et_modele(modele: str) -> str:\n    return \"\"",
+    "tests": [
+      "tests.test_routeur"
+    ]
+  }
+]

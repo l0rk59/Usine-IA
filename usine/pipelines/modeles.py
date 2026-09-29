@@ -16,21 +16,78 @@ from ..agents import equipe
 from ..core import evenements, images
 from ..render import document as D
 from ..render import tableur
-from ..render import livraison
+from ..render import libelles, livraison
 from ..render.page import ecrire_page
 from .base import Contexte, nettoyer_titre, preparer, slug, terminer
 
 
-def _systeme(ctx: Contexte, nombre: int) -> Dict[str, Any]:
+# L'outil ou le systeme vivra. Mesure du 26/09/2026 : l'invite visait
+# « Notion ou un tableur » a la fois, et le guide expliquait les deux a
+# chaque acheteur. Or ils ne se construisent pas pareil : Notion relie des
+# bases et filtre des vues ; un tableur calcule avec des formules et limite
+# la saisie par des listes deroulantes. Un systeme pense pour les deux
+# n'exploite ni l'un ni l'autre.
+OUTILS: Dict[str, Dict[str, str]] = {
+    "notion": {
+        "nom": "Notion",
+        "conception": "Le systeme vit dans Notion : exploite les RELATIONS "
+                      "entre bases (colonne « relation »), les rollups et au "
+                      "moins trois vues filtrees ou triees par base.",
+        "guide": "## Installation dans Notion\n(import de chaque CSV, puis "
+                 "creation des relations et des vues)\n",
+    },
+    "tableur": {
+        "nom": "un tableur (Google Sheets, Excel, LibreOffice)",
+        "conception": "Le systeme vit dans un tableur : chaque base est un "
+                      "onglet. Pas de relation : relie les onglets par une "
+                      "colonne identifiant commune. Pour chaque colonne de type "
+                      "« formule », donne la formule exacte dans sa "
+                      "description (syntaxe Google Sheets). Les colonnes "
+                      "« selection » deviennent des listes deroulantes. Les "
+                      "« vues » sont des filtres ou des tris a enregistrer.",
+        "guide": "## Installation dans un tableur\n(import de chaque CSV dans "
+                 "un onglet, formules, listes deroulantes, mise en forme "
+                 "conditionnelle)\n",
+    },
+    "les-deux": {
+        "nom": "Notion ou un tableur, au choix de l'acheteur",
+        "conception": "Le systeme doit s'importer dans Notion ET dans un "
+                      "tableur. Prevois les relations entre bases (une colonne "
+                      "qui pointe vers une autre base) et au moins trois vues "
+                      "utiles par base.",
+        "guide": "## Installation dans Notion\n(import du CSV, creation des "
+                 "relations)\n## Installation dans un tableur\n",
+    },
+}
+OUTIL_PAR_DEFAUT = "les-deux"
+
+
+# Une seule liste : l'invite la donne au modele, et chaque langue doit avoir
+# un nom lisible pour chacun (« case_a_cocher » s'affichait tel quel dans le
+# guide francais).
+TYPES_DE_COLONNE = ("texte", "texte_long", "nombre", "selection",
+                    "multi_selection", "date", "case_a_cocher", "url", "email",
+                    "relation", "formule")
+
+
+def _outil(ctx: Contexte, outil: str) -> Dict[str, str]:
+    """L'outil retenu, et le journal dit quand personne ne l'a choisi."""
+    if outil in OUTILS:
+        return OUTILS[outil]
+    ctx.journal("  outil cible : {} (personne ne l'a choisi)".format(
+        OUTILS[OUTIL_PAR_DEFAUT]["nom"]))
+    return OUTILS[OUTIL_PAR_DEFAUT]
+
+
+def _systeme(ctx: Contexte, nombre: int,
+             outil: Dict[str, str] = OUTILS[OUTIL_PAR_DEFAUT]) -> Dict[str, Any]:
     invite = (
-        "Concois un systeme de {n} bases liees, pret a importer dans Notion ou "
-        "dans un tableur, sur le theme : {sujet}\n"
+        "Concois un systeme de {n} bases liees, pret a importer dans {cible}, "
+        "sur le theme : {sujet}\n"
         "UTILISATEUR : {audience}\n\n"
         "Chaque base a des colonnes typees et un role precis dans le systeme. "
-        "Prevois les relations entre bases (une colonne qui pointe vers une autre "
-        "base) et au moins trois vues utiles par base.\n\n"
-        "Types de colonne autorises : texte, texte_long, nombre, selection, "
-        "multi_selection, date, case_a_cocher, url, email, relation, formule.\n\n"
+        "{conception}\n\n"
+        "Types de colonne autorises : " + ", ".join(TYPES_DE_COLONNE) + ".\n\n"
         "Schema JSON exact :\n"
         '{{"titre": "nom commercial du systeme", "promesse": "...", '
         '"bases": [{{"nom": "...", "role": "a quoi elle sert", '
@@ -39,7 +96,8 @@ def _systeme(ctx: Contexte, nombre: int) -> Dict[str, Any]:
         '"vues": [{{"nom": "...", "filtre": "...", "tri": "..."}}], '
         '"exemples": [["valeur1", "valeur2"]]}}], '
         '"mise_en_route": ["etape 1", "etape 2"]}}'
-    ).format(n=nombre, sujet=ctx.sujet, audience=ctx.audience)
+    ).format(n=nombre, sujet=ctx.sujet, audience=ctx.audience,
+             cible=outil["nom"], conception=outil["conception"])
     systeme = equipe.ARCHITECTE.travailler_json(ctx, invite, max_tokens=4096)
     if not isinstance(systeme, dict) or not systeme.get("bases"):
         raise ValueError("Systeme de modeles invalide")
@@ -72,34 +130,45 @@ def _systeme(ctx: Contexte, nombre: int) -> Dict[str, Any]:
     return systeme
 
 
-def produire(ctx: Contexte, nombre: int = 4) -> Dict[str, Any]:
-    ctx.journal("Etape 1/3 — conception du systeme ({} bases)...".format(nombre))
-    systeme = _systeme(ctx, nombre)
+def produire(ctx: Contexte, nombre: int = 4, outil: str = "") -> Dict[str, Any]:
+    cible = _outil(ctx, outil)
+    ctx.journal("Étape 1/3 — conception du système ({} bases)...".format(nombre))
+    systeme = _systeme(ctx, nombre, cible)
     titre = systeme["titre"]
     dossier = preparer(ctx, "modeles", titre)
     ctx.etape("systeme", "ok", "{} bases".format(len(systeme["bases"])))
-    ctx.journal('  Systeme : « {} »'.format(titre))
+    ctx.journal('  Système : « {} »'.format(titre))
     evenements.publier("section", etape="modeles", titre=titre,
                        total=len(systeme["bases"]))
 
-    ctx.journal("Etape 2/3 — guide d'installation...")
+    ctx.journal("Étape 2/3 — guide d'installation...")
+    perdu = ""
     try:
         guide = equipe.REDACTEUR.travailler(ctx, (
-            "Systeme : « {titre} »\nBASES : {bases}\n\n"
+            "Systeme : « {titre} »\nOUTIL : {cible}\nBASES : {bases}\n\n"
             "Redige le guide d'installation et d'utilisation (700 mots environ) :\n"
-            "## Installation dans Notion\n(import du CSV, creation des relations)\n"
-            "## Installation dans un tableur\n"
+            "{installation}"
             "## Le rituel hebdomadaire\n(comment s'en servir chaque semaine)\n"
             "## Personnalisation\n\nMarkdown, pas de titre de niveau 1."
-        ).format(titre=titre, bases=" ; ".join(b["nom"] for b in systeme["bases"])),
+        ).format(titre=titre, cible=cible["nom"], installation=cible["guide"],
+                 bases=" ; ".join(b["nom"] for b in systeme["bases"])),
             max_tokens=2200).texte
     except Exception as exc:
+        perdu = str(exc)
         ctx.journal("  guide indisponible : {}".format(exc))
-        guide = "## Mise en route\n\n" + "\n".join(
+        # Le guide est remplace par la liste des etapes de mise en route :
+        # quelques puces la ou l'acheteur attend un mode d'emploi. Sans le
+        # dire, le produit se presentait « pret » avec ce trou dedans.
+        guide = "## {}\n\n".format(libelles.libelle(
+            ctx.langue_iso, "modeles_mise_en_route")) + "\n".join(
             "1. " + str(e) for e in systeme.get("mise_en_route", []))
-    ctx.etape("guide")
+    # « ctx.etape("guide") » tout court valait « ok » — meme apres l'echec,
+    # puisque l'appel est hors du « except ». Le meme defaut se cachait dans
+    # la formation : noter le resultat APRES coup, sans regarder ce qui vient
+    # de se passer, revient a ne rien noter.
+    ctx.etape("guide", "echec" if perdu else "ok", perdu)
 
-    ctx.journal("Etape 3/3 — export...")
+    ctx.journal("Étape 3/3 — export...")
     fichiers = _exporter(ctx, systeme, guide)
     resume = {
         "produit_id": ctx.produit_id,
@@ -136,25 +205,35 @@ def _exporter(ctx: Contexte, systeme: Dict[str, Any], guide: str) -> List[Path]:
                 auteur.writerow(tableur.ligne(ligne))
         fichiers.append(chemin)
 
+    t = libelles.textes(ctx.langue_iso)
+
+    def type_lisible(colonne: Dict[str, Any]) -> str:
+        return t["modeles_types"].get(colonne["type"], colonne["type"])
+
+    def vue_lisible(vue: Dict[str, Any], nom: str) -> str:
+        return t["modeles_vue"].format(
+            nom=nom, filtre=vue.get("filtre", t["modeles_aucun"]),
+            tri=vue.get("tri", t["modeles_aucun"]))
+
     # Markdown : colle directement dans une page Notion.
     lignes = ["# {}\n".format(titre), "*{}*\n".format(systeme.get("promesse", "")),
               "\n" + guide + "\n"]
     for base in systeme["bases"]:
         lignes.append("\n# {}\n".format(base["nom"]))
         lignes.append("*{}*\n".format(base["role"]))
-        lignes.append("\n| Colonne | Type | Role |")
+        lignes.append("\n| {} |".format(" | ".join(t["modeles_colonnes"])))
         lignes.append("| --- | --- | --- |")
         for colonne in base["colonnes"]:
             options = (" (" + ", ".join(colonne["options"]) + ")"
                        if colonne["options"] else "")
             lignes.append("| {} | {}{} | {} |".format(
-                colonne["nom"], colonne["type"], options, colonne["description"]))
+                colonne["nom"], type_lisible(colonne), options,
+                colonne["description"]))
         if base["vues"]:
-            lignes.append("\n**Vues a creer :**\n")
+            lignes.append("\n{}\n".format(t["modeles_vues_md"]))
             for vue in base["vues"]:
-                lignes.append("- **{}** — filtre : {} — tri : {}".format(
-                    vue.get("nom", ""), vue.get("filtre", "aucun"),
-                    vue.get("tri", "aucun")))
+                lignes.append("- " + vue_lisible(
+                    vue, "**{}**".format(vue.get("nom", ""))))
     chemin_md = dossier / "modeles.md"
     chemin_md.write_text("\n".join(lignes), encoding="utf-8")
     fichiers.append(chemin_md)
@@ -169,35 +248,41 @@ def _exporter(ctx: Contexte, systeme: Dict[str, Any], guide: str) -> List[Path]:
 
     doc = livraison.document(ctx, titre, systeme.get("promesse", ""),
                              couverture, police_corps="Helvetica")
-    doc.titre("Guide d'installation", 1)
+    doc.titre(t["modeles_guide"], 1)
     D.vers_pdf(D.analyser(guide), doc, sauter_h1=True)
     for base in systeme["bases"]:
         doc.titre(base["nom"], 1)
         if base["role"]:
             doc.citation(base["role"])
-        doc.titre("Structure", 2)
+        doc.titre(t["modeles_structure"], 2)
         doc.tableau(
-            ["Colonne", "Type", "Role"],
-            [[c["nom"], c["type"] + (" (" + ", ".join(c["options"]) + ")"
-                                     if c["options"] else ""), c["description"]]
+            list(t["modeles_colonnes"]),
+            [[c["nom"], type_lisible(c) + (" (" + ", ".join(c["options"]) + ")"
+                                           if c["options"] else ""), c["description"]]
              for c in base["colonnes"]],
         )
         if base["vues"]:
-            doc.titre("Vues a creer", 2)
-            doc.liste(["{} — filtre : {} — tri : {}".format(
-                v.get("nom", ""), v.get("filtre", "aucun"), v.get("tri", "aucun"))
-                for v in base["vues"]])
-    doc.inserer_sommaire(apres=1)
+            doc.titre(t["modeles_vues"], 2)
+            doc.liste([vue_lisible(v, v.get("nom", "")) for v in base["vues"]])
+    doc.inserer_sommaire(t["sommaire"], apres=1)
     chemin_pdf = dossier / "{}.pdf".format(slug(titre, 46))
     doc.enregistrer(chemin_pdf)
     fichiers.append(chemin_pdf)
 
     corps = [D.vers_html(D.analyser(guide), niveau_depart=2)]
+    # Le texte du modele entrait ici sans echappement. Mesure du 24/09/2026 :
+    # un gabarit du genre « <VOTRE NOM> » etait avale comme une balise
+    # inconnue, donc invisible pour l'acheteur. « inline_html » echappe, et
+    # rend le gras au passage.
     for base in systeme["bases"]:
-        corps.append("<h2>{}</h2><p><em>{}</em></p>".format(base["nom"], base["role"]))
-        corps.append("<table><tr><th>Colonne</th><th>Type</th><th>Role</th></tr>"
+        corps.append("<h2>{}</h2><p><em>{}</em></p>".format(
+            D.inline_html(base["nom"]), D.inline_html(base["role"])))
+        corps.append("<table><tr>{}</tr>".format("".join(
+                         "<th>{}</th>".format(D.inline_html(e))
+                         for e in t["modeles_colonnes"]))
                      + "".join("<tr><td>{}</td><td>{}</td><td>{}</td></tr>".format(
-                         c["nom"], c["type"], c["description"])
+                         D.inline_html(c["nom"]), D.inline_html(type_lisible(c)),
+                         D.inline_html(c["description"]))
                          for c in base["colonnes"]) + "</table>")
     chemin_html = dossier / "lire.html"
     ecrire_page(chemin_html, titre, "\n".join(corps), systeme.get("promesse", ""),

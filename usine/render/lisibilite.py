@@ -52,6 +52,11 @@ HTML_CLAIR: List[Couple] = [
     ("texte d'encadre", "#16181d", "#f1f6fe", SEUIL_TEXTE),
     ("accent sur encadre", "#2563eb", "#f1f6fe", SEUIL_TEXTE),
     ("bordure", "#e2e8f0", "#ffffff", 1.0),       # decoratif
+    # Quiz auto-corrige : les deux verdicts, et le bouton.
+    ("verdict juste", "#14663f", "#e9f6ef", SEUIL_TEXTE),
+    ("verdict faux", "#9b1c1c", "#fdecec", SEUIL_TEXTE),
+    ("bouton", "#ffffff", "#2563eb", SEUIL_TEXTE),
+    ("bouton survole", "#ffffff", "#1d4ed8", SEUIL_TEXTE),
 ]
 
 HTML_SOMBRE: List[Couple] = [
@@ -61,6 +66,9 @@ HTML_SOMBRE: List[Couple] = [
     ("texte d'encadre", "#e8eaee", "#151c28", SEUIL_TEXTE),
     ("accent sur encadre", "#60a5fa", "#151c28", SEUIL_TEXTE),
     ("bordure", "#262c38", "#0f1218", 1.0),       # decoratif
+    ("verdict juste", "#6ee7a8", "#12211a", SEUIL_TEXTE),
+    ("verdict faux", "#fca5a5", "#24161a", SEUIL_TEXTE),
+    ("bouton", "#0f1218", "#60a5fa", SEUIL_TEXTE),
 ]
 
 JEUX: Dict[str, List[Couple]] = {

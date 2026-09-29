@@ -1,0 +1,1652 @@
+"""Chaine de production d'une nouvelle : la fiction, qui demande une memoire.
+
+Pourquoi une chaine a part, et pas une option de l'ebook. La chaine « ebook »
+redige chaque chapitre INDEPENDAMMENT : il ne recoit que la liste des titres
+des autres, pour eviter les redites. Pour un guide pratique, c'est une
+qualite — les chapitres sont modulaires, fabricables dans n'importe quel
+ordre, et un chapitre rate n'entraine pas les autres.
+
+Pour une histoire, c'est redhibitoire. Une fiction a besoin de savoir qui est
+present, ce que le lecteur sait deja, ou en est l'arc, et ce qui a ete promis
+a la scene 3 et doit etre paye a la scene 11. Trois pieces que l'ebook n'a
+pas, et qui sont tout ce que cette chaine ajoute :
+
+  1. UNE BIBLE, ecrite avant la premiere scene : personnages (nom, desir,
+     defaut, voix), lieu, epoque, regles du monde, enjeu. Elle est passee a
+     chaque scene et ne change plus. C'est la source de verite.
+  2. UN RESUME ROULANT : chaque scene recoit ce qui s'est passe jusque-la, en
+     quelques lignes, et le met a jour en sortant. C'est la memoire que la
+     chaine ebook n'a pas, et elle coute un appel court par scene — le prix
+     de la continuite.
+  3. UNE GRILLE DE BEATS plutot qu'un plan de chapitres. Un « beat » est un
+     tournant de l'histoire ; une scene est une unite de manuscrit. On
+     planifie en beats, puis on ecrit les scenes qui les livrent.
+
+S'y ajoute un controle de continuite DETERMINISTE, gratuit et instantane, qui
+relit la bible contre le texte produit : un personnage annonce et jamais
+apparu, une scene ou personne de la distribution n'est present, un resume qui
+n'avance plus. Ce sont les defauts propres a la fiction generee, et aucun
+d'eux ne demande un appel de modele pour etre vu.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import unicodedata
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+from ..agents import equipe
+from ..core import controle as ctrl
+from ..core import evenements, securite
+from ..core import serie as module_serie
+from ..render import document as D
+from ..render import libelles, livraison
+from . import fiction
+from . import carnet
+from . import faits
+from . import memoire as M
+from . import prose
+from . import voix
+from .base import (PLUS_RIEN_A_DEMANDER, Contexte, Redaction,
+                   elaguer_markdown, jetons_pour, nettoyer_titre, preparer,
+                   sans_titres, terminer)
+
+ROLE = ("un auteur de fiction courte publie en revue, qui tient la continuite "
+        "et montre plutot que de raconter")
+
+# Longueur du resume roulant. Assez pour porter l'etat de l'histoire, assez
+# court pour tenir dans chaque invite sans manger le budget de la scene.
+MOTS_RESUME = 90
+
+# Armature d'une nouvelle. Ce ne sont pas des chapitres : plusieurs scenes
+# peuvent livrer un meme beat, et une scene peut en livrer deux.
+BEATS = (
+    ("situation", "l'ordinaire du personnage, et ce qui lui manque"),
+    ("declencheur", "l'evenement qui rend le retour en arriere impossible"),
+    ("engagement", "le personnage choisit d'agir, et paie ce choix"),
+    ("complication", "ce qui marchait ne marche plus ; l'enjeu monte"),
+    ("crise", "le pire moment : le personnage perd ce a quoi il tenait"),
+    ("climax", "la confrontation, et la decision qui la tranche"),
+    ("resolution", "le nouvel ordinaire, different du premier"),
+)
+
+# Les trois beats dont une histoire ne peut pas se passer. Les autres
+# peuvent fusionner ou sauter — une nouvelle de six scenes ne peut pas
+# livrer sept tournants separement, et le lui reprocher serait faux.
+# Mais un recit sans declencheur, sans climax ou sans fin n'est pas un recit.
+BEATS_ESSENTIELS = ("declencheur", "climax", "resolution")
+
+
+# Reperes de longueur du marche. Les paliers de taille de l'usine (mini,
+# court, standard, long) sont penses pour des guides : ils ne disent rien a
+# qui ecrit de la fiction. Plutot que d'imposer une longueur, la chaine
+# annonce a quel format correspond ce qu'on lui demande.
+FORMATS_FICTION = (
+    (1000, "texte tres court"),
+    (10000, "nouvelle"),
+    (17000, "novelette"),
+    (40000, "novella"),
+)
+
+
+def format_fiction(mots: int) -> str:
+    """Nom du format correspondant a un nombre de mots."""
+    for plafond, nom in FORMATS_FICTION:
+        if mots < plafond:
+            return nom
+    return "roman"
+
+
+# --------------------------------------------------------------------------
+# 1. La bible
+# --------------------------------------------------------------------------
+
+
+def construire_bible(ctx: Contexte, rappel: str = "") -> Dict[str, Any]:
+    """Tout ce qui ne changera plus : distribution, cadre, enjeu.
+
+    Elle est ecrite en un seul appel, AVANT la premiere ligne de texte, parce
+    qu'un personnage dont le desir se decide au fil de l'eau n'a pas de desir.
+    """
+    invite = (
+        "{rappel}"
+        "Concois la bible d'une nouvelle (fiction courte) a partir de cette "
+        "idee :\n"
+        "IDEE : {sujet}\n"
+        "LECTEUR : {audience}\n"
+        # La promesse de lecture ENTRE ici, et non apres coup. Un sous-genre
+        # decide de la distribution, de la charpente et de la fin : le poser
+        # apres la bible revient a ne pas le poser. Sans cette ligne, les
+        # neuf reglages de fiction etaient saisissables, enregistres, et lus
+        # par personne — un mensonge fait a l'utilisateur.
+        "{promesse}\n"
+        "Contraintes :\n"
+        "- Le titre est evocateur, pas explicatif.\n"
+        "- 2 a 4 personnages, pas plus : une nouvelle n'a pas la place d'une "
+        "distribution de roman.\n"
+        "- Chaque personnage a un DESIR (ce qu'il veut, concretement) et un "
+        "DEFAUT qui l'empeche de l'obtenir. Les deux doivent s'opposer.\n"
+        "- La « voix » decrit comment il parle en une formule : registre, "
+        "tic de langage, ce qu'il ne dit jamais.\n"
+        "- L'enjeu dit ce que le protagoniste PERD s'il echoue. Pas une "
+        "abstraction : une chose precise.\n\n"
+        "Schema JSON exact attendu :\n"
+        '{{"titre": "...", "genre": "...", "premisse": "une phrase", '
+        '"cadre": {{"lieu": "...", "epoque": "...", '
+        '"regles": ["ce qui est vrai dans ce monde et ne changera pas"]}}, '
+        '"personnages": [{{"nom": "...", "role": "protagoniste", '
+        '"desir": "...", "defaut": "...", "voix": "..."}}], '
+        '"enjeu": "...", "fin_visee": "..."}}'
+    ).format(sujet=ctx.sujet, audience=ctx.audience,
+             promesse=fiction.consignes(ctx),
+             rappel=(rappel + "\n\n") if rappel else "")
+
+    bible = equipe.SCENARISTE.travailler_json(ctx, invite, max_tokens=2200)
+    if not isinstance(bible, dict) or not bible.get("personnages"):
+        raise ValueError("Bible invalide renvoyee par le modele")
+
+    bible["titre"] = nettoyer_titre(str(bible.get("titre") or ctx.sujet))
+    bible["genre"] = str(bible.get("genre") or "").strip()
+    bible["premisse"] = str(bible.get("premisse") or "").strip()
+    bible["enjeu"] = str(bible.get("enjeu") or "").strip()
+    bible["fin_visee"] = str(bible.get("fin_visee") or "").strip()
+
+    cadre = bible.get("cadre")
+    if not isinstance(cadre, dict):
+        cadre = {}
+    regles = cadre.get("regles") or []
+    if isinstance(regles, str):
+        regles = [regles]
+    bible["cadre"] = {
+        "lieu": str(cadre.get("lieu") or "").strip(),
+        "epoque": str(cadre.get("epoque") or "").strip(),
+        "regles": [str(r).strip() for r in regles if str(r).strip()][:6],
+    }
+
+    personnages: List[Dict[str, str]] = []
+    for brut in bible["personnages"]:
+        if isinstance(brut, str):
+            brut = {"nom": brut}
+        nom = nettoyer_titre(str(brut.get("nom") or "")).strip()
+        if not nom:
+            continue
+        personnages.append({
+            "nom": nom,
+            "role": str(brut.get("role") or "secondaire").strip().lower(),
+            "desir": str(brut.get("desir") or "").strip(),
+            "defaut": str(brut.get("defaut") or "").strip(),
+            "voix": str(brut.get("voix") or "").strip(),
+        })
+    if not personnages:
+        raise ValueError("Bible sans personnage exploitable")
+    # Une nouvelle tient sur peu de monde : au-dela, la continuite se perd et
+    # le lecteur aussi.
+    bible["personnages"] = personnages[:5]
+    return bible
+
+
+def protagoniste(bible: Dict[str, Any]) -> str:
+    for personnage in bible["personnages"]:
+        if personnage["role"].startswith("protagon"):
+            return personnage["nom"]
+    return bible["personnages"][0]["nom"]
+
+
+def resumer_bible(bible: Dict[str, Any]) -> str:
+    """La bible en quelques lignes, telle qu'elle entre dans chaque invite."""
+    cadre = bible["cadre"]
+    lignes = [
+        "TITRE : {}".format(bible["titre"]),
+        "GENRE : {}".format(bible.get("genre") or "non precise"),
+        "PREMISSE : {}".format(bible.get("premisse") or ""),
+        "CADRE : {} — {}".format(cadre.get("lieu") or "non precise",
+                                 cadre.get("epoque") or "non precisee"),
+    ]
+    if cadre.get("regles"):
+        lignes.append("REGLES DU MONDE : " + " ; ".join(cadre["regles"]))
+    lignes.append("ENJEU : {}".format(bible.get("enjeu") or ""))
+    lignes.append("DISTRIBUTION :")
+    for personnage in bible["personnages"]:
+        lignes.append(
+            "  - {nom} ({role}) — veut : {desir} ; defaut : {defaut} ; "
+            "voix : {voix}".format(**personnage))
+    return "\n".join(lignes)
+
+
+# --------------------------------------------------------------------------
+# 2. La grille de beats
+# --------------------------------------------------------------------------
+
+
+def _fils_a_demander(nombre_scenes: int) -> int:
+    """Combien de fils tendus demander, selon la longueur.
+
+    Une nouvelle de six scenes n'a pas la place de tenir huit promesses ; un
+    roman de vingt-quatre scenes qui n'en tient qu'une est une suite
+    d'evenements, pas une intrigue. Un fil toutes les quatre scenes environ.
+    """
+    return max(1, min(10, round(nombre_scenes / 4)))
+
+
+def _intrigues_a_demander(nombre_scenes: int) -> int:
+    """Combien d'intrigues secondaires demander, selon la longueur.
+
+    Une nouvelle n'en a pas, et ce n'est pas un manque : sa force est de
+    n'avoir qu'une ligne. Une intrigue secondaire demande de la place — au
+    moins trois scenes pour exister, sans quoi elle n'est qu'une digression —
+    et chaque scene qu'elle prend, elle la prend a la principale.
+    """
+    if nombre_scenes < 10:
+        return 0
+    return 1 if nombre_scenes < 18 else 2
+
+
+def _grille_ou_retente(ctx, invite: str, budget: int):
+    """La grille de beats, redemandee une fois si elle revient coupee.
+
+    Un chiffre choisi a la main finit toujours par etre trop petit pour un
+    cas qu'on n'avait pas vu : celui-ci l'a ete pour cinq scenes. Plutot que
+    d'en inventer un plus gros et d'esperer, on lit le fait que le routeur
+    mesure DEJA — « finish_reason: length » — et on redemande.
+
+    Une seule fois : si le double ne suffit toujours pas, insister couterait
+    un troisieme appel pour le meme resultat, et la grille partiellement
+    lue vaut mieux que rien. Le produit livre dira ce qui manque.
+    """
+    def coupees() -> int:
+        meta = getattr(ctx, "meta", None) or {}
+        return len(meta.get("tronquees") or [])
+
+    avant = coupees()
+    grille = equipe.SCENARISTE.travailler_json(ctx, invite, max_tokens=budget)
+    if coupees() == avant:
+        return grille
+    plus = min(8000, budget * 2)
+    if plus <= budget:
+        return grille
+    ctx.journal("  grille coupée à {} jetons : on redemande à {}."
+                .format(budget, plus))
+    # La reponse coupee n'a pas ete mise en cache par le routeur : la
+    # relance repart bien vers le modele, pas vers la reponse tronquee.
+    seconde = equipe.SCENARISTE.travailler_json(ctx, invite, max_tokens=plus)
+    return seconde if isinstance(seconde, dict) and seconde.get("scenes") else grille
+
+
+def construire_grille(ctx: Contexte, bible: Dict[str, Any]) -> Dict[str, Any]:
+    """Les tournants, les scenes qui les livrent, et ce qui les relie.
+
+    Les FILS TENDUS sont l'ajout qui separe une nouvelle d'un recit long. Une
+    grille plate de tournants ne sait pas noter qu'un objet montre a la scene
+    2 doit servir a la scene 11 : chaque scene est alors juste, et l'ensemble
+    ne tient pas. Un fil dit ou il est pose, ou il est paye, et par quoi.
+    """
+    armature = "\n".join("- {} : {}".format(nom, role) for nom, role in BEATS)
+    total = ctx.nb_chapitres
+    invite = (
+        "Construis la grille d'un recit a partir de cette bible.\n\n"
+        "{bible}\n\n"
+        "FIN VISEE : {fin}\n\n"
+        "Travaille en quatre temps.\n"
+        "1. Les BEATS : les tournants de l'histoire, dans cet ordre :\n"
+        "{armature}\n"
+        "   Pour chacun, dis l'EVENEMENT precis qui le realise dans CETTE "
+        "histoire — pas sa definition generale.\n"
+        "2. Les SCENES : {n} scenes qui livrent ces beats, dans l'ordre de "
+        "lecture. Plusieurs scenes peuvent servir le meme beat.\n"
+        "   Chaque scene a un lieu, les personnages presents, ce que le "
+        "personnage de point de vue VEUT dans cette scene, l'OBSTACLE qui s'y "
+        "oppose, et le PIVOT : ce qui a change a la fin de la scene et qui "
+        "n'etait pas vrai au debut. Une scene sans pivot est une scene morte.\n"
+        "   Le titre d'une scene est evocateur et court, jamais « Scene 1 ».\n"
+        "3. Les FILS TENDUS : {fils} promesse(s) faites au lecteur. Un fil est "
+        "POSE dans une scene (un objet, une phrase, une absence que le lecteur "
+        "remarque) et PAYE dans une scene ULTERIEURE, ou il se revele. "
+        "Un fusil accroche au mur au premier acte doit tirer au dernier. "
+        "Donne le numero des deux scenes, a partir de 1, et un nom court qui "
+        "servira a le reconnaitre dans le texte (« la lettre non ouverte »).\n"
+        "4. Les ARCS : pour chaque personnage nomme dans la bible, d'ou il "
+        "part, dans quelle scene il BASCULE, et ou il arrive. Un personnage "
+        "qui finit comme il a commence n'a pas d'arc — et le protagoniste "
+        "doit en avoir un.\n"
+        "{intrigues}\n"
+        "Schema JSON exact attendu :\n"
+        '{{"beats": [{{"nom": "situation", "evenement": "..."}}], '
+        '"scenes": [{{"titre": "...", "beat": "situation", "lieu": "...", '
+        '"personnages": ["..."], "point_de_vue": "...", "objectif": "...", '
+        '"obstacle": "...", "pivot": "..."}}], '
+        '"fils": [{{"nom": "la lettre non ouverte", "pose": 2, "paye": 11, '
+        '"quoi": "ce que le lecteur voit sans comprendre", '
+        '"paiement": "ce que cela revele"}}], '
+        '"arcs": [{{"personnage": "...", "depart": "...", "bascule": 14, '
+        '"arrivee": "..."}}]{schema_intrigues}}}'
+    ).format(bible=resumer_bible(bible), fin=bible.get("fin_visee") or "libre",
+             armature=armature, n=total, fils=_fils_a_demander(total),
+             intrigues=_consigne_intrigues(total),
+             schema_intrigues=(
+                 ', "intrigues": [{"nom": "...", "personnage": "...", '
+                 '"enjeu": "...", "scenes": [3, 7, 12, 18], '
+                 '"resolution": "comment elle se termine"}]'
+                 if _intrigues_a_demander(total) else ""))
+
+    # Le budget suit la longueur : une grille de vingt-quatre scenes tronquee
+    # a mi-chemin est une grille perdue, et l'appel avec elle.
+    #
+    # Le plancher vient d'une panne reelle. Journal d'un utilisateur, le
+    # 15/09/2026, pour une nouvelle de cinq scenes : l'ancienne formule
+    # accordait 1600 + 5 x 130 = 2250 jetons, et la reponse est revenue
+    # coupee. Le JSON tronque se relit quand meme — en partie — donc rien
+    # n'echouait : la grille perdait ses derniers beats, et le controle de
+    # continuite signalait plus loin « aucune scene ne livre le beat
+    # resolution ». La cause etait a deux etapes de la ou le defaut se
+    # voyait.
+    #
+    # La part fixe de cette grille — les huit beats, les intrigues, la
+    # charpente JSON — ne depend pas du nombre de scenes : c'est le plancher
+    # qui etait trop bas, pas la pente.
+    grille = _grille_ou_retente(ctx, invite, min(8000, 2600 + total * 150))
+    if not isinstance(grille, dict) or not grille.get("scenes"):
+        raise ValueError("Grille de scenes invalide renvoyee par le modele")
+
+    noms = [p["nom"] for p in bible["personnages"]]
+    beats_connus = {nom for nom, _ in BEATS}
+    scenes: List[Dict[str, Any]] = []
+    for brut in grille["scenes"]:
+        if isinstance(brut, str):
+            brut = {"titre": brut}
+        presents = brut.get("personnages") or []
+        if isinstance(presents, str):
+            presents = [presents]
+        # Un personnage invente ici contournerait la bible, qui est la source
+        # de verite : on ne garde que la distribution declaree.
+        presents = [str(p).strip() for p in presents
+                    if _reconnu(str(p), noms)]
+        beat = str(brut.get("beat") or "").strip().lower()
+        scenes.append({
+            "titre": nettoyer_titre(str(brut.get("titre") or "Scene")),
+            "beat": beat if beat in beats_connus else "",
+            "lieu": str(brut.get("lieu") or "").strip(),
+            "personnages": presents or [protagoniste(bible)],
+            "point_de_vue": (str(brut.get("point_de_vue") or "").strip()
+                             or (presents[0] if presents else protagoniste(bible))),
+            "objectif": str(brut.get("objectif") or "").strip(),
+            "obstacle": str(brut.get("obstacle") or "").strip(),
+            "pivot": str(brut.get("pivot") or "").strip(),
+        })
+    grille["scenes"] = scenes[: ctx.nb_chapitres]
+
+    beats = []
+    for brut in grille.get("beats") or []:
+        if not isinstance(brut, dict):
+            continue
+        beats.append({"nom": str(brut.get("nom") or "").strip().lower(),
+                      "evenement": str(brut.get("evenement") or "").strip()})
+    grille["beats"] = beats
+    grille["fils"] = _normaliser_fils(grille.get("fils"), len(grille["scenes"]))
+    grille["arcs"] = _normaliser_arcs(grille.get("arcs"), bible,
+                                      len(grille["scenes"]))
+    grille["intrigues"] = _normaliser_intrigues(
+        grille.get("intrigues"), bible, len(grille["scenes"]))
+    return grille
+
+
+def _consigne_intrigues(total: int) -> str:
+    """La cinquieme consigne, quand le recit a la place de la porter."""
+    combien = _intrigues_a_demander(total)
+    if not combien:
+        return ""
+    return (
+        "5. Les INTRIGUES SECONDAIRES : {combien}. Une intrigue secondaire "
+        "n'est pas un fil tendu — un fil est une promesse ponctuelle, une "
+        "intrigue est une LIGNE, avec son propre debut, sa complication et "
+        "sa fin. Elle appartient a un personnage autre que le protagoniste, "
+        "et elle doit SE RESOUDRE : une intrigue abandonnee en route est le "
+        "defaut le plus frequent d'un recit long.\n"
+        "   Donne les numeros des scenes qui la portent — au moins trois, "
+        "ETALEES sur le recit et non groupees — et comment elle se termine. "
+        "La derniere scene que tu cites est celle de sa resolution.\n"
+    ).format(combien=("une" if combien == 1 else "{}".format(combien)))
+
+
+def _numero_de_scene(valeur: Any, total: int) -> int:
+    """Numero de scene a partir de 1, ou 0 s'il ne designe rien.
+
+    Le modele ecrit parfois « scene 3 » ou « 3 » : on prend le nombre. Un
+    numero hors des bornes ne designe aucune scene, et un fil qui pointe dans
+    le vide vaudrait moins que pas de fil du tout.
+    """
+    if isinstance(valeur, bool):
+        return 0
+    if isinstance(valeur, str):
+        trouve = re.search(r"\d+", valeur)
+        valeur = trouve.group(0) if trouve else ""
+    try:
+        numero = int(valeur)
+    except (TypeError, ValueError):
+        return 0
+    return numero if 1 <= numero <= total else 0
+
+
+def _normaliser_fils(brut: Any, total: int) -> List[Dict[str, Any]]:
+    """Ne garde que les fils qu'une scene peut reellement porter.
+
+    Trois refus, et chacun evite une invite qui ment a la scene : un fil sans
+    nom ne se reconnaitrait pas dans le texte, un fil dont une extremite
+    pointe hors du recit ne serait jamais servi, et un fil paye AVANT d'etre
+    pose demanderait a la scene 3 de reveler ce que la scene 9 n'a pas encore
+    montre.
+    """
+    fils: List[Dict[str, Any]] = []
+    for element in brut or []:
+        if not isinstance(element, dict):
+            continue
+        nom = str(element.get("nom") or "").strip()
+        pose = _numero_de_scene(element.get("pose"), total)
+        paye = _numero_de_scene(element.get("paye"), total)
+        if not nom or not pose or not paye or paye <= pose:
+            continue
+        fils.append({
+            "nom": nom,
+            "pose": pose,
+            "paye": paye,
+            "quoi": str(element.get("quoi") or "").strip(),
+            "paiement": str(element.get("paiement") or "").strip(),
+        })
+    return fils
+
+
+# Une ligne narrative tient sur trois scenes au moins : un debut, une
+# complication, une fin. En dessous, c'est une digression — et l'appeler
+# « intrigue secondaire » ferait croire au controle qu'il en surveille une.
+SCENES_MINIMUM_INTRIGUE = 3
+
+
+def _normaliser_intrigues(brut: Any, bible: Dict[str, Any],
+                          total: int) -> List[Dict[str, Any]]:
+    """Ne garde que les intrigues qui en sont vraiment.
+
+    Trois refus. Une intrigue de moins de trois scenes n'a pas de forme. Une
+    intrigue qui appartient au protagoniste n'est pas secondaire — c'est
+    l'histoire. Une intrigue sans resolution est precisement ce que le
+    controle doit reprocher plus tard : la laisser entrer serait la declarer
+    surveillee alors qu'elle est deja perdue.
+    """
+    heros = protagoniste(bible)
+    noms_connus = [p["nom"] for p in bible["personnages"]]
+    intrigues: List[Dict[str, Any]] = []
+    deja = set()
+    for element in brut or []:
+        if not isinstance(element, dict):
+            continue
+        nom = str(element.get("nom") or "").strip()
+        if not nom or nom.lower() in deja:
+            continue
+        scenes = []
+        for valeur in element.get("scenes") or []:
+            numero = _numero_de_scene(valeur, total)
+            if numero and numero not in scenes:
+                scenes.append(numero)
+        scenes.sort()
+        if len(scenes) < SCENES_MINIMUM_INTRIGUE:
+            continue
+        personnage = str(element.get("personnage") or "").strip()
+        officiel = personnage_officiel(personnage, noms_connus)
+        if officiel == heros:
+            continue
+        resolution = str(element.get("resolution") or "").strip()
+        if not resolution:
+            continue
+        deja.add(nom.lower())
+        intrigues.append({
+            "nom": nom,
+            "personnage": officiel,
+            "enjeu": str(element.get("enjeu") or "").strip(),
+            "scenes": scenes,
+            "resolution": resolution,
+        })
+    return intrigues
+
+
+def _normaliser_arcs(brut: Any, bible: Dict[str, Any],
+                     total: int) -> List[Dict[str, Any]]:
+    """Un arc par personnage de la bible, au plus. La bible fait foi."""
+    noms = [p["nom"] for p in bible["personnages"]]
+    arcs: List[Dict[str, Any]] = []
+    deja = set()
+    for element in brut or []:
+        if not isinstance(element, dict):
+            continue
+        personnage = str(element.get("personnage") or "").strip()
+        officiel = personnage_officiel(personnage, noms)
+        if not officiel or officiel in deja:
+            continue
+        depart = str(element.get("depart") or "").strip()
+        arrivee = str(element.get("arrivee") or "").strip()
+        # Un personnage qui finit comme il a commence n'a pas d'arc : le
+        # noter comme s'il en avait un ferait mentir le controle.
+        if not depart or not arrivee or depart.lower() == arrivee.lower():
+            continue
+        deja.add(officiel)
+        arcs.append({
+            "personnage": officiel,
+            "depart": depart,
+            "bascule": _numero_de_scene(element.get("bascule"), total),
+            "arrivee": arrivee,
+        })
+    return arcs
+
+
+def _bloc(texte: str) -> str:
+    """Une section d'invite, ou rien du tout si elle est vide.
+
+    Une rubrique vide dans une invite n'est pas neutre : le modele y repond
+    quand meme, en inventant de quoi la remplir.
+    """
+    return "{}\n".format(texte) if texte else ""
+
+
+def _normaliser(texte: str) -> str:
+    sans_accent = unicodedata.normalize("NFKD", texte)
+    return sans_accent.encode("ascii", "ignore").decode("ascii").lower()
+
+
+def personnage_officiel(nom: str, connus: List[str]) -> str:
+    """Le nom de la bible que designe « nom », ou une chaine vide.
+
+    Prendre le PREMIER nom qui partage un mot ne suffit pas : « Lucie
+    Renard » partage « Renard » avec « Camille Renard », et serait donc prise
+    pour sa mere. On retient donc le candidat qui partage le PLUS de mots,
+    ce qui fait gagner le nom complet sur l'homonyme partiel.
+
+    Le defaut se voyait mal : une intrigue secondaire portee par la fille
+    etait silencieusement rejetee comme etant celle du protagoniste.
+    """
+    mots_cible = set(_normaliser(nom).split())
+    if not mots_cible:
+        return ""
+    meilleur, score = "", 0
+    for connu in connus:
+        commun = len(mots_cible & set(_normaliser(connu).split()))
+        if commun > score:
+            meilleur, score = connu, commun
+    return meilleur
+
+
+def _reconnu(nom: str, connus: List[str]) -> bool:
+    """Un nom de la bible, meme cite par un seul de ses mots.
+
+    La comparaison se fait mot a mot, jamais par sous-chaine : « Alex » ne
+    doit pas reconnaitre « Alexandra », qui serait un autre personnage.
+    """
+    mots_cible = set(_normaliser(nom).split())
+    if not mots_cible:
+        return False
+    for connu in connus:
+        mots_connus = set(_normaliser(connu).split())
+        if mots_cible & mots_connus:
+            return True
+    return False
+
+
+# --------------------------------------------------------------------------
+# 3. La memoire : resume roulant
+# --------------------------------------------------------------------------
+
+
+def mettre_a_jour_resume(ctx: Contexte, etat: str, intitule: str,
+                         texte: str, long_contexte: bool = False) -> str:
+    """Reecrit l'etat de l'histoire apres du texte. C'est LA memoire.
+
+    Un appel court par scene. C'est le surcout de cette chaine par rapport a
+    l'ebook, et c'est ce qu'on achete : sans lui, la scene 9 ne sait pas que
+    le personnage a quitte la ville a la scene 4.
+
+    La meme fonction ferme une partie : on lui passe alors tout le texte de
+    la partie et son intitule. Ce qu'on demande au modele est identique —
+    condenser du recit en un etat — et l'ecrire deux fois donnerait deux
+    consignes qui finiraient par diverger.
+
+    Rend une chaine vide si le modele n'a rien dit d'exploitable : c'est
+    l'appelant qui sait par quoi remplacer un etat perdu.
+    """
+    invite = (
+        "Voici l'etat d'une fiction en cours, puis le texte qui vient d'etre "
+        "ecrit.\n\n"
+        "ETAT JUSQU'ICI :\n{etat}\n\n"
+        "TEXTE A INTEGRER — {intitule} :\n{texte}\n\n"
+        "Reecris l'ETAT COMPLET a jour, en {mots} mots maximum, au present, "
+        "purement factuel : qui est ou, ce qui a change, ce qui reste en "
+        "suspens et qui devra etre paye plus tard. Pas de jugement, pas de "
+        "style, pas de titre. Uniquement le texte de l'etat."
+    ).format(etat=etat or "(rien encore : l'histoire commence)",
+             intitule=intitule or "la suite",
+             texte=texte[:24000 if long_contexte else 6000],
+             mots=MOTS_RESUME)
+
+    # Fermer une partie condense plusieurs scenes d'un coup : c'est le seul
+    # appel de l'usine qui gagne vraiment a un modele de long contexte, et le
+    # seul ou tronquer la matiere a six mille caracteres perdait des scenes
+    # entieres. Les fournisseurs sans modele dedie retombent sur « standard ».
+    # Le plafond vient du NOMBRE DE MOTS demande, pas d'un chiffre choisi.
+    # Il valait 320 pour une consigne de 90 mots — soit 234 jetons de contenu
+    # en francais, et 86 de marge. Journal reel du 16/09/2026 : coupe a chaque
+    # scene, dix-huit fois de suite, sans exception. « jetons_pour » existe
+    # pour cette conversion et porte deja la marge ; l'oublier ici revenait a
+    # recopier le calcul de travers.
+    reponse = equipe.SCENARISTE.travailler(
+        ctx, invite, max_tokens=jetons_pour(MOTS_RESUME),
+        # « creatif » quand il s'agit d'ecrire la scene, « long » quand il
+        # s'agit de fermer une partie entiere : ce ne sont pas les memes
+        # qualites, et les fournisseurs bien pourvus servent les deux.
+        role_modele="long" if long_contexte else "creatif")
+    propre = elaguer_markdown(reponse.texte).strip()
+    return propre if len(propre) >= 40 else ""
+
+
+def redacteur_pour(ctx: Contexte, scene: Dict[str, Any]) -> M.Redacteur:
+    """La fonction que la memoire appelle pour rediger un etat.
+
+    Elle porte le repli : un etat vide ou aberrant ferait perdre la memoire
+    pour toutes les scenes suivantes, ce qui est exactement le defaut que
+    cette chaine existe pour corriger.
+    """
+    def redacteur(etat: str, texte: str, intitule: str = "") -> str:
+        # Une fermeture de partie s'annonce par son intitule : c'est elle qui
+        # recoit tout le texte d'un bloc, et elle seule.
+        partie = intitule.startswith("Partie ")
+        propre = mettre_a_jour_resume(ctx, etat, intitule or scene["titre"],
+                                      texte, long_contexte=partie)
+        return propre or _memoire_de_secours(etat, scene)
+
+    return redacteur
+
+
+def _memoire_de_secours(memoire: str, scene: Dict[str, Any]) -> str:
+    """Memoire deterministe, quand le modele ne repond pas ou que le budget tombe.
+
+    Elle vaut moins qu'un vrai resume, mais elle porte l'essentiel : le pivot
+    annonce par la grille. Perdre la memoire entierement ferait repartir les
+    scenes suivantes de zero, ce qui est exactement le defaut que cette chaine
+    existe pour corriger.
+    """
+    pivot = scene.get("pivot") or scene.get("objectif") or ""
+    ajout = "Apres « {} » : {}".format(scene["titre"], pivot).strip(" :")
+    if not memoire:
+        return ajout
+    return "{}\n{}".format(memoire, ajout)
+
+
+# --------------------------------------------------------------------------
+# 4. Les scenes
+# --------------------------------------------------------------------------
+
+
+def fils_de_la_scene(grille: Dict[str, Any], index: int) -> Dict[str, List[Dict]]:
+    """Ce que cette scene doit poser, ce qu'elle doit payer, ce qui pend.
+
+    L'index est celui de la scene, a partir de 0 ; les fils comptent a partir
+    de 1. Un fil « en suspens » a ete pose avant et n'est pas encore paye :
+    la scene n'a pas a le resoudre, mais elle ne doit pas l'oublier.
+    """
+    numero = index + 1
+    return {
+        "poser": [f for f in grille.get("fils", []) if f["pose"] == numero],
+        "payer": [f for f in grille.get("fils", []) if f["paye"] == numero],
+        "suspens": [f for f in grille.get("fils", [])
+                    if f["pose"] < numero < f["paye"]],
+    }
+
+
+def _consignes_de_fils(fils: Dict[str, List[Dict]]) -> str:
+    """Les fils, tels qu'ils entrent dans l'invite de la scene."""
+    lignes = []
+    for fil in fils["poser"]:
+        lignes.append(
+            "A POSER dans cette scene — « {} » : {}. Montre-le sans "
+            "l'expliquer : le lecteur doit le remarquer sans comprendre "
+            "encore.".format(fil["nom"], fil["quoi"] or "a toi de le montrer"))
+    for fil in fils["payer"]:
+        lignes.append(
+            "A PAYER dans cette scene — « {} » : {}. C'est ici que cela "
+            "prend son sens.".format(
+                fil["nom"], fil["paiement"] or "revele ce que cela signifiait"))
+    if fils["suspens"]:
+        lignes.append("EN SUSPENS (ne les resous pas ici, ne les oublie pas) : "
+                      + " ; ".join('« {} »'.format(f["nom"])
+                                   for f in fils["suspens"]))
+    return "\n".join(lignes)
+
+
+def intrigue_de_la_scene(grille: Dict[str, Any],
+                         index: int) -> List[Dict[str, Any]]:
+    """Les intrigues secondaires que cette scene fait avancer."""
+    numero = index + 1
+    return [i for i in grille.get("intrigues", []) if numero in i["scenes"]]
+
+
+def _consignes_d_intrigue(grille: Dict[str, Any], index: int) -> str:
+    """L'intrigue secondaire, telle qu'elle entre dans l'invite.
+
+    La scene doit savoir deux choses : qu'elle porte cette ligne, et si c'est
+    ICI qu'elle se termine. Une resolution qui arrive sans que la scene le
+    sache est une resolution qui n'arrive pas.
+    """
+    numero = index + 1
+    lignes = []
+    for intrigue in intrigue_de_la_scene(grille, index):
+        derniere = intrigue["scenes"][-1] == numero
+        role = ("Elle SE RESOUT ici : {}".format(intrigue["resolution"])
+                if derniere else
+                "Fais-la avancer d'un cran, sans la resoudre : elle se "
+                "termine a la scene {}.".format(intrigue["scenes"][-1]))
+        lignes.append(
+            "INTRIGUE SECONDAIRE portee par cette scene — « {nom} »"
+            "{qui} : {enjeu}. {role}".format(
+                nom=intrigue["nom"],
+                qui=" ({})".format(intrigue["personnage"])
+                    if intrigue["personnage"] else "",
+                enjeu=intrigue["enjeu"] or "a toi de la tenir",
+                role=role))
+    return "\n".join(lignes)
+
+
+def _consigne_d_arc(grille: Dict[str, Any], index: int) -> str:
+    """La bascule d'un personnage, quand elle tombe dans cette scene."""
+    numero = index + 1
+    bascules = [a for a in grille.get("arcs", []) if a["bascule"] == numero]
+    return "\n".join(
+        "BASCULE de {} dans cette scene : il/elle passe de « {} » a "
+        "« {} ». C'est le moment ou cela change, pas une explication.".format(
+            arc["personnage"], arc["depart"], arc["arrivee"])
+        for arc in bascules)
+
+
+def rediger_scene(ctx: Contexte, bible: Dict[str, Any], grille: Dict[str, Any],
+                  index: int, scene: Dict[str, Any], memoire: str,
+                  fin_precedente: str = "") -> Tuple[str, str]:
+    """Redige une scene. Renvoie (markdown, fournisseur utilise).
+
+    « memoire » est le texte deja mis en forme par l'objet memoire : un etat
+    unique pour une nouvelle, des parties closes plus l'etat courant pour un
+    texte long. La scene n'a pas a savoir laquelle des deux la nourrit.
+    """
+    total = len(grille["scenes"])
+    beat = next((b for b in grille.get("beats", [])
+                 if b["nom"] == scene["beat"]), None)
+    reste = [s["titre"] for s in grille["scenes"][index + 1:]][:3]
+
+    invite = (
+        "Ecris la scene {num} sur {total} d'une nouvelle.\n\n"
+        "--- BIBLE (source de verite, ne la contredis jamais) ---\n{bible}\n\n"
+        "--- CE QUI S'EST PASSE JUSQU'ICI ---\n{memoire}\n\n"
+        "--- LA SCENE A ECRIRE ---\n"
+        "TITRE : {titre}\n"
+        "BEAT : {beat}\n"
+        "LIEU : {lieu}\n"
+        "PRESENTS : {presents}\n"
+        "POINT DE VUE : {pdv}\n"
+        "CE QUE {pdv} VEUT ICI : {objectif}\n"
+        "OBSTACLE : {obstacle}\n"
+        "PIVOT (vrai a la fin, faux au debut) : {pivot}\n"
+        "{promesse}"
+        "{fils}"
+        "{intrigue}"
+        "{arc}"
+        "{fin_precedente}"
+        "SCENES SUIVANTES (ne les ecris pas, laisse-leur la place) : {reste}\n\n"
+        "Consignes :\n"
+        "- Environ {mots} mots.\n"
+        "- Prose narrative. Dialogues bienvenus. Chaque personnage parle avec "
+        "la voix que lui donne la bible.\n"
+        "- MONTRE : un geste, un objet, une replique valent mieux qu'une "
+        "phrase qui explique ce que le personnage ressent.\n"
+        "- Entre dans la scene le plus tard possible et sors-en le plus tot "
+        "possible.\n"
+        "- Le pivot doit avoir eu lieu quand la scene se termine.\n"
+        "- N'ecris AUCUN titre, ni de niveau 1 ni de niveau 2 : le titre de "
+        "la scene est ajoute automatiquement.\n"
+        "- Pas de liste, pas de sous-titre, pas de « A retenir » : c'est une "
+        "histoire, pas un guide.\n"
+        "- Ne resume pas ce qui precede : le lecteur l'a lu.\n"
+        "- Reponds uniquement par le texte de la scene."
+    ).format(
+        num=index + 1, total=total, bible=resumer_bible(bible),
+        memoire=memoire or "(rien : c'est la premiere scene)",
+        titre=scene["titre"],
+        beat="{} — {}".format(scene["beat"] or "libre",
+                              beat["evenement"] if beat else ""),
+        lieu=scene["lieu"] or "libre",
+        presents=", ".join(scene["personnages"]),
+        pdv=scene["point_de_vue"],
+        objectif=scene["objectif"] or "libre",
+        obstacle=scene["obstacle"] or "libre",
+        pivot=scene["pivot"] or "libre",
+        promesse=fiction.consignes_de_scene(ctx),
+        fils=_bloc(_consignes_de_fils(fils_de_la_scene(grille, index))),
+        intrigue=_bloc(_consignes_d_intrigue(grille, index)),
+        arc=_bloc(_consigne_d_arc(grille, index)),
+        fin_precedente=("FIN DE LA SCENE PRECEDENTE (enchaine dessus, ne la "
+                        "repete pas) : « ...{} »\n".format(fin_precedente)
+                        if fin_precedente else ""),
+        reste=" | ".join(reste) or "aucune",
+        mots=ctx.mots_par_chapitre,
+    )
+
+    reponse = equipe.ROMANCIER.travailler(
+        ctx, invite, max_tokens=jetons_pour(ctx.mots_par_chapitre))
+    # TOUS les titres, pas seulement ceux du debut. Le titre de la scene est
+    # ajoute par la chaine ; un titre laisse dans le corps en fabrique un
+    # second, qui entre au sommaire du PDF et dans la navigation de l'EPUB.
+    #
+    # Mesure du 15/09/2026, avec un modele qui place « ## Le principe de
+    # base » au milieu de chaque scene : une nouvelle annoncant trois scenes
+    # rendait SIX entrees. La consigne interdit deja ces titres — ce qui
+    # suit rattrape le modele qui ne l'ecoute pas, et l'ancienne version ne
+    # rattrapait que le cas ou il commencait par la.
+    return sans_titres(elaguer_markdown(reponse.texte)), reponse.fournisseur
+
+
+# --------------------------------------------------------------------------
+# 5. Controle de continuite — deterministe, gratuit, instantane
+# --------------------------------------------------------------------------
+
+
+def _apparait(nom: str, texte: str) -> bool:
+    """Le personnage est-il nomme dans ce texte ?
+
+    On cherche chaque mot du nom separement : la bible dit « Madame Rivet »,
+    le texte ecrit « Rivet ». Exiger le nom complet ferait declarer absent un
+    personnage present a chaque page.
+
+    Le prix de ce choix est assume : deux personnages qui partagent un nom de
+    famille se reconnaissent l'un l'autre, et une mere citee seule marque sa
+    fille comme presente. Le controle rate alors une absence au lieu d'en
+    inventer une — c'est le bon sens de l'erreur pour un garde-fou qui doit
+    etre cru quand il parle.
+    """
+    normalise = _normaliser(texte)
+    morceaux = [m for m in _normaliser(nom).split() if len(m) >= 3]
+    if not morceaux:
+        return False
+    return any(re.search(r"\b{}\b".format(re.escape(m)), normalise)
+               for m in morceaux)
+
+
+def _evoque(nom_du_fil: str, texte: str) -> bool:
+    """Le texte parle-t-il de ce fil ?
+
+    On cherche les mots PORTEURS du nom — « la lettre non ouverte » se
+    reconnait a « lettre », pas a « la » ni a « non ». Il suffit qu'un seul
+    apparaisse : une scene qui paie un fil le nomme rarement mot pour mot.
+
+    Le compromis est le meme que pour les personnages : le controle rate
+    parfois un fil bel et bien paye autrement (« l'enveloppe » pour « la
+    lettre »), mais il n'en invente jamais un qui manque. Un garde-fou qui
+    crie a tort finit ignore, ce qui est pire que de se taire.
+    """
+    porteurs = [m for m in _normaliser(nom_du_fil).split() if len(m) >= 5]
+    if not porteurs:
+        porteurs = [m for m in _normaliser(nom_du_fil).split() if len(m) >= 3]
+    if not porteurs:
+        return True  # rien d'exploitable : on ne reproche rien
+    normalise = _normaliser(texte)
+    return any(re.search(r"\b{}".format(re.escape(mot)), normalise)
+               for mot in porteurs)
+
+
+def _proximite(a: str, b: str) -> float:
+    """Recouvrement de vocabulaire entre deux resumes successifs."""
+    mots_a = {m for m in ctrl.mots(a) if len(m) >= 5}
+    mots_b = {m for m in ctrl.mots(b) if len(m) >= 5}
+    if not mots_a or not mots_b:
+        return 0.0
+    return len(mots_a & mots_b) / len(mots_a | mots_b)
+
+
+def controler_continuite(bible: Dict[str, Any], grille: Dict[str, Any],
+                         scenes: List[Tuple[str, str]],
+                         memoires: List[str],
+                         redigees: Optional[List[bool]] = None,
+                         serie: str = "", langue: str = "fr") -> Dict[str, Any]:
+    """Relit la bible contre le texte reellement ecrit.
+
+    Ce sont les defauts propres a la fiction generee, et aucun ne demande un
+    appel de modele pour etre vu : un personnage annonce puis oublie, une
+    scene ou la distribution n'est pas la, un resume qui n'avance plus, un
+    beat que la grille promet et qu'aucune scene ne livre.
+
+    « redigees » dit quelles scenes ont vraiment ete ecrites. Quand un plafond
+    de budget tombe, les suivantes sont reduites a leur fiche et la memoire
+    passe en secours : leur reprocher de ne pas faire avancer l'histoire
+    reviendrait a blamer le recit pour notre propre degradation. Le rapport le
+    dit autrement, et une fois.
+    """
+    ecrites = redigees if redigees is not None else [True] * len(scenes)
+    anomalies: List[Dict[str, str]] = []
+    texte_entier = "\n".join(corps for _, corps in scenes)
+    heros = protagoniste(bible)
+
+    # -- 1. un personnage declare mais jamais apparu ------------------------
+    for personnage in bible["personnages"]:
+        if not _apparait(personnage["nom"], texte_entier):
+            anomalies.append({
+                "genre": "personnage_absent",
+                "gravite": "majeur" if personnage["role"].startswith("protagon")
+                           else "mineur",
+                "detail": "« {} » ({}) est dans la bible mais n'apparait dans "
+                          "aucune scene".format(personnage["nom"],
+                                                personnage["role"]),
+            })
+
+    # -- 2. le protagoniste doit porter l'histoire --------------------------
+    if scenes:
+        presences = sum(1 for _, corps in scenes if _apparait(heros, corps))
+        part = presences / len(scenes)
+        if part < 0.6:
+            anomalies.append({
+                "genre": "protagoniste_efface",
+                "gravite": "majeur",
+                "detail": "« {} » n'est present que dans {} scene(s) sur "
+                          "{}".format(heros, presences, len(scenes)),
+            })
+
+    # -- 3. une scene sans personne de la distribution ----------------------
+    noms = [p["nom"] for p in bible["personnages"]]
+    for titre, corps in scenes:
+        if not any(_apparait(nom, corps) for nom in noms):
+            anomalies.append({
+                "genre": "scene_hors_distribution",
+                "gravite": "majeur",
+                "detail": "aucun personnage de la bible n'est nomme dans "
+                          "« {} »".format(titre),
+            })
+
+    # -- 4. un resume qui n'avance plus -------------------------------------
+    for index in range(1, len(memoires)):
+        if index < len(ecrites) and not ecrites[index]:
+            continue
+        if _proximite(memoires[index - 1], memoires[index]) > 0.92:
+            titre = scenes[index][0] if index < len(scenes) else "?"
+            anomalies.append({
+                "genre": "scene_sans_pivot",
+                "gravite": "mineur",
+                "detail": "l'etat de l'histoire n'a pas bouge apres "
+                          "« {} »".format(titre),
+            })
+
+    # -- 5. un tournant indispensable que rien ne livre ---------------------
+    livres = {s["beat"] for s in grille.get("scenes", []) if s.get("beat")}
+    for nom in BEATS_ESSENTIELS:
+        if nom not in livres:
+            anomalies.append({
+                "genre": "beat_non_livre",
+                "gravite": "majeur",
+                "detail": "aucune scene ne livre le beat « {} »".format(nom),
+            })
+
+    # -- 6. les fils tendus : poses, payes, ou oublies ----------------------
+    for fil in grille.get("fils", []):
+        rang = fil["paye"] - 1
+        if rang >= len(scenes):
+            continue
+        if rang < len(ecrites) and not ecrites[rang]:
+            continue  # scene non redigee : deja dit ailleurs, une fois
+        if not _evoque(fil["nom"], scenes[rang][1]):
+            anomalies.append({
+                "genre": "fil_non_paye",
+                "gravite": "majeur",
+                "detail": "le fil « {} » devait etre paye dans « {} », qui "
+                          "n'en dit rien".format(fil["nom"], scenes[rang][0]),
+            })
+        depart = fil["pose"] - 1
+        if depart < len(scenes) and depart < len(ecrites) and ecrites[depart]:
+            if not _evoque(fil["nom"], scenes[depart][1]):
+                anomalies.append({
+                    "genre": "fil_non_pose",
+                    "gravite": "mineur",
+                    "detail": "le fil « {} » devait etre pose dans « {} », qui "
+                              "n'en dit rien".format(fil["nom"],
+                                                     scenes[depart][0]),
+                })
+
+    # -- 7. les arcs : un protagoniste qui finit ou il a commence -----------
+    heros_a_un_arc = any(a["personnage"] == heros for a in grille.get("arcs", []))
+    if grille.get("arcs") is not None and not heros_a_un_arc:
+        anomalies.append({
+            "genre": "protagoniste_sans_arc",
+            "gravite": "majeur",
+            "detail": "« {} » traverse l'histoire sans changer : aucun arc ne "
+                      "lui est attache".format(heros),
+        })
+    for arc in grille.get("arcs", []):
+        rang = arc["bascule"] - 1
+        if not arc["bascule"] or rang >= len(scenes):
+            anomalies.append({
+                "genre": "bascule_hors_recit",
+                "gravite": "mineur",
+                "detail": "la bascule de « {} » ne tombe dans aucune "
+                          "scene".format(arc["personnage"]),
+            })
+            continue
+        if rang < len(ecrites) and not ecrites[rang]:
+            continue
+        if not _apparait(arc["personnage"], scenes[rang][1]):
+            anomalies.append({
+                "genre": "bascule_sans_le_personnage",
+                "gravite": "majeur",
+                "detail": "« {} » doit basculer dans « {} », ou il n'apparait "
+                          "pas".format(arc["personnage"], scenes[rang][0]),
+            })
+
+    # -- 8. les intrigues secondaires : tenues, ou abandonnees en route -----
+    for intrigue in grille.get("intrigues", []):
+        portantes = [n for n in intrigue["scenes"] if n - 1 < len(scenes)]
+        muettes = [n for n in portantes
+                   if (n - 1 >= len(ecrites) or ecrites[n - 1])
+                   and not _evoque(intrigue["nom"], scenes[n - 1][1])]
+        if not portantes:
+            continue
+        derniere = portantes[-1]
+        redigee = derniere - 1 >= len(ecrites) or ecrites[derniere - 1]
+        if redigee and derniere in muettes:
+            # C'est LE defaut d'un recit long : une ligne ouverte, suivie
+            # quelques scenes, puis laissee tomber sans que rien ne la ferme.
+            anomalies.append({
+                "genre": "intrigue_abandonnee",
+                "gravite": "majeur",
+                "detail": "l'intrigue « {} » devait se resoudre dans « {} », "
+                          "qui n'en dit rien".format(intrigue["nom"],
+                                                     scenes[derniere - 1][0]),
+            })
+        autres = [n for n in muettes if n != derniere]
+        if autres:
+            anomalies.append({
+                "genre": "intrigue_muette",
+                "gravite": "mineur",
+                "detail": "l'intrigue « {} » est annoncee dans {} scene(s) qui "
+                          "n'en parlent pas".format(intrigue["nom"], len(autres)),
+            })
+
+    # -- 9. ce que l'usine n'a pas ecrit, dit une fois et sans detour -------
+    manquantes = [titre for (titre, _), ecrite in zip(scenes, ecrites)
+                  if not ecrite]
+    if manquantes:
+        anomalies.append({
+            "genre": "scene_non_redigee",
+            "gravite": "majeur",
+            "detail": "{} scene(s) reduites a leur fiche faute de budget : "
+                      "{}".format(len(manquantes), ", ".join(manquantes[:3])),
+        })
+
+    # -- 13. ce que le texte affirme de deux facons incompatibles -----------
+    # Les douze controles precedents lisent la charpente. Celui-ci lit les
+    # phrases : une heroine aux yeux verts scene deux et aux yeux bleus scene
+    # neuf ne casse aucune structure, et c'est pourtant l'erreur que les
+    # lecteurs relevent le plus. Voir pipelines/faits.py.
+    registre = faits.controler(scenes, [p["nom"] for p in bible["personnages"]])
+    for contradiction in registre["contradictions"]:
+        anomalies.append({
+            "genre": contradiction["genre"],
+            "gravite": contradiction["gravite"],
+            "detail": contradiction["detail"],
+            # Sans les deux citations, verifier la contradiction demande de
+            # relire le livre : personne ne le fait, et l'alerte est ignoree.
+            "preuves": contradiction["preuves"],
+        })
+
+    # -- 13 bis. ce que les tomes precedents avaient etabli -----------------
+    # Le registre ci-dessus compare le texte a lui-meme. Celui-ci le compare
+    # a la serie : une heroine aux yeux verts au tome 1 ne les a pas bleus au
+    # tome 3. C'est la contradiction la plus couteuse, parce qu'elle se voit
+    # chez le seul lecteur qui comptait vraiment — celui qui a achete le
+    # premier tome et qui revient.
+    if serie:
+        anomalies.extend(module_serie.contradictions(serie, registre["canon"]))
+
+    # -- 14. qui prend la parole -------------------------------------------
+    # La bible donne une voix a chaque personnage et cette voix part dans
+    # l'invite de chaque scene. Rien ne verifiait qu'elle avait ete tenue —
+    # une consigne emise, jamais relue. Voir pipelines/voix.py, qui mesure ce
+    # qui se mesure et s'abstient de juger le reste.
+    parole = voix.controler(scenes, bible["personnages"], langue=langue)
+    anomalies.extend(parole["anomalies"])
+
+    graves = [a for a in anomalies if a["gravite"] == "majeur"]
+    return {
+        "anomalies": anomalies,
+        "majeures": len(graves),
+        "scenes": len(scenes),
+        "personnages": len(bible["personnages"]),
+        "faits_releves": registre["faits"],
+        # Le canon du tome : un fait par personnage et par attribut. C'est ce
+        # que la serie retient, et ce a quoi le tome suivant sera compare.
+        "canon": registre["canon"],
+        "parole": {"repliques": parole["repliques"],
+                   "profils": parole["profils"],
+                   "comparables": parole["comparables"]},
+        "resume": ("continuite tenue" if not anomalies else
+                   "{} anomalie(s) de continuite, dont {} majeure(s)".format(
+                       len(anomalies), len(graves))),
+    }
+
+
+# --------------------------------------------------------------------------
+# 6. La chaine
+# --------------------------------------------------------------------------
+
+
+# Ce qu'un roman demande et qu'une nouvelle ne demande pas. Ce ne sont pas des
+# valeurs arbitraires : en dessous de 40 000 mots, le marche ne parle plus de
+# roman (voir FORMATS_FICTION), et 30 scenes de 1 400 mots y arrivent tout
+# juste. La memoire hierarchique s'enclenche d'elle-meme a cette longueur — un
+# resume plat ne porte pas trente scenes.
+ROMAN_SCENES, ROMAN_MOTS = 30, 1400
+
+
+def produire_roman(ctx: Contexte, serie: str = "",
+                   chapitres: int = 0) -> Dict[str, Any]:
+    """Un roman : la meme chaine, une autre echelle.
+
+    Le roman etait deja fabricable — « usine nouvelle --chapitres 40 » — et
+    donc invisible : il ne figurait ni au catalogue, ni au menu, ni au tableau
+    de bord. Personne ne devine une fonctionnalite qui n'a pas de nom.
+
+    Ce n'est pas une chaine de plus : ce serait deux chaines de fiction a
+    maintenir, et elles divergeraient. C'est la meme, avec l'echelle que le
+    format demande quand l'utilisateur ne l'a pas fixee lui-meme.
+    """
+    # « chapitres » arrive du catalogue (la question posee par le menu et par
+    # le tableau de bord) ; « ctx.chapitres » arrive de la ligne de commande.
+    # Le premier des deux qui est renseigne gagne, et a defaut le format
+    # decide — un roman n'a pas a se declarer en nombre de scenes.
+    if chapitres:
+        ctx.chapitres = int(chapitres)
+    if not ctx.chapitres:
+        ctx.chapitres = ROMAN_SCENES
+    if not ctx.mots_section:
+        ctx.mots_section = ROMAN_MOTS
+    # Le genre suit jusqu'au bout : sans lui, le roman s'enregistrait au
+    # catalogue comme une nouvelle, s'affichait comme une nouvelle dans
+    # « usine liste », et son dossier s'appelait « nouvelle-... ». Ce qu'on
+    # demande et ce qu'on retrouve doivent porter le meme nom.
+    return produire(ctx, serie=serie, genre="roman")
+
+
+def produire(ctx: Contexte, serie: str = "",
+             genre: str = "nouvelle") -> Dict[str, Any]:
+    """Produit la nouvelle complete et renvoie un resume des fichiers generes.
+
+    « serie » range le recit dans une suite. Le tome recoit alors ce que les
+    precedents ont etabli — le monde, la distribution, les faits — et le
+    controle de continuite compare le texte a ce canon en plus de le comparer
+    a lui-meme. Une serie inconnue se cree au premier tome : il n'y a rien a
+    declarer d'avance.
+    """
+    vise = ctx.nb_chapitres * ctx.mots_par_chapitre
+    ctx.journal("Format visé : {} — {} scènes, environ {} mots.".format(
+        format_fiction(vise), ctx.nb_chapitres, vise))
+    rappel = module_serie.rappel(serie) if serie else ""
+    rang_prevu = module_serie.prochain_rang(serie) if serie else 0
+    if serie:
+        ctx.journal("Série « {} » — tome {}{}".format(
+            serie, rang_prevu,
+            "" if rang_prevu == 1 else " (le monde et la distribution sont repris)"))
+    ctx.journal("Étape 1/5 — la bible : distribution, cadre, enjeu...")
+    # Une reprise repart de la bible et de la grille du carnet. Les
+    # reconstruire changerait la distribution, le cadre et l'ordre des beats
+    # sous les scenes deja ecrites — c'est-a-dire exactement la continuite que
+    # cette chaine existe pour tenir.
+    repris = carnet.plan(ctx.dossier) if ctx.dossier and ctx.dossier.name else None
+    bible = (repris or {}).get("bible") or construire_bible(ctx, rappel)
+    titre = bible["titre"]
+    dossier = preparer(ctx, genre, titre)
+    ctx.etape("bible", "ok", "{} personnage(s)".format(len(bible["personnages"])))
+    ctx.journal('  Titre retenu : « {} »'.format(titre))
+    ctx.journal("  Distribution : {}".format(
+        ", ".join(p["nom"] for p in bible["personnages"])))
+
+    ctx.journal("Étape 2/5 — la grille de beats...")
+    grille = (repris or {}).get("grille") or construire_grille(ctx, bible)
+    if repris:
+        ctx.journal("  Reprise : bible, grille et {} scène(s) déjà au carnet."
+                    .format(carnet.compte(dossier)))
+    carnet.noter_plan(dossier, {"bible": bible, "grille": grille,
+                                "chapitres": grille.get("scenes") or []})
+    scenes_prevues = grille["scenes"]
+    total = len(scenes_prevues)
+    ctx.etape("grille", "ok", "{} scene(s)".format(total))
+    (dossier / "bible.json").write_text(
+        json.dumps({"bible": bible, "grille": grille}, ensure_ascii=False,
+                   indent=2), encoding="utf-8")
+
+    alertes = securite.analyser_sujet(ctx.sujet)
+    for domaine, avertissement in alertes:
+        ctx.journal("  [!] domaine sensible « {} » : {}".format(domaine, avertissement))
+        evenements.publier("alerte", domaine=domaine, detail=avertissement)
+
+    ctx.journal("Étape 3/5 — rédaction des {} scènes...".format(total))
+    passes = ctx.nb_passes
+    sections: List[Tuple[str, str]] = []
+    memoires: List[str] = []
+    redigees: List[bool] = []
+    local: Dict[str, List[ctrl.Controle]] = {}
+    # Un resume de taille fixe est un tampon : au-dela d'une douzaine de
+    # scenes, les plus anciennes en sortent, quelle que soit la qualite du
+    # modele. Mesure dans tests/test_memoire.py, expliquee dans docs/FICTION.md.
+    memoire = M.choisir(total, MOTS_RESUME)
+    if isinstance(memoire, M.MemoireHierarchique):
+        ctx.journal("  mémoire hiérarchique : parties de {} scènes "
+                    "(un résumé plat n'en porte que {})".format(
+                        memoire.scenes_par_partie, M.capacite(MOTS_RESUME)))
+    budget_epuise = False
+    manquants: List[str] = []
+
+    for index, scene in enumerate(scenes_prevues):
+        ctx.journal("  [{}/{}] {}".format(index + 1, total, scene["titre"]))
+        evenements.publier("section", etape="redaction", index=index + 1,
+                           total=total, titre=scene["titre"])
+        repere = "scene-{}".format(index + 1)
+        deja = carnet.section(dossier, repere)
+        if deja:
+            # La memoire doit quand meme avancer : c'est elle qui porte la
+            # continuite des scenes suivantes. On la nourrit du texte relu,
+            # sans repayer le resume.
+            sections.append(deja)
+            replier_memoire(memoire, scene, index, total)
+            memoires.append(memoire.etat_courant())
+            redigees.append(True)
+            ctx.journal("     déjà écrite — reprise du carnet")
+            ctx.etape(repere, "ok", deja[0])
+            continue
+        if budget_epuise:
+            sections.append((scene["titre"], repli_de_scene(scene)))
+            replier_memoire(memoire, scene, index, total)
+            memoires.append(memoire.etat_courant())
+            redigees.append(False)
+            manquants.append(repere)
+            ctx.etape(repere, "echec", "plus rien a demander")
+            continue
+
+        fin_precedente = sections[-1][1][-320:] if sections else ""
+        try:
+            corps, auteur = rediger_scene(ctx, bible, grille, index, scene,
+                                          memoire.pour_invite(), fin_precedente)
+        except PLUS_RIEN_A_DEMANDER as exc:
+            budget_epuise = True
+            manquants.append(repere)
+            ctx.journal("     {} — scènes restantes réduites à leur fiche".format(exc))
+            ctx.etape(repere, "echec", str(exc))
+            corps, auteur, ecrite = repli_de_scene(scene), "", False
+        except Exception as exc:
+            manquants.append(repere)
+            ctx.journal("     échec : {} — scène conservée en résumé".format(exc))
+            ctx.etape(repere, "echec", str(exc))
+            corps, auteur, ecrite = repli_de_scene(scene), "", False
+        else:
+            ecrite = True
+            # Controle local. « exiger_structure=False » : une scene n'a ni
+            # sous-titre ni liste numerotee, et le lui reprocher la ferait
+            # reecrire dans le sens contraire de ce qu'elle doit etre.
+            try:
+                corps, controles = equipe.controler_et_corriger(
+                    ctx, corps, scene["titre"], ctx.mots_par_chapitre,
+                    precedents=[c for _, c in sections],
+                    tentatives=2 if passes else 1,
+                    exiger_structure=False,
+                )
+                local[scene["titre"]] = controles
+                ctx.journal("     contrôle : " + controles[-1].resume())
+            except PLUS_RIEN_A_DEMANDER as exc:
+                budget_epuise = True
+                ctx.journal("     {} — corrections interrompues".format(exc))
+
+            if passes and not budget_epuise:
+                try:
+                    corps, _ = equipe.affiner(
+                        ctx, corps, scene["titre"], bible.get("enjeu", ""),
+                        auteur, passes=passes)
+                    if passes >= 2:
+                        corps = equipe.polir(ctx, corps, auteur)
+                        ctx.journal("     style : resserre par le styliste")
+                except PLUS_RIEN_A_DEMANDER as exc:
+                    budget_epuise = True
+                    ctx.journal("     {} — relecture interrompue".format(exc))
+
+        sections.append((scene["titre"], corps))
+        redigees.append(ecrite)
+
+        # La memoire se met a jour meme quand tout le reste a echoue : c'est
+        # elle qui porte la continuite des scenes suivantes.
+        if budget_epuise:
+            replier_memoire(memoire, scene, index, total)
+        else:
+            try:
+                memoire.apres_scene(redacteur_pour(ctx, scene), corps,
+                                    scene["titre"], index, total)
+            except PLUS_RIEN_A_DEMANDER as exc:
+                budget_epuise = True
+                ctx.journal("     {} — mémoire figée sur les pivots".format(exc))
+                replier_memoire(memoire, scene, index, total)
+            except Exception:
+                replier_memoire(memoire, scene, index, total)
+        memoires.append(memoire.etat_courant())
+        # Au carnet seulement si la scene a VRAIMENT ete ecrite : une fiche de
+        # repli n'est pas une scene, et une reprise doit encore l'ecrire.
+        if ecrite:
+            carnet.noter_section(dossier, repere, scene["titre"], corps)
+        ctx.etape(repere, "ok" if ecrite else "echec", scene["titre"])
+
+    ctx.journal("Étape 4/5 — contrôle de continuité...")
+    continuite = controler_continuite(bible, grille, sections, memoires,
+                                      redigees, serie=serie,
+                                      langue=ctx.langue_iso)
+    ctx.journal("  " + continuite["resume"])
+    for anomalie in continuite["anomalies"][:4]:
+        ctx.journal("    [{}] {}".format(anomalie["gravite"], anomalie["detail"]))
+        # Une contradiction de fait s'accompagne des deux passages : c'est ce
+        # qui permet de trancher sans rouvrir le manuscrit.
+        for preuve in anomalie.get("preuves") or []:
+            ctx.journal("        {} : « {} »".format(
+                preuve["section"], preuve["extrait"][:110]))
+    # « anomalie » et non « echec » : le controle a bien tourne, c'est son
+    # verdict qui est negatif. Sous « echec », il entrait dans les sections a
+    # refaire, et « usine reprendre » serait alle reecrire des scenes qui
+    # existent — sans jamais corriger la contradiction, qu'aucune reecriture
+    # ne corrige.
+    ctx.etape("continuite",
+              "ok" if not continuite["majeures"] else "anomalie",
+              continuite["resume"])
+
+    # Le lecteur de fiction : la seule voix qui ne juge pas le metier. Tout
+    # le reste de la chaine verifie que le livre TIENT — faits, voix, beats,
+    # promesses payees. Personne ne demandait si on avait envie de tourner la
+    # page. Un roman parfaitement coherent qu'on repose au chapitre trois est
+    # un roman rate, et rien ne le signalait.
+    #
+    # Ce n'est pas « lire_comme_l_audience », qui demande « qu'est-ce que tu
+    # ne sauras toujours pas faire apres avoir lu » : la bonne question pour
+    # un guide, aucune question pour un roman.
+    lecture = {}
+    if not budget_epuise:
+        ctx.journal("  lecture en lecteur : ou cesse-t-on d'y croire...")
+        try:
+            lecture = equipe.lire_comme_un_lecteur_de_fiction(
+                ctx, sections, bible.get("premisse", ""))
+        except PLUS_RIEN_A_DEMANDER as exc:
+            budget_epuise = True
+            ctx.journal("  {} — lecture en lecteur ignorée".format(exc))
+        except Exception as exc:
+            ctx.journal("  lecture en lecteur indisponible : {}".format(exc))
+        if lecture.get("disponible"):
+            ctx.journal("  " + lecture["resume"])
+            for decrochage in lecture["decrochages"][:3]:
+                ctx.journal("    « {} » — {}".format(
+                    str(decrochage.get("passage", ""))[:60],
+                    str(decrochage.get("pourquoi", ""))[:80]))
+            if lecture.get("fin_devinee"):
+                ctx.journal("    fin devinee : " + lecture["fin_devinee"])
+            ctx.etape("lecteur", "ok", lecture["resume"], essentiel=False)
+
+    (dossier / "continuite.json").write_text(
+        json.dumps({"continuite": continuite, "memoires": memoires},
+                   ensure_ascii=False, indent=2), encoding="utf-8")
+
+    ctx.journal("Étape 5/5 — mise en forme et export...")
+    fichiers = exporter(ctx, bible, sections, serie=serie, rang=rang_prevu,
+                        genre=genre)
+
+    rapport: Dict[str, Any] = {"continuite": continuite}
+    if lecture:
+        rapport["lecteur"] = lecture
+    if local:
+        rapport["controle_local"] = {
+            "note_moyenne_initiale": round(
+                sum(s[0].note for s in local.values()) / len(local), 2),
+            "note_moyenne_finale": round(
+                sum(s[-1].note for s in local.values()) / len(local), 2),
+        }
+        ctx.journal("  contrôle local : {} -> {} / 10".format(
+            rapport["controle_local"]["note_moyenne_initiale"],
+            rapport["controle_local"]["note_moyenne_finale"]))
+    rapport["mesure_finale"] = ctrl.controler_ensemble(
+        sections, ctx.mots_par_chapitre)
+    # La charpente est controlee douze fois au-dessus ; la PHRASE ne l'etait
+    # nulle part. C'est pourtant la que se voit, d'une ligne, qu'un texte a
+    # ete genere. Aucune de ces mesures ne rend de verdict : elles comptent
+    # et elles nomment.
+    rapport["prose"] = prose.mesurer_la_prose(sections)
+    lectures_prose = prose.lire_la_prose(rapport["prose"])
+    ctx.journal("  " + prose.situer_le_dialogue(
+        rapport["prose"]["part_de_dialogue"]))
+    for lecture in lectures_prose:
+        ctx.journal("  [prose] " + lecture)
+    (dossier / "rapport-qualite.json").write_text(
+        json.dumps(rapport, ensure_ascii=False, indent=2), encoding="utf-8")
+    ctx.journal("  note finale mesurée : {} / 10".format(
+        rapport["mesure_finale"]["note_moyenne"]))
+
+    if alertes:
+        (dossier / "AVERTISSEMENT.txt").write_text(
+            securite.CLAUSE_RENFORCEE + "\n\nDomaines detectes : "
+            + ", ".join(d for d, _ in alertes) + "\n", encoding="utf-8")
+
+    mots = sum(D.compter_mots(corps) for _, corps in sections)
+
+    # Le tome entre dans sa serie une fois ecrit, et seulement alors : ranger
+    # un tome avant de savoir s'il aboutit laisserait dans la bible un monde
+    # que personne n'a jamais lu. Ce qui y entre vient du texte produit et de
+    # la bible du tome — aucun appel de modele, donc aucune derive de resume
+    # en resume.
+    rang = 0
+    if serie:
+        rang = module_serie.enregistrer_tome(
+            serie, bible, titre,
+            resume=memoires[-1] if memoires else bible.get("premisse", ""),
+            produit_id=ctx.produit_id,
+            faits=(continuite.get("canon") or {}))
+        ctx.journal("  rangé dans la série « {} » au rang {}".format(serie, rang))
+
+    resume = {
+        "produit_id": ctx.produit_id,
+        "titre": titre,
+        "serie": serie,
+        "rang": rang,
+        "sous_titre": bible.get("genre", ""),
+        "dossier": str(dossier),
+        "scenes": total,
+        "chapitres": total,
+        "mots": mots,
+        "fichiers": [f.name for f in fichiers],
+        "qualite": rapport,
+        "prose": rapport["prose"],
+        "lectures_prose": lectures_prose,
+        "budget_epuise": budget_epuise,
+        "note": (rapport.get("mesure_finale") or {}).get("note_moyenne"),
+        "alertes": [d for d, _ in alertes],
+    }
+    terminer(ctx, fichiers, {
+        "mots": mots, "scenes": total, "promesse": bible.get("premisse"),
+        "note": (rapport.get("mesure_finale") or {}).get("note_moyenne"),
+        "continuite": continuite["resume"],
+        "defauts": [a["detail"] for a in continuite["anomalies"]],
+        "manquants": manquants,
+    }, type_produit=genre)
+    (dossier / "produit.json").write_text(
+        json.dumps(resume, ensure_ascii=False, indent=2), encoding="utf-8")
+    return resume
+
+
+def replier_memoire(memoire, scene: Dict[str, Any], index: int,
+                    total: int) -> None:
+    """Fait avancer la memoire sans appeler le modele.
+
+    Elle passe par le meme chemin qu'une scene redigee — donc une partie se
+    ferme au bon endroit meme quand plus rien n'est ecrit. Une memoire dont
+    la structure depend de la reussite des appels serait une memoire dont on
+    ne peut rien dire.
+    """
+    memoire.apres_scene(
+        lambda etat, texte, intitule="": _memoire_de_secours(etat, scene),
+        repli_de_scene(scene), scene["titre"], index, total)
+
+
+def memoriser(memoire, redaction: Redaction, ctx: Contexte,
+              scene: Dict[str, Any], texte: Optional[str], index: int,
+              total: int) -> None:
+    """Fait avancer la memoire apres une scene de « Redaction », quoi qu'il
+    lui soit arrive.
+
+    La regle de la boucle de « nouvelle », pour les chaines qui ecrivent
+    leurs scenes par « Redaction » : une scene relue du carnet ne repaye pas
+    son resume, une scene perdue avance sur sa fiche, et une memoire qui
+    echoue degrade la continuite sans arreter le recit. Le feuilleton
+    avalait cet echec par un « pass » : la memoire restait alors en arriere
+    d'une scene, sans rien pour la faire avancer.
+    """
+    if texte is None or redaction.relue or redaction.budget_epuise:
+        replier_memoire(memoire, scene, index, total)
+        return
+    try:
+        memoire.apres_scene(redacteur_pour(ctx, scene), texte,
+                            scene["titre"], index, total)
+    except PLUS_RIEN_A_DEMANDER as exc:
+        redaction.budget_epuise, redaction.cause = True, exc
+        replier_memoire(memoire, scene, index, total)
+    except Exception:
+        replier_memoire(memoire, scene, index, total)
+
+
+def repli_de_scene(scene: Dict[str, Any]) -> str:
+    """Scene non redigee : sa fiche, en prose minimale.
+
+    Comme pour l'ebook, livrer une scene reduite a sa fiche vaut mieux que
+    perdre l'histoire entiere parce qu'un plafond est tombe a l'avant-derniere.
+    """
+    morceaux = [m for m in (
+        "{} — {}".format(scene.get("lieu", ""), ", ".join(scene["personnages"])),
+        scene.get("objectif", ""),
+        scene.get("obstacle", ""),
+        scene.get("pivot", ""),
+    ) if m and m.strip(" —,")]
+    return "\n\n".join(morceaux) or "Scene non redigee."
+
+
+def exporter(ctx: Contexte, bible: Dict[str, Any],
+             sections: List[Tuple[str, str]],
+             serie: str = "", rang: int = 0,
+             reutiliser_couverture: bool = False,
+             genre: str = "nouvelle") -> List[Path]:
+    """Confie l'histoire a l'assemblage commun.
+
+    Une nouvelle est de la prose sans mise en page particuliere : tout est le
+    comportement par defaut de usine/render/livraison.py. Seuls changent le
+    vocabulaire (« scenes ») et le style de couverture — une couverture de
+    guide pratique sur une fiction se voit immediatement.
+    """
+    blocs = livraison.blocs_depuis_sections(sections)
+    # La derniere page, quand il y a d'autres tomes. C'est la que la serie
+    # devient une vente : un lecteur qui vient de finir est, a cet instant
+    # precis, le plus disponible qu'il sera jamais pour en acheter un autre.
+    suite = (module_serie.page_de_suite(serie, rang, ctx.langue_iso)
+             if serie else "")
+    if suite:
+        blocs.append(livraison.Bloc(
+            titre=libelles.libelle(ctx.langue_iso, "serie_page"), corps=suite))
+
+    produit = livraison.Produit(
+        type=genre,
+        titre=bible["titre"],
+        sous_titre=bible.get("genre", ""),
+        promesse=bible.get("premisse", ""),
+        blocs=blocs,
+        formats=("md", "pdf", "epub", "html", "txt"),
+        reutiliser_couverture=reutiliser_couverture,
+        police_corps="Times-Roman",
+        style_couverture="literary fiction book cover, atmospheric, {}".format(
+            bible.get("genre") or ctx.sujet),
+        langue=ctx.langue_iso,
+        libelle_sections=libelles.libelle(ctx.langue_iso, "unite_scenes"),
+    )
+    return livraison.livrer(ctx, produit)
+
+
+def rafraichir_serie(nom: str, journal=print) -> List[Dict[str, Any]]:
+    """Refabrique la page de fin des tomes anterieurs d'une serie.
+
+    Un tome fabrique quand il etait le dernier porte une page de fin qui
+    n'annonce rien de ce qui est venu apres. Or c'est precisement le lecteur
+    du tome 1 — celui qui a paye en premier et qui est revenu — qui ne voit
+    rien. Cette fonction relit le markdown deja livre, remplace sa page de
+    fin, et reecrit les fichiers.
+
+    Aucun appel de modele : le texte du recit ne bouge pas, seule sa derniere
+    page change. Et la couverture est REPRISE, pas regeneree — celle d'un
+    modele d'images ne se reproduit pas a l'identique, et un acheteur ne doit
+    pas retrouver un livre dont la couverture a change depuis qu'il l'a vu.
+    """
+    from ..core import config, store
+    from ..marketing.extrait import decouper, _markdown_du_produit
+
+    refaits: List[Dict[str, Any]] = []
+    for tome in module_serie.tomes_a_rafraichir(nom):
+        fiche = store.lire_produit(tome.get("produit_id") or "")
+        if not fiche or not fiche.get("dossier"):
+            journal("  tome {} : produit introuvable, ignore".format(
+                tome.get("rang")))
+            continue
+        dossier = Path(fiche["dossier"])
+        # Cette fonction REECRIT des fichiers deja livres. Le dossier vient de
+        # la base, donc d'une ligne qu'on n'a pas ecrite a la main : s'assurer
+        # qu'il est bien sous l'atelier avant d'ecraser quoi que ce soit coute
+        # trois lignes, et une erreur ici detruirait des fichiers que
+        # l'utilisateur a peut-etre deja mis en vente.
+        try:
+            dossier.resolve().relative_to(config.PRODUITS_DIR.resolve())
+        except (ValueError, OSError):
+            journal("  tome {} : dossier hors de l'atelier, ignore".format(
+                tome.get("rang")))
+            continue
+        source = _markdown_du_produit(dossier, "nouvelle") if dossier.exists() else None
+        if source is None:
+            journal("  tome {} : markdown introuvable dans {}".format(
+                tome.get("rang"), dossier))
+            continue
+
+        _, chapitres = decouper(source.read_text(encoding="utf-8"))
+        # La page de fin precedente est remplacee, pas empilee : sans cela,
+        # rafraichir deux fois laisserait deux pages « La suite » qui se
+        # contredisent. Reconnue sous TOUS les titres qu'elle a pu porter :
+        # un tome anglais fabrique avant que le mobilier suive la langue finit
+        # sur « La suite », et ne chercher que le titre anglais la laisserait
+        # en double. Seulement en derniere position, la ou l'export la pose :
+        # une scene que le modele aurait intitulee ainsi n'est pas une page de
+        # fin, et la retirer amputerait le recit.
+        titres_de_fin = {t["serie_page"] for t in libelles.LIBELLES.values()}
+        sections = list(chapitres)
+        while sections and sections[-1][0] in titres_de_fin:
+            sections.pop()
+        if not sections:
+            journal("  tome {} : aucune scène relue, ignoré".format(
+                tome.get("rang")))
+            continue
+
+        # La langue du tome, lue sur sa fiche : sans elle, le contexte
+        # repartait en francais et la page refaite habillait un recit anglais
+        # de mentions francaises.
+        ctx = Contexte(sujet=fiche.get("sujet") or "", dossier=dossier,
+                       langue=fiche.get("langue") or "francais",
+                       produit_id=fiche["id"], sans_image=False,
+                       hors_ligne=True, journal=lambda _m: None)
+        bible = {"titre": fiche.get("titre") or tome.get("titre") or "",
+                 "genre": "", "premisse": ""}
+        fichiers = exporter(ctx, bible, sections, serie=nom,
+                            rang=tome.get("rang") or 0,
+                            reutiliser_couverture=True,
+                            genre=str(fiche.get("type") or "nouvelle"))
+        journal("  tome {} — « {} » : {} fichier(s) refaits".format(
+            tome.get("rang"), bible["titre"], len(fichiers)))
+        refaits.append({"rang": tome.get("rang"), "titre": bible["titre"],
+                        "dossier": str(dossier),
+                        "fichiers": [f.name for f in fichiers]})
+    return refaits

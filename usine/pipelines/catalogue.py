@@ -22,6 +22,352 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
+def reseaux_sociaux() -> Tuple[str, ...]:
+    """Les reseaux que la chaine « social » sait vraiment viser.
+
+    Lus la ou ils sont declares. Les recopier ici en ferait deux listes, et
+    c'est celle du formulaire qui proposerait un reseau retire.
+    """
+    from .social import RESEAUX
+
+    return tuple(sorted(RESEAUX))
+
+
+def objectifs_email() -> Tuple[str, ...]:
+    """Ce qu'une sequence e-mail cherche a obtenir.
+
+    Lus la ou ils sont declares : les recopier ici en ferait deux listes, et
+    c'est celle du formulaire qui proposerait un objectif retire.
+    """
+    from .emails import OBJECTIFS
+
+    return tuple(OBJECTIFS)
+
+
+def difficultes_meles() -> Tuple[str, ...]:
+    """Les trois difficultes d'un cahier de mots meles."""
+    from .mots_meles import DIFFICULTES
+
+    return tuple(DIFFICULTES)
+
+
+def caracteres_meles() -> Tuple[str, ...]:
+    from .mots_meles import CARACTERES
+
+    return CARACTERES
+
+
+def niveaux_quiz() -> Tuple[str, ...]:
+    """Les trois niveaux qu'un quiz sait viser."""
+    from .quiz import NIVEAUX
+
+    return tuple(NIVEAUX)
+
+
+NIVEAUX_LISIBLES = (("debutant", "Débutant"),
+                    ("intermediaire", "Intermédiaire"),
+                    ("avance", "Avancé"))
+
+
+def formes_ebook() -> Tuple[Tuple[str, str], ...]:
+    """Les formes d'un guide et leur nom, lus la ou ils decident de l'invite."""
+    from .ebook import FORMES
+
+    return tuple((cle, fiche["nom"]) for cle, fiche in FORMES.items())
+
+
+def niveaux_ebook() -> Tuple[str, ...]:
+    from .ebook import NIVEAUX
+
+    return tuple(NIVEAUX)
+
+
+def cibles_prompts() -> Dict[str, str]:
+    """Les outils qu'un pack de prompts sait viser, et leur nom."""
+    from .pack_prompts import CIBLES
+
+    return {cle: fiche["nom"] for cle, fiche in CIBLES.items()}
+
+
+def compositions_outils() -> Dict[str, str]:
+    """Ce qu'une boite a outils peut etre, et son nom."""
+    from .boite_outils import COMPOSITIONS
+
+    return {cle: fiche["nom"] for cle, fiche in COMPOSITIONS.items()}
+
+
+def outils_modeles() -> Tuple[str, ...]:
+    from .modeles import OUTILS
+
+    return tuple(OUTILS)
+
+
+def cibles_logiciel() -> Tuple[str, ...]:
+    """Ce qu'un produit logiciel peut etre : outil, page web, extension."""
+    from .logiciel import CIBLES
+
+    return tuple(sorted(CIBLES))
+
+
+def nouvelle_scenes() -> int:
+    """Le nombre de scenes d'un roman, lu la ou il est decide.
+
+    Le recopier ici en ferait deux chiffres qui divergent — et celui du menu
+    finirait par promettre une longueur que la chaine ne fabrique pas.
+    """
+    from .nouvelle import ROMAN_SCENES
+
+    return ROMAN_SCENES
+
+
+def conte_tranches() -> Tuple[str, ...]:
+    """Les tranches d'age qu'un conte sait viser, lues la ou elles vivent."""
+    from .conte import TRANCHES
+
+    return tuple(TRANCHES)
+
+
+def feuilleton_episodes() -> int:
+    """Le nombre d'episodes d'une saison, lu la ou il est decide."""
+    from .feuilleton import EPISODES
+
+    return EPISODES
+
+
+def recueil_recits() -> int:
+    """Le nombre de nouvelles d'un recueil, lu la ou il est decide."""
+    from .recueil import RECITS
+
+    return RECITS
+
+
+def interactive_sections() -> int:
+    """Le nombre de sections d'un livre-jeu, lu la ou il est decide.
+
+    Le recopier ici en ferait deux chiffres qui divergent — et c'est celui du
+    menu qui promettrait une longueur que la chaine ne fabrique pas.
+    """
+    from .interactive import SECTIONS
+
+    return SECTIONS
+
+
+def _vrai(valeur: Any) -> bool:
+    """Ce qu'un booleen vaut, quel que soit le chemin qui l'apporte.
+
+    La ligne de commande pose un vrai « True », le formulaire HTML envoie
+    « on » ou « 1 », et la file de production relit du JSON. Les trois
+    doivent vouloir dire la meme chose.
+    """
+    if isinstance(valeur, str):
+        return valeur.strip().lower() not in ("", "0", "false", "non", "off")
+    return bool(valeur)
+
+
+@dataclass(frozen=True)
+class Champ:
+    """Une option propre a UN type de produit, declaree une seule fois.
+
+    Les options communes — sujet, ton, audience, qualite — vivent dans
+    « _options_communes » de la CLI : elles valent pour les onze types et
+    n'ont rien a faire ici.
+
+    Ce qui est declare la, ce sont les reglages qu'un seul type comprend : le
+    nombre de modules d'une formation, la cible d'un outil logiciel, la marge
+    de reliure d'un cahier imprimable.
+
+    Mesure du 14/09/2026 : sur les dix-sept options propres aux types
+    fabricables, HUIT etaient inatteignables depuis le tableau de bord. On ne
+    pouvait pas choisir, depuis le navigateur, si un outil logiciel devait
+    etre une ligne de commande ou une application web.
+
+    La cause n'etait pas un oubli mais une forme : le formulaire etait du HTML
+    ecrit a la main, avec des blocs caches et montres par le script. Ajouter
+    un type demandait d'editer le gabarit, le script ET le serveur — et les
+    options tombaient entre les mailles, une par une, sans que rien ne le dise.
+
+    Une declaration, trois lecteurs : l'analyseur d'arguments la transforme en
+    « add_argument », le serveur la sert au navigateur, le tableau de bord en
+    fait la section du type. Un champ ajoute ici apparait partout.
+    """
+
+    nom: str                          # le « dest » cote CLI, la cle cote JSON
+    drapeau: str                      # « --narration », « -n/--nombre »
+    libelle: str                      # ce que l'utilisateur lit
+    genre: str = "texte"              # texte | entier | decimal | booleen | choix
+    defaut: Any = ""
+    choix: Tuple[str, ...] = ()
+    aide: str = ""
+    unite: str = ""                   # « mm », « mots »... affiche apres le champ
+    # Le nom de l'ARGUMENT de la chaine, quand il differe du nom du champ, et
+    # s'il faut inverser la valeur en chemin.
+    #
+    # Mesure du 15/09/2026 : cinq cases du tableau de bord ne faisaient rien.
+    # « Ne pas sonder le marche » etait declaree « sans_marche », la chaine
+    # attend « avec_marche », et seule la ligne de commande faisait la
+    # traduction — « avec_marche=not args.sans_marche ». Le serveur, lui,
+    # passait les options telles quelles a « executer », qui ne transmet que
+    # les cles declarees dans « options » : la case etait donc affichee,
+    # cochee, enregistree, et sans effet. Verifie en comptant les sondages :
+    # un sondage avec la case, un sondage sans.
+    #
+    # La traduction est declaree ICI, une fois, donc elle vaut pour les trois
+    # chemins — ligne de commande, menu Termux, tableau de bord.
+    argument: str = ""
+    inverse: bool = False
+    # L'usine decide-t-elle ce champ quand personne ne le remplit ?
+    #
+    # Vrai pour ce qui faconne LE PRODUIT : le genre d'un roman, le reseau
+    # d'un pack de posts, le niveau d'un quiz, le nombre de sections. C'est le
+    # coeur de l'usine — elle produit depuis zero, a partir du sujet seul.
+    #
+    # Faux pour ce qui dit ce que l'UTILISATEUR veut depenser ou sauter. Une
+    # case « ne pas mesurer le marche » decochee veut dire « fais-le », pas
+    # « decide a ma place ». Faux aussi la ou vide veut dire AUCUN : un champ
+    # « serie » vide est un recit isole, et la premiere version faisait
+    # inventer un nom de serie a chaque nouvelle.
+    decide_par_l_usine: bool = True
+    # Ce qu'on LIT en face de chaque valeur d'une liste. La valeur reste la
+    # cle — celle qu'on tape en ligne de commande, sans accent — mais la
+    # liste deroulante affichait « reference » et « cas » la ou l'on devait
+    # lire « Manuel de référence » et « Études de cas ».
+    etiquettes: Tuple[Tuple[str, str], ...] = ()
+
+    @property
+    def drapeaux(self) -> Tuple[str, ...]:
+        """Les formes acceptees en ligne de commande, courte puis longue."""
+        return tuple(part for part in self.drapeau.split("/") if part)
+
+
+# Ce qu'un ALBUM JEUNESSE ne comprend pas. Ce ne sont pas des reglages « en
+# trop » : ce sont des reglages nuisibles.
+#
+# Mesure du 15/09/2026. « Niveau de chaleur » etait propose sur le conte, avec
+# « sensuelle » et « explicite » parmi ses valeurs, et la valeur choisie
+# partait REELLEMENT dans l'invite qui ecrit l'album :
+#
+#     NIVEAU DE CHALEUR : explicite
+#     Les scenes d'intimite sont detaillees. [...]
+#
+# Sur un livre pour trois a cinq ans. S'y ajoutaient les tropes de romance
+# (« ennemis puis amants »), un point de vue de roman, un temps du recit, une
+# charpente en voyage du heros sur quatorze doubles-pages, et une serie.
+#
+# La cause n'est pas une etourderie sur un champ. Les six types de fiction
+# partageaient la meme liste, et le partage a un bon argument : il evite qu'un
+# type ajoute plus tard oublie la moitie des reglages. Cet argument vaut entre
+# un roman et un feuilleton. Il ne vaut pas entre un roman et un album
+# illustre — ce sont deux objets, pas deux longueurs du meme objet.
+SANS_OBJET_EN_JEUNESSE = ("tropes", "point_de_vue", "temps", "chaleur",
+                          "fin", "structure", "serie")
+
+# Les seuls types qui savent enchainer des tomes : bible reprise, distribution
+# et faits acquis du tome precedent. Ce sont aussi les seuls dont « produire »
+# accepte un argument « serie ».
+#
+# Le livre-jeu, le recueil et le feuilleton affichaient le champ quand meme.
+# Il etait saisi, enregistre, et jete avant d'arriver a la chaine — mesure du
+# 15/09/2026, en suivant chaque champ jusqu'a « fabriquer ».
+TYPES_A_TOMES = ("nouvelle", "roman")
+
+
+def champs_de_fiction(jeunesse: bool = False,
+                      serie: bool = True) -> Tuple[Champ, ...]:
+    """Les reglages que TOUTE fiction comprend, et qu'aucun guide ne comprend.
+
+    Declares une fois, partages par les types de la famille « fiction ». Les
+    recopier type par type garantirait qu'un type ajoute plus tard en oublie
+    la moitie — et un reglage manquant ne se voit pas : la chaine se contente
+    du defaut, qui n'est pas neutre, seulement invisible.
+
+    Ce ne sont PAS les reglages du non-fictionnel renommes. Un guide se regle
+    par audience, promesse de resultat et niveau de difficulte ; ces trois-la
+    n'ont pas de sens pour un roman. Une fiction se regle par ou elle se
+    range, ce que le lecteur vient y retrouver, et ce qu'il ne pardonnera pas
+    qu'on lui refuse.
+
+    « jeunesse » retire ce qu'un album ne comprend pas, et restreint les
+    sous-genres a ceux de la jeunesse — voir « SANS_OBJET_EN_JEUNESSE ».
+
+    « serie » vaut faux pour les chaines qui ne savent pas enchainer des
+    tomes. Seules « nouvelle » et « roman » portent la machinerie de serie —
+    bible reprise, distribution, faits acquis — et sont les seules dont
+    « produire » accepte un argument « serie ». Le livre-jeu, le recueil et
+    le feuilleton l'affichaient quand meme : le champ etait saisi,
+    enregistre, et jete avant d'arriver a la chaine. Mesure du 15/09/2026.
+    """
+    from . import fiction
+
+    familles = ({"jeunesse": fiction.GENRES["jeunesse"]} if jeunesse
+                else fiction.GENRES)
+    # En francais : c'est ce que l'utilisateur lit. Le terme source reste la
+    # cle des releves, « fiction.terme_source » fait le chemin inverse.
+    sous_genres = tuple(sorted(fiction.libelle(s)
+                               for sous in familles.values() for s in sous))
+    champs = (
+        Champ("genre", "--genre", "Genre", genre="choix",
+              choix=("",) + tuple(sorted(familles)),
+              etiquettes=fiction.etiquettes(familles),
+              aide="Laissez vide : il se déduit du sous-genre."),
+        Champ("sous_genre", "--sous-genre", "Sous-genre",
+              aide=("Il décide de la longueur attendue et du vocabulaire : "
+                    "un album pour tout-petits et un premier roman ne "
+                    "s'écrivent pas pareil. Suggestions : "
+                    if jeunesse else
+                    "C'est lui qui décide de tout le reste — longueur "
+                    "attendue, chaleur, fin admissible. « Romance » seul ne "
+                    "suffit pas à écrire une romance. Suggestions : ")
+                   + ", ".join(sous_genres[:8])
+                   + ("." if jeunesse else "...")),
+        Champ("tropes", "--tropes", "Tropes",
+              aide="Ce que le lecteur vient retrouver, séparés par des "
+                   "virgules. C'est par là qu'il cherche un livre : il ne "
+                   "tape pas « romance contemporaine », il tape « ennemis "
+                   "puis amants »."),
+        Champ("ambiance", "--ambiance", "Ambiance", genre="choix",
+              choix=("",) + fiction.AMBIANCES,
+              etiquettes=fiction.etiquettes(fiction.AMBIANCES),
+              aide="Ce que le lecteur vient ressentir. Deux livres du même "
+                   "sous-genre ne visent pas le même lecteur si l'ambiance "
+                   "diffère."),
+        Champ("point_de_vue", "--point-de-vue", "Point de vue", genre="choix",
+              choix=("",) + fiction.POINTS_DE_VUE,
+              etiquettes=fiction.etiquettes(fiction.POINTS_DE_VUE),
+              aide="Convention de sous-genre, pas détail de style : se "
+                   "tromper se lit comme une maladresse dès la première "
+                   "page."),
+        Champ("temps", "--temps", "Temps du récit", genre="choix",
+              choix=("",) + fiction.TEMPS,
+              etiquettes=fiction.etiquettes(fiction.TEMPS)),
+        Champ("chaleur", "--chaleur", "Niveau de chaleur", genre="choix",
+              choix=("",) + fiction.CHALEUR,
+              etiquettes=fiction.etiquettes(fiction.CHALEUR),
+              aide="Une attente de lecteur, pas un curseur de goût : "
+                   "promettre l'un et livrer l'autre fâche dans les DEUX "
+                   "sens."),
+        Champ("fin", "--fin", "Fin attendue", genre="choix",
+              choix=("",) + fiction.FINS,
+              etiquettes=fiction.etiquettes(fiction.FINS),
+              aide="En romance, une fin malheureuse est un manquement au "
+                   "contrat de genre. Ailleurs, elle est libre."),
+        Champ("structure", "--structure", "Charpente", genre="choix",
+              choix=("",) + fiction.STRUCTURES,
+              etiquettes=fiction.etiquettes(fiction.STRUCTURES),
+              aide="« Beats de romance » suit l'arc de la RELATION : dans "
+                   "une romance, c'est elle la charpente, et la traiter en "
+                   "second plan se voit."),
+        Champ("serie", "--serie", "Série", decide_par_l_usine=False,
+              aide="Laissez vide pour un récit isolé. Un tome reprend le "
+                   "monde, la distribution et les faits des précédents."),
+    )
+    retires = set(SANS_OBJET_EN_JEUNESSE) if jeunesse else set()
+    if not serie:
+        retires.add("serie")
+    if retires:
+        return tuple(c for c in champs if c.nom not in retires)
+    return champs
+
+
 @dataclass
 class TypeProduit:
     """Un type de produit reellement fabricable."""
@@ -37,12 +383,47 @@ class TypeProduit:
     fabriquer: Optional[Callable[..., Dict[str, Any]]] = None
     vendable: bool = True             # False pour les outils d'analyse
     file: bool = True                 # peut entrer dans la file de production
+    # Une edition courte offerte a un sens pour un produit qu'on LIT. Pour un
+    # outil logiciel, « les deux premiers chapitres » ne veut rien dire : ce
+    # qu'on vend est un programme qui marche, pas un texte qu'on goute.
+    extrait: bool = True
+    # Le controle qualite deterministe mesure de la PROSE : rythme des
+    # phrases, repetition de n-grammes, diversite lexicale, continuite d'une
+    # section a l'autre. Applique a autre chose, il rend un chiffre qui n'a
+    # pas de sens — et un chiffre sans sens est pire que pas de chiffre,
+    # parce qu'on le croit.
+    #
+    # Mesure du 14/09/2026, en faisant tourner le controle sur un produit de
+    # chaque type : 9,98/10 pour trente-et-un posts sociaux de deux lignes,
+    # 9,83 pour un outil logiciel — note en fait sur sa notice, pas sur son
+    # code —, et six signalements de « rythme » sur une liste de prompts, ou
+    # le rythme n'existe pas. Ces notes-la ne mesuraient rien.
+    #
+    # Le nombre de mots et de sections, lui, se compte pour tout le monde :
+    # c'est un decompte, pas un verdict.
+    prose: bool = True
+    # « fiction » ou « pratique ». Ce n'est pas un rangement de menu : c'est
+    # ce qui decide de la QUESTION qu'on pose au modele avant de fabriquer.
+    # Pour un guide, on cherche un probleme que quelqu'un paie pour resoudre.
+    # Pour un roman, cette question n'a pas de reponse honnete — et un modele
+    # a qui l'on pose une question sans reponse en fabrique une. On obtenait
+    # « ce thriller resout le probleme du manque de suspense dans votre vie ».
+    famille: str = "pratique"
+    # La chaine se mesure-t-elle en SECTIONS de tant de mots ? C'est ce que
+    # le brief decide quand on ne dit rien (« volume : 5 sections de ~400
+    # mots »). Un memo compte des blocs, un quiz des questions, un cahier des
+    # grilles : leur annoncer un volume en sections, c'etait decider une
+    # chose que la chaine ne lit pas, et l'ecrire a l'ecran (vraie
+    # fabrication du 27/09/2026).
+    volume: bool = False
     mots_cles: Tuple[str, ...] = ()   # aide l'explorateur de niches a choisir
     options: Dict[str, Any] = field(default_factory=dict)
+    # Les reglages que CE type comprend, et lui seul. Voir « Champ ».
+    champs: Tuple[Champ, ...] = ()
 
     @property
     def duree(self) -> str:
-        return "{} a {} min".format(*self.minutes)
+        return "{} à {} min".format(*self.minutes)
 
     @property
     def nom_quantite(self) -> str:
@@ -61,6 +442,38 @@ class TypeProduit:
         if self.fabriquer is None:
             raise RuntimeError("type « {} » sans chaine de fabrication".format(self.cle))
         options = dict(options or {})
+        # Ce que personne n'a rempli, l'usine le decide — a partir du sujet,
+        # et une seule fois, ici : « executer » est le point unique par lequel
+        # passent la ligne de commande, le menu Termux, le tableau de bord et
+        # la boucle continue.
+        #
+        # Avant, chaque reglage vide tombait sur une valeur en dur : tout pack
+        # de posts partait sur LinkedIn, toute sequence d'e-mails etait une
+        # sequence de bienvenue, tout quiz etait de niveau intermediaire. Un
+        # reglage par defaut n'est pas neutre, il est juste invisible.
+        from . import brief
+
+        decides = brief.decider_les_reglages(contexte, self, options)
+        if decides:
+            options.update(decides)
+            # Les reglages de fiction ne voyagent pas en arguments : ils sont
+            # deposes dans « ctx.meta["fiction"] », et la promesse a ete posee
+            # AVANT cette decision. Sans ce rappel, l'usine choisissait un
+            # genre, une ambiance et une fin — et la chaine ecrivait sans les
+            # voir. Mesure : promesse VIDE apres une fabrication depuis zero.
+            from . import fiction
+
+            if self.famille == "fiction" and any(
+                    cle in fiction.CLES for cle in decides):
+                fiction.poser_la_promesse(
+                    contexte,
+                    {**fiction.promesse_du_contexte(contexte), **decides})
+            # La decision se retrouve dans la fiche du produit : une decision
+            # qu'on ne retrouve plus six mois apres n'aide pas a comprendre le
+            # resultat.
+            meta = getattr(contexte, "meta", None)
+            if isinstance(meta, dict):
+                meta.setdefault("reglages_decides", {}).update(decides)
         arguments: Dict[str, Any] = {}
         if self.quantite:
             nom_argument = self.quantite[0]
@@ -75,16 +488,41 @@ class TypeProduit:
                 arguments[nom] = options[nom]
             elif valeur is not None:
                 arguments[nom] = valeur
+        # Les champs qui portent un autre nom cote chaine, ou une valeur a
+        # inverser. Sans ce passage, une case « ne pas faire X » declaree
+        # « sans_x » n'atteignait jamais une chaine qui attend « avec_x ».
+        for champ in (self.champs or ()):
+            if not champ.argument or champ.nom not in options:
+                continue
+            brut = options[champ.nom]
+            if champ.genre == "booleen" or champ.inverse:
+                brut = _vrai(brut)
+            arguments[champ.argument] = (not brut) if champ.inverse else brut
+        # De quoi refaire CE produit : le type et les options une fois
+        # decidees. Le tableau de bord et l'usine continue n'ont pas de ligne
+        # de commande a rejouer, et une reprise qui redeciderait les reglages
+        # donnerait au second tiers d'un roman un autre genre que le premier.
+        meta = getattr(contexte, "meta", None)
+        if isinstance(meta, dict):
+            meta["relance"] = {"type": self.cle, "options": dict(options)}
         return self.fabriquer(contexte, **arguments)
 
 
 def _chaines() -> Dict[str, Callable]:
     """Import tardif : le catalogue est lu par des modules que les chaines importent."""
-    from . import (boite_outils, ebook, formation, idees, impression, logiciel,
-                   modeles, pack_prompts, social)
+    from . import (boite_outils, cartes, conte, ebook, emails, feuilleton,
+                   formation, idees, impression, interactive, logiciel,
+                   memo, modeles, mots_meles, nouvelle, pack_prompts,
+                   quiz, recueil, social)
 
     return {
         "ebook": ebook.produire,
+        "nouvelle": nouvelle.produire,
+        "roman": nouvelle.produire_roman,
+        "interactive": interactive.produire,
+        "recueil": recueil.produire,
+        "feuilleton": feuilleton.produire,
+        "conte": conte.produire,
         "prompts": pack_prompts.produire,
         "formation": formation.produire,
         "outils": boite_outils.produire,
@@ -92,97 +530,477 @@ def _chaines() -> Dict[str, Callable]:
         "impression": impression.produire,
         "social": social.produire,
         "logiciel": logiciel.produire,
+        "emails": emails.produire,
+        "memo": memo.produire,
+        "quiz": quiz.produire,
+        "cartes": cartes.produire,
+        "mots-meles": mots_meles.produire,
         "idees": idees.produire,
     }
 
 
 TYPES: List[TypeProduit] = [
     TypeProduit(
-        cle="ebook", nom="Ebook complet",
-        resume="Un guide structure, du plan a la couverture",
+        cle="ebook", volume=True, nom="Ebook complet",
+        resume="Un guide structuré, du plan à la couverture",
         detail="PDF + EPUB + HTML + Markdown + couverture",
         formats=("pdf", "epub", "html", "md", "txt"),
         minutes=(10, 25),
+        # Un appel de modele par produit, sur le livre entier : a la demande.
+        options={"relecture_ensemble": None, "forme": None, "niveau": None,
+                 "exercices": None},
         mots_cles=("guide", "methode", "livre", "manuel", "apprendre"),
+        # Le type phare n'avait AUCUN reglage propre (mesure du 26/09/2026,
+        # contre neuf pour un roman) : chaque guide sortait en methode pas a
+        # pas, au meme niveau, sans exercice — quel que soit le sujet.
+        champs=(
+            Champ("forme", "--forme", "Forme du livre", genre="choix",
+                  choix=("",) + tuple(c for c, _ in formes_ebook()),
+                  etiquettes=formes_ebook(),
+                  aide="Ce qui décide de la charpente : une progression, un "
+                       "manuel qu'on consulte, un programme daté, des études "
+                       "de cas ou des questions-réponses. Par défaut, "
+                       "l'usine choisit d'après le sujet."),
+            Champ("niveau", "--niveau", "Niveau du lecteur", genre="choix",
+                  choix=("",) + niveaux_ebook(),
+                  etiquettes=NIVEAUX_LISIBLES,
+                  aide="Ce qu'on explique et ce qu'on saute. L'audience le "
+                       "suggère sans le dire : « des freelances » ne dit pas "
+                       "s'ils débutent."),
+            Champ("exercices", "--exercices", "Exercices", genre="choix",
+                  choix=("", "avec", "sans"),
+                  etiquettes=(("avec", "Un exercice par chapitre"),
+                              ("sans", "Sans exercice")),
+                  aide="Un exercice de vingt minutes à la fin de chaque "
+                       "chapitre, sur la situation du lecteur, mis en "
+                       "valeur dans le PDF et l'EPUB."),
+        ),
+    ),
+    TypeProduit(
+        cle="nouvelle", volume=True, nom="Nouvelle (fiction)", famille="fiction",
+        resume="Une histoire courte, avec bible et continuité tenue",
+        detail="PDF + EPUB + HTML + Markdown + couverture",
+        formats=("pdf", "epub", "html", "md", "txt"),
+        minutes=(12, 30),
+        # Volontairement etroits : « nouvelle » ou « histoire » designent
+        # aussi bien un recit qu'une nouvelle methode ou l'histoire d'un
+        # marche. Un mot-cle trop large enverrait des guides a la fiction.
+        mots_cles=("fiction", "recit", "roman", "conte", "intrigue"),
+        # Une serie fait du tome suivant une vente au lecteur du precedent.
+        options={"serie": None},
+        champs=champs_de_fiction(),
+    ),
+    TypeProduit(
+        cle="roman", volume=True, nom="Roman (fiction longue)", famille="fiction",
+        resume="Un roman : trente scènes en parties, continuité tenue",
+        detail="PDF + EPUB + HTML + Markdown + couverture",
+        formats=("pdf", "epub", "html", "md", "txt"),
+        # Trente scenes relues et controlees : c'est long, et le dire evite
+        # qu'on croie l'usine bloquee au bout d'un quart d'heure.
+        minutes=(60, 180),
+        quantite=("chapitres", "Combien de scènes", str(nouvelle_scenes())),
+        mots_cles=("roman", "fiction longue", "saga", "polar", "thriller",
+                   "fantasy", "romance"),
+        options={"serie": None},
+        # Le nombre de scenes n'est PAS declare ici : « --chapitres » est une
+        # option commune aux onze types, ajoutee par « _options_communes ».
+        # La declarer une seconde fois donnait deux champs de meme nom dans
+        # le formulaire — celui d'en haut et celui de la section du type — et
+        # le second ecrasait le premier a l'envoi.
+        champs=champs_de_fiction(),
+    ),
+    TypeProduit(
+        cle="interactive", volume=True, nom="Livre dont le lecteur est le héros",
+        famille="fiction",
+        resume="Un récit à embranchements, dont la carte est vérifiée",
+        detail="PDF + EPUB + HTML + Markdown + carte du livre",
+        formats=("pdf", "epub", "html", "md", "txt"),
+        # Une section par appel, plus la bible et la carte. Vingt-quatre
+        # sections courtes coutent moins qu'un roman, mais la carte demande
+        # un modele costaud et parfois deux essais.
+        minutes=(25, 70),
+        quantite=("sections", "Combien de sections", str(interactive_sections())),
+        # Etroits a dessein : « choix » et « aventure » designent aussi bien
+        # un livre-jeu qu'un guide de developpement personnel.
+        mots_cles=("livre-jeu", "dont vous etes le heros", "embranchements",
+                   "recit interactif"),
+        # « sections » n'est PAS declare en option : c'est deja la quantite
+        # ci-dessus. Le declarer deux fois donnait deux chemins pour le meme
+        # chiffre — et un garde-fou du depot l'a vu tout de suite, parce que
+        # le menu n'en proposait qu'un des deux.
+        champs=champs_de_fiction(serie=False),
+    ),
+    TypeProduit(
+        cle="recueil", volume=True, nom="Recueil de nouvelles", famille="fiction",
+        resume="Plusieurs récits liés par un fil, dont on mesure la variété",
+        detail="PDF + EPUB + HTML + Markdown + couverture",
+        formats=("pdf", "epub", "html", "md", "txt"),
+        # Sept recits de quatre scenes : c'est plus long qu'une nouvelle et
+        # moins qu'un roman, et chaque recit paie sa propre bible.
+        minutes=(45, 120),
+        quantite=("recits", "Combien de nouvelles", str(recueil_recits())),
+        mots_cles=("recueil", "nouvelles", "anthologie", "textes courts"),
+        champs=champs_de_fiction(serie=False),
+    ),
+    TypeProduit(
+        cle="feuilleton", volume=True, nom="Feuilleton (épisodes)", famille="fiction",
+        resume="Des épisodes qui se lisent seuls et appellent le suivant",
+        detail="PDF + EPUB + HTML + Markdown + couverture",
+        formats=("pdf", "epub", "html", "md", "txt"),
+        minutes=(40, 110),
+        quantite=("episodes", "Combien d'épisodes",
+                  str(feuilleton_episodes())),
+        mots_cles=("feuilleton", "episodes", "serie", "saison"),
+        champs=champs_de_fiction(serie=False),
+    ),
+    TypeProduit(
+        cle="conte", volume=True, nom="Conte jeunesse illustré", famille="fiction",
+        resume="Un album en doubles-pages, vérifié contre sa tranche d'âge",
+        detail="PDF + EPUB + HTML + Markdown + illustrations",
+        formats=("pdf", "epub", "html", "md", "txt"),
+        minutes=(10, 30),
+        quantite=("pages", "Combien de doubles-pages", "16"),
+        mots_cles=("conte", "album", "jeunesse", "enfants", "histoire du soir"),
+        options={"tranche": None},
+        champs=champs_de_fiction(jeunesse=True) + (
+            Champ("tranche", "--tranche", "Tranche d'âge", genre="choix",
+                  choix=("",) + conte_tranches(), defaut="",
+                  aide="Elle décide de tout : nombre de pages, longueur des "
+                       "phrases, vocabulaire. Le contrôle vérifie ensuite que "
+                       "le texte s'y tient."),
+        ),
     ),
     TypeProduit(
         cle="prompts", nom="Pack de prompts",
-        resume="Une bibliotheque de prompts classee par intention",
+        resume="Une bibliothèque de prompts classée par intention",
         detail="PDF + CSV importable dans Notion + JSON",
         formats=("pdf", "csv", "json", "html", "md"),
         minutes=(5, 12),
         quantite=("nombre", "Combien de prompts", "50"),
-        mots_cles=("prompt", "ia", "chatgpt", "automatisation", "productivite"),
+        options={"cible": None},
+        mots_cles=("prompt", "ia", "chatgpt", "automatisation", "productivite",
+                   "midjourney"),
+        # Une liste de prompts : pas de rythme, pas de continuite, et la repetition y est voulue.
+        prose=False,
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre de prompts",
+                  genre="entier", defaut=50),
+            Champ("cible", "--cible", "Outil visé", genre="choix",
+                  choix=("",) + tuple(cibles_prompts()),
+                  etiquettes=tuple((c, n) for c, n in cibles_prompts().items()),
+                  aide="Un prompt d'image décrit un sujet, un style, une "
+                       "lumière et un cadrage ; un prompt de texte donne un "
+                       "rôle et un format de sortie. Par défaut, l'usine "
+                       "choisit d'après le sujet."),
+        ),
     ),
     TypeProduit(
-        cle="formation", nom="Mini-formation",
+        cle="formation", volume=True, nom="Mini-formation",
         resume="Des modules avec livrables et cahier d'exercices",
-        detail="Manuel PDF + cahier d'exercices + sequence e-mail",
+        detail="Manuel PDF + cahier d'exercices + séquence e-mail",
         formats=("pdf", "html", "md"),
         minutes=(12, 25),
         quantite=("modules", "Combien de modules", "6"),
+        # Un appel de modele par module : c'est a l'utilisateur de decider.
+        options={"narration": None},
         mots_cles=("formation", "cours", "apprendre", "module", "atelier"),
+        champs=(
+            Champ("modules", "-m/--modules", "Nombre de modules",
+                  genre="entier", defaut=0,
+                  aide="0 : l'usine décide en lisant le sujet."),
+            Champ("narration", "--narration", "Script à lire à voix haute",
+                  genre="booleen", defaut=False,
+                  aide="Un appel de modèle par module, en plus. Utile si vous "
+                       "comptez enregistrer la formation."),
+        ),
     ),
     TypeProduit(
-        cle="outils", nom="Boite a outils",
-        resume="Checklists, modeles et tableaux de suivi",
+        cle="outils", nom="Boîte à outils",
+        resume="Checklists, modèles et tableaux de suivi",
         detail="PDF imprimable + tableaux CSV + HTML",
         formats=("pdf", "csv", "html", "md"),
         minutes=(6, 14),
         quantite=("nombre", "Combien d'outils", "10"),
         mots_cles=("checklist", "modele", "outil", "procedure", "methode"),
+        options={"composition": None},
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre d'outils",
+                  genre="entier", defaut=10),
+            Champ("composition", "--composition", "Composition",
+                  genre="choix",
+                  choix=("",) + tuple(compositions_outils()),
+                  etiquettes=tuple(compositions_outils().items()),
+                  aide="Un pack de checklists, un pack de modèles et un "
+                       "classeur de suivi sont trois produits distincts, "
+                       "cherchés avec des mots différents. Par défaut, "
+                       "l'usine choisit d'après le sujet."),
+        ),
     ),
     TypeProduit(
-        cle="modeles", nom="Modeles Notion / tableur",
-        resume="Des bases liees, prets a importer",
+        cle="modeles", nom="Modèles Notion / tableur",
+        resume="Des bases liées, prêtes à importer",
         detail="CSV par base + guide d'installation + PDF",
         formats=("csv", "pdf", "html", "md"),
         minutes=(5, 12),
         quantite=("nombre", "Combien de bases", "4"),
         mots_cles=("notion", "tableur", "modele", "systeme", "organisation",
                    "suivi", "tableau"),
+        options={"outil": None},
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre de bases",
+                  genre="entier", defaut=4),
+            Champ("outil", "--outil", "Outil cible", genre="choix",
+                  choix=("",) + tuple(outils_modeles()),
+                  etiquettes=(("notion", "Notion"),
+                              ("tableur", "Tableur (Sheets, Excel)"),
+                              ("les-deux", "Les deux")),
+                  aide="Notion relie des bases et filtre des vues ; un "
+                       "tableur calcule avec des formules. Par défaut, "
+                       "l'usine choisit d'après le sujet."),
+        ),
     ),
     TypeProduit(
         cle="impression", nom="Cahier imprimable",
-        resume="Des fiches a remplir a la main",
+        resume="Des fiches à remplir à la main",
         detail="PDF aux formats A4 et Lettre US",
         formats=("pdf", "html"),
         minutes=(5, 12),
         quantite=("pages", "Combien de fiches", "12"),
+        options={"reliure": None},
         mots_cles=("planner", "imprimable", "cahier", "agenda", "fiche",
                    "planning", "journal"),
+        # Des pages a remplir : le PDF livre ne contient presque pas de texte suivi.
+        prose=False,
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre de fiches",
+                  genre="entier", defaut=12),
+            Champ("reliure", "--reliure", "Marge de reliure",
+                  genre="decimal", defaut=0, unite="mm",
+                  # La marge depend de l'IMPRIMEUR, pas du sujet : lui la
+                  # publie, le sujet n'en dit rien. Zero veut dire « aucune »,
+                  # pas « decide pour moi ».
+                  decide_par_l_usine=False,
+                  aide="Marge intérieure pour l'impression à la demande. "
+                       "0 = aucune ; votre imprimeur publie la sienne."),
+        ),
     ),
     TypeProduit(
         cle="social", nom="Pack de publications",
-        resume="Un calendrier editorial redige",
-        detail="Calendrier CSV + posts rediges + visuels optionnels",
+        resume="Un calendrier éditorial rédigé",
+        detail="Calendrier CSV + posts rédigés + visuels optionnels",
         formats=("csv", "pdf", "json", "html", "md"),
         minutes=(5, 15),
         quantite=("nombre", "Combien de publications", "30"),
         options={"reseau": "linkedin"},
         mots_cles=("reseaux", "linkedin", "instagram", "contenu", "post",
                    "calendrier editorial"),
+        # Trente posts de deux lignes. Le controle n'a rien a mordre et rend 9,98/10 quoi qu'il arrive.
+        prose=False,
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre de publications",
+                  genre="entier", defaut=30),
+            Champ("reseau", "-r/--reseau", "Réseau visé", genre="choix",
+                  defaut="", choix=("",) + reseaux_sociaux(),
+                  etiquettes=(("linkedin", "LinkedIn"), ("instagram", "Instagram"),
+                              ("x", "X"), ("tiktok", "TikTok")),
+                  aide="Par défaut, l'usine choisit le réseau d'après le sujet."),
+            Champ("visuels", "--visuels", "Visuels à générer",
+                  genre="entier", defaut=0, argument="visuels",
+                  decide_par_l_usine=False,
+                  aide="0 : aucun. Chacun coûte un appel d'image."),
+        ),
     ),
     TypeProduit(
-        cle="logiciel", nom="Outil logiciel",
-        resume="Un outil qui demarre, verifie avant livraison",
-        detail="Code source + documentation + rapport de verification",
+        cle="logiciel", nom="Outil logiciel", extrait=False,
+        resume="Un outil qui démarre, vérifié avant livraison",
+        detail="Code source + documentation + rapport de vérification",
         formats=("py", "md", "pdf", "html"),
         minutes=(8, 20),
         options={"cible": "cli", "executer": None},
         mots_cles=("outil", "script", "application", "extension", "logiciel",
                    "automatisation", "convertisseur", "generateur",
                    "calculateur", "tableau de bord"),
+        # Ce qu'on vend est un programme qui marche. Le seul texte relisible est sa notice — noter l'un pour l'autre serait un verdict fabrique ; « usine logiciel » verifie deja le code.
+        prose=False,
+        champs=(
+            Champ("cible", "-c/--cible", "Ce que vous livrez", genre="choix",
+                  defaut="", choix=("",) + cibles_logiciel(),
+                  etiquettes=(("cli", "Outil en ligne de commande"),
+                              ("web", "Page web autonome"),
+                              ("extension", "Extension Chrome")),
+                  aide="La page web s'ouvre dans n'importe quel navigateur ; "
+                       "l'extension suit le format Chrome Manifest V3."),
+            Champ("sans_essai", "--sans-essai", "Ne pas exécuter le code",
+                  genre="booleen", defaut=False,
+                  argument="executer", inverse=True,
+                  aide="L'usine analyse le code sans jamais le lancer. Plus "
+                       "prudent, mais elle ne saura pas s'il démarre."),
+        ),
     ),
     TypeProduit(
-        cle="idees", nom="Etude de niche",
-        resume="Des pistes chiffrees, appuyees sur des mesures de marche",
-        detail="Idees evaluees : prix, difficulte, concurrence",
+        cle="emails", nom="Séquence e-mail",
+        resume="La série de messages qui suit une inscription",
+        detail="PDF + HTML + Markdown + CSV prêt à importer",
+        formats=("pdf", "html", "md", "csv"),
+        minutes=(6, 14),
+        quantite=("nombre", "Combien de messages", "7"),
+        mots_cles=("email", "e-mail", "mail", "newsletter", "sequence",
+                   "infolettre", "autorepondeur", "nurturing"),
+        options={"intention": "bienvenue", "rythme": 2},
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre de messages",
+                  genre="entier", defaut=7),
+            Champ("intention", "-o/--intention", "Ce que la séquence cherche",
+                  genre="choix", defaut="", choix=("",) + objectifs_email(),
+                  etiquettes=(("bienvenue", "Accueillir un nouvel inscrit"),
+                              ("vente", "Vendre une offre"),
+                              ("fidelisation", "Fidéliser un client"),
+                              ("relance", "Réveiller une liste silencieuse")),
+                  aide="Une séquence de bienvenue ne demande presque rien ; "
+                       "une séquence de vente construit vers un achat."),
+            Champ("rythme", "--rythme", "Un message tous les", genre="entier",
+                  defaut=2, unite="jours",
+                  aide="Sert à écrire les rappels et à calculer le "
+                       "calendrier d'envoi livré avec la séquence."),
+        )),
+    TypeProduit(
+        cle="memo", nom="Mémo / antisèche",
+        resume="L'essentiel d'un sujet, sur une page qu'on garde",
+        detail="PDF + HTML + Markdown + CSV",
+        formats=("pdf", "html", "md", "csv"),
+        minutes=(4, 9),
+        quantite=("nombre", "Combien de blocs", "8"),
+        # Un memo n'est pas de la prose : trois mots par ligne. Le controle
+        # de rythme et de diversite lexicale y rendrait un chiffre sans sens,
+        # et un chiffre sans sens est pire que pas de chiffre.
+        prose=False,
+        # « Les deux premieres pages » d'un memo d'une page ne veut rien dire.
+        extrait=False,
+        mots_cles=("memo", "antiseche", "cheatsheet", "aide-memoire",
+                   "reference", "fiche", "recapitulatif"),
+        options={"recto_verso": False},
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre de blocs",
+                  genre="entier", defaut=8),
+            Champ("recto_verso", "--recto-verso", "Impression recto-verso",
+                  genre="booleen", defaut=False,
+                  aide="Ajoute une marge de reliure. Inutile — et gênante — "
+                       "pour une impression simple face."),
+        )),
+    TypeProduit(
+        cle="quiz", nom="Quiz avec corrigé",
+        resume="Des questions, leurs réponses, et pourquoi",
+        detail="PDF + HTML + Markdown + CSV",
+        formats=("pdf", "html", "md", "csv"),
+        minutes=(7, 16),
+        quantite=("nombre", "Combien de questions", "20"),
+        # Une question et quatre propositions ne se mesurent pas comme un
+        # chapitre. Seules les explications sont de la prose, et elles font
+        # le quart du produit.
+        prose=False,
+        mots_cles=("quiz", "qcm", "test", "evaluation", "examen",
+                   "auto-evaluation", "questionnaire", "revision"),
+        options={"niveau": "intermediaire", "sans_bareme": False},
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre de questions",
+                  genre="entier", defaut=20),
+            Champ("niveau", "--niveau", "Niveau visé", genre="choix",
+                  defaut="", choix=("",) + niveaux_quiz(),
+                  etiquettes=NIVEAUX_LISIBLES,
+                  aide="Par défaut, l'usine juge le niveau d'après le sujet."),
+            Champ("sans_bareme", "--sans-bareme", "Ne pas inclure de barème",
+                  genre="booleen", defaut=False,
+                  aide="Le barème donne des seuils en nombre de bonnes "
+                       "réponses, calculés sur les questions réellement "
+                       "retenues."),
+        )),
+    TypeProduit(
+        cle="cartes", nom="Cartes de révision",
+        resume="Recto, verso : à imprimer, à découper ou à charger dans Anki",
+        detail="Planches PDF recto-verso + fichier Anki + page qui retourne "
+               "les cartes",
+        formats=("pdf", "html", "md", "csv", "txt"),
+        minutes=(4, 12),
+        quantite=("nombre", "Combien de cartes", "40"),
+        options={"niveau": None},
+        # Etroits, comme pour la fiction : « revision » seul designerait aussi
+        # la relecture d'un texte.
+        mots_cles=("flashcards", "cartes de revision", "memoriser", "anki",
+                   "fiches de revision"),
+        # Deux lignes par carte : ni rythme de phrase ni continuite a mesurer.
+        prose=False,
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre de cartes",
+                  genre="entier", defaut=40),
+            Champ("niveau", "--niveau", "Niveau visé", genre="choix",
+                  defaut="", choix=("",) + niveaux_quiz(),
+                  etiquettes=NIVEAUX_LISIBLES,
+                  aide="Ce qu'une carte suppose déjà su. Par défaut, l'usine "
+                       "en juge d'après le sujet."),
+        ),
+    ),
+    TypeProduit(
+        cle="mots-meles", nom="Cahier de mots mêlés",
+        resume="Des grilles à thème, prêtes à imprimer, solutions à la fin",
+        detail="PDF A4 et Lettre US, grilles vérifiées, solutions surlignées",
+        formats=("pdf", "html", "md"),
+        minutes=(3, 10),
+        quantite=("nombre", "Combien de grilles", "30"),
+        options={"difficulte": None, "caracteres": None},
+        # Etroits : « jeu » seul enverrait ici un guide sur les jeux video.
+        mots_cles=("mots meles", "mots caches", "word search", "grilles de jeux",
+                   "cahier de jeux"),
+        # Des listes de mots : ni phrase, ni rythme a mesurer.
+        prose=False,
+        # « Les deux premiers chapitres » d'un cahier de jeux, ce sont les
+        # deux premieres grilles sans leurs solutions : un extrait qui ne se
+        # verifie pas vaut moins que pas d'extrait.
+        extrait=False,
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre de grilles",
+                  genre="entier", defaut=30),
+            Champ("difficulte", "--difficulte", "Difficulté", genre="choix",
+                  defaut="", choix=("",) + difficultes_meles(),
+                  etiquettes=(
+                      ("facile", "Facile — grille de 12, à l'endroit, sans "
+                                 "diagonale"),
+                      ("moyen", "Moyen — grille de 15, diagonales en plus"),
+                      ("difficile", "Difficile — grille de 18, huit "
+                                    "directions, à l'envers compris"))),
+            Champ("caracteres", "--caracteres", "Taille des lettres",
+                  genre="choix", defaut="", choix=("",) + caracteres_meles(),
+                  etiquettes=(
+                      ("standard", "Standard"),
+                      ("gros", "Gros caractères — grilles plus petites, "
+                               "lettres plus grandes")),
+                  aide="Les cahiers en gros caractères sont un rayon à part, "
+                       "pour une lecture confortable. Par défaut, l'usine en "
+                       "juge d'après le sujet et le public."),
+        ),
+    ),
+    TypeProduit(
+        cle="idees", nom="Étude de niche",
+        resume="Des pistes chiffrées, appuyées sur des mesures de marché",
+        detail="Idées évaluées : prix, difficulté, concurrence",
         formats=("csv", "json", "html", "md"),
         minutes=(2, 4),
-        quantite=("nombre", "Combien d'idees", "12"),
+        quantite=("nombre", "Combien d'idées", "12"),
         options={"avec_marche": None},
         vendable=False, file=False,
+        champs=(
+            Champ("nombre", "-n/--nombre", "Nombre de pistes",
+                  genre="entier", defaut=12),
+            Champ("sans_marche", "--sans-marche", "Ne pas mesurer le marché",
+                  genre="booleen", defaut=False,
+                  argument="avec_marche", inverse=True,
+                  aide="Plus rapide, et les pistes ne sont alors appuyées sur "
+                       "aucune mesure."),
+            Champ("sans_veille", "--sans-veille", "Ne pas lire les discussions",
+                  genre="booleen", defaut=False,
+                  argument="avec_veille", inverse=True,
+                  aide="La veille est lente par construction : trois secondes "
+                       "entre deux communautés."),
+        ),
     ),
 ]
 
@@ -239,6 +1057,12 @@ def executer(cle: str, contexte: Any,
     return type_produit.executer(contexte, options)
 
 
+def accepte_extrait(cle: str) -> bool:
+    """Ce type de produit se prete-t-il a une edition courte offerte ?"""
+    type_produit = obtenir(cle)
+    return bool(type_produit.extrait) if type_produit else False
+
+
 def normaliser(cle: str, defaut: str = "ebook") -> str:
     """Ramene une cle proposee par un modele vers un type reellement fabricable."""
     propre = (cle or "").lower().strip()
@@ -263,6 +1087,48 @@ def normaliser(cle: str, defaut: str = "ebook") -> str:
         if any(mot in propre for mot in type_produit.mots_cles):
             return type_produit.cle
     return defaut
+
+
+def type_pour_sujet(contexte: Any, sujet: str, defaut: str = "ebook") -> str:
+    """Quel type de produit ce sujet appelle-t-il ?
+
+    « usine auto "la prospection pour freelances" » pose une question que les
+    dix commandes de fabrication ne savent pas poser : elles exigent le type
+    d'abord. Or choisir le type suppose de savoir ce qui se vend sur ce
+    sujet-la, ce qui vient apres.
+
+    Le modele choisit parmi les types REELLEMENT fabricables, lus au
+    catalogue plutot que recopies : un type ajoute arrive ici tout seul. Sa
+    reponse passe ensuite par « normaliser », qui rattrape les synonymes — un
+    modele ecrit volontiers « planner » ou « template ».
+
+    En cas d'echec (modele muet, JSON illisible, reseau coupe), on rend le
+    defaut : un type raisonnable vaut mieux qu'une fabrication qui s'arrete,
+    et l'appelant dit lequel il a retenu.
+    """
+    from ..agents import equipe
+
+    invite = (
+        "Un vendeur veut fabriquer UN produit digital sur ce sujet :\n"
+        "« {sujet} »\n\n"
+        "Quel type de produit se vend le mieux sur ce sujet, parmi ceux que "
+        "l'usine sait fabriquer ?\n{catalogue}\n\n"
+        "Choisis en pensant a l'acheteur : ce qu'il cherche, et sous quelle "
+        "forme il accepte de le payer. Un sujet tres pratique se vend mieux "
+        "en modeles ou en boite a outils qu'en livre ; un sujet narratif "
+        "appelle une fiction.\n\n"
+        'Schema JSON exact :\n{{"type": "{types}", "pourquoi": "une phrase"}}'
+    ).format(sujet=sujet[:300], catalogue=resume_pour_ia(),
+             types="|".join(cles(vendables=True)))
+    try:
+        donnees = equipe.PROSPECTEUR.travailler_json(
+            contexte, invite, role_modele="rapide",
+            temperature=0.2, max_tokens=300)
+    except Exception:
+        return defaut
+    if not isinstance(donnees, dict):
+        return defaut
+    return normaliser(str(donnees.get("type") or ""), defaut=defaut)
 
 
 def resume_pour_ia() -> str:

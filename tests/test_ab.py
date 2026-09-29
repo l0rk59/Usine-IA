@@ -207,6 +207,37 @@ class TestDiagnosticTitre(unittest.TestCase):
         self.assertTrue(resultat["testable"])
         self.assertLess(resultat["similarite_moyenne"], 0.3)
 
+    def test_des_titres_de_remplacement_perdus_se_disent(self):
+        """Deux titres trop proches : on garde l'un, on en redemande un autre.
+        Si le modele ne repond pas, le test part avec une variante de moins —
+        et le disait jusqu'ici par un silence."""
+        import json
+
+        from usine.core import llm
+        from usine.pipelines import variantes
+        from usine.pipelines.base import Contexte
+
+        def modele(messages, role):
+            if "existent deja" in messages[-1]["content"]:
+                raise llm.PlusDeFournisseur("Tous les fournisseurs ont echoue")
+            return json.dumps({"titres": [
+                {"angle": "a", "titre": "Le guide du freelance rentable"},
+                {"angle": "b", "titre": "Le guide du freelance qui devient rentable"},
+                {"angle": "c", "titre": "Pourquoi votre agenda se vide apres chaque mission"},
+            ]})
+
+        journal = []
+        llm.definir_simulateur(modele)
+        try:
+            titres = variantes.generer_titres(
+                Contexte(sujet="le freelance", journal=journal.append),
+                "Le freelance", nombre=3)
+        finally:
+            llm.definir_simulateur(None)
+        self.assertEqual(len(titres), 2)
+        self.assertTrue(any("2 variante(s) au lieu de 3" in l for l in journal),
+                        journal)
+
     def test_les_mots_outils_ne_creent_pas_de_fausse_ressemblance(self):
         proche = dt.similarite("Le guide pour les freelances de la vente",
                                "Le manuel pour les artisans de la photo")

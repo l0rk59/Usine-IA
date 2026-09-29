@@ -70,9 +70,10 @@ formats livrés (PDF, EPUB, HTML), et indiquez le nombre de pages.
   Les EPUB produits portent leurs métadonnées d'accessibilité et la notice
   livrée contient une déclaration. **Il vous reste deux choses à faire** :
   publier la déclaration d'accessibilité sur votre fiche produit (reprenez le
-  texte de la section « Accessibilité » du `LISEZ-MOI.md`), et répondre aux
-  demandes de format adapté. Les micro-entreprises de moins de 10 personnes
-  et 2 M€ de chiffre d'affaires bénéficient d'une exemption partielle —
+  texte de la section « Accessibilité » du `LISEZ-MOI.md`, ou `README.md` pour
+  un produit en anglais), et répondre aux demandes de format adapté. Les
+  micro-entreprises de moins de 10 personnes et 2 M€ de chiffre d'affaires
+  bénéficient d'une exemption partielle —
   vérifiez votre situation, la charge de la preuve vous incombe.
 
 ### La cadence de publication n'est pas la cadence de production
@@ -81,8 +82,16 @@ C'est le piège le plus coûteux, et il ne vient pas du logiciel.
 
 `usine usine` sait fabriquer plusieurs produits par jour. **Les publier au
 même rythme est le profil exact d'un compte qui se fait fermer.** Amazon KDP
-plafonne à trois titres par jour et ferme les comptes de contenu IA déposé en
-volume ; Etsy et Gumroad suspendent sur signalement de contenu dupliqué.
+« limite le nombre de titres que vous pouvez créer en même temps à **10 par
+format de livre et par semaine** » (page d'aide KDP, vérifiée le 12 septembre
+2026) et ferme les comptes de contenu IA déposé en volume ; Etsy et Gumroad
+suspendent sur signalement de contenu dupliqué.
+
+Ce plafond a changé : de septembre 2023 à fin 2025, c'était trois titres par
+jour. Le nouveau est **plus serré** pour qui ne publie qu'en un seul format —
+dix par semaine au lieu de vingt et un. Chaque format compte séparément, donc
+le même livre en numérique, broché et relié consomme trois quotas différents,
+pas un. Et une **mise à jour** d'un titre existant ne compte pas.
 
 Produisez en lot, publiez lentement :
 
@@ -103,8 +112,26 @@ Ne lancez pas sur une audience inexistante. L'ordre qui fonctionne :
 
 1. Publiez pendant deux semaines sur le sujet, gratuitement, là où se trouve
    votre audience.
-2. Proposez un extrait gratuit (le chapitre 1 en PDF) contre une adresse e-mail.
+2. Proposez un **extrait gratuit** contre une adresse e-mail. L'usine le
+   fabrique avec le kit de vente, dans `marketing/extrait/` : PDF et EPUB des
+   premiers chapitres (un quart du livre par défaut), suivis d'une page qui
+   liste les chapitres restants et renvoie vers votre site — celui de vos
+   réglages `site` et `contact`.
+
+   ```bash
+   usine marketing <identifiant>              # un quart du livre
+   usine marketing <identifiant> --extrait 1  # le seul premier chapitre
+   ```
+
+   Il est **découpé dans le livre déjà produit**, sans un seul appel d'IA :
+   il ne consomme aucun quota, et c'est vraiment le début du livre que vous
+   vendez — ce qu'un extrait promet.
 3. Seulement ensuite, envoyez la séquence de lancement à cette liste.
+
+> **L'extrait ne part jamais dans l'archive de l'acheteur.** Il vit dans
+> `marketing/`, exclu de la mise en carton au même titre que votre page de
+> vente. Livrer une version amputée à quelqu'un qui vient de payer le livre
+> entier serait au mieux ridicule.
 
 Un produit à 29 € vendu 20 fois rapporte plus qu'un produit à 9 € vendu deux
 fois. Le prix bas n'accélère pas les ventes, il réduit la valeur perçue.

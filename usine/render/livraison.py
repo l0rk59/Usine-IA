@@ -15,14 +15,16 @@ from __future__ import annotations
 
 import csv
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from ..core import images
 from . import tableur
 from . import document as D
+from . import libelles
 from .epub import construire_epub
+from .epub_conformite import verifier_epub
 from .page import ecrire_page
 from .pdf import A4, DocumentPDF
 
@@ -38,6 +40,12 @@ class Bloc:
     rendu_pdf: Optional[Callable[[DocumentPDF], None]] = None
     rendu_html: str = ""                              # sinon derive du markdown
     sommaire: bool = True
+    # Le titre du bloc est ecrit par le moteur, en corps de chapitre. Un album
+    # jeunesse n'en veut pas : « Page 1 » en vingt-quatre points au-dessus
+    # d'une seule phrase, c'est la mise en page d'un guide appliquee a un
+    # album. Quand ce drapeau est baisse, « rendu_pdf » ouvre sa page et
+    # compose tout — titre compris s'il en veut un.
+    titre_pdf: bool = True
 
 
 @dataclass
@@ -67,6 +75,9 @@ class Produit:
     police_corps: str = "Times-Roman"
     format_page: Tuple[float, float] = A4
     marge: float = 62.0
+    # Marge de reliure, en points. Utile pour l'impression a la demande d'un
+    # document broche ; inutile — et genante — pour une impression a domicile.
+    reliure: float = 0.0
     style_couverture: str = ""
     nom_fichier: str = ""
     # Suffixe du PDF principal quand le produit en compte plusieurs : le
@@ -80,6 +91,42 @@ class Produit:
     # « 8 chapitres » est plus juste que « 8 sections » pour un ebook : chaque
     # type garde son vocabulaire plutot que d'heriter d'un terme generique.
     libelle_sections: str = "section(s)"
+    # Un sommaire coute une page pleine. Il la vaut dans un livre, ou l'on
+    # cherche le chapitre neuf ; pas dans une fiche qu'on parcourt d'un coup
+    # d'oeil. Mesure du 15/09/2026 sur les produits reellement fabriques :
+    #
+    #     social   4 pages, dont 1 de sommaire — un quart du document
+    #     quiz     5 pages, sommaire de trois entrees : Consignes,
+    #              Questions, Corrige. On les trouve en tournant la page.
+    #     memo     6 pages, alors que ce type se veut « une ou deux pages »
+    #
+    # C'est la chaine qui declare, parce qu'elle seule sait si son produit est
+    # un livre ou une carte. Un seuil en nombre de pages serait un chiffre
+    # invente, et il se tromperait sur un ebook court comme sur un memo long.
+    sommaire: bool = True
+    # Les sections s'ENCHAINENT au lieu d'ouvrir chacune leur page.
+    #
+    # Un titre de niveau 1 ouvre une page neuve, et c'est juste dans un livre :
+    # un chapitre commence en haut d'une page. Ce ne l'est pas dans une
+    # documentation qu'on lit a l'ecran. Mesure du 15/09/2026 sur la notice
+    # d'un outil logiciel : trois sections, trois pages, et les deux tiers
+    # bas de chacune blancs — cinq pages dont trois quasi vides.
+    #
+    # Ce qui n'est PAS un defaut, et que la meme mesure signale : un episode
+    # de feuilleton qui se termine par « A suivre » au milieu de la page. Un
+    # chapitre finit ou il finit. La mesure compte le blanc ; elle ne dit pas
+    # s'il est de trop.
+    sections_enchainees: bool = False
+    # Refabriquer un produit deja livre doit lui rendre SA couverture. Celle
+    # d'un modele d'images ne se reproduit pas a l'identique : regenerer, ce
+    # serait livrer a un acheteur un livre dont la couverture a change depuis
+    # qu'il l'a vu. Le drapeau n'est leve que par une refabrication.
+    reutiliser_couverture: bool = False
+    # Fichiers du dossier produit a embarquer dans l'EPUB, chemins relatifs
+    # (« images/page-01.jpg »). Un EPUB est une archive fermee : une image
+    # referencee mais absente du conteneur ne s'affiche pas chez le lecteur,
+    # et le distributeur refuse le fichier.
+    ressources: Tuple[str, ...] = ()
     # Documents supplementaires : cahier d'exercices, second format de page.
     documents: List[Tuple[str, Callable[[Optional[Tuple[str, Any]]],
                                         DocumentPDF]]] = \
@@ -91,8 +138,38 @@ class Produit:
         return self.nom_fichier or slug(self.titre, 46)
 
 
+def _mentions_droits(langue: str = "fr") -> List[str]:
+    """Lignes ajoutees a la page de copyright de l'EPUB.
+
+    La mention d'assistance IA suit le meme reglage que celle de la licence
+    livree : deux endroits ou l'utilisateur l'attendrait ne doivent pas
+    repondre differemment a la meme case a cocher.
+    """
+    from ..core import reglages
+    from . import libelles
+
+    return ([libelles.libelle(langue, "mention_ia_courte")]
+            if reglages.lire("signature_ia", True) else [])
+
+
+def _couverture_existante(dossier: Path) -> Optional[Path]:
+    """La couverture deja ecrite dans ce dossier, si elle y est."""
+    for extension in (".jpg", ".jpeg", ".png"):
+        chemin = dossier / "couverture{}".format(extension)
+        if chemin.exists():
+            return chemin
+    return None
+
+
 def livrer(ctx: Any, produit: Produit) -> List[Path]:
     """Ecrit tous les fichiers du produit. Renvoie ceux qui ont ete crees."""
+    # Le titre et le sous-titre partent partout : couverture, page, PDF, et
+    # les metadonnees de l'EPUB que lisent les boutiques. Un sous-titre venu
+    # du modele avec son « **gras** » s'y retrouvait en clair (mesure du
+    # 24/09/2026 : la page de trois types sur dix-huit). Nettoyes ici, une
+    # fois, pour tous les formats.
+    produit.titre = D.nettoyer_inline(produit.titre)
+    produit.sous_titre = D.nettoyer_inline(produit.sous_titre)
     dossier: Path = ctx.dossier
     dossier.mkdir(parents=True, exist_ok=True)
     fichiers: List[Path] = []
@@ -103,12 +180,16 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
     # --- couverture (avant le PDF, qui peut l'incorporer) -----------------
     couverture = None
     page_couverture = None
-    if not ctx.sans_image:
+    deja_la = _couverture_existante(dossier) if produit.reutiliser_couverture else None
+    if deja_la is not None:
+        couverture = deja_la
+    elif not ctx.sans_image:
         couverture = images.generer_couverture(
             dossier, produit.titre, produit.sous_titre, ctx.auteur,
             style=produit.style_couverture or produit.type,
             en_ligne=not ctx.hors_ligne,
             marque=getattr(ctx, "marque", "") or "")
+    if couverture is not None:
         fichiers.append(couverture)
         svg = couverture.with_suffix(".svg")
         if svg.exists():
@@ -145,14 +226,7 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
 
     # --- PDF --------------------------------------------------------------
     if "pdf" in formats:
-        doc = _document(produit, ctx, page_couverture)
-        for bloc, blocs_md in blocs_analyses:
-            doc.titre(bloc.titre, 1, sommaire=bloc.sommaire)
-            if bloc.rendu_pdf is not None:
-                bloc.rendu_pdf(doc)
-            elif blocs_md:
-                D.vers_pdf(blocs_md, doc, sauter_h1=True)
-        doc.inserer_sommaire(apres=1)
+        doc = composer_pdf(produit, ctx, page_couverture, blocs_analyses)
         chemin = dossier / "{}{}.pdf".format(base, produit.suffixe_pdf)
         doc.enregistrer(chemin)
         fichiers.append(chemin)
@@ -176,7 +250,19 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
              for bloc, blocs_md in blocs_texte],
             langue=langue, sous_titre=produit.sous_titre,
             description=produit.promesse, couverture=image,
-            editeur=getattr(ctx, "marque", "") or "")
+            editeur=getattr(ctx, "marque", "") or "",
+            mentions=_mentions_droits(langue),
+            dedicace=getattr(ctx, "dedicace", "") or "",
+            ressources=[(nom, (dossier / nom).read_bytes())
+                        for nom in produit.ressources
+                        if (dossier / nom).is_file()])
+        # Un EPUB casse ne se voit pas : l'archive s'ouvre, le fichier part
+        # chez le distributeur, et c'est lui qui le refuse. Le controle est
+        # instantane et sans reseau — il n'y a aucune raison de le sauter.
+        rapport = verifier_epub(chemin)
+        ctx.meta["epub"] = rapport.en_donnees()
+        if not rapport.conforme:
+            ctx.journal("EPUB : {}".format(rapport.resume()))
         fichiers.append(chemin)
 
     # --- HTML ---------------------------------------------------------------
@@ -188,8 +274,9 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
         chemin = dossier / "lire.html"
         ecrire_page(chemin, produit.titre, "\n".join(corps),
                     sous_titre=produit.sous_titre, langue=langue,
-                    meta="{} — {} {}".format(ctx.auteur, len(blocs_texte),
-                                             produit.libelle_sections),
+                    meta=libelles.accorder("{} — {} {}".format(
+                        ctx.auteur, len(blocs_texte), produit.libelle_sections),
+                        langue),
                     couverture=couverture.name if couverture else None)
         fichiers.append(chemin)
 
@@ -227,10 +314,54 @@ def livrer(ctx: Any, produit: Produit) -> List[Path]:
     return fichiers
 
 
+def composer_pdf(produit: Produit, ctx: Any,
+                 page_couverture: Optional[Tuple[str, Any]],
+                 blocs_analyses: Optional[List[Tuple[Bloc, List[Any]]]] = None
+                 ) -> DocumentPDF:
+    """Le PDF d'un produit : couverture, blocs, sommaire s'il en faut un.
+
+    Une fonction et non un morceau de « livrer » : un produit livre sur deux
+    formats de page (A4 et Lettre US) compose le second par ce meme code. Une
+    copie de la boucle aurait diverge a la premiere correction de l'une.
+    """
+    if blocs_analyses is None:
+        blocs_analyses = [(b, D.analyser(b.corps) if b.corps else [])
+                          for b in produit.blocs]
+    doc = _document(produit, ctx, page_couverture)
+    for rang, (bloc, blocs_analysees) in enumerate(blocs_analyses):
+        if bloc.titre_pdf:
+            if produit.sections_enchainees:
+                # La premiere ouvre une page — sinon le texte se dessine
+                # par-dessus la couverture. Le memo l'a appris : le PDF
+                # tombait a une page, le compte semblait parfait, et le
+                # contenu etait imprime sur la couverture.
+                if rang == 0:
+                    doc.nouvelle_page()
+                doc.titre(bloc.titre, 2, sommaire=bloc.sommaire)
+            else:
+                doc.titre(bloc.titre, 1, sommaire=bloc.sommaire)
+        if bloc.rendu_pdf is not None:
+            bloc.rendu_pdf(doc)
+        elif blocs_analysees:
+            D.vers_pdf(blocs_analysees, doc, sauter_h1=True)
+    # Un sommaire vide ne s'omettait pas : il sortait une page « Sommaire »
+    # avec son filet bleu et rien dessous. Personne ne l'avait vu parce
+    # qu'aucun produit n'avait, jusqu'au conte, de blocs sans titre PDF.
+    if doc.sommaire and produit.sommaire:
+        langue = produit.langue or getattr(ctx, "langue_iso", "fr")
+        doc.inserer_sommaire(libelles.libelle(langue, "sommaire"), apres=1)
+    return doc
+
+
+def au_format(produit: Produit, format_page: Tuple[float, float]) -> Produit:
+    """Le meme produit sur un autre format de page, pour « composer_pdf »."""
+    return replace(produit, format_page=format_page)
+
+
 def _document(produit: Produit, ctx: Any,
               couverture: Optional[Tuple[str, Any]]) -> DocumentPDF:
     doc = DocumentPDF(format_page=produit.format_page, marge=produit.marge,
-                      titre_courant=produit.titre,
+                      reliure=produit.reliure, titre_courant=produit.titre,
                       police_corps=produit.police_corps,
                       titre_document=produit.titre, auteur=ctx.auteur,
                       sujet=produit.sous_titre or produit.promesse,
@@ -254,7 +385,7 @@ def poser_couverture(doc: DocumentPDF, titre: str, sous_titre: str,
 def document(ctx: Any, titre: str, sous_titre: str,
              couverture: Optional[Path] = None, format_page: Tuple[float, float] = A4,
              marge: float = 62.0, police_corps: str = "Times-Roman",
-             titre_courant: str = "") -> DocumentPDF:
+             titre_courant: str = "", reliure: float = 0.0) -> DocumentPDF:
     """Un PDF ouvert sur sa couverture, quelle qu'en soit la provenance.
 
     Les chaines qui gardent leur propre exportateur passaient toutes par les
@@ -263,7 +394,7 @@ def document(ctx: Any, titre: str, sous_titre: str,
     localement, ces trois lignes ont cesse d'en incorporer aucune — sans
     bruit, puisque le PDF restait valide. Elles vivent ici desormais.
     """
-    doc = DocumentPDF(format_page=format_page, marge=marge,
+    doc = DocumentPDF(format_page=format_page, marge=marge, reliure=reliure,
                       police_corps=police_corps,
                       titre_courant=titre_courant or titre,
                       titre_document=titre, auteur=ctx.auteur,

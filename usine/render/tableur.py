@@ -61,13 +61,3 @@ def ecrire(chemin: Path, entetes: Sequence[Any],
     return chemin
 
 
-def ecrire_dictionnaires(chemin: Path, colonnes: Sequence[str],
-                         entrees: Iterable[dict]) -> Path:
-    """Meme chose a partir de dictionnaires, colonnes imposees."""
-    chemin.parent.mkdir(parents=True, exist_ok=True)
-    with chemin.open("w", encoding="utf-8", newline="") as flux:
-        auteur = csv.DictWriter(flux, fieldnames=list(colonnes))
-        auteur.writeheader()
-        for entree in entrees:
-            auteur.writerow({c: cellule(entree.get(c, "")) for c in colonnes})
-    return chemin
