@@ -1,7 +1,7 @@
-From f99d346bac53ecfcafaec350ebb19a15e9743b4f Mon Sep 17 00:00:00 2001
+From de2a5974d4172509b6d25763a64891a5e6f3a105 Mon Sep 17 00:00:00 2001
 From: Usine-IA <usr@usine-ia.local>
 Date: Mon, 28 Sep 2026 17:36:40 +0000
-Subject: [PATCH 4/5] USR 4/5 : reglages en direct a la manette
+Subject: [PATCH 4/6] USR 4/6 : reglages en direct a la manette
 
 Surcouche Vue + RB : le jeu continue, reste visible et ne recoit plus la
 manette ; croix pour choisir et regler, A valider, Y oublier l'historique,

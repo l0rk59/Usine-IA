@@ -12,12 +12,16 @@ name: super-resolution
 on:
   push:
     branches: ["**"]
+    # Deposer des captures de jeux ne relance pas la compilation de Xenia
+    # (plus d'une heure) : elles ont leur propre workflow, usr-captures.
     paths:
       - "super-resolution/**"
+      - "!super-resolution/captures/**"
       - ".github/workflows/super-resolution.yml"
   pull_request:
     paths:
       - "super-resolution/**"
+      - "!super-resolution/captures/**"
       - ".github/workflows/super-resolution.yml"
   # bouton « Run workflow » de l'onglet Actions (depuis un telephone aussi)
   workflow_dispatch:
@@ -237,6 +241,10 @@ jobs:
           # Correctif 5 : la generation d'images est compilee, elle aussi.
           if (-not (Select-String -Path $exe -SimpleMatch -Quiet "USR: echec de InterpolateUniversal")) {
             throw "la generation d'images est absente de l'executable"
+          }
+          # Correctif 6 : le mode capture aussi.
+          if (-not (Select-String -Path $exe -SimpleMatch -Quiet "USR capture : sequence")) {
+            throw "le mode capture est absent de l'executable"
           }
 
   # L'application pour la Xbox, prete a installer : bibliotheques de Xenia par

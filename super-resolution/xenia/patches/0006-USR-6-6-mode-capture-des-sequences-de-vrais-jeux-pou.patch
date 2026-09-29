@@ -1,0 +1,386 @@
+From df719949e6a5b968fc7e4de8e8150ee26f9baa36 Mon Sep 17 00:00:00 2001
+From: Usine-IA <kopec.lrz@gmail.com>
+Date: Tue, 29 Sep 2026 16:40:43 +0000
+Subject: [PATCH 6/6] USR 6/6 : mode capture, des sequences de vrais jeux pour
+ l'entrainement
+
+Variable usr_capture (section GPU). Avec draw_resolution_scale_x/y = 3,
+Xenia enregistre dans storage_root/usr_captures des sequences de 48
+images consecutives, decoupees en 384x216 a une position tiree au
+hasard (alignee sur l'echelle), telles que USR les recoit : apres la
+rampe gamma, R10G10B10A2. 300 images entre deux sequences, 40 au plus.
+
+Pourquoi l'echelle 3 : l'image a l'echelle 3 contient exactement les 9
+images a l'echelle 1 du jitter en grille 3x3, et sert de verite terrain
+au rapport 3 (usr_ref/capture_jeu.py). Le jitter du niveau 2 est donc
+coupe pendant la capture : il deplacerait la grille.
+
+La copie passe par 4 tampons de relecture ; une image n'est ecrite
+qu'une fois son GPU termine, dans l'ordre, et l'attente n'a lieu que si
+le GPU a 4 images de retard.
+---
+ .../gpu/d3d12/d3d12_command_processor.cc      | 219 ++++++++++++++++++
+ src/xenia/gpu/d3d12/d3d12_command_processor.h |  45 ++++
+ src/xenia/gpu/gpu_flags.cc                    |   9 +
+ src/xenia/gpu/gpu_flags.h                     |   2 +
+ 4 files changed, 275 insertions(+)
+
+diff --git a/src/xenia/gpu/d3d12/d3d12_command_processor.cc b/src/xenia/gpu/d3d12/d3d12_command_processor.cc
+index 7c93109..7664c7d 100644
+--- a/src/xenia/gpu/d3d12/d3d12_command_processor.cc
++++ b/src/xenia/gpu/d3d12/d3d12_command_processor.cc
+@@ -9,10 +9,13 @@
+ 
+ #include "xenia/gpu/d3d12/d3d12_command_processor.h"
+ #include <cstring>
++#include <ctime>
++#include <filesystem>
+ #include "xenia/apu/audio_system.h"
+ #include "xenia/base/assert.h"
+ #include "xenia/base/byte_order.h"
+ #include "xenia/base/cvar.h"
++#include "xenia/base/filesystem.h"
+ #include "xenia/base/logging.h"
+ #include "xenia/base/math.h"
+ #include "xenia/base/profiling.h"
+@@ -1682,6 +1685,8 @@ bool D3D12CommandProcessor::SetupContext() {
+ void D3D12CommandProcessor::ShutdownContext() {
+   AwaitAllQueueOperationsCompletion();
+ 
++  UsrCaptureShutdown();
++
+   for (auto& pair : readback_buffers_) {
+     ui::d3d12::util::ReleaseAndNull(pair.second.buffers[0]);
+     ui::d3d12::util::ReleaseAndNull(pair.second.buffers[1]);
+@@ -2588,6 +2593,14 @@ void D3D12CommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
+                                 apply_gamma_dest_initial_state);
+         }
+ 
++        // USR, mode capture : l'image telle que USR la recoit (apres la
++        // rampe gamma), avant de la rendre au presentateur.
++        if (cvars::usr_capture) {
++          UsrCaptureRecord(guest_output_resource,
++                           uint32_t(swap_texture_desc.Width),
++                           uint32_t(swap_texture_desc.Height));
++        }
++
+         // Need to submit all the commands before giving the image back to the
+         // presenter so it can submit its own commands for displaying it to the
+         // queue.
+@@ -2600,13 +2613,219 @@ void D3D12CommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
+   // was not called), to prevent leaking per-frame resources.
+   EndSubmission(true);
+ 
++  // Mode capture : les images copiees que le GPU a finies, sans l'attendre.
++  if (usr_capture_file_) {
++    UsrCaptureWrite(false);
++  }
++
+   // Jitter de l'image suivante.
+   UsrBeginFrame(presenter);
+ }
+ 
++void D3D12CommandProcessor::UsrCaptureRecord(ID3D12Resource* guest_output,
++                                             uint32_t width,
++                                             uint32_t height) {
++  if (usr_capture_sequences_ >= kUsrCaptureMaxSequences) {
++    return;
++  }
++  // La decoupe se decime en 3x3 phases : seule l'echelle 3 le permet.
++  if (texture_cache_->draw_resolution_scale_x() != kUsrCaptureScale ||
++      texture_cache_->draw_resolution_scale_y() != kUsrCaptureScale ||
++      width < kUsrCaptureWidth || height < kUsrCaptureHeight) {
++    if (!usr_capture_warned_) {
++      XELOGW(
++          "USR capture : rien n'est enregistre -- il faut "
++          "draw_resolution_scale_x = draw_resolution_scale_y = {} (image "
++          "{}x{})",
++          kUsrCaptureScale, width, height);
++      usr_capture_warned_ = true;
++    }
++    return;
++  }
++  if (!usr_capture_file_) {
++    if (usr_capture_gap_left_) {
++      --usr_capture_gap_left_;
++      return;
++    }
++    // Nouvelle sequence : fichier, tampons, position de la decoupe.
++    ID3D12Device* device = GetD3D12Provider().GetDevice();
++    D3D12_RESOURCE_DESC crop_desc = {};
++    crop_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
++    crop_desc.Width = kUsrCaptureWidth;
++    crop_desc.Height = kUsrCaptureHeight;
++    crop_desc.DepthOrArraySize = 1;
++    crop_desc.MipLevels = 1;
++    crop_desc.Format = ui::d3d12::D3D12Presenter::kGuestOutputFormat;
++    crop_desc.SampleDesc.Count = 1;
++    UINT64 buffer_size = 0;
++    device->GetCopyableFootprints(&crop_desc, 0, 1, 0,
++                                  &usr_capture_footprint_, nullptr, nullptr,
++                                  &buffer_size);
++    for (UsrCaptureSlot& slot : usr_capture_slots_) {
++      if (slot.buffer) {
++        continue;
++      }
++      D3D12_RESOURCE_DESC buffer_desc;
++      ui::d3d12::util::FillBufferResourceDesc(buffer_desc, buffer_size,
++                                              D3D12_RESOURCE_FLAG_NONE);
++      if (FAILED(device->CreateCommittedResource(
++              &ui::d3d12::util::kHeapPropertiesReadback,
++              D3D12_HEAP_FLAG_NONE, &buffer_desc,
++              D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
++              IID_PPV_ARGS(&slot.buffer)))) {
++        XELOGE("USR capture : echec de creation des tampons de relecture");
++        UsrCaptureShutdown();
++        usr_capture_sequences_ = kUsrCaptureMaxSequences;
++        return;
++      }
++    }
++    // Decoupe alignee sur l'echelle : les phases de la decimation restent
++    // celles des pixels a l'echelle 1.
++    auto random_cell = [this](uint32_t cells) -> uint32_t {
++      usr_capture_random_ = usr_capture_random_ * 1664525u + 1013904223u;
++      return cells ? (usr_capture_random_ >> 8) % cells : 0;
++    };
++    const uint32_t crop_x =
++        random_cell((width - kUsrCaptureWidth) / kUsrCaptureScale + 1) *
++        kUsrCaptureScale;
++    const uint32_t crop_y =
++        random_cell((height - kUsrCaptureHeight) / kUsrCaptureScale + 1) *
++        kUsrCaptureScale;
++    std::filesystem::path folder =
++        kernel_state_->emulator()->storage_root() / "usr_captures";
++    std::error_code error;
++    std::filesystem::create_directories(folder, error);
++    const std::string name = fmt::format(
++        "usrc_{:08X}_{}_{:02}.bin", kernel_state_->title_id(),
++        uint64_t(std::time(nullptr)), usr_capture_sequences_);
++    usr_capture_file_ = xe::filesystem::OpenFile(folder / name, "wb");
++    if (!usr_capture_file_) {
++      XELOGE("USR capture : impossible d'ecrire dans {}",
++             xe::path_to_utf8(folder));
++      usr_capture_sequences_ = kUsrCaptureMaxSequences;
++      return;
++    }
++    // En-tete : 10 entiers de 32 bits (docs/CAPTURE.md).
++    const uint32_t header[10] = {
++        0x43525355u,  // 'USRC'
++        1u,
++        kUsrCaptureWidth,
++        kUsrCaptureHeight,
++        kUsrCaptureScale,
++        kUsrCaptureScale,
++        uint32_t(ui::d3d12::D3D12Presenter::kGuestOutputFormat),
++        kUsrCaptureFrames,
++        crop_x,
++        crop_y,
++    };
++    std::fwrite(header, sizeof(header), 1, usr_capture_file_);
++    usr_capture_recorded_ = 0;
++    usr_capture_written_ = 0;
++    // Position de la decoupe gardee pour toute la sequence.
++    usr_capture_footprint_.Offset = 0;
++    usr_capture_crop_x_ = crop_x;
++    usr_capture_crop_y_ = crop_y;
++    XELOGI("USR capture : sequence {} -> {} (decoupe en {}, {})",
++           usr_capture_sequences_, name, crop_x, crop_y);
++  }
++  if (usr_capture_recorded_ >= kUsrCaptureFrames) {
++    return;  // en attente de l'ecriture des dernieres images
++  }
++  // Le tampon de cette image doit etre libre : ecrire (en attendant le GPU
++  // s'il le faut) les images plus anciennes, dans l'ordre.
++  UsrCaptureSlot& slot =
++      usr_capture_slots_[usr_capture_recorded_ % kUsrCaptureSlots];
++  while (usr_capture_written_ + kUsrCaptureSlots <= usr_capture_recorded_) {
++    UsrCaptureWrite(true);
++  }
++  PushTransitionBarrier(guest_output,
++                        ui::d3d12::D3D12Presenter::kGuestOutputInternalState,
++                        D3D12_RESOURCE_STATE_COPY_SOURCE);
++  SubmitBarriers();
++  D3D12_TEXTURE_COPY_LOCATION location_source, location_dest;
++  location_source.pResource = guest_output;
++  location_source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
++  location_source.SubresourceIndex = 0;
++  location_dest.pResource = slot.buffer.Get();
++  location_dest.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
++  location_dest.PlacedFootprint = usr_capture_footprint_;
++  D3D12_BOX box;
++  box.left = usr_capture_crop_x_;
++  box.top = usr_capture_crop_y_;
++  box.front = 0;
++  box.right = usr_capture_crop_x_ + kUsrCaptureWidth;
++  box.bottom = usr_capture_crop_y_ + kUsrCaptureHeight;
++  box.back = 1;
++  deferred_command_list_.D3DCopyTextureRegion(&location_dest, 0, 0, 0,
++                                              &location_source, &box);
++  PushTransitionBarrier(guest_output, D3D12_RESOURCE_STATE_COPY_SOURCE,
++                        ui::d3d12::D3D12Presenter::kGuestOutputInternalState);
++  slot.submission = GetCurrentSubmission();
++  ++usr_capture_recorded_;
++}
++
++void D3D12CommandProcessor::UsrCaptureWrite(bool wait) {
++  while (usr_capture_file_ && usr_capture_written_ < usr_capture_recorded_) {
++    UsrCaptureSlot& slot =
++        usr_capture_slots_[usr_capture_written_ % kUsrCaptureSlots];
++    if (GetCompletedSubmission() < slot.submission) {
++      if (!wait) {
++        return;
++      }
++      CheckSubmissionCompletion(slot.submission);
++    }
++    void* mapping;
++    const D3D12_RANGE read_range = {
++        0, SIZE_T(usr_capture_footprint_.Footprint.RowPitch) *
++               kUsrCaptureHeight};
++    if (SUCCEEDED(slot.buffer->Map(0, &read_range, &mapping))) {
++      // Lignes jointives dans le fichier (le tampon les aligne sur 256).
++      for (uint32_t y = 0; y < kUsrCaptureHeight; ++y) {
++        std::fwrite(static_cast<const uint8_t*>(mapping) +
++                        size_t(y) * usr_capture_footprint_.Footprint.RowPitch,
++                    sizeof(uint32_t), kUsrCaptureWidth, usr_capture_file_);
++      }
++      const D3D12_RANGE written_range = {};
++      slot.buffer->Unmap(0, &written_range);
++    }
++    ++usr_capture_written_;
++    if (usr_capture_written_ >= kUsrCaptureFrames) {
++      std::fclose(usr_capture_file_);
++      usr_capture_file_ = nullptr;
++      ++usr_capture_sequences_;
++      usr_capture_gap_left_ = kUsrCaptureGap;
++      if (usr_capture_sequences_ >= kUsrCaptureMaxSequences) {
++        XELOGI("USR capture : {} sequences enregistrees, capture terminee",
++               usr_capture_sequences_);
++      }
++    }
++  }
++}
++
++void D3D12CommandProcessor::UsrCaptureShutdown() {
++  if (usr_capture_file_) {
++    // Une sequence interrompue garde ses images completes : la lecture
++    // (usr_ref) compte les images a la taille du fichier.
++    UsrCaptureWrite(true);
++    if (usr_capture_file_) {
++      std::fclose(usr_capture_file_);
++      usr_capture_file_ = nullptr;
++    }
++  }
++  for (UsrCaptureSlot& slot : usr_capture_slots_) {
++    slot.buffer.Reset();
++    slot.submission = 0;
++  }
++}
++
+ void D3D12CommandProcessor::UsrBeginFrame(ui::Presenter* presenter) {
+   usr_jitter_active_ = false;
+   usr_lod_bias_active_ = false;
++  // Mode capture : l'image a l'echelle 3 doit etre rendue sans decalage,
++  // sinon la decimation en 3x3 phases ne tombe plus sur la grille.
++  if (cvars::usr_capture) {
++    return;
++  }
+   if (!presenter || !presenter->IsUsrJitterRequested() ||
+       !usr_output_image_width_ || !usr_output_image_height_) {
+     return;
+diff --git a/src/xenia/gpu/d3d12/d3d12_command_processor.h b/src/xenia/gpu/d3d12/d3d12_command_processor.h
+index 9367fbc..71fbaab 100644
+--- a/src/xenia/gpu/d3d12/d3d12_command_processor.h
++++ b/src/xenia/gpu/d3d12/d3d12_command_processor.h
+@@ -11,7 +11,9 @@
+ #define XENIA_GPU_D3D12_D3D12_COMMAND_PROCESSOR_H_
+ 
+ #include <algorithm>
++#include <array>
+ #include <atomic>
++#include <cstdio>
+ #include <deque>
+ #include <memory>
+ #include <optional>
+@@ -912,6 +914,49 @@ class D3D12CommandProcessor final : public CommandProcessor {
+   // Pour les samplers du dessin courant (biais de mip-map).
+   bool usr_draw_jittered_ = false;
+ 
++  // USR, mode capture (usr_capture) : des sequences de l'image du jeu rendue
++  // a l'echelle 3 (draw_resolution_scale), sans jitter, pour entrainer USR
++  // sur de vrais jeux. Chaque image a l'echelle 3 contient les 9 images a
++  // l'echelle 1 que donnerait le jitter en grille 3x3 du niveau 2, et la
++  // verite terrain a la taille d'affichage (docs/CAPTURE.md).
++  // Decoupe : 384x216 pixels a l'echelle 3, soit 128x72 a l'echelle 1 --
++  // la taille des sequences d'entrainement au rapport 3 (usr_ref).
++  static constexpr uint32_t kUsrCaptureWidth = 384;
++  static constexpr uint32_t kUsrCaptureHeight = 216;
++  static constexpr uint32_t kUsrCaptureScale = 3;
++  // 48 images consecutives par sequence : 16 Mo en 10 bits par canal, sous
++  // la limite de 25 Mo d'un envoi de fichier par le site de GitHub.
++  static constexpr uint32_t kUsrCaptureFrames = 48;
++  // Images du jeu entre deux sequences (10 s a 30 images/s) : des scenes
++  // differentes plutot que 40 fois la meme.
++  static constexpr uint32_t kUsrCaptureGap = 300;
++  static constexpr uint32_t kUsrCaptureMaxSequences = 40;
++  static constexpr uint32_t kUsrCaptureSlots = 4;
++  struct UsrCaptureSlot {
++    Microsoft::WRL::ComPtr<ID3D12Resource> buffer;
++    uint64_t submission = 0;
++  };
++  // Dans la mise a jour de l'image du jeu (sous-mission ouverte) : copie
++  // de la decoupe vers un tampon de relecture.
++  void UsrCaptureRecord(ID3D12Resource* guest_output, uint32_t width,
++                        uint32_t height);
++  // Ecrit dans le fichier les images copiees dont le GPU a fini ; toutes,
++  // en attendant le GPU, si « wait ».
++  void UsrCaptureWrite(bool wait);
++  void UsrCaptureShutdown();
++  std::array<UsrCaptureSlot, kUsrCaptureSlots> usr_capture_slots_;
++  D3D12_PLACED_SUBRESOURCE_FOOTPRINT usr_capture_footprint_ = {};
++  FILE* usr_capture_file_ = nullptr;
++  // Images de la sequence en cours copiees, et ecrites.
++  uint32_t usr_capture_recorded_ = 0;
++  uint32_t usr_capture_written_ = 0;
++  uint32_t usr_capture_gap_left_ = 0;
++  uint32_t usr_capture_sequences_ = 0;
++  uint32_t usr_capture_random_ = 0x55535243u;
++  uint32_t usr_capture_crop_x_ = 0;
++  uint32_t usr_capture_crop_y_ = 0;
++  bool usr_capture_warned_ = false;
++
+   std::atomic<bool> pix_capture_requested_ = false;
+   bool pix_capturing_;
+ 
+diff --git a/src/xenia/gpu/gpu_flags.cc b/src/xenia/gpu/gpu_flags.cc
+index ef3db2c..6e9f039 100644
+--- a/src/xenia/gpu/gpu_flags.cc
++++ b/src/xenia/gpu/gpu_flags.cc
+@@ -101,6 +101,15 @@ DEFINE_int32(anisotropic_override, -1,
+              "  5 = Force 16x anisotropic filtering",
+              "GPU");
+ 
++DEFINE_bool(
++    usr_capture, false,
++    "USR (Usine Super Resolution), mode capture : enregistre des sequences "
++    "de l'image du jeu dans le dossier usr_captures, pour entrainer USR sur "
++    "de vrais jeux (docs/CAPTURE.md). A utiliser avec "
++    "draw_resolution_scale_x = draw_resolution_scale_y = 3 et sans FXAA ; "
++    "coupe le jitter du niveau 2 tant qu'il est actif.",
++    "GPU");
++
+ DEFINE_double(
+     usr_lod_bias, -1.0,
+     "USR (Usine Super Resolution), niveau 2 : biais de mip-map applique aux "
+diff --git a/src/xenia/gpu/gpu_flags.h b/src/xenia/gpu/gpu_flags.h
+index 37b1274..757ec74 100644
+--- a/src/xenia/gpu/gpu_flags.h
++++ b/src/xenia/gpu/gpu_flags.h
+@@ -38,6 +38,8 @@ DECLARE_double(occlusion_query_saturation);
+ 
+ DECLARE_int32(anisotropic_override);
+ 
++DECLARE_bool(usr_capture);
++
+ DECLARE_double(usr_lod_bias);
+ 
+ DECLARE_bool(disassemble_pm4);

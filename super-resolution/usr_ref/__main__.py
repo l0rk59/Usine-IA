@@ -182,14 +182,33 @@ def cmd_universel_generation(args):
         print("Ecrit : %s" % args.sortie)
 
 
+def cmd_universel_captures(args):
+    from . import banc_universel, capture_jeu
+    net = Network.load(args.poids or UNIVERSAL_WEIGHTS)
+    tous = capture_jeu.fichiers(args.dossier)
+    if args.reserve and len(tous) < capture_jeu.RESERVE:
+        print("Moins de %d captures : pas de reserve, la mesure porte sur "
+              "des captures vues a l'entrainement." % capture_jeu.RESERVE)
+    rows = capture_jeu.mesurer(args.dossier, net,
+                               log=lambda m: print(m, flush=True),
+                               part="mesure" if args.reserve else None)
+    if not rows:
+        print("Aucune capture exploitable dans %s" % args.dossier)
+        return 1
+    if args.sortie:
+        banc_universel.save(rows, args.sortie)
+        print("Ecrit : %s" % args.sortie)
+
+
 def cmd_universel_entrainer(args):
     from . import train_universel
     cache = args.cache or os.path.join(ROOT, "resultats", "universel-cache")
     if args.rapide:
         net, meta = train_universel.train(cache, frames=12, rounds=1,
-                                          steps=300, per_frame=300)
+                                          steps=300, per_frame=300,
+                                          captures=args.captures)
     else:
-        net, meta = train_universel.train(cache)
+        net, meta = train_universel.train(cache, captures=args.captures)
     out = args.sortie or UNIVERSAL_WEIGHTS
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     net.save(out, os.path.splitext(out)[0] + ".bin", meta)
@@ -276,6 +295,9 @@ def main(argv=None):
                     help="petit entrainement pour essayer")
     ut.add_argument("--cache", help="dossier des sequences rendues")
     ut.add_argument("--sortie", help="poids (.json) ; defaut : ceux livres")
+    ut.add_argument("--captures",
+                    help="dossier de captures de vrais jeux (Xenia, "
+                         "usr_capture), ajoutees aux scenes synthetiques")
     ut.set_defaults(func=cmd_universel_entrainer)
 
     ud = sub.add_parser("universel-dlaa",
@@ -292,6 +314,17 @@ def main(argv=None):
                     help="une scene, pas 3")
     ug.add_argument("--sortie", help="resultats (.json)")
     ug.set_defaults(func=cmd_universel_generation)
+
+    uc = sub.add_parser("universel-captures",
+                        help="mesure USR sur des captures de vrais jeux "
+                             "(docs/CAPTURE.md)")
+    uc.add_argument("dossier")
+    uc.add_argument("--poids", help="poids universels (.json)")
+    uc.add_argument("--sortie", help="resultats (.json)")
+    uc.add_argument("--reserve", action="store_true",
+                    help="seulement les captures jamais vues a "
+                         "l'entrainement (capture_jeu.RESERVE)")
+    uc.set_defaults(func=cmd_universel_captures)
 
     ue = sub.add_parser("universel-entree",
                         help="sequence d'entree du banc de bout en bout "

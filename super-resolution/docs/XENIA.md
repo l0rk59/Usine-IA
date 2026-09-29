@@ -19,7 +19,7 @@ UWP pour Xbox en mode Développeur) avec **USR Universel** intégré.
 ## Ce qu'il y a dans `xenia/`
 
 On ne copie pas Xenia (des centaines de mégaoctets) : on livre
-**5 correctifs** et un script qui les applique sur une version précise de
+**6 correctifs** et un script qui les applique sur une version précise de
 [xenia-canary-uwp](https://github.com/amitamit99/xenia-canary-uwp)
 (commit `3e236f0`). Ce fork de Xenia Canary se compile avec CMake et
 Visual Studio, et sait produire le paquet pour la Xbox.
@@ -31,6 +31,7 @@ Visual Studio, et sait produire le paquet pour la Xbox.
 | `patches/0003-…` | niveau 2 : jitter sous-pixel injecté dans la scène 3D, et biais de mip-map |
 | `patches/0004-…` | réglages en direct à la manette : surcouche, menu pause, fenêtre d'affichage (PC), variables `usr_*` |
 | `patches/0005-…` | sortie native (DLAA) puis FSR, et génération d'images ×2 : voir [GENERATION.md](GENERATION.md) |
+| `patches/0006-…` | mode capture : séquences de vrais jeux pour mesurer et entraîner USR, voir [CAPTURE.md](CAPTURE.md) |
 | `appliquer.ps1` / `appliquer.sh` | clone Xenia, copie USR dans `third_party/usr`, applique les correctifs |
 | `third_party_usr/CMakeLists.txt` | construit la bibliothèque et ses shaders (dxc du SDK Windows) |
 | `tests/usr_menu_test.cc` | tests du menu de réglages (sans Xenia ni GPU) |
@@ -115,7 +116,7 @@ powershell -ExecutionPolicy Bypass -File xenia\appliquer.ps1 C:\xenia-usr
 
 Le script clone Xenia au bon commit avec ses sous-modules (quelques
 minutes), copie USR et sa licence dans `third_party\usr`, et applique les
-5 correctifs sur une branche `usr`.
+6 correctifs sur une branche `usr`.
 
 Ensuite, dans une *Developer PowerShell for VS 2022* :
 
@@ -321,6 +322,7 @@ suit une synchronisation verticale plus tard : 60 images à l'écran.
 | `usr_sharpness` | `0.25` | 0 à 1 | netteté finale |
 | `usr_native` | `false` | | sortie native (DLAA) puis FSR |
 | `usr_frame_generation` | `false` | | génération d'images ×2 |
+| `usr_capture` (section GPU) | `false` | | mode capture, avec `draw_resolution_scale_x/y = 3` : voir [CAPTURE.md](CAPTURE.md) |
 
 Conseils :
 
@@ -359,7 +361,7 @@ Vérifié sous Linux, sans Windows, par le script
 développement, et c'est aussi le job `xenia-linux` de l'intégration
 continue :
 
-- les 5 correctifs **s'appliquent** sans conflit sur un clone neuf de
+- les 6 correctifs **s'appliquent** sans conflit sur un clone neuf de
   xenia-canary-uwp au commit de référence ;
 - le **menu de réglages** passe ses tests (`xenia/tests/usr_menu_test.cc`,
   C++20 strict) : bornes, pas, lignes grisées, bascules, « oublier

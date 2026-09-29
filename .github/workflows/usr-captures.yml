@@ -1,0 +1,61 @@
+# USR : mesure et entrainement sur des captures de vrais jeux (Xenia,
+# variable usr_capture), deposees dans super-resolution/captures/. Lance a
+# la main (bouton « Run workflow » de l'onglet Actions, depuis un telephone
+# aussi) : il n'y a pas de PC dans la boucle. Protocole :
+# super-resolution/docs/CAPTURE.md.
+name: usr-captures
+
+on:
+  workflow_dispatch:
+    inputs:
+      entrainer:
+        description: "Reentrainer le reseau universel avec les captures (environ 30 min)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  captures:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    defaults:
+      run:
+        working-directory: super-resolution
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dependances (NumPy)
+        run: pip install numpy
+
+      # Sur la reserve seulement (une capture sur 4, jamais apprise) :
+      # c'est la seule mesure qui dise si le nouveau reseau generalise.
+      - name: Mesure avec le reseau livre
+        run: |
+          mkdir -p resultats
+          python -m usr_ref universel-captures captures --reserve \
+            --sortie resultats/captures-reseau-livre.json
+
+      - name: Entrainement (scenes synthetiques + captures)
+        if: ${{ inputs.entrainer }}
+        run: |
+          python -m usr_ref universel-entrainer --captures captures \
+            --sortie resultats/usr_universel_captures.json
+
+      - name: Mesure avec le nouveau reseau
+        if: ${{ inputs.entrainer }}
+        run: |
+          python -m usr_ref universel-captures captures --reserve \
+            --poids resultats/usr_universel_captures.json \
+            --sortie resultats/captures-nouveau-reseau.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: usr-captures
+          path: super-resolution/resultats/
+          retention-days: 30

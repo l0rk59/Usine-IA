@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verifications de « Xenia + USR » possibles sans Windows (integration
 # continue) :
-#   1. les 5 correctifs s'appliquent sur un clone neuf de xenia-canary-uwp ;
+#   1. les 6 correctifs s'appliquent sur un clone neuf de xenia-canary-uwp ;
 #   2. les tests du menu de reglages passent (C++20 strict) ;
 #   3. la cible CMake third_party/usr se construit : shaders par dxc,
 #      bibliotheque par g++ avec les en-tetes DirectX ouverts de Microsoft.

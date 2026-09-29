@@ -217,14 +217,35 @@ def baseline_loss(data, stability=1.0):
                          + stability * np.sum(flick * flick, axis=1)))
 
 
+def capture_sequences(dossier, log=print):
+    """Sequences tirees des captures de vrais jeux (capture_jeu), aux
+    niveaux 1 et 2, a la taille d'affichage de l'entrainement seulement."""
+    from . import capture_jeu
+    seqs = []
+    for path in capture_jeu.fichiers(dossier, "entrainement"):
+        header, frames = capture_jeu.lire(path)
+        if (header["largeur"], header["hauteur"]) != DISPLAY or \
+                header["images"] < 4:
+            log("  %s ignoree (%dx%d, %d images)" % (
+                os.path.basename(path), header["largeur"],
+                header["hauteur"], header["images"]))
+            continue
+        for niveau in (1, 2):
+            seqs.append(capture_jeu.sequence(frames, niveau))
+    log("  %d sequences de captures" % len(seqs))
+    return seqs
+
+
 def train(cache_dir, frames=24, rounds=3, steps=4000, batch=4096, lr=3e-3,
-          per_frame=1200, seed=0, stability=1.0, log=print):
+          per_frame=1200, seed=0, stability=1.0, captures=None, log=print):
     rng = np.random.default_rng(seed)
     t_start = time.time()
     os.makedirs(cache_dir, exist_ok=True)
     specs = training_specs(rng)
     log("Rendu / chargement de %d sequences..." % len(specs))
     seqs = [render_sequence(s, frames, cache_dir, log) for s in specs]
+    if captures:
+        seqs += capture_sequences(captures, log)
     network, data, trainer = None, None, None
     for r in range(rounds):
         log("Tour %d/%d : collecte avec %s" % (
@@ -242,6 +263,7 @@ def train(cache_dir, frames=24, rounds=3, steps=4000, batch=4096, lr=3e-3,
     meta = {"role": "universel", "display_size": list(DISPLAY),
             "sequences": len(seqs), "frames": frames, "rounds": rounds,
             "steps": steps, "stability": stability, "seed": seed,
+            "captures": bool(captures),
             "features": universel.FEATURE_NAMES,
             "sorties": ["reactivite (logit)", "gain (logit)"]}
     return network, meta

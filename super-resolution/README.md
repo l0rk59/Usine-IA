@@ -116,9 +116,12 @@ Universel** :
   l'écran ;
 - **génération d'images** : une image fabriquée entre deux images d'un
   jeu à 30 images/s. Mesures et limites dans
-  [docs/GENERATION.md](docs/GENERATION.md).
+  [docs/GENERATION.md](docs/GENERATION.md) ;
+- **mode capture** : de vraies séquences de jeu, avec leur vérité
+  terrain, pour mesurer et entraîner USR sur la Xbox 360. De la manette
+  au réseau réentraîné, sans PC : [docs/CAPTURE.md](docs/CAPTURE.md).
 
-Livré en 5 correctifs appliqués par un script sur une version précise de
+Livré en 6 correctifs appliqués par un script sur une version précise de
 xenia-canary-uwp. Construction avec Visual Studio, installation sur la
 console, commandes et réglages : [docs/XENIA.md](docs/XENIA.md).
 
@@ -229,7 +232,7 @@ Vérifié automatiquement (voir `tests/` et `.github/workflows/super-resolution.
 - **USR Universel** : même chaîne de vérification (référence, parité
   des shaders sur GPU logiciel, bibliothèque C++ sous Wine identique à la
   référence), et sa vue dans l'application Labo ;
-- **Xenia + USR** : les 5 correctifs s'appliquent sur un clone neuf de
+- **Xenia + USR** : les 6 correctifs s'appliquent sur un clone neuf de
   l'émulateur, et le menu de réglages passe ses tests ;
 - **compilation sous Windows avec MSVC** (intégration continue) : la
   bibliothèque, le Labo PC et le Labo **UWP**, et **Xenia** avec les
@@ -254,14 +257,15 @@ super-resolution/
 ├── src/              implémentation Direct3D 12 + poids par défaut
 ├── labo/             USR Labo : appli UWP (Xbox) et Win32 (PC), shaders
 │                     de la scène de test, menu, police, icônes
-├── xenia/            Xenia + USR : 5 correctifs, script d'application,
+├── xenia/            Xenia + USR : 6 correctifs, script d'application,
 │                     cible CMake de la bibliothèque, tests du menu
 ├── usr_ref/          référence Python : algorithme, scène, entraînement
 ├── weights/          poids des 3 modèles et du réseau universel (.json
 │                     lisible, .bin pour le GPU)
 ├── tests/            tests unitaires, cohérence, parité GPU, bout en bout
+├── captures/         captures de vrais jeux, déposées depuis le téléphone
 └── docs/             Xbox Series X, Labo, Xenia, USR Universel, DLAA et
-                      génération d'images, intégration, algorithme
+                      génération d'images, captures, intégration, algorithme
 ```
 
 ## Feuille de route
@@ -272,7 +276,8 @@ super-resolution/
 - [x] Compiler Xenia + USR sous Windows (intégration continue, MSVC)
 - [ ] Essayer Xenia + USR sur la console
 - [ ] Mesures sur Xbox Series X (mode Développeur) et sur PC
-- [ ] Ré-entraînement sur de vraies captures de jeu
+- [x] Mode capture et chaîne d'entraînement sur de vraies captures
+- [ ] Ré-entraînement sur de vraies captures de jeu (il faut les captures)
 - [ ] Résolution dynamique
 - [ ] Masque « réactif » pour particules et transparence
 - [ ] Réseau en INT8 (`dot4add_i8packed`) pour les TOPS INT8 de RDNA 2
