@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Usine-IA — fabrique de produits digitaux sur téléphone</title>
+<meta name="description" content="Usine-IA : une fabrique de produits digitaux qui tourne sur un téléphone Android, sous Termux. Ebooks, fiction, formations, logiciels, le tout en Python standard seul."/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%234f9cf9'/%3E%3Cpath d='M8 22V10h3v9h5v-9h3v12z' fill='white'/%3E%3C/svg%3E"/>
+<style>
+:root{--fond:#0b1020;--carte:#141b33;--bord:#2a3560;--texte:#eef1ff;--att:#7fb3ff;--accent:#4f9cf9;--doux:#aab4d8}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fond);color:var(--texte);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.enveloppe{max-width:1020px;margin:0 auto;padding:24px 18px 64px}
+header{display:flex;align-items:center;gap:14px;padding:18px 0}
+.logo{width:44px;height:44px;border-radius:12px;background:var(--accent);display:grid;place-items:center;font-weight:800;font-size:24px;color:#fff;flex:none}
+h1{font-size:28px;margin:0;letter-spacing:.04em}
+.soustitre{color:var(--doux);margin:2px 0 0}
+.hero{background:linear-gradient(135deg,#16204a,#0e2a4a);border:1px solid var(--bord);border-radius:16px;padding:28px;margin:18px 0}
+.hero h2{margin:0 0 8px;font-size:26px}
+.hero p{margin:8px 0;color:#dbe3ff}
+.cta{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.cta code,.pastille{background:#0b1330;border:1px solid var(--bord);border-radius:10px;padding:8px 12px;color:var(--texte)}
+h2.sec{font-size:21px;margin:32px 0 10px}
+p.aide{color:var(--doux)}
+.grille{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.carte{background:var(--carte);border:1px solid var(--bord);border-radius:12px;padding:14px}
+.carte h3{margin:0 0 4px;font-size:16px;color:var(--att)}
+.carte p{margin:4px 0 0;font-size:14px;color:#d6dcf5}
+code,kbd{font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+pre{background:#080d1f;border:1px solid var(--bord);border-radius:12px;padding:14px;overflow:auto}
+pre code{color:#e8eeff}
+.liste{columns:2;gap:24px;margin:8px 0}
+.liste li{break-inside:avoid;margin:4px 0}
+footer{margin-top:40px;color:var(--doux);font-size:14px;border-top:1px solid var(--bord);padding-top:14px}
+@media(max-width:700px){.grille{grid-template-columns:1fr}.liste{columns:1}h1{font-size:23px}.hero h2{font-size:21px}}
+</style>
+</head>
+<body>
+<div class="enveloppe">
+<header>
+<div class="logo" aria-hidden="true">U</div>
+<div>
+<h1>USINE-IA</h1>
+<p class="soustitre">Fabrique de produits digitaux — téléphone Android, Termux, Python standard seul.</p>
+</div>
+</header>
+
+<section class="hero" aria-label="Présentation">
+<h2>Vous donnez un sujet — ou rien, et l’usine le cherche elle-même.</h2>
+<p>Dix à vingt-cinq minutes plus tard, vous avez un livre&nbsp;: plan construit, texte rédigé, <strong>relu par un autre modèle</strong> que celui qui l’a écrit, mesuré, mis en page en PDF et EPUB, couverture dessinée sur place, page de vente, archive prête à mettre en ligne.</p>
+<div class="cta">
+<code>usine ebook "la prospection pour freelances débutants"</code>
+<span class="pastille">zéro dépendance · mesuré, pas déclaré · reprise sans repayer</span>
+</div>
+</section>
+
+<h2 class="sec">Trois façons de s’en servir</h2>
+<div class="grille">
+<div class="carte"><h3>usine menu</h3><p>Tout au clavier, sans rien retenir. Recommandé sur téléphone.</p></div>
+<div class="carte"><h3>usine ebook «&nbsp;…&nbsp;»</h3><p>La ligne de commande, pour les habitués et les scripts.</p></div>
+<div class="carte"><h3>usine web</h3><p>Le tableau de bord dans le navigateur, fabrication en direct, six peaux.</p></div>
+</div>
+
+<h2 class="sec">Ce qu’elle sait fabriquer — 20 types</h2>
+<p class="aide">Source : le catalogue de l’usine. Chaque type a sa chaîne, ses formats, ses contrôles.</p>
+<div class="grille">
+<div class="carte"><h3>ebook</h3><p>Livre complet : PDF + EPUB + HTML + Markdown + couverture.</p></div>
+<div class="carte"><h3>nouvelle</h3><p>Fiction courte, personnages et continuité tenus.</p></div>
+<div class="carte"><h3>roman</h3><p>Trente scènes en parties, mémoire hiérarchique, bible de série.</p></div>
+<div class="carte"><h3>interactive</h3><p>Livre dont le lecteur est le héros, carte vérifiée avant d’écrire.</p></div>
+<div class="carte"><h3>recueil</h3><p>Plusieurs récits liés par un fil, variété mesurée.</p></div>
+<div class="carte"><h3>feuilleton</h3><p>Épisodes qui se lisent seuls et appellent le suivant.</p></div>
+<div class="carte"><h3>conte</h3><p>Album jeunesse illustré, vérifié contre sa tranche d’âge.</p></div>
+<div class="carte"><h3>formation</h3><p>Manuel + cahier d’exercices + séquence e-mail.</p></div>
+<div class="carte"><h3>prompts</h3><p>Bibliothèque classée, PDF + CSV + JSON.</p></div>
+<div class="carte"><h3>outils</h3><p>Checklists, modèles, tableaux de suivi.</p></div>
+<div class="carte"><h3>modeles</h3><p>Bases Notion / tableur prêtes à importer.</p></div>
+<div class="carte"><h3>impression</h3><p>Cahier imprimable, A4 et Lettre US, marge de reliure.</p></div>
+<div class="carte"><h3>social</h3><p>Pack de publications + calendrier éditorial.</p></div>
+<div class="carte"><h3>logiciel</h3><p>Programme vérifié et réellement lancé avant livraison.</p></div>
+<div class="carte"><h3>emails</h3><p>Séquence après inscription + CSV à importer.</p></div>
+<div class="carte"><h3>memo</h3><p>L’essentiel sur une page, recto-verso.</p></div>
+<div class="carte"><h3>quiz</h3><p>Questions, corrigé expliqué, page qui se corrige seule.</p></div>
+<div class="carte"><h3>cartes</h3><p>Planches à découper, fichier Anki, page tactile.</p></div>
+<div class="carte"><h3>mots-meles</h3><p>Grilles vérifiées, solutions surlignées.</p></div>
+<div class="carte"><h3>idees</h3><p>Étude de niche : pistes mesurées sur sources publiques.</p></div>
+</div>
+
+<h2 class="sec">La contrainte qui explique tout</h2>
+<p><strong>Rien hors de la bibliothèque standard de Python.</strong> Pas de pip install, pas de CDN, pas de Node, pas de Java. Les moteurs PDF et EPUB sont écrits à la main — cette page elle-même est un fichier statique sans dépendance. Le prix est dit&nbsp;: le PDF ne sait écrire que l’alphabet latin. Le gain aussi&nbsp;: l’installation tient en une commande, sur un appareil déjà dans la poche.</p>
+
+<h2 class="sec">Premier produit</h2>
+<pre><code>usine ebook "la facturation pour indépendants"
+# sans sujet, l'usine mesure et choisit :
+usine ebook
+# boucle sous budget :
+usine usine demarrer   # statut / arreter
+# quand ça casse : docteur, liste, reprendre, sauvegarde
+usine docteur &amp;&amp; usine liste</code></pre>
+
+<h2 class="sec">Mesurer plutôt que déclarer</h2>
+<p>Répétitions, rythme des phrases, diversité lexicale, chiffres sans source, continuité, doublons, accessibilité EPUB&nbsp;: chaque produit reçoit un rapport section par section, avant et après relecture. Un contrôle qui crierait à tort finirait ignoré — quand l’attribution est ambiguë, l’usine rate un défaut plutôt que d’en inventer un.</p>
+
+<footer>MIT — Usine-IA. Vitrine statique de démonstration&nbsp;: le tableau de bord complet tourne avec <code>usine web</code> sur votre machine.</footer>
+</div>
+</body>
+</html>
