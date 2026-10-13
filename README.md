@@ -396,3 +396,21 @@ la suite le remarque.
 ## Licence
 
 MIT — voir `LICENSE`.
+
+<!-- omgithub:readme:start -->
+## 🚀 Build, play, and remix with OMGithub
+
+**Remixed using [OMGithub.com](https://omgithub.com).**
+
+[![OMGithub](https://img.shields.io/badge/OMGithub-Open%20project-orange?style=for-the-badge)](https://omgithub.com/l0rk59/Usine-IA)
+[![GitHub](https://img.shields.io/badge/GitHub-Source-181717?logo=github&style=for-the-badge)](https://github.com/l0rk59/Usine-IA)
+
+- 🎮 [Open the project](https://omgithub.com/l0rk59/Usine-IA).
+- ✨ [Remix this project](https://omgithub.com/?remix=l0rk59%2FUsine-IA).
+- 💻 [Explore the source](https://github.com/l0rk59/Usine-IA).
+- 🛠️ [Check build runs](https://github.com/l0rk59/Usine-IA/actions).
+- 🐛 [Report an issue](https://github.com/l0rk59/Usine-IA/issues).
+- 👤 [Explore the creator's projects](https://omgithub.com/l0rk59).
+- 🌍 [Create with OMGithub](https://omgithub.com).
+- 🧬 [Explore the remix source](https://github.com/l0rk59/Usine-IA).
+<!-- omgithub:readme:end -->
