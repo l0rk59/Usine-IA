@@ -15,3 +15,21 @@ venv/
 # Systeme
 .DS_Store
 Thumbs.db
+
+screenshots/
+
+*.log
+
+*.pid
+
+.agents/
+
+.agentsweb/
+
+.omgithub-runtime/
+
+.opencode-ssh/
+
+.opencode-web/
+
+node_modules/
